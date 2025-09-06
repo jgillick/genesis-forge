@@ -1,4 +1,6 @@
-<img src="./images/logo_text.png" width="150" />
+<p align="center">
+<img src="./images/logo_text.png" width="250" />
+</p>
 
 # Genesis Forge
 

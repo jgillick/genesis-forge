@@ -195,8 +195,8 @@ class PositionActionManager(BaseActionManager):
         If using the default action handler, the action space is [-1, 1].
         """
         return spaces.Box(
-            low=-np.inf,
-            high=np.inf,
+            low=-1.0,
+            high=1.0,
             shape=(self.num_actions,),
             dtype=np.float32,
         )
@@ -270,6 +270,28 @@ class PositionActionManager(BaseActionManager):
         super().step(actions)
         self.handle_actions(actions)
 
+    def handle_actions(self, actions: torch.Tensor):
+        """Convert actions to position commands, and send them to the DOF actuators."""
+
+        # Validate actions
+        if not self._quiet_action_errors:
+            if torch.isnan(actions).any():
+                print(f"ERROR: NaN actions received! Actions: {actions}")
+            if torch.isinf(actions).any():
+                print(f"ERROR: Infinite actions received! Actions: {actions}")
+
+        # Process actions
+        actions = actions * self._scale_values + self._offset_values
+        if self._clip_values is not None:
+            actions = torch.clamp(
+                actions,
+                min=self._clip_values[:, :, 0],
+                max=self._clip_values[:, :, 1],
+            )
+
+        # Set target positions
+        self.env.robot.control_dofs_position(actions, self.dofs_idx)
+
     def reset(
         self,
         envs_idx: list[int] = None,
@@ -315,28 +337,6 @@ class PositionActionManager(BaseActionManager):
             envs_idx=envs_idx,
         )
 
-    def handle_actions(self, actions: torch.Tensor):
-        """Convert actions to position commands, and send them to the DOF actuators."""
-
-        # Validate actions
-        if not self._quiet_action_errors:
-            if torch.isnan(actions).any():
-                print(f"ERROR: NaN actions received! Actions: {actions}")
-            if torch.isinf(actions).any():
-                print(f"ERROR: Infinite actions received! Actions: {actions}")
-
-        # Process actions
-        actions = actions * self._scale_values + self._offset_values
-        if self._clip_values is not None:
-            actions = torch.clamp(
-                actions,
-                min=self._clip_values[:, :, 0],
-                max=self._clip_values[:, :, 1],
-            )
-
-        # Set target positions
-        self.env.robot.control_dofs_position(actions, self.dofs_idx)
-
     """
     Implementation
     """
@@ -344,6 +344,7 @@ class PositionActionManager(BaseActionManager):
     def _init_buffers(self):
         """Define the buffers for the DOF values."""
 
+        # Find all enabled joints by names/patterns
         self._enabled_dof = dict()
         for joint in self.env.robot.joints:
             if joint.type != gs.JOINT_TYPE.REVOLUTE:
@@ -354,7 +355,7 @@ class PositionActionManager(BaseActionManager):
                     self._enabled_dof[name] = joint.dof_start
                     break
 
-        # Map manager config values to the DOF indices
+        # Map config values to the DOF indices
         self._scale_values = None
         self._offset_values = None
         self._clip_values = None

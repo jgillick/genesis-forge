@@ -23,14 +23,7 @@ from genesis_forge.utils import (
 from genesis_forge.mdp import rewards, terminations
 
 
-from genesis.utils.geom import (
-    quat_to_xyz,
-    transform_by_quat,
-    inv_quat,
-    transform_quat_by_quat,
-)
-
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.32]
+INITIAL_BODY_POSITION = [0.0, 0.0, 0.42]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
 
 
@@ -133,14 +126,19 @@ class Go2Env(ManagedEnvironment):
         # Joint Actions
         self.action_manager = PositionActionManager(
             self,
-            joint_names=".*",
+            joint_names=[
+                "FL_.*_joint",
+                "FR_.*_joint",
+                "RL_.*_joint",
+                "RR_.*_joint",
+            ],
             default_pos={
                 ".*_hip_joint": 0.0,
                 "F[L|R]_thigh_joint": 0.8,
                 "R[L|R]_thigh_joint": 1.0,
                 ".*_calf_joint": -1.5,
             },
-            scale=0.25,
+            scale=0.5,
             use_default_offset=True,
             pd_kp=20,
             pd_kv=0.5,
@@ -153,8 +151,8 @@ class Go2Env(ManagedEnvironment):
             # Starting ranges should be small, while robot is learning to stand
             range={
                 "lin_vel_x": [-0.5, 0.5],
-                "lin_vel_y": [-0.5, 0.5],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_y": [0.0, 0.0],
+                "ang_vel_z": [0.0, 0.0],
             },
             standing_probability=0.02,
             resample_time_s=5.0,
@@ -220,7 +218,6 @@ class Go2Env(ManagedEnvironment):
                     "time_out": True,
                 },
                 "fall_over": {
-                    # "fn": self.termination_roll,
                     "fn": terminations.bad_orientation,
                     "params": {
                         "limit_angle": 0.35,  # ~20 degrees
@@ -261,21 +258,3 @@ class Go2Env(ManagedEnvironment):
                 "actions": {"fn": self.action_manager.get_actions},
             },
         )
-
-    # def termination_roll(self, env):
-    #     base_quat = self.robot.get_quat()
-    #     base_init_quat = torch.tensor(INITIAL_QUAT, device=gs.device)
-    #     inv_base_init_quat = inv_quat(base_init_quat)
-    #     base_euler = quat_to_xyz(
-    #         transform_quat_by_quat(
-    #             torch.ones_like(base_quat) * inv_base_init_quat,
-    #             base_quat,
-    #         ),
-    #         rpy=True,
-    #         degrees=True,
-    #     )
-
-    #     term = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_int)
-    #     term |= torch.abs(base_euler[:, 1]) > 10.0
-    #     term |= torch.abs(base_euler[:, 0]) > 10.0
-    #     return term.bool()

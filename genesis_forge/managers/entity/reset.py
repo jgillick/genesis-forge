@@ -58,8 +58,32 @@ def set_rotation(
     entity.set_quat(quat, envs_idx=envs_idx)
 
 
+class position(ResetConfigFnClass):
+    """Reset the position of the entity to a fixed position"""
+
+    def __init__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        position: tuple[float, float, float],
+    ):
+        self.reset_pos = torch.tensor(position, device=gs.device)
+        self.pos_buffer = torch.zeros(
+            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        envs_idx: list[int],
+    ):
+        self.pos_buffer[envs_idx] = self.reset_pos
+        entity.set_pos(self.pos_buffer[envs_idx], envs_idx=envs_idx)
+
+
 def randomize_terrain_position(
-    _env: GenesisEnv,
+    env: GenesisEnv,
     entity: RigidEntity,
     envs_idx: list[int],
     terrain_manager: TerrainManager,

@@ -8,7 +8,7 @@ import torch
 import genesis as gs
 from gymnasium import spaces
 from genesis.engine.entities import RigidEntity
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 EnvMode = Literal["train", "eval", "play"]
 

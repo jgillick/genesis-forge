@@ -10,7 +10,7 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     CommandManager,
     VelocityCommandManager,
-    PositionalActionManager,
+    PositionActionManager,
     ContactManager,
     TerminationManager,
     TerrainManager,
@@ -72,7 +72,7 @@ def base_height(
 
 def dof_similar_to_default(
     env: GenesisEnv,
-    dof_action_manager: PositionalActionManager,
+    dof_action_manager: PositionActionManager,
 ):
     """
     Penalize joint poses far away from default pose
@@ -220,8 +220,9 @@ def has_contact(
     result = has_contact.sum(dim=1) >= min_contacts
     return result.float()
 
+
 def contact_force(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0
+    _env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
 ) -> torch.Tensor:
     """
     Reward for the total contact force acting on all the target links in the contact manager over the threshold.
@@ -236,7 +237,8 @@ def contact_force(
     """
     violation = torch.norm(contact_manager.contacts[:, :, :], dim=-1) - threshold
     return torch.sum(violation.clip(min=0.0), dim=1)
-    
+
+
 def feet_air_time(
     env: GenesisEnv,
     contact_manager: ContactManager,

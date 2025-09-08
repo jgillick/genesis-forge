@@ -115,15 +115,10 @@ class ManagedEnvironment(GenesisEnv):
     @property
     def action_space(self) -> torch.Tensor:
         """The action space, provided by the action manager, if it exists."""
-        try:
-            if self.managers["action"] is not None:
-                print("Return action space")
-                return self.managers["action"].action_space
-            if self._action_space is not None:
-                return self._action_space
-        except Exception as e:
-            print(f"Error getting action space: {e}")
-        print("Return None!")
+        if self.managers["action"] is not None:
+            return self.managers["action"].action_space
+        if self._action_space is not None:
+            return self._action_space
         return None
 
     @action_space.setter

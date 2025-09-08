@@ -1,7 +1,8 @@
 from .base import BaseManager
 from .reward_manager import RewardManager
 from .termination_manager import TerminationManager
-from .action.positional_action_manager import PositionalActionManager
+from .action.position_action_manager import PositionActionManager
+from .action.position_within_limits import PositionWithinLimitsActionManager
 from .command import CommandManager, VelocityCommandManager
 from .contact_manager import ContactManager
 from .terrain_manager import TerrainManager
@@ -14,7 +15,8 @@ __all__ = [
     "TerminationManager",
     "CommandManager",
     "VelocityCommandManager",
-    "PositionalActionManager",
+    "PositionActionManager",
+    "PositionWithinLimitsActionManager",
     "ContactManager",
     "TerrainManager",
     "EntityManager",

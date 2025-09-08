@@ -148,24 +148,29 @@ class TerminationManager(BaseManager):
             return self._terminated_buf, self._truncated_buf
 
         for name, cfg in self.term_cfg.items():
-            fn = cfg["fn"]
-            params = cfg.get("params", dict())
-            trunc = cfg.get("time_out", False)
+            try:
+                fn = cfg["fn"]
+                params = cfg.get("params", dict())
+                trunc = cfg.get("time_out", False)
 
-            # Get value and ensure it's boolean
-            value = fn(self.env, **params)
-            if value.dtype != torch.bool:
-                print(
-                    f"Warning: Termination function '{name}' returned {value.dtype} tensor, converting to bool"
-                )
-                value = value.bool()
-            self._term_data[name] = value
+                # Get value and ensure it's boolean
+                value = fn(self.env, **params)
+                if value.dtype != torch.bool:
+                    print(
+                        f"Warning: Termination function '{name}' returned {value.dtype} tensor, converting to bool"
+                    )
+                    value = value.bool()
+                self._term_data[name] = value
 
-            # Add to the correct buffer
-            if trunc:
-                self._truncated_buf |= value
-            else:
-                self._terminated_buf |= value
+                # Add to the correct buffer
+                if trunc:
+                    self._truncated_buf |= value
+                else:
+                    self._terminated_buf |= value
+
+            except Exception as e:
+                print(f"Error calculating termination for '{name}'")
+                raise e
 
         return self._terminated_buf, self._truncated_buf
 

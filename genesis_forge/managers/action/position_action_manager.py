@@ -3,13 +3,14 @@ import torch
 import genesis as gs
 import numpy as np
 from gymnasium import spaces
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.managers.action.base import BaseActionManager
 
-DofValue = dict[str, float] | float
+T = TypeVar("T")
+DofValue = dict[str, T] | T
 """Mapping of DOF name (literal or regex) to value."""
 
 
@@ -38,37 +39,26 @@ def ensure_dof_pattern(value: DofValue) -> dict[str, Any] | None:
     return {".*": value}
 
 
-class PositionalActionManager(BaseActionManager):
+class PositionActionManager(BaseActionManager):
     """
-    Manages converting the actions to actuator positions.
+    Converts actions to DOF positions, using affine transformations (scale and offset).
 
-    This manager converts actions from the range -1.0 - 1.0 to DOF positions within the limits of the actuators.
+    .. math::
 
-    Args:
-        env: The environment to manage the DOF actuators for.
-        joint_names: The joint names to manage.
-        default_pos: The default DOF positions.
-        pd_kp: The PD kp values.
-        pd_kv: The PD kv values.
-        max_force: The max force values.
-        damping: The damping values.
-        stiffness: The stiffness values.
-        frictionloss: The frictionloss values.
-        reset_random_scale: Scale all DOF values on reset by this amount +/-.
-        action_handler: A function to handle the actions.
-        quiet_action_errors: Whether to quiet action errors.
-        randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
-        resample_randomization_s: The time interval to resample the randomization values.
+       \text{action} = \text{offset} + \text{scaling} \times \text{input action}
 
     Example::
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
+                # ...define scene and robot...
 
             def config(self):
-                self.action_manager = PositionalActionManager(
+                self.action_manager = PositionActionManager(
                     self,
                     joint_names=".*",
+                    scale=0.5,
+                    use_default_offset=True,
                     default_pos={
                         # Hip joints
                         "Leg[1-2]_Hip": -1.0,
@@ -78,40 +68,102 @@ class PositionalActionManager(BaseActionManager):
                         # Tibia joints
                         "Leg[1-4]_Tibia": 0.6,
                     },
-                    pd_kp={".*": 50},
-                    pd_kv={".*": 0.5},
-                    max_force={".*": 8.0},
+                    pd_kp=50,
+                    pd_kv=0.5,
+                    max_force=8.0,
                 )
 
-            @property
-            def action_space(self):
-                return self.action_manager.action_space
+    Example using the manager directly::
+        class MyEnv(GenesisEnv):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                # ...define scene and robot...
+
+            def config(self):
+                self.action_manager = PositionActionManager(
+                    self,
+                    joint_names=".*",
+                    action_scale=0.5,
+                    action_offset=0.0,
+                    use_default_offset=True,
+                    default_pos={
+                        # Hip joints
+                        "Leg[1-2]_Hip": -1.0,
+                        "Leg[3-4]_Hip": 1.0,
+                        # Femur joints
+                        "Leg[1-4]_Femur": 0.5,
+                        # Tibia joints
+                        "Leg[1-4]_Tibia": 0.6,
+                    },
+                    pd_kp=50,
+                    pd_kv=0.5,
+                    max_force=8.0,
+                )
+
+            def build(self):
+                super().build()
+                config()
+
+            step(self, actions: torch.Tensor) -> None:
+                super().step(actions)
+                self.action_manager.step(actions)
+
+                # ...do other step things...
+
+            reset(self, envs_idx: list[int] = None) -> None:
+                super().reset(envs_idx)
+                self.action_manager.reset(envs_idx)
+
+                # ...do other reset things...
+
 
     """
-
-    _default_dofs_pos: torch.Tensor = None
-    _dofs_pos_buffer: torch.Tensor = None
-    _pos_limit_lower: torch.Tensor = None
-    _pos_limit_upper: torch.Tensor = None
 
     def __init__(
         self,
         env: GenesisEnv,
         joint_names: list[str] | str = ".*",
-        default_pos: DofValue = {".*": 0.0},
-        pd_kp: DofValue = None,
-        pd_kv: DofValue = None,
-        max_force: DofValue = None,
-        damping: DofValue = None,
-        stiffness: DofValue = None,
-        frictionloss: DofValue = None,
+        default_pos: DofValue[float] = {".*": 0.0},
+        offset: DofValue[float] = 0.0,
+        scale: DofValue[float] = 1.0,
+        clip: DofValue[tuple[float, float]] = None,
+        use_default_offset: bool = True,
+        pd_kp: DofValue[float] = None,
+        pd_kv: DofValue[float] = None,
+        max_force: DofValue[float | tuple[float, float]] = None,
+        damping: DofValue[float] = None,
+        stiffness: DofValue[float] = None,
+        frictionloss: DofValue[float] = None,
         noise_scale: float = 0.0,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
     ):
+        """
+        Args:
+            env: The environment to manage the DOF actuators for.
+            joint_names: The joint names to manage.
+            default_pos: The default DOF positions.
+            offset: Offset factor for the action.
+            scale: How much to scale the action.
+            use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
+            clip: Clip the action values to the range.
+            pd_kp: The PD kp values.
+            pd_kv: The PD kv values.
+            max_force: The max force values.
+            damping: The damping values.
+            stiffness: The stiffness values.
+            frictionloss: The frictionloss values.
+            reset_random_scale: Scale all DOF values on reset by this amount +/-.
+            quiet_action_errors: Whether to quiet action errors.
+            randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
+            resample_randomization_s: The time interval to resample the randomization values.
+        """
         super().__init__(env)
         self._has_initialized = False
         self._default_pos_cfg = ensure_dof_pattern(default_pos)
+        self._offset_cfg = ensure_dof_pattern(offset)
+        self._scale_cfg = ensure_dof_pattern(scale)
+        self._clip_cfg = ensure_dof_pattern(clip)
         self._pd_kp_cfg = ensure_dof_pattern(pd_kp)
         self._pd_kv_cfg = ensure_dof_pattern(pd_kv)
         self._max_force_cfg = ensure_dof_pattern(max_force)
@@ -119,9 +171,12 @@ class PositionalActionManager(BaseActionManager):
         self._stiffness_cfg = ensure_dof_pattern(stiffness)
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
         self._quiet_action_errors = quiet_action_errors
-        self._action_handler = action_handler
         self._enabled_dof = None
         self._noise_scale = noise_scale if self.env.mode != "play" else 0.0
+        self._use_default_offset = use_default_offset
+
+        self._default_dofs_pos: torch.Tensor = None
+        self._dofs_pos_buffer: torch.Tensor = None
 
         if isinstance(joint_names, str):
             self._joint_name_cfg = [joint_names]
@@ -135,6 +190,18 @@ class PositionalActionManager(BaseActionManager):
     """
 
     @property
+    def action_space(self) -> tuple[float, float]:
+        """
+        If using the default action handler, the action space is [-1, 1].
+        """
+        return spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(self.num_actions,),
+            dtype=np.float32,
+        )
+
+    @property
     def num_actions(self) -> int:
         """
         Get the number of actions.
@@ -144,18 +211,6 @@ class PositionalActionManager(BaseActionManager):
         ), "PositionalActionManager not initialized. You may need to add <PositionalActionManager>.reset() in your environment's reset method."
 
         return len(self._enabled_dof)
-
-    @property
-    def action_space(self) -> tuple[float, float]:
-        """
-        If using the default action handler, the action space is [-1, 1].
-        """
-        return spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=(self.num_actions,),
-            dtype=np.float32,
-        )
 
     @property
     def dofs_idx(self) -> list[int]:
@@ -212,10 +267,8 @@ class PositionalActionManager(BaseActionManager):
         """
         if not self.enabled:
             return
-        if self._action_handler is not None:
-            self._action_handler(actions)
-        else:
-            self._step_action_handler(actions)
+        super().step(actions)
+        self.handle_actions(actions)
 
     def reset(
         self,
@@ -262,12 +315,35 @@ class PositionalActionManager(BaseActionManager):
             envs_idx=envs_idx,
         )
 
+    def handle_actions(self, actions: torch.Tensor):
+        """Convert actions to position commands, and send them to the DOF actuators."""
+
+        # Validate actions
+        if not self._quiet_action_errors:
+            if torch.isnan(actions).any():
+                print(f"ERROR: NaN actions received! Actions: {actions}")
+            if torch.isinf(actions).any():
+                print(f"ERROR: Infinite actions received! Actions: {actions}")
+
+        # Process actions
+        actions = actions * self._scale_values + self._offset_values
+        if self._clip_values is not None:
+            actions = torch.clamp(
+                actions,
+                min=self._clip_values[:, :, 0],
+                max=self._clip_values[:, :, 1],
+            )
+
+        # Set target positions
+        self.env.robot.control_dofs_position(actions, self.dofs_idx)
+
     """
     Implementation
     """
 
     def _init_buffers(self):
         """Define the buffers for the DOF values."""
+
         self._enabled_dof = dict()
         for joint in self.env.robot.joints:
             if joint.type != gs.JOINT_TYPE.REVOLUTE:
@@ -277,20 +353,23 @@ class PositionalActionManager(BaseActionManager):
                 if re.match(pattern, name):
                     self._enabled_dof[name] = joint.dof_start
                     break
-        dofs_idx = list(self._enabled_dof.values())
 
-        # Get position Limits and convert to shape (num_envs, limit)
-        lower, upper = self.env.robot.get_dofs_limit(dofs_idx)
-        self._pos_limit_lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
-        self._pos_limit_upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)
-
-        # Set DOF values
+        # Map manager config values to the DOF indices
+        self._scale_values = None
+        self._offset_values = None
+        self._clip_values = None
         self._kp_values = None
         self._kv_values = None
         self._damping_values = None
         self._stiffness_values = None
         self._frictionloss_values = None
         self._max_force_values = None
+        if self._scale_cfg is not None:
+            self._scale_values = self._get_dof_value_tensor(self._scale_cfg)
+        if self._offset_cfg is not None:
+            self._offset_values = self._get_dof_value_tensor(self._offset_cfg)
+        if self._clip_cfg is not None:
+            self._clip_values = self._get_dof_value_tensor(self._clip_cfg)
         if self._pd_kp_cfg is not None:
             self._kp_values = self._get_dof_value_tensor(self._pd_kp_cfg)
         if self._pd_kv_cfg is not None:
@@ -332,28 +411,6 @@ class PositionalActionManager(BaseActionManager):
             self._default_dofs_pos = self._default_dofs_pos.unsqueeze(0).expand(
                 self.env.num_envs, -1
             )
-
-    def _step_action_handler(self, actions: torch.Tensor):
-        """Convert actions to position commands, and send them to the DOF actuators."""
-
-        # Validate actions
-        if not self._quiet_action_errors:
-            if torch.isnan(actions).any():
-                print(f"ERROR: NaN actions received! Actions: {actions}")
-            if torch.isinf(actions).any():
-                print(f"ERROR: Infinite actions received! Actions: {actions}")
-
-        actions = actions.clamp(-1.0, 1.0)
-        self.actions = actions
-
-        # Convert the action from -1 to 1, to absolute position within the actuator limits
-        lower = self._pos_limit_lower
-        upper = self._pos_limit_upper
-        offset = (upper + lower) * 0.5
-        target_positions = actions * (upper - lower) * 0.5 + offset
-
-        # Set target positions
-        self.env.robot.control_dofs_position(target_positions, self.dofs_idx)
 
     def _get_dof_value_array(self, values: DofValue) -> list[Any]:
         """

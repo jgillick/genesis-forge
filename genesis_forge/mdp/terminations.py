@@ -2,6 +2,7 @@
 Termination functions for the Genesis environment.
 Each of these should return a boolean tensor indicating which environments should terminate, in the tensor shape (num_envs,).
 """
+
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import entity_projected_gravity
@@ -41,15 +42,10 @@ def bad_orientation(
     projected_gravity_xy = projected_gravity[:, :2]
 
     # Calculate the magnitude of tilt (distance from perfectly upright)
-    # This directly corresponds to the tilt angle
     tilt_magnitude = torch.norm(projected_gravity_xy, dim=1)
 
-    # Convert tilt magnitude to angle (tilt_magnitude = sin(tilt_angle))
-    # For small angles: sin(angle) ≈ angle, so we can use the magnitude directly
-    # For larger angles, we can use asin(tilt_magnitude) for more accuracy
-    tilt_angle = torch.asin(
-        torch.clamp(tilt_magnitude, max=0.99)
-    )  # Clamp to avoid asin(1)
+    # Convert tilt magnitude to angle
+    tilt_angle = torch.asin(torch.clamp(tilt_magnitude, max=0.99))
 
     # Terminate if tilt angle exceeds the limit
     return tilt_angle > limit_angle
@@ -72,7 +68,10 @@ def root_height_below_minimum(
     base_pos = env.robot.get_pos()
     return base_pos[:, 2] < minimum_height
 
-def has_contact(_env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1) -> torch.Tensor:
+
+def has_contact(
+    _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
+) -> torch.Tensor:
     """
     One or more links in the contact manager are in contact with something.
 
@@ -90,7 +89,7 @@ def has_contact(_env: GenesisEnv, contact_manager: ContactManager, threshold=1.0
 
 
 def contact_force(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0
+    _env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
 ) -> torch.Tensor:
     """
     Terminate if any link in the contact manager is in contact with something with a force greater than the threshold.

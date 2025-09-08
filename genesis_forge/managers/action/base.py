@@ -16,6 +16,8 @@ class BaseActionManager(BaseManager):
 
     def __init__(self, env: GenesisEnv):
         super().__init__(env, type="action")
+        self._actions = None
+        self._last_actions = None
 
     """
     Properties
@@ -40,16 +42,21 @@ class BaseActionManager(BaseManager):
             dtype=np.float32,
         )
 
-    """
-    Operations
-    """
-
     def step(self, actions: torch.Tensor) -> None:
         """
         Handle the received actions.
         """
-        pass
+        self._last_actions = self._actions
+        self._actions = actions
 
     def reset(self, envs_idx: list[int] | None):
         """Reset environments."""
         pass
+
+    def get_actions(self) -> torch.Tensor:
+        """
+        Get the current actions for the environments.
+        """
+        if self._actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
+        return self._actions

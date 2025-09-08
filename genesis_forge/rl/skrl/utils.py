@@ -1,7 +1,6 @@
 import os
 import glob
 import pickle
-import yaml
 import subprocess
 from datetime import datetime
 

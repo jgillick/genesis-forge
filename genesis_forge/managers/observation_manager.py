@@ -150,24 +150,28 @@ class ObservationManager(BaseManager):
 
         obs = []
         for name, cfg in self.cfg.items():
-            fn = cfg["fn"]
-            params = cfg.get("params", dict())
-            noise = cfg.get("noise", self.noise)
+            try:
+                fn = cfg["fn"]
+                params = cfg.get("params", dict())
+                noise = cfg.get("noise", self.noise)
 
-            # Get values
-            assert callable(fn), f"Observation function {name} is not callable"
-            value = fn(**params)
+                # Get values
+                assert callable(fn), f"Observation function {name} is not callable"
+                value = fn(**params)
 
-            # Convert to tensor, if necessary
-            if not isinstance(value, torch.Tensor):
-                value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
+                # Convert to tensor, if necessary
+                if not isinstance(value, torch.Tensor):
+                    value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
 
-            # Add noise
-            if noise is not None and noise != 0.0:
-                noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
-                value = value + noise_value
+                # Add noise
+                if noise is not None and noise != 0.0:
+                    noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
+                    value = value + noise_value
 
-            obs.append(value)
+                obs.append(value)
+            except Exception as e:
+                print(f"Error generating observation for '{name}'")
+                raise e
 
         return torch.cat(obs, dim=-1)
 

@@ -137,8 +137,7 @@ class RewardManager(BaseManager):
             if weight == 0:
                 continue
 
-            # weight = weight * self.env.dt
-            value = fn(self.env, **params) * weight
+            value = fn(self.env, **params) * weight * self.env.dt
             self._reward_buf += value
             if self.logging_enabled:
                 self._episode_data[name] += value

@@ -233,11 +233,10 @@ class ManagedEnvironment(GenesisEnv):
 
         # Reset environments
         if reset_env_idx.numel() > 0:
-            self.reset(reset_env_idx, skip_observation=True)
+            self.reset(reset_env_idx)
 
         # Get observation
-        if self.managers["observation"] is not None:
-            obs = self.managers["observation"].step()
+        obs = self.get_observations()
 
         return (
             obs,
@@ -248,7 +247,7 @@ class ManagedEnvironment(GenesisEnv):
         )
 
     def reset(
-        self, env_ids: list[int] | None = None, skip_observation: bool = False
+        self, env_ids: list[int] | None = None
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset managers."""
         (obs, _) = super().reset(env_ids)
@@ -265,7 +264,18 @@ class ManagedEnvironment(GenesisEnv):
             reward_manager.reset(env_ids)
         for command_manager in self.managers["command"]:
             command_manager.reset(env_ids)
-        if not skip_observation and self.managers["observation"] is not None:
-            obs = self.managers["observation"].reset(env_ids)
+        if self.managers["observation"] is not None:
+            self.managers["observation"].reset(env_ids)
+
+        # Only get observations when env_ids is None because this will be the initial reset called before the first step
+        # Otherwise, the observations are ignored
+        if env_ids is None:
+            obs = self.get_observations()
 
         return obs, self.extras
+
+    def get_observations(self) -> torch.Tensor:
+        """Return the current observations for each environment."""
+        if self.managers["observation"] is not None:
+            return self.managers["observation"].get_observations()
+        return super().get_observations()

@@ -36,8 +36,8 @@ class BaseActionManager(BaseManager):
         If using the default action handler, the action space is [-1, 1].
         """
         return spaces.Box(
-            low=-1.0,
-            high=1.0,
+            low=-np.inf,
+            high=np.inf,
             shape=(self.num_actions,),
             dtype=np.float32,
         )

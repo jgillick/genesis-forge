@@ -28,6 +28,7 @@ class GenesisEnv:
 
     action_space: spaces.Space | None = None
     observation_space: spaces.Space | None = None
+    can_be_wrapped: bool = True
 
     def __init__(
         self,
@@ -109,6 +110,20 @@ class GenesisEnv:
         """Set the actions for each environment for this step."""
         self._actions = actions
 
+    @property
+    def num_actions(self) -> int:
+        """The number of actions for each environment."""
+        if self.action_space is not None:
+            return self.action_space.shape[0]
+        return 0
+
+    @property
+    def num_observations(self) -> int:
+        """The number of observations for each environment."""
+        if self.observation_space is not None:
+            return self.observation_space.shape[0]
+        return 0
+
     """
     Utilities
     """
@@ -161,6 +176,13 @@ class GenesisEnv:
         self.last_actions[:] = self.actions[:]
         self._actions = actions
 
+        # Clip actions within bounds of action space
+        if self.action_space is not None:
+            self._actions = self.actions.clamp(
+                torch.tensor(self.action_space.low, device=gs.device),
+                torch.tensor(self.action_space.high, device=gs.device),
+            )
+
         return None, None, None, None, self._extras
 
     def reset(
@@ -208,6 +230,18 @@ class GenesisEnv:
             ).to(gs.tc_int)
 
         return None, self.extras
+
+    def get_observations(self) -> torch.Tensor:
+        """
+        Return the current observations for each environment.
+        """
+        if self.observation_space is not None:
+            return torch.zeros(
+                (self.num_envs, self.observation_space.shape[0]),
+                device=gs.device,
+                dtype=gs.tc_float,
+            )
+        return None
 
     def close(self):
         """Close the environment."""

@@ -8,6 +8,7 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import entity_projected_gravity
 from genesis_forge.managers import (
     ContactManager,
+    EntityManager,
 )
 
 
@@ -21,6 +22,8 @@ def timeout(env: GenesisEnv) -> torch.Tensor:
 def bad_orientation(
     env: GenesisEnv,
     limit_angle: float = 0.7,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
     Terminate the environment if the robot is tipping over too much.
@@ -33,15 +36,23 @@ def bad_orientation(
     Args:
         env: The Genesis environment containing the robot
         limit_angle: Maximum allowed tilt angle in radians (default: 0.7 ~ 40 degrees)
+        entity_manager: The entity manager for the entity.
+        entity_attr: The attribute name of the entity in the environment.
+                        This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Boolean tensor indicating which environments should terminate
     """
     # Get the projected gravity vector in body frame
-    projected_gravity = entity_projected_gravity(env.robot)
-    projected_gravity_xy = projected_gravity[:, :2]
+    projected_gravity = None
+    if entity_manager is not None:
+        projected_gravity = entity_manager.get_projected_gravity()
+    else:
+        entity = getattr(env, entity_attr)
+        projected_gravity = entity_projected_gravity(entity)
 
     # Calculate the magnitude of tilt (distance from perfectly upright)
+    projected_gravity_xy = projected_gravity[:, :2]
     tilt_magnitude = torch.norm(projected_gravity_xy, dim=1)
 
     # Convert tilt magnitude to angle
@@ -54,6 +65,8 @@ def bad_orientation(
 def root_height_below_minimum(
     env: GenesisEnv,
     minimum_height: float = 0.05,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
     Terminate the environment if the robot's base height falls below a minimum threshold.
@@ -61,11 +74,19 @@ def root_height_below_minimum(
     Args:
         env: The Genesis environment containing the robot
         minimum_height: Minimum allowed base height in meters
+        entity_manager: The entity manager for the entity.
+        entity_attr: The attribute name of the entity in the environment.
+                        This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Boolean tensor indicating which environments should terminate
     """
-    base_pos = env.robot.get_pos()
+    base_pos = None
+    if entity_manager is not None:
+        base_pos = entity_manager.base_pos
+    else:
+        entity = getattr(env, entity_attr)
+        base_pos = entity.get_pos()
     return base_pos[:, 2] < minimum_height
 
 

@@ -83,20 +83,20 @@ def base_height(
 
 def dof_similar_to_default(
     env: GenesisEnv,
-    dof_action_manager: PositionActionManager,
+    action_manager: PositionActionManager,
 ):
     """
     Penalize joint poses far away from default pose
 
     Args:
         env: The Genesis environment containing the robot
-        dof_action_manager: The DOF action manager
+        action_manager: The DOF action manager
 
     Returns:
         torch.Tensor: Penalty for joint poses far away from default pose
     """
-    dof_pos = dof_action_manager.get_dofs_position()
-    default_pos = dof_action_manager.default_dofs_pos
+    dof_pos = action_manager.get_dofs_position()
+    default_pos = action_manager.default_dofs_pos
     return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
 
 

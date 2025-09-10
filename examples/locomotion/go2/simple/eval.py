@@ -1,17 +1,12 @@
 import os
-import copy
 import glob
 import torch
-import shutil
 import pickle
 import argparse
 from importlib import metadata
 import genesis as gs
 
-from genesis_forge.wrappers import (
-    VideoWrapper,
-    RslRlWrapper,
-)
+from genesis_forge.wrappers import RslRlWrapper
 from environment import Go2Env
 
 try:
@@ -19,16 +14,14 @@ try:
         if metadata.version("rsl-rl"):
             raise ImportError
     except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
+        if not metadata.version("rsl-rl-lib").startswith("2."):
             raise ImportError
 except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
+    raise ImportError("Please install install 'rsl-rl-lib>=2.3.3'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
 
 parser = argparse.ArgumentParser(add_help=True)
-parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=101)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 args = parser.parse_args()
 
@@ -91,65 +84,6 @@ def get_latest_model(log_dir: str) -> str:
     return model_checkpoints[-1]
 
 
-def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
-    """
-    Train the agent.
-    """
-
-    #  Create environment
-    env = Go2Env(num_envs=num_envs, headless=True)
-
-    # Record videos in regular intervals
-    env = VideoWrapper(
-        env,
-        video_length_sec=12,
-        out_dir=os.path.join(log_dir, "videos"),
-        episode_trigger=lambda episode_id: episode_id % 5 == 0,
-    )
-
-    # Build the environment
-    env = RslRlWrapper(env)
-    env.build()
-    env.reset()
-
-    # Setup training runner and train
-    print("💪 Training model...")
-    runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_dir, device=gs.device)
-    runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=False)
-    env.close()
-
-
-def record_video(cfg: dict, log_dir: str):
-    """Record a video of the trained model."""
-    # Recording environment
-    env = Go2Env(num_envs=1, headless=True)
-    env = VideoWrapper(
-        env,
-        out_dir=log_dir,
-        filename="trained.mp4",
-        video_length_sec=15,
-    )
-    env = RslRlWrapper(env)
-    env.build()
-
-    # Eval
-    print("🎬 Recording video of last model...")
-    runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_dir, device=gs.device)
-    resume_path = get_latest_model(log_dir)
-    runner.load(resume_path)
-    policy = runner.get_inference_policy(device=gs.device)
-
-    obs, _ = env.reset()
-    with torch.no_grad():
-        i = 0
-        while i < 18 / env.dt:
-            i += 1
-            actions = policy(obs)
-            obs, _rews, _dones, _infos = env.step(actions)
-
-    env.close()
-
-
 def main():
     # Processor backend (GPU or CPU)
     backend = gs.gpu
@@ -159,28 +93,28 @@ def main():
     gs.init(logging_level="warning", backend=backend)
 
     # Logging directory
-    log_base_dir = "./logs"
-    experiment_name = "go2-walking"
-    log_path = os.path.join(log_base_dir, experiment_name)
-    if os.path.exists(log_path):
-        shutil.rmtree(log_path)
-    os.makedirs(log_path, exist_ok=True)
-    print(f"Logging to: {log_path}")
+    log_path = "./logs/go2-walking"
 
     # Load training configuration
-    cfg = training_cfg(experiment_name, args.max_iterations)
+    [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
 
-    # Save config snapshot
-    pickle.dump(
-        [cfg],
-        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
-    )
+    # Setup environment
+    env = Go2Env(num_envs=1, headless=False)
+    env = RslRlWrapper(env)
+    env.build()
 
-    # Train agent
-    train(cfg, args.num_envs, log_path, args.max_iterations)
+    # Eval
+    print("🎬 Loading last model...")
+    runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
+    resume_path = get_latest_model(log_path)
+    runner.load(resume_path)
+    policy = runner.get_inference_policy(device=gs.device)
 
-    # Record a video of best episode
-    record_video(cfg, log_path)
+    obs, _ = env.reset()
+    with torch.no_grad():
+        while True:
+            actions = policy(obs)
+            obs, _rews, _dones, _infos = env.step(actions)
 
 
 if __name__ == "__main__":

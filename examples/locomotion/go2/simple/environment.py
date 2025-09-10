@@ -3,28 +3,24 @@ Simplified Go2 Locomotion Environment using managers to handle everything.
 """
 
 import math
+import torch
 import genesis as gs
+
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    VelocityCommandManager,
     RewardManager,
     TerminationManager,
-    TerrainManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
 )
 from genesis_forge.managers.entity import reset
-from genesis_forge.utils import (
-    entity_projected_gravity,
-    entity_ang_vel,
-    entity_lin_vel,
-)
 from genesis_forge.mdp import rewards, terminations
 
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.42]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+TARGET_X_VELOCITY = 0.5
 
 
 class Go2Env(ManagedEnvironment):
@@ -35,45 +31,46 @@ class Go2Env(ManagedEnvironment):
     def __init__(
         self,
         num_envs: int = 1,
-        dt: float = 1 / 100,
-        max_episode_length_s: int | None = 6,
+        dt: float = 1 / 50,  # control frequency on real robot is 50hz
+        max_episode_length_s: int | None = 20,
         headless: bool = True,
     ):
         super().__init__(
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
-            max_episode_random_scaling=0.1,
+            max_episode_random_scaling=0.0,
             headless=headless,
+        )
+
+        # Set the commanded robot direction to be 0.5 along the X axis, for all environments
+        self.target_command = torch.zeros(
+            (self.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self.target_command[:, 0] = (
+            TARGET_X_VELOCITY  # Linear velocity along the X axis
         )
 
         # Construct the scene
         self.scene = gs.Scene(
             show_viewer=not self.headless,
-            sim_options=gs.options.SimOptions(dt=self.dt),
+            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                camera_pos=(-2.5, -1.5, 1.0),
-                camera_lookat=(0.0, 0.0, 0.0),
+                max_FPS=int(0.5 / self.dt),
+                camera_pos=(2.0, 0.0, 2.5),
+                camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
-                max_FPS=60,
             ),
-            vis_options=gs.options.VisOptions(rendered_envs_idx=[0]),
+            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
+                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                enable_self_collision=True,
+                # for this locomotion policy there are usually no more than 30 collision pairs
+                # set a low value can save memory
+                max_collision_pairs=30,
             ),
-        )
-
-        # Camera, for headless video recording
-        self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
-            lookat=(0.0, 0.0, 0.0),
-            res=(1280, 960),
-            fov=40,
-            env_idx=0,
-            debug=True,
         )
 
         # Create terrain
@@ -88,16 +85,24 @@ class Go2Env(ManagedEnvironment):
             ),
         )
 
+        # Camera, for headless video recording
+        self.camera = self.scene.add_camera(
+            pos=(-2.5, -1.5, 1.0),
+            lookat=(0.0, 0.0, 0.0),
+            res=(1280, 960),
+            fov=40,
+            env_idx=0,
+            debug=True,
+        )
+
     def config(self):
         """
         Configure the environment managers
         """
-        self.terrain_manager = TerrainManager(self, terrain_attr="terrain")
-
         ##
-        # Robot management
+        # Robot manager
         # i.e. what to do with the robot when it is reset
-        EntityManager(
+        self.robot_manager = EntityManager(
             self,
             entity_attr="robot",
             on_reset={
@@ -134,32 +139,17 @@ class Go2Env(ManagedEnvironment):
             ],
             default_pos={
                 ".*_hip_joint": 0.0,
-                "F[L|R]_thigh_joint": 0.8,
-                "R[L|R]_thigh_joint": 1.0,
+                "FL_thigh_joint": 0.8,
+                "FR_thigh_joint": 0.8,
+                "RL_thigh_joint": 1.0,
+                "RR_thigh_joint": 1.0,
                 ".*_calf_joint": -1.5,
             },
-            scale=0.5,
+            scale=0.25,
+            clip=(-100.0, 100.0),
             use_default_offset=True,
             pd_kp=20,
             pd_kv=0.5,
-        )
-
-        ##
-        # Velocity command
-        self.command = VelocityCommandManager(
-            self,
-            # Starting ranges should be small, while robot is learning to stand
-            range={
-                "lin_vel_x": [-0.5, 0.5],
-                "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [0.0, 0.0],
-            },
-            standing_probability=0.02,
-            resample_time_s=5.0,
-            debug_visualizer=True,
-            debug_visualizer_cfg={
-                "envs_idx": [0],
-            },
         )
 
         ##
@@ -173,25 +163,31 @@ class Go2Env(ManagedEnvironment):
                     "fn": rewards.base_height,
                     "params": {
                         "target_height": 0.3,
+                        "entity_manager": self.robot_manager,
                     },
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel,
                     "params": {
-                        "vel_cmd_manager": self.command,
+                        "command": self.target_command[:, :2],
+                        "entity_manager": self.robot_manager,
                     },
                 },
                 "tracking_ang_vel": {
                     "weight": 0.2,
                     "fn": rewards.command_tracking_ang_vel,
                     "params": {
-                        "vel_cmd_manager": self.command,
+                        "commanded_ang_vel": self.target_command[:, 2],
+                        "entity_manager": self.robot_manager,
                     },
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
                     "fn": rewards.lin_vel_z,
+                    "params": {
+                        "entity_manager": self.robot_manager,
+                    },
                 },
                 "action_rate": {
                     "weight": -0.005,
@@ -201,7 +197,7 @@ class Go2Env(ManagedEnvironment):
                     "weight": -0.1,
                     "fn": rewards.dof_similar_to_default,
                     "params": {
-                        "dof_action_manager": self.action_manager,
+                        "action_manager": self.action_manager,
                     },
                 },
             },
@@ -220,7 +216,8 @@ class Go2Env(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 0.35,  # ~20 degrees
+                        "limit_angle": 0.174,  # ~10 degrees
+                        "entity_manager": self.robot_manager,
                     },
                 },
             },
@@ -231,30 +228,35 @@ class Go2Env(ManagedEnvironment):
         ObservationManager(
             self,
             cfg={
-                "command": {"fn": self.command.observation},
                 "angle_velocity": {
-                    "fn": entity_ang_vel,
-                    "params": {"entity": self.robot},
-                    "noise": 0.01,
+                    "fn": lambda env: self.robot_manager.get_angular_velocity(),
+                    "scale": 0.25,
                 },
-                "linear_vel": {
-                    "fn": entity_lin_vel,
-                    "params": {"entity": self.robot},
-                    "noise": 0.01,
+                "linear_velocity": {
+                    "fn": lambda env: self.robot_manager.get_linear_velocity(),
+                    "scale": 2.0,
                 },
                 "projected_gravity": {
-                    "fn": entity_projected_gravity,
-                    "params": {"entity": self.robot},
-                    "noise": 0.01,
+                    "fn": lambda env: self.robot_manager.get_projected_gravity(),
                 },
                 "dof_position": {
-                    "fn": self.action_manager.get_dofs_position,
-                    "noise": 0.01,
+                    "fn": lambda env: self.action_manager.get_dofs_position(),
                 },
                 "dof_velocity": {
-                    "fn": self.action_manager.get_dofs_velocity,
-                    "noise": 0.1,
+                    "fn": lambda env: self.action_manager.get_dofs_velocity(),
+                    "scale": 0.05,
                 },
-                "actions": {"fn": self.action_manager.get_actions},
+                "actions": {
+                    "fn": lambda env: self.action_manager.get_actions(),
+                },
             },
         )
+
+    def build(self):
+        super().build()
+        self.camera.follow_entity(self.robot)
+
+    def step(self, actions: torch.Tensor):
+        # Keep the camera fixed on the robot
+        self.camera.set_pose(lookat=self.robot.get_pos())
+        return super().step(actions)

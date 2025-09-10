@@ -27,7 +27,7 @@ tensorboard --logdir ./logs/
 
 The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/go2-walking/videos`.
 
-![Trained Go2 Walking](./trained.mp4)
+![Trained Go2 Walking](https://github.com/jgillick/genesis_forge/raw/refs/heads/main/examples/locomotion/go2/simple/trained.mp4)
 
 ## Evaluation
 

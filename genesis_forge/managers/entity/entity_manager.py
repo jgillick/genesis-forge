@@ -1,13 +1,16 @@
 import torch
 import inspect
 import genesis as gs
-from typing import Any
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis.engine.entities import RigidEntity
+from genesis.utils.geom import (
+    transform_by_quat,
+    inv_quat,
+)
 
-from .config import EntityResetConfig, ResetConfigFnClass
+from .config import EntityResetConfig
 
 
 class EntityManager(BaseManager):
@@ -66,6 +69,65 @@ class EntityManager(BaseManager):
         self.on_reset = on_reset
         self._entity_attr = entity_attr
 
+        # Buffers
+        self._global_gravity = torch.tensor(
+            [0.0, 0.0, -1.0], device=gs.device, dtype=gs.tc_float
+        ).repeat(env.num_envs, 1)
+        self._base_pos = torch.zeros(
+            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._base_quat = torch.zeros(
+            (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+        )
+        self._inv_base_quat = torch.zeros_like(self._base_quat)
+
+    """
+    Properties
+    """
+
+    @property
+    def base_pos(self) -> torch.Tensor:
+        """
+        The position of the entities base link.
+        """
+        return self._base_pos
+
+    @property
+    def base_quat(self) -> torch.Tensor:
+        """
+        The quaternion of the entity's base link.
+        """
+        return self._base_quat
+
+    @property
+    def inv_base_quat(self) -> torch.Tensor:
+        """
+        The inverse of the entity's base link quaternion.
+        """
+        return self._inv_base_quat
+
+    """
+    Helpers
+    """
+
+    def get_projected_gravity(self) -> torch.Tensor:
+        """
+        The projected gravity of the entity's base link, in the entity's local frame.
+        """
+        return transform_by_quat(self._global_gravity, self._inv_base_quat)
+
+    def get_linear_velocity(self) -> torch.Tensor:
+        """
+        The linear velocity of the entity's base link, in the entity's local frame.
+        """
+        return transform_by_quat(self.entity.get_vel(), self._inv_base_quat)
+
+    def get_angular_velocity(self) -> torch.Tensor:
+        """
+        The angular velocity of the entity's base link, in the entity's local frame.
+        """
+        return transform_by_quat(self.entity.get_ang(), self._inv_base_quat)
+
     """
     Operations.
     """
@@ -75,11 +137,18 @@ class EntityManager(BaseManager):
         Build the entity manager.
         """
         self.entity = getattr(self.env, self._entity_attr)
+        self._cached_calcs()
 
         # Initialize reset function classes
         for cfg in self.on_reset.values():
             if inspect.isclass(cfg["fn"]):
                 self._init_fn_class(cfg)
+
+    def step(self):
+        """
+        Run some common shared calculations at each step.
+        """
+        self._cached_calcs()
 
     def reset(self, envs_idx: list[int] | None = None):
         """
@@ -103,6 +172,14 @@ class EntityManager(BaseManager):
     """
     Implementation
     """
+
+    def _cached_calcs(self):
+        """
+        Calculate and cache some common values
+        """
+        self._base_pos[:] = self.entity.get_pos()
+        self._base_quat[:] = self.entity.get_quat()
+        self._inv_base_quat = inv_quat(self._base_quat)
 
     def _init_fn_class(self, cfg: EntityResetConfig):
         """Initialize a reset function class"""

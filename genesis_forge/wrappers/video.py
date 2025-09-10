@@ -1,7 +1,6 @@
 import os
 import math
 import torch
-from genesis.vis.camera import Camera
 from typing import Tuple, Any, Callable
 
 from genesis_forge.wrappers.wrapper import Wrapper

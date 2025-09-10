@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Sequence, Callable
+from typing import Any, TypeVar, Sequence
 
 import torch
 import genesis as gs
@@ -14,9 +14,14 @@ class Wrapper:
     """
 
     env: GenesisEnv = None
+    can_be_wrapped: bool = True
 
     def __init__(self, env: GenesisEnv):
         """Initialize the logging wrapper with the function to use for data logging."""
+        assert (
+            env.can_be_wrapped
+        ), f"An environment wrapped with {self.__class__.__name__} cannot be wrapped"
+
         self.env = env
         if not isinstance(env, GenesisEnv) and not isinstance(env, Wrapper):
             raise ValueError(
@@ -48,14 +53,32 @@ class Wrapper:
         return self.env.robot
 
     @property
+    def num_actions(self) -> int:
+        """The number of actions for each environment."""
+        return self.env.num_actions
+
+    @property
     def action_space(self) -> spaces:
         """The action space of the environment."""
         return self.env.action_space
 
     @property
+    def num_observations(self) -> int:
+        """The number of observations for each environment."""
+        return self.env.num_observations
+
+    @property
     def observation_space(self) -> spaces:
         """The observation space of the environment."""
         return self.env.observation_space
+
+    @property
+    def extras(self) -> dict:
+        """
+        The extras/infos dictionary that should be returned by the step and reset functions.
+        This dictionary will be cleared at the start of every step.
+        """
+        return self.env.extras
 
     @property
     def unwrapped(self) -> GenesisEnv:
@@ -88,6 +111,10 @@ class Wrapper:
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data."""
         return self.env.reset(env_ids)
+
+    def get_observations(self) -> torch.Tensor:
+        """Uses the :meth:`get_observations` of the :attr:`env` that can be overwritten to change the returned data."""
+        return self.env.get_observations()
 
     def render(self) -> RenderFrame | list[RenderFrame] | None:
         """Uses the :meth:`render` of the :attr:`env` that can be overwritten to change the returned data."""

@@ -1,13 +1,17 @@
 import torch
 from gymnasium import spaces
 from typing import Any, Tuple
+
 from skrl.envs.wrappers.torch.base import Wrapper as SkrlWrapper
+from genesis_forge.wrappers.wrapper import Wrapper as GenesisWrapper
 
 
-class SkrlEnvWapper(SkrlWrapper):
+class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     """
     Wraps a Genesis environment to be used with skrl.
     """
+
+    can_be_wrapped = False
 
     @property
     def action_space(self) -> spaces:
@@ -72,8 +76,3 @@ class SkrlEnvWapper(SkrlWrapper):
     def build(self) -> None:
         """Build the environment"""
         self._env.build()
-
-
-def create_skrl_env(env: Any) -> SkrlEnvWapper:
-    """Create a skrl environment from a Genesis environment"""
-    return SkrlEnvWapper(env)

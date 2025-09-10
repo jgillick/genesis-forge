@@ -124,9 +124,9 @@ class PositionActionManager(BaseActionManager):
         env: GenesisEnv,
         joint_names: list[str] | str = ".*",
         default_pos: DofValue[float] = {".*": 0.0},
-        offset: DofValue[float] = 0.0,
         scale: DofValue[float] = 1.0,
         clip: DofValue[tuple[float, float]] = None,
+        offset: DofValue[float] = 0.0,
         use_default_offset: bool = True,
         pd_kp: DofValue[float] = None,
         pd_kv: DofValue[float] = None,
@@ -143,8 +143,8 @@ class PositionActionManager(BaseActionManager):
             env: The environment to manage the DOF actuators for.
             joint_names: The joint names to manage.
             default_pos: The default DOF positions.
-            offset: Offset factor for the action.
             scale: How much to scale the action.
+            offset: Offset factor for the action.
             use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
             clip: Clip the action values to the range.
             pd_kp: The PD kp values.
@@ -178,6 +178,9 @@ class PositionActionManager(BaseActionManager):
         self._default_dofs_pos: torch.Tensor = None
         self._dofs_pos_buffer: torch.Tensor = None
 
+        if use_default_offset and offset != 0.0:
+            raise ValueError("Cannot set both use_default_offset and offset")
+
         if isinstance(joint_names, str):
             self._joint_name_cfg = [joint_names]
         elif isinstance(joint_names, list):
@@ -195,8 +198,8 @@ class PositionActionManager(BaseActionManager):
         If using the default action handler, the action space is [-1, 1].
         """
         return spaces.Box(
-            low=-1.0,
-            high=1.0,
+            low=-np.inf,
+            high=np.inf,
             shape=(self.num_actions,),
             dtype=np.float32,
         )
@@ -258,8 +261,83 @@ class PositionActionManager(BaseActionManager):
     """
 
     def build(self):
-        """Initialize the buffers."""
-        self._init_buffers()
+        """Define the buffers for the DOF values."""
+
+        # Find all enabled joints by names/patterns
+        self._enabled_dof = dict()
+        for joint in self.env.robot.joints:
+            if joint.type != gs.JOINT_TYPE.REVOLUTE:
+                continue
+            name = joint.name
+            for pattern in self._joint_name_cfg:
+                if re.match(pattern, name):
+                    self._enabled_dof[name] = joint.dof_start
+                    break
+
+        # Default DOF positions
+        if self._default_pos_cfg is not None:
+            self._default_dofs_pos = self._get_dof_value_tensor(self._default_pos_cfg)
+        else:
+            self._default_dofs_pos = torch.zeros(self.num_actions, device=gs.device)
+        self._default_dofs_pos = self._default_dofs_pos.unsqueeze(0).expand(
+            self.env.num_envs, -1
+        )
+
+        # Map config params to the DOF indices
+        self._scale_values = None
+        self._offset_values = None
+        self._clip_values = None
+        self._kp_values = None
+        self._kv_values = None
+        self._damping_values = None
+        self._stiffness_values = None
+        self._frictionloss_values = None
+        self._max_force_values = None
+        if self._scale_cfg is not None:
+            self._scale_values = self._get_dof_value_tensor(self._scale_cfg)
+        if self._clip_cfg is not None:
+            self._clip_values = self._get_dof_value_tensor(
+                self._clip_cfg, [-np.inf, np.inf]
+            )
+        if self._pd_kp_cfg is not None:
+            self._kp_values = self._get_dof_value_tensor(self._pd_kp_cfg)
+        if self._pd_kv_cfg is not None:
+            self._kv_values = self._get_dof_value_tensor(self._pd_kv_cfg)
+        if self._damping_cfg is not None:
+            self._damping_values = self._get_dof_value_tensor(self._damping_cfg)
+        if self._stiffness_cfg is not None:
+            self._stiffness_values = self._get_dof_value_tensor(self._stiffness_cfg)
+        if self._frictionloss_cfg is not None:
+            self._frictionloss_values = self._get_dof_value_tensor(
+                self._frictionloss_cfg
+            )
+        if self._use_default_offset:
+            self._offset_values = self._default_dofs_pos
+        else:
+            offset = self._offset_cfg if self._offset_cfg is not None else 0.0
+            self._offset_values = self._get_dof_value_tensor(offset)
+
+        # Max force
+        # The value can either be a single float or a tuple range
+        self._force_range = None
+        if self._max_force_cfg is not None:
+            max_force = self._get_dof_value_array(self._max_force_cfg)
+
+            # Convert values to upper and lower arrays
+            force_upper = [0.0] * self.num_actions
+            force_lower = [0.0] * self.num_actions
+            for i, value in enumerate(max_force):
+                if isinstance(max_force[0], (list, tuple)):
+                    force_lower[i] = value[0]
+                    force_upper[i] = value[1]
+                else:
+                    force_lower[i] = -value
+                    force_upper[i] = value
+
+            self._force_range = (
+                torch.tensor(force_lower, device=gs.device),
+                torch.tensor(force_upper, device=gs.device),
+            )
 
     def step(self, actions: torch.Tensor) -> None:
         """
@@ -285,12 +363,16 @@ class PositionActionManager(BaseActionManager):
         if self._clip_values is not None:
             actions = torch.clamp(
                 actions,
-                min=self._clip_values[:, :, 0],
-                max=self._clip_values[:, :, 1],
+                min=self._clip_values[:, 0],
+                max=self._clip_values[:, 1],
             )
+        # actions = torch.clip(actions, -100, 100)
+        # actions = actions * 0.25 + self._offset_values
 
         # Set target positions
         self.env.robot.control_dofs_position(actions, self.dofs_idx)
+
+        return actions
 
     def reset(
         self,
@@ -341,79 +423,9 @@ class PositionActionManager(BaseActionManager):
     Implementation
     """
 
-    def _init_buffers(self):
-        """Define the buffers for the DOF values."""
-
-        # Find all enabled joints by names/patterns
-        self._enabled_dof = dict()
-        for joint in self.env.robot.joints:
-            if joint.type != gs.JOINT_TYPE.REVOLUTE:
-                continue
-            name = joint.name
-            for pattern in self._joint_name_cfg:
-                if re.match(pattern, name):
-                    self._enabled_dof[name] = joint.dof_start
-                    break
-
-        # Map config values to the DOF indices
-        self._scale_values = None
-        self._offset_values = None
-        self._clip_values = None
-        self._kp_values = None
-        self._kv_values = None
-        self._damping_values = None
-        self._stiffness_values = None
-        self._frictionloss_values = None
-        self._max_force_values = None
-        if self._scale_cfg is not None:
-            self._scale_values = self._get_dof_value_tensor(self._scale_cfg)
-        if self._offset_cfg is not None:
-            self._offset_values = self._get_dof_value_tensor(self._offset_cfg)
-        if self._clip_cfg is not None:
-            self._clip_values = self._get_dof_value_tensor(self._clip_cfg)
-        if self._pd_kp_cfg is not None:
-            self._kp_values = self._get_dof_value_tensor(self._pd_kp_cfg)
-        if self._pd_kv_cfg is not None:
-            self._kv_values = self._get_dof_value_tensor(self._pd_kv_cfg)
-        if self._damping_cfg is not None:
-            self._damping_values = self._get_dof_value_tensor(self._damping_cfg)
-        if self._stiffness_cfg is not None:
-            self._stiffness_values = self._get_dof_value_tensor(self._stiffness_cfg)
-        if self._frictionloss_cfg is not None:
-            self._frictionloss_values = self._get_dof_value_tensor(
-                self._frictionloss_cfg
-            )
-
-        # Max force
-        # The value can either be a single float or a tuple range
-        self._force_range = None
-        if self._max_force_cfg is not None:
-            max_force = self._get_dof_value_array(self._max_force_cfg)
-
-            # Convert values to upper and lower arrays
-            force_upper = [0.0] * self.num_actions
-            force_lower = [0.0] * self.num_actions
-            for i, value in enumerate(max_force):
-                if isinstance(max_force[0], (list, tuple)):
-                    force_lower[i] = value[0]
-                    force_upper[i] = value[1]
-                else:
-                    force_lower[i] = -value
-                    force_upper[i] = value
-
-            self._force_range = (
-                torch.tensor(force_lower, device=gs.device),
-                torch.tensor(force_upper, device=gs.device),
-            )
-
-        # Default DOF positions
-        if self._default_pos_cfg is not None:
-            self._default_dofs_pos = self._get_dof_value_tensor(self._default_pos_cfg)
-            self._default_dofs_pos = self._default_dofs_pos.unsqueeze(0).expand(
-                self.env.num_envs, -1
-            )
-
-    def _get_dof_value_array(self, values: DofValue) -> list[Any]:
+    def _get_dof_value_array(
+        self, values: DofValue[T], default_value: T = 0.0
+    ) -> list[Any]:
         """
         Given a DofValue dict, loop over the entries, and set the value to the DOF indices (from dofs_idx) that match the pattern.
 
@@ -425,7 +437,7 @@ class PositionActionManager(BaseActionManager):
             For example, for 4 DOFs: [50, 50, 50, 50]
         """
         is_set = [False] * self.num_actions
-        value_arr = [0.0] * self.num_actions
+        value_arr = [default_value] * self.num_actions
         for pattern, value in values.items():
             for i, name in enumerate(self._enabled_dof.keys()):
                 if not is_set[i] and re.match(pattern, name):
@@ -433,11 +445,13 @@ class PositionActionManager(BaseActionManager):
                     value_arr[i] = value
         return value_arr
 
-    def _get_dof_value_tensor(self, values: DofValue) -> torch.Tensor:
+    def _get_dof_value_tensor(
+        self, values: DofValue[T], default_value: T = 0.0
+    ) -> torch.Tensor:
         """
         Wrapper for _get_dof_value_array that returns a tensor.
         """
-        values = self._get_dof_value_array(values)
+        values = self._get_dof_value_array(values, default_value)
         return torch.tensor(values, device=gs.device, dtype=gs.tc_float)
 
     def _add_random_noise(

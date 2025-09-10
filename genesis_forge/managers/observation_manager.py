@@ -19,6 +19,9 @@ class ObservationConfig(TypedDict):
     params: dict[str, Any]
     """Additional parameters to pass to the function."""
 
+    scale: float | None
+    """The scale to apply to the observation. If None, no scale will be applied."""
+
     noise: float | None
     """The noise scale to add to the observation. If None, no noise will be added.
     This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
@@ -143,8 +146,29 @@ class ObservationManager(BaseManager):
         """The observation space."""
         return self._observation_space
 
-    def observations(self) -> torch.Tensor:
-        """Generate observations for environments."""
+    def build(self):
+        """Make an initial observation in order to determine the observation space"""
+        if not self.enabled:
+            self._observation_size = 1
+            self._observation_space = spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(1,),
+                dtype=np.float32,
+            )
+            return
+
+        obs = self.get_observations()
+        self._observation_size = obs.shape[1]
+        self._observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(self._observation_size,),
+            dtype=np.float32,
+        )
+
+    def get_observations(self) -> torch.Tensor:
+        """Generate current observations for all environments."""
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
 
@@ -154,14 +178,19 @@ class ObservationManager(BaseManager):
                 fn = cfg["fn"]
                 params = cfg.get("params", dict())
                 noise = cfg.get("noise", self.noise)
+                scale = cfg.get("scale", 1.0)
 
                 # Get values
                 assert callable(fn), f"Observation function {name} is not callable"
-                value = fn(**params)
+                value = fn(env=self.env, **params)
 
                 # Convert to tensor, if necessary
                 if not isinstance(value, torch.Tensor):
                     value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
+
+                # Apply scale
+                if scale is not None and scale != 1.0:
+                    value = value * scale
 
                 # Add noise
                 if noise is not None and noise != 0.0:
@@ -175,31 +204,10 @@ class ObservationManager(BaseManager):
 
         return torch.cat(obs, dim=-1)
 
-    def build(self):
-        """Make an initial observation in order to determine the observation space"""
-        if not self.enabled:
-            self._observation_size = 1
-            self._observation_space = spaces.Box(
-                low=-np.inf,
-                high=np.inf,
-                shape=(1,),
-                dtype=np.float32,
-            )
-            return
-
-        obs = self.observations()
-        self._observation_size = obs.shape[1]
-        self._observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self._observation_size,),
-            dtype=np.float32,
-        )
-
     def step(self):
         """Called when the environment is stepped"""
-        return self.observations()
+        pass
 
     def reset(self, env_ids: list[int] | None = None):
         """One or more environments have been reset"""
-        return self.observations()
+        pass

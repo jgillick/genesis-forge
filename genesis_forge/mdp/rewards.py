@@ -14,6 +14,7 @@ from genesis_forge.managers import (
     ContactManager,
     TerminationManager,
     TerrainManager,
+    EntityManager,
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
 
@@ -46,6 +47,8 @@ def base_height(
     target_height: Union[float, torch.Tensor] = None,
     height_command: CommandManager = None,
     terrain_manager: TerrainManager = None,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
     Penalize base height away from target
@@ -55,11 +58,19 @@ def base_height(
         target_height: The target height to penalize the base height away from
         height_command: Get the target height from a height command manager. This expects the command to have a single range value.
         terrain_manager: The terrain manager will adjust the height based on the terrain height.
+        entity_attr: The attribute name of the entity in the environment.
+        entity_manager: The entity manager for the entity.
 
     Returns:
         torch.Tensor: Penalty for base height away from target
     """
-    base_pos = env.robot.get_pos()
+    robot = None
+    if entity_manager is not None:
+        robot = entity_manager.entity
+    else:
+        robot = getattr(env, entity_attr)
+
+    base_pos = robot.get_pos()
     height_offset = 0.0
     if terrain_manager is not None:
         height_offset = terrain_manager.get_terrain_height(
@@ -89,34 +100,58 @@ def dof_similar_to_default(
     return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
 
 
-def lin_vel_z(env: GenesisEnv) -> torch.Tensor:
+def lin_vel_z(
+    env: GenesisEnv,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
+) -> torch.Tensor:
     """
     Penalize z axis base linear velocity
 
     Args:
-        env: The Genesis environment containing the robot
+        env: The Genesis environment containing the entity
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for z axis base linear velocity
     """
-    linear_vel = entity_lin_vel(env.robot)
+    linear_vel = None
+    if entity_manager is not None:
+        linear_vel = entity_manager.get_linear_velocity()
+    else:
+        robot = getattr(env, entity_attr)
+        linear_vel = entity_lin_vel(robot)
     return torch.square(linear_vel[:, 2])
 
 
-def flat_orientation_l2(env: GenesisEnv) -> torch.Tensor:
+def flat_orientation_l2(
+    env: GenesisEnv,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
+) -> torch.Tensor:
     """
     Penalize non-flat base orientation using L2 squared kernel.
     This is computed by penalizing the xy-components of the projected gravity vector.
 
     Args:
         env: The Genesis environment containing the robot
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for non-flat base orientation
     """
     # Get the projected gravity vector in the robot's base frame
     # This represents how "tilted" the robot is from upright
-    projected_gravity = entity_projected_gravity(env.robot)
+    projected_gravity = None
+    if entity_manager is not None:
+        projected_gravity = entity_manager.get_projected_gravity()
+    else:
+        robot = getattr(env, entity_attr)
+        projected_gravity = entity_projected_gravity(robot)
 
     # Penalize the xy-components (horizontal tilt) using L2 squared kernel
     # A flat orientation means these components should be close to zero
@@ -152,47 +187,83 @@ Velocity Tracking
 
 def command_tracking_lin_vel(
     env: GenesisEnv,
-    vel_cmd_manager: VelocityCommandManager,
+    command: torch.Tensor = None,
+    vel_cmd_manager: VelocityCommandManager = None,
     sensitivity: float = 0.25,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
     Penalize not tracking commanded linear velocity (xy axes)
 
     Args:
         env: The Genesis environment containing the robot
+        command: The commanded XY linear velocity in the shape (num_envs, 2)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for tracking of linear velocity commands (xy axes)
     """
-    command = vel_cmd_manager.command
-    linear_vel_local = entity_lin_vel(env.robot)
-    lin_vel_error = torch.sum(
-        torch.square(command[:, :2] - linear_vel_local[:, :2]), dim=1
-    )
+    assert (
+        command is not None or vel_cmd_manager is not None
+    ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+
+    linear_vel_local = None
+    if entity_manager is not None:
+        linear_vel_local = entity_manager.get_linear_velocity()
+    else:
+        robot = getattr(env, entity_attr)
+        linear_vel_local = entity_lin_vel(robot)
+
+    if vel_cmd_manager is not None:
+        command = vel_cmd_manager.command[:, :2]
+
+    lin_vel_error = torch.sum(torch.square(command - linear_vel_local[:, :2]), dim=1)
     return torch.exp(-lin_vel_error / sensitivity)
 
 
 def command_tracking_ang_vel(
     env: GenesisEnv,
-    vel_cmd_manager: VelocityCommandManager,
+    commanded_ang_vel: torch.Tensor = None,
+    vel_cmd_manager: VelocityCommandManager = None,
     sensitivity: float = 0.25,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
     Penalize not tracking commanded angular velocity (yaw)
 
     Args:
         env: The Genesis environment containing the robot
+        commanded_ang_vel: The commanded angular velocity in the shape (num_envs, 1)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for tracking of angular velocity commands (yaw)
     """
-    command = vel_cmd_manager.command
-    angular_vel = entity_ang_vel(env.robot)
-    ang_vel_error = torch.square(command[:, 2] - angular_vel[:, 2])
+    assert (
+        commanded_ang_vel is not None or vel_cmd_manager is not None
+    ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+
+    angular_vel = None
+    if entity_manager is not None:
+        angular_vel = entity_manager.get_angular_velocity()
+    else:
+        robot = getattr(env, entity_attr)
+        angular_vel = entity_ang_vel(robot)
+
+    if vel_cmd_manager is not None:
+        commanded_ang_vel = vel_cmd_manager.command[:, 2]
+
+    ang_vel_error = torch.square(commanded_ang_vel - angular_vel[:, 2])
     return torch.exp(-ang_vel_error / sensitivity)
 
 

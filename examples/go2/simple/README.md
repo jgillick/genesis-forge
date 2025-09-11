@@ -19,6 +19,7 @@ Now you can run the training with:
 python ./train.py
 ```
 
+
 You can view the training progress with:
 
 ```bash
@@ -27,7 +28,8 @@ tensorboard --logdir ./logs/
 
 The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/go2-walking/videos`.
 
-![Trained Go2 Walking](./trained.mp4)
+https://github.com/user-attachments/assets/be46df1b-35e5-4b5b-9bbc-f543210dd463
+
 
 ## Evaluation
 

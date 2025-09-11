@@ -154,7 +154,7 @@ class CommandManager(BaseManager):
             env_ids = torch.arange(self.env.num_envs, device=gs.device)
         self.resample_command(env_ids)
 
-    def observation(self) -> torch.Tensor:
+    def observation(self, env: GenesisEnv) -> torch.Tensor:
         """Function that returns the current command for each environment."""
         return self._command
 

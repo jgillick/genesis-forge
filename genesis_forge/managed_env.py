@@ -208,6 +208,10 @@ class ManagedEnvironment(GenesisEnv):
             self.managers["action"].step(actions)
         self.scene.step()
 
+        # Update entity managers
+        for entity_manager in self.managers["entity"]:
+            entity_manager.step()
+
         # Calculate contact forces
         for contact_manager in self.managers["contact"]:
             contact_manager.step()

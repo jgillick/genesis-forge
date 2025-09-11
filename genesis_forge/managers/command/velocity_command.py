@@ -44,7 +44,7 @@ class VelocityDebugVisualizerConfig(TypedDict):
 
 DEFAULT_VISUALIZER_CONFIG: VelocityDebugVisualizerConfig = {
     "envs_idx": None,
-    "arrow_offset": 0.01,
+    "arrow_offset": 0.02,
     "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
@@ -262,12 +262,12 @@ class VelocityCommandManager(CommandManager):
         robot_quat = self.env.robot.get_quat()
 
         # Transform robot-relative velocity commands to world coordinates for visualization
-        vec_world = self._resolve_xy_velocity_to_world_frame(
+        target_velocity = self._resolve_xy_velocity_to_world_frame(
             self.command[:, :2], robot_quat, scale_factor
         )
 
         # Actual robot velocity (already in world coordinates)
-        actual_vec = entity_lin_vel(self.env.robot).clone()
+        actual_vec = self.env.robot.get_vel().clone()
         actual_vec[:, 2] = 0.0
         actual_vec[:, :] *= scale_factor
 
@@ -280,7 +280,7 @@ class VelocityCommandManager(CommandManager):
             # Target arrow (robot-relative command transformed to world coordinates for visualization)
             self._draw_arrow(
                 pos=arrow_pos[i],
-                vec=vec_world[i],
+                vec=target_velocity[i],
                 color=self.visualizer_cfg["commanded_color"],
             )
             # Actual arrow

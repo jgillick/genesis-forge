@@ -59,18 +59,39 @@ def set_rotation(
 
 
 class position(ResetConfigFnClass):
-    """Reset the position of the entity to a fixed position"""
+    """
+    Reset the entity to a fixed position and (optional) rotation
+
+    Args:
+        env: The environment
+        entity: The entity to set the position of.
+        position: The position to set the entity to.
+        quat: The quaternion to set the entity to.
+        zero_velocity: Whether to zero the velocity of all the entity's dofs.
+                       Defaults to True. This is a safety measure after a sudden change in entity pose.
+    """
 
     def __init__(
         self,
         env: GenesisEnv,
         entity: RigidEntity,
         position: tuple[float, float, float],
+        quat: tuple[float, float, float, float] | None = None,
+        zero_velocity: bool = True,
     ):
+        self.zero_velocity = zero_velocity
         self.reset_pos = torch.tensor(position, device=gs.device)
-        self.pos_buffer = torch.zeros(
+        self._pos_buffer = torch.zeros(
             (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
+
+        self.reset_quat = None
+        self._quat_buffer = None
+        if quat is not None:
+            self.reset_quat = torch.tensor(quat, device=gs.device)
+            self._quat_buffer = torch.zeros(
+                (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+            )
 
     def __call__(
         self,
@@ -78,8 +99,20 @@ class position(ResetConfigFnClass):
         entity: RigidEntity,
         envs_idx: list[int],
     ):
-        self.pos_buffer[envs_idx] = self.reset_pos
-        entity.set_pos(self.pos_buffer[envs_idx], envs_idx=envs_idx)
+        self._pos_buffer[envs_idx] = self.reset_pos
+        entity.set_pos(
+            self._pos_buffer[envs_idx],
+            envs_idx=envs_idx,
+            zero_velocity=self.zero_velocity,
+        )
+
+        if self.reset_quat is not None:
+            self._quat_buffer[envs_idx] = self.reset_quat.reshape(1, -1)
+            entity.set_quat(
+                self._quat_buffer[envs_idx],
+                envs_idx=envs_idx,
+                zero_velocity=self.zero_velocity,
+            )
 
 
 def randomize_terrain_position(

@@ -3,8 +3,9 @@ import math
 import torch
 from typing import Tuple, Any, Callable
 
-from genesis_forge.wrappers.wrapper import Wrapper
+from genesis.vis.camera import Camera
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.wrappers.wrapper import Wrapper
 
 
 def capped_cubic_episode_trigger(episode_id: int) -> bool:
@@ -106,7 +107,7 @@ class VideoWrapper(Wrapper):
         self._next_frame_step: int = 0
         self._is_recording: bool = False
 
-        self._cam = None
+        self._cam: Camera = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
@@ -125,6 +126,13 @@ class VideoWrapper(Wrapper):
         self.step_trigger = step_trigger
 
         os.makedirs(self._out_dir, exist_ok=True)
+
+    @property
+    def video_length_steps(self) -> int:
+        """
+        The number of steps that will be recorded for each video.
+        """
+        return self._video_length_steps
 
     def build(self) -> None:
         """Load the camera from the environment."""

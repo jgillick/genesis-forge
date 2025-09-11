@@ -12,7 +12,7 @@ from genesis_forge.wrappers import (
     VideoWrapper,
     RslRlWrapper,
 )
-from environment import Go2Env
+from environment import Go2SimpleEnv
 
 try:
     try:
@@ -25,11 +25,13 @@ except (metadata.PackageNotFoundError, ImportError) as e:
     raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
+EXPERIMENT_NAME = "go2-simple"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
 parser.add_argument("--max_iterations", type=int, default=101)
 parser.add_argument("-d", "--device", type=str, default="gpu")
+parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
@@ -70,10 +72,11 @@ def training_cfg(exp_name: str, max_iterations: int):
             "run_name": "",
         },
         "runner_class_name": "OnPolicyRunner",
+        "seed": 1,
         "num_steps_per_env": 24,
         "save_interval": 100,
         "empirical_normalization": None,
-        "seed": 1,
+        "obs_groups": {"policy": ["policy"]},
     }
 
 
@@ -97,7 +100,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     """
 
     #  Create environment
-    env = Go2Env(num_envs=num_envs, headless=True)
+    env = Go2SimpleEnv(num_envs=num_envs, headless=True)
 
     # Record videos in regular intervals
     env = VideoWrapper(
@@ -110,7 +113,6 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Build the environment
     env = RslRlWrapper(env)
     env.build()
-    env.reset()
 
     # Setup training runner and train
     print("💪 Training model...")
@@ -122,13 +124,14 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
 def record_video(cfg: dict, log_dir: str):
     """Record a video of the trained model."""
     # Recording environment
-    env = Go2Env(num_envs=1, headless=True)
+    env = Go2SimpleEnv(num_envs=1, headless=True)
     env = VideoWrapper(
         env,
         out_dir=log_dir,
         filename="trained.mp4",
         video_length_sec=15,
     )
+    video_length_steps = env.video_length_steps
     env = RslRlWrapper(env)
     env.build()
 
@@ -142,11 +145,12 @@ def record_video(cfg: dict, log_dir: str):
     obs, _ = env.reset()
     with torch.no_grad():
         i = 0
-        while i < 18 / env.dt:
+        while i < video_length_steps:
             i += 1
             actions = policy(obs)
             obs, _rews, _dones, _infos = env.step(actions)
 
+    print(f"Saving video to {log_dir}/trained.mp4")
     env.close()
 
 
@@ -160,7 +164,7 @@ def main():
 
     # Logging directory
     log_base_dir = "./logs"
-    experiment_name = "go2-walking"
+    experiment_name = args.exp_name
     log_path = os.path.join(log_base_dir, experiment_name)
     if os.path.exists(log_path):
         shutil.rmtree(log_path)

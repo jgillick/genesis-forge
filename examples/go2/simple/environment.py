@@ -2,7 +2,6 @@
 Simplified Go2 Locomotion Environment using managers to handle everything.
 """
 
-import math
 import torch
 import genesis as gs
 
@@ -18,12 +17,12 @@ from genesis_forge.managers.entity import reset
 from genesis_forge.mdp import rewards, terminations
 
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.42]
+INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
 TARGET_X_VELOCITY = 0.5
 
 
-class Go2Env(ManagedEnvironment):
+class Go2SimpleEnv(ManagedEnvironment):
     """
     Example training environment for the Go2 robot.
     """
@@ -39,7 +38,7 @@ class Go2Env(ManagedEnvironment):
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
-            max_episode_random_scaling=0.0,
+            max_episode_random_scaling=0.1,
             headless=headless,
         )
 
@@ -106,22 +105,13 @@ class Go2Env(ManagedEnvironment):
             self,
             entity_attr="robot",
             on_reset={
-                # Reset all DOF velocities
-                "zero_dof": {
-                    "fn": reset.zero_all_dofs_velocity,
-                },
                 # Reset the robot's initial position
                 "position": {
                     "fn": reset.position,
                     "params": {
                         "position": INITIAL_BODY_POSITION,
-                    },
-                },
-                # Randomize the robot's initial orientation
-                "orientation": {
-                    "fn": reset.set_rotation,
-                    "params": {
-                        "z": (0, 2 * math.pi),
+                        "quat": INITIAL_QUAT,
+                        "zero_velocity": True,
                     },
                 },
             },
@@ -209,10 +199,12 @@ class Go2Env(ManagedEnvironment):
             self,
             logging_enabled=True,
             term_cfg={
+                # The episode ended
                 "timeout": {
                     "fn": terminations.timeout,
                     "time_out": True,
                 },
+                # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {

@@ -12,7 +12,7 @@ from genesis_forge.wrappers import (
     VideoWrapper,
     RslRlWrapper,
 )
-from environment import Go2CommandDirectionEnv
+from environment import Go2RoughTerrainEnv
 
 try:
     try:
@@ -25,7 +25,7 @@ except (metadata.PackageNotFoundError, ImportError) as e:
     raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "go2-command"
+EXPERIMENT_NAME = "go2-terrain"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
@@ -100,7 +100,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     """
 
     #  Create environment
-    env = Go2CommandDirectionEnv(num_envs=num_envs, headless=True)
+    env = Go2RoughTerrainEnv(num_envs=num_envs, headless=True)
 
     # Record videos in regular intervals
     env = VideoWrapper(
@@ -113,6 +113,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Build the environment
     env = RslRlWrapper(env)
     env.build()
+    env.reset()
 
     # Setup training runner and train
     print("💪 Training model...")
@@ -124,7 +125,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
 def record_video(cfg: dict, log_dir: str):
     """Record a video of the trained model."""
     # Recording environment
-    env = Go2CommandDirectionEnv(num_envs=1, headless=True)
+    env = Go2RoughTerrainEnv(num_envs=1, headless=True)
     env = VideoWrapper(
         env,
         out_dir=log_dir,
@@ -134,7 +135,6 @@ def record_video(cfg: dict, log_dir: str):
     video_length_steps = env.video_length_steps
     env = RslRlWrapper(env)
     env.build()
-    env.reset()
 
     # Eval
     print("🎬 Recording video of last model...")

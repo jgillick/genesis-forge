@@ -37,13 +37,6 @@ class RslRlWrapper(Wrapper):
     def device(self) -> str:
         return gs.device
 
-    def build(self):
-        """
-        Call an initial reset after building the environment.
-        """
-        super().build()
-        self.env.reset()
-
     def step(
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:

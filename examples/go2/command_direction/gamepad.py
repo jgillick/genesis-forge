@@ -3,24 +3,14 @@ import glob
 import torch
 import pickle
 import argparse
-from importlib import metadata
 import genesis as gs
 
-from genesis_forge.wrappers import RslRlWrapper
-from environment import Go2SimpleEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
+from genesis_forge.wrappers import RslRlWrapper
+from genesis_forge.gamepads import Gamepad
+from environment import Go2CommandDirectionEnv
 
-EXPERIMENT_NAME = "go2-simple"
+EXPERIMENT_NAME = "go2-command"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
@@ -56,18 +46,23 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False)
-    env = RslRlWrapper(env)
+    env = Go2CommandDirectionEnv(num_envs=1, headless=False)
     env.build()
 
+    # Connect to gamepad
+    print("🎮 Connecting to gamepad...")
+    gamepad = Gamepad()
+    env.velocity_command.use_gamepad(gamepad)
+
     # Eval
-    print("🎬 Loading last model...")
+    print("Loading environment...")
+    env = RslRlWrapper(env)
     runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
     runner.load(model)
     policy = runner.get_inference_policy(device=gs.device)
 
+    obs, _ = env.reset()
     try:
-        obs, _ = env.reset()
         with torch.no_grad():
             while True:
                 actions = policy(obs)

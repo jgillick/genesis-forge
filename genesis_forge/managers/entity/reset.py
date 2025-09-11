@@ -120,11 +120,22 @@ def randomize_terrain_position(
     entity: RigidEntity,
     envs_idx: list[int],
     terrain_manager: TerrainManager,
-    subterrain: str | None = None,
     height_offset: float = 0.1e-3,
+    subterrain: str | None = None,
+    zero_velocity: bool = True,
 ):
     """
     Place the entity in a random position on the terrain for each environment.
+
+    Args:
+        env: The environment
+        entity: The entity to set the position of.
+        envs_idx: The environment ids to set the position for.
+        terrain_manager: The terrain manager to use to generate the random position.
+        height_offset: The height offset to add to the random position.
+        subterrain: The subterrain to generate the random position on.
+        zero_velocity: Whether to zero the velocity of all the entity's dofs.
+                       Defaults to True. This is a safety measure after a sudden change in entity pose.
     """
     # Randomize positions on the terrain
     pos = terrain_manager.generate_random_env_pos(
@@ -132,7 +143,7 @@ def randomize_terrain_position(
         subterrain=subterrain,
         height_offset=height_offset,
     )
-    entity.set_pos(pos, envs_idx=envs_idx)
+    entity.set_pos(pos, envs_idx=envs_idx, zero_velocity=zero_velocity)
 
 
 class randomize_link_mass_shift(ResetConfigFnClass):

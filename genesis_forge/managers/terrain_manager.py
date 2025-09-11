@@ -112,11 +112,19 @@ class TerrainManager(BaseManager):
             coords.shape[0], 1, -1, -1
         )  # (n_coords, 1, height, width)
 
+        # Border padding mode isn't supported on Mac GPU (mps)
+        # https://github.com/pytorch/pytorch/issues/125098
+        if gs.device.type == "mps":
+            padding_mode = "zeros"
+            grid = grid.clamp(-1, 1)
+        else:
+            padding_mode = "border"
+
         interpolated = F.grid_sample(
             height_field,  # (n_coords, 1, height, width)
             grid,  # (n_coords, 1, 1, 2)
             mode="bilinear",
-            padding_mode="border",
+            padding_mode=padding_mode,
             align_corners=True,
         )
 

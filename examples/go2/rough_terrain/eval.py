@@ -7,7 +7,7 @@ from importlib import metadata
 import genesis as gs
 
 from genesis_forge.wrappers import RslRlWrapper
-from environment import Go2SimpleEnv
+from environment import Go2RoughTerrainEnv
 
 try:
     try:
@@ -20,7 +20,7 @@ except (metadata.PackageNotFoundError, ImportError) as e:
     raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "go2-simple"
+EXPERIMENT_NAME = "go2-terrain"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
@@ -56,16 +56,19 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False)
+    env = Go2RoughTerrainEnv(num_envs=1, headless=False)
     env = RslRlWrapper(env)
     env.build()
+
+    # Make changes for eval
+    # Pick a new direction every 2 seconds
+    env.unwrapped.velocity_command.resample_time_s = 2.0
 
     # Eval
     print("🎬 Loading last model...")
     runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
     runner.load(model)
     policy = runner.get_inference_policy(device=gs.device)
-
     try:
         obs, _ = env.reset()
         with torch.no_grad():

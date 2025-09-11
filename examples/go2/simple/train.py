@@ -113,6 +113,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Build the environment
     env = RslRlWrapper(env)
     env.build()
+    env.reset()
 
     # Setup training runner and train
     print("💪 Training model...")

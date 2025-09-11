@@ -50,26 +50,20 @@ def main():
         torch.set_default_device("cpu")
     gs.init(logging_level="warning", backend=backend)
 
-    # Logging directory
-    log_path = f"./logs/{args.exp_name}"
-
     # Load training configuration
+    log_path = f"./logs/{args.exp_name}"
     [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
+    model = get_latest_model(log_path)
 
     # Setup environment
     env = Go2CommandDirectionEnv(num_envs=1, headless=False)
     env = RslRlWrapper(env)
     env.build()
 
-    # Make changes for eval
-    # Pick a new direction every 2 seconds
-    env.unwrapped.velocity_command.resample_time_s = 2.0
-
     # Eval
     print("🎬 Loading last model...")
     runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
-    resume_path = get_latest_model(log_path)
-    runner.load(resume_path)
+    runner.load(model)
     policy = runner.get_inference_policy(device=gs.device)
 
     obs, _ = env.reset()

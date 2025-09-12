@@ -26,10 +26,7 @@ def _kernel_get_contact_forces(
     use_quaternion_transform: ti.i32,
 ):
     """
-    Unified Taichi kernel for calculating contact forces and positions.
-
-    This kernel accumulates contact forces and positions for target links, optionally filtering
-    by with_link_ids. It's memory-efficient and avoids large intermediate tensors.
+    Accumulates contact forces and positions for target links, optionally filtering by with_link_ids.
 
     Args:
         contact_forces: Contact force data (n_envs, n_contacts, 3)
@@ -255,7 +252,6 @@ class ContactManager(BaseManager):
         air_time_contact_threshold: float = 1.0,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: ContactDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
-        use_taichi_kernel: bool = True,
         use_quaternion_transform: bool = False,
     ):
         """
@@ -269,10 +265,8 @@ class ContactManager(BaseManager):
             air_time_contact_threshold: When track_air_time is True, this is the threshold for the contact forces to be considered.
             debug_visualizer: Whether to visualize the contact points.
             debug_visualizer_cfg: The configuration for the contact debug visualizer.
-            use_taichi_kernel: Whether to use the optimized Taichi kernel for contact force calculation.
-                             Defaults to True for better memory performance.
-            use_quaternion_transform: Whether to apply quaternion transformations to forces.
-                                     Only used when use_taichi_kernel=True. Defaults to False for better performance.
+            use_quaternion_transform: Whether to apply quaternion transformations to force vectors.
+                                      Defaults to False for better performance.
         """
         super().__init__(env, "contact")
 
@@ -290,7 +284,6 @@ class ContactManager(BaseManager):
         self._debug_nodes = []
 
         # Performance optimization options
-        self._use_taichi_kernel = use_taichi_kernel
         self._use_quaternion_transform = use_quaternion_transform
 
         self.contacts: torch.Tensor | None = None
@@ -400,9 +393,6 @@ class ContactManager(BaseManager):
                 with_entity, self._with_links_names
             )
 
-        print(f"Target link ids: {self._target_link_ids.shape}")
-        print(f"With link ids: {self._with_link_ids.shape}")
-
         # Initialize buffers
         link_count = self._target_link_ids.shape[0]
         self.contacts = torch.zeros(
@@ -475,21 +465,10 @@ class ContactManager(BaseManager):
 
     def _calculate_contact_forces(self):
         """
-        Calculate contact forces using either optimized Taichi kernel or memory-efficient PyTorch.
+        Calculate contact forces using on the target links.
 
         Returns:
             Tensor of shape (n_envs, n_target_links, 3)
-        """
-        if self._use_taichi_kernel:
-            self._calculate_contact_forces_taichi()
-        else:
-            self._calculate_contact_forces_pytorch_optimized()
-
-    def _calculate_contact_forces_taichi(self):
-        """
-        Calculate contact forces using optimized Taichi kernel.
-
-        This method is memory-efficient and avoids large intermediate tensors.
         """
         contacts = self.env.scene.rigid_solver.collider.get_contacts(
             as_tensor=True, to_torch=True
@@ -538,133 +517,7 @@ class ContactManager(BaseManager):
 
         # Handle debug visualization
         if self.debug_visualizer:
-            valid_counts = self.contact_position_counts > 0
-            self.contact_positions[valid_counts] = self.contact_positions[
-                valid_counts
-            ] / self.contact_position_counts[valid_counts].unsqueeze(-1)
             self._render_debug_visualizer_taichi(self.contact_positions)
-
-    def _calculate_contact_forces_pytorch_optimized(self):
-        """
-        Memory-optimized PyTorch implementation using scatter operations.
-
-        This avoids large intermediate tensors by using scatter_add operations.
-        """
-        contacts = self.env.scene.rigid_solver.collider.get_contacts(
-            as_tensor=True, to_torch=True
-        )
-        force = contacts["force"]
-        link_a = contacts["link_a"]
-        link_b = contacts["link_b"]
-        position = contacts["position"]
-
-        # Clear output tensors
-        self.contacts.fill_(0.0)
-        self.contact_positions.fill_(0.0)
-        self.contact_position_counts.fill_(0.0)
-
-        # Get target and with link IDs
-        target_links = self._target_link_ids.to(gs.device)
-        n_target_links = target_links.shape[0]
-
-        # Create mapping from link ID to target index
-        target_link_map = torch.zeros(
-            target_links.max().item() + 1, dtype=torch.long, device=gs.device
-        )
-        target_link_map[target_links] = torch.arange(n_target_links, device=gs.device)
-
-        # Process contacts in batches to avoid memory issues
-        batch_size = min(1000, link_a.shape[1])  # Process up to 1000 contacts at a time
-
-        for start_idx in range(0, link_a.shape[1], batch_size):
-            end_idx = min(start_idx + batch_size, link_a.shape[1])
-
-            # Get batch of contacts
-            batch_link_a = link_a[:, start_idx:end_idx]
-            batch_link_b = link_b[:, start_idx:end_idx]
-            batch_force = force[:, start_idx:end_idx]
-            batch_position = position[:, start_idx:end_idx]
-
-            # Create masks for target links
-            mask_a = (
-                batch_link_a.unsqueeze(-1) == target_links.unsqueeze(0).unsqueeze(0)
-            ).any(dim=-1)
-            mask_b = (
-                batch_link_b.unsqueeze(-1) == target_links.unsqueeze(0).unsqueeze(0)
-            ).any(dim=-1)
-
-            # Apply with_link filter if specified
-            if self._with_link_ids is not None:
-                with_links = self._with_link_ids.to(gs.device)
-                mask_with_a = (
-                    batch_link_a.unsqueeze(-1) == with_links.unsqueeze(0).unsqueeze(0)
-                ).any(dim=-1)
-                mask_with_b = (
-                    batch_link_b.unsqueeze(-1) == with_links.unsqueeze(0).unsqueeze(0)
-                ).any(dim=-1)
-
-                # Only include contacts where one link is target and other is with_link
-                valid_contacts = (mask_a & mask_with_b) | (mask_b & mask_with_a)
-            else:
-                valid_contacts = mask_a | mask_b
-
-            # Accumulate forces using scatter operations
-            if valid_contacts.any():
-                # Get indices for scatter operations
-                env_indices = (
-                    torch.arange(self.env.num_envs, device=gs.device)
-                    .unsqueeze(-1)
-                    .expand(-1, batch_link_a.shape[1])
-                )
-                batch_indices = (
-                    torch.arange(batch_link_a.shape[1], device=gs.device)
-                    .unsqueeze(0)
-                    .expand(self.env.num_envs, -1)
-                )
-
-                # Process link_a contacts
-                link_a_valid = valid_contacts & mask_a
-                if link_a_valid.any():
-                    link_a_target_indices = target_link_map[batch_link_a[link_a_valid]]
-                    env_indices_a = env_indices[link_a_valid]
-                    forces_a = -batch_force[
-                        link_a_valid
-                    ]  # Negative for Newton's 3rd law
-                    positions_a = batch_position[link_a_valid]
-
-                    self.contacts[env_indices_a, link_a_target_indices] += forces_a
-                    self.contact_positions[
-                        env_indices_a, link_a_target_indices
-                    ] += positions_a
-                    self.contact_position_counts[
-                        env_indices_a, link_a_target_indices
-                    ] += 1
-
-                # Process link_b contacts
-                link_b_valid = valid_contacts & mask_b
-                if link_b_valid.any():
-                    link_b_target_indices = target_link_map[batch_link_b[link_b_valid]]
-                    env_indices_b = env_indices[link_b_valid]
-                    forces_b = batch_force[link_b_valid]
-                    positions_b = batch_position[link_b_valid]
-
-                    self.contacts[env_indices_b, link_b_target_indices] += forces_b
-                    self.contact_positions[
-                        env_indices_b, link_b_target_indices
-                    ] += positions_b
-                    self.contact_position_counts[
-                        env_indices_b, link_b_target_indices
-                    ] += 1
-
-        # Compute average positions for PyTorch implementation
-        valid_counts = self.contact_position_counts > 0
-        self.contact_positions[valid_counts] = self.contact_positions[
-            valid_counts
-        ] / self.contact_position_counts[valid_counts].unsqueeze(-1)
-
-        # Handle debug visualization
-        if self.debug_visualizer:
-            self._render_debug_visualizer_pytorch(position, force, link_a, link_b)
 
     def _calculate_air_time(self):
         """
@@ -726,67 +579,10 @@ class ContactManager(BaseManager):
         if not self.debug_visualizer:
             return
 
-        self._render_debug_spheres(
-            contact_pos,
-        )
-
-    def _render_debug_visualizer_pytorch(
-        self,
-        contact_pos: torch.Tensor,
-        force: torch.Tensor,
-        link_a: torch.Tensor,
-        link_b: torch.Tensor,
-    ):
-        """
-        Visualize contact points for PyTorch implementation.
-        """
-        # Clear existing debug objects
-        for node in self._debug_nodes:
-            self.env.scene.clear_debug_object(node)
-        self._debug_nodes = []
-
-        if not self.debug_visualizer:
-            return
-
-        # Create mask for target links
-        target_links = self._target_link_ids.to(gs.device)
-        mask_a = (link_a.unsqueeze(-1) == target_links.unsqueeze(0).unsqueeze(0)).any(
-            dim=-1
-        )
-        mask_b = (link_b.unsqueeze(-1) == target_links.unsqueeze(0).unsqueeze(0)).any(
-            dim=-1
-        )
-
-        # Apply with_link filter if specified
-        if self._with_link_ids is not None:
-            with_links = self._with_link_ids.to(gs.device)
-            mask_with_a = (
-                link_a.unsqueeze(-1) == with_links.unsqueeze(0).unsqueeze(0)
-            ).any(dim=-1)
-            mask_with_b = (
-                link_b.unsqueeze(-1) == with_links.unsqueeze(0).unsqueeze(0)
-            ).any(dim=-1)
-            target_mask = (mask_a & mask_with_b) | (mask_b & mask_with_a)
-        else:
-            target_mask = mask_a | mask_b
-
-        self._render_debug_spheres(contact_pos, target_mask)
-
-    def _render_debug_spheres(
-        self, contact_pos: torch.Tensor, link_mask: torch.Tensor | None = None
-    ):
-        """
-        Render debug spheres for contact points.
-        """
         # Filter to only the environments we want to visualize
         cfg = self.visualizer_cfg
         if cfg["envs_idx"] is not None:
             contact_pos = contact_pos[cfg["envs_idx"]]
-            if link_mask is not None:
-                link_mask = link_mask[cfg["envs_idx"]]
-
-        if link_mask is not None:
-            contact_pos = contact_pos[link_mask]
 
         # Draw debug spheres
         if contact_pos.shape[0] > 0:

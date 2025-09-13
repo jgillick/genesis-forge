@@ -184,7 +184,7 @@ If you used Genesis Forge in your research, we would appreciate it if you could 
 ```
 @misc{Genesis,
   author = {Jeremy Gillick},
-  title = {Genesis Forge: A modular framework for RL robot learning},
+  title = {Genesis Forge: A modular framework for RL robot environments},
   month = {September},
   year = {2025},
   url = {https://github.com/jgillick/genesis-forge}

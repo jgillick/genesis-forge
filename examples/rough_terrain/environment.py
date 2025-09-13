@@ -346,7 +346,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             envs_idx is not None
             and self.robot_manager.on_reset["position"]["params"]["subterrain"]
             == "flat_terrain"
-            and self.episode_length.mean(dtype=gs.tc_float) > 150
+            and self.episode_length.mean(dtype=gs.tc_float) > 200
         ):
             self.robot_manager.on_reset["position"]["params"][
                 "subterrain"

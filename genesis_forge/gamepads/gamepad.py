@@ -70,52 +70,6 @@ class Gamepad:
         """
         return self._state
 
-    def parse_data(self, data: list[int]) -> GamepadState:
-        """Parse gamepad data into a GamepadState object."""
-        axis = []
-        buttons = []
-        dpad = None
-
-        # No gamepad config, so we cann't parse the data
-        if self._config is None:
-            return
-
-        for cfg in self._config["mapping"]:
-            if "data" not in cfg:
-                print(f"Warning: {cfg} has no data value")
-                continue
-            if cfg["data"] >= len(data):
-                print(f"Error: {cfg} data is out of range")
-                continue
-            value = data[cfg["data"]]
-            value_truthy = False
-
-            # Apply the bitmask to the value
-            if "bitmask" in cfg:
-                value = value & cfg["bitmask"]
-                if value != 0:
-                    value_truthy = True
-            elif "button" in cfg or "dpad" in cfg:
-                print(f"Warning: {cfg} has no bitmask value")
-                continue
-
-            # Check if value is matches
-            if "value" in cfg:
-                value_truthy = value == cfg["value"]
-
-            if "button" in cfg and value_truthy:
-                buttons.append(cfg["button"].name)
-            elif "dpad" in cfg and value_truthy:
-                dpad = cfg["dpad"].name
-            elif "axis" in cfg:
-                value = -(value - 128) / 128.0
-                axis.insert(cfg["axis"], value)
-
-        self._state.axis_values = axis
-        self._state.buttons = buttons
-        self._state.dpad = dpad
-        return self._state
-
     def auto_connect(self):
         """
         Loop through the known gamepad configs until one connects.
@@ -165,6 +119,12 @@ class Gamepad:
                 f"Error connecting to gamepad 0x{vendor_id:04x}:0x{product_id:04x}: {e}"
             )
 
+    def stop(self):
+        """
+        Stop reading gamepad input.
+        """
+        self.is_running = False
+
     def _read_loop(self):
         """
         Wait for gamepad input, and then update the gamepad state.
@@ -174,7 +134,7 @@ class Gamepad:
                 data = self._device.read(64)
                 if data:
                     try:
-                        self._state = self.parse_data(data)
+                        self._state = self._parse_data(data)
                         if self._debug:
                             print(self._state)
                     except Exception as e:
@@ -184,11 +144,59 @@ class Gamepad:
 
         self._device.close()
 
-    def stop(self):
+    def _parse_data(self, data: list[int]) -> GamepadState:
         """
-        Stop reading gamepad input.
+        Parse gamepad data into a GamepadState object.
+
+        Args:
+            data: The data to parse.
+
+        Returns:
+            The parsed GamepadState object.
         """
-        self.is_running = False
+        axis = []
+        buttons = []
+        dpad = None
+
+        # No gamepad config, so we cann't parse the data
+        if self._config is None:
+            return
+
+        for cfg in self._config["mapping"]:
+            if "data" not in cfg:
+                print(f"Warning: {cfg} has no data value")
+                continue
+            if cfg["data"] >= len(data):
+                print(f"Error: {cfg} data is out of range")
+                continue
+            value = data[cfg["data"]]
+            value_truthy = False
+
+            # Apply the bitmask to the value
+            if "bitmask" in cfg:
+                value = value & cfg["bitmask"]
+                if value != 0:
+                    value_truthy = True
+            elif "button" in cfg or "dpad" in cfg:
+                print(f"Warning: {cfg} has no bitmask value")
+                continue
+
+            # Check if value is matches
+            if "value" in cfg:
+                value_truthy = value == cfg["value"]
+
+            if "button" in cfg and value_truthy:
+                buttons.append(cfg["button"].name)
+            elif "dpad" in cfg and value_truthy:
+                dpad = cfg["dpad"].name
+            elif "axis" in cfg:
+                value = -(value - 128) / 128.0
+                axis.insert(cfg["axis"], value)
+
+        self._state.axis_values = axis
+        self._state.buttons = buttons
+        self._state.dpad = dpad
+        return self._state
 
 
 if __name__ == "__main__":

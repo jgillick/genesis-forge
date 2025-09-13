@@ -1,8 +1,3 @@
-"""Logitech F310/F710 Gamepad class that uses HID under the hood.
-
-Adapted from: https://github.com/google-deepmind/mujoco_playground/blob/a873d53765a4c83572cf44fa74768ab62ceb7be1/mujoco_playground/experimental/sim2sim/gamepad_reader.py.
-"""
-
 import time
 import argparse
 import hid
@@ -19,11 +14,11 @@ GAMEPAD_CONFIGS = [
 
 class Gamepad:
     """
-    General gamepad controller.
-    If a config is not provided, it will automatically attempt to connect to one of the configured gamepads.
+    General gamepad controller, which automatically attempts to connect to known gamepads (currentlyLogitech F710 and F310).
 
-    Example:
-        >>> gamepad = Gamepad(config=LOGITECH_F710_CONFIG)
+    Example::
+
+        >>> gamepad = Gamepad()
         >>> gamepad.state
         GamepadState(axis=[0.0, 0.0, 0.0, 0.0], buttons=[A], dpad=UP)
         >>> gamepad.state.axis
@@ -33,6 +28,13 @@ class Gamepad:
         >>> gamepad.state.dpad
         "UP"
         >>> gamepad.state.buttons = [Button.A]
+
+    Example connecting to a specific gamepad:
+
+        >>> gamepad = Gamepad(config=LOGITECH_F710_CONFIG)
+
+
+    Adapted from: https://github.com/google-deepmind/mujoco_playground/blob/a873d53765a4c83572cf44fa74768ab62ceb7be1/mujoco_playground/experimental/sim2sim/gamepad_reader.py.
     """
 
     def __init__(
@@ -58,7 +60,7 @@ class Gamepad:
         self._device = None
 
         self.connect()
-        self.read_thread = threading.Thread(target=self.read_loop, daemon=True)
+        self.read_thread = threading.Thread(target=self._read_loop, daemon=True)
         self.read_thread.start()
 
     @property
@@ -115,7 +117,9 @@ class Gamepad:
         return self._state
 
     def auto_connect(self):
-        """Loop through the available gamepad configs until one connects."""
+        """
+        Loop through the known gamepad configs until one connects.
+        """
         for config in GAMEPAD_CONFIGS:
             self._vendor_id = config["vendor_id"]
             self._product_id = config["product_id"]
@@ -130,6 +134,13 @@ class Gamepad:
     def connect(self, vendor_id=None, product_id=None):
         """
         Attempt to connect to a gamepad.
+
+        Args:
+            vendor_id: The vendor id of the gamepad to connect to.
+            product_id: The product id of the gamepad to connect to.
+
+        Returns:
+            True if the gamepad connected successfully, False otherwise.
         """
         if vendor_id is None:
             vendor_id = self._vendor_id
@@ -154,7 +165,7 @@ class Gamepad:
                 f"Error connecting to gamepad 0x{vendor_id:04x}:0x{product_id:04x}: {e}"
             )
 
-    def read_loop(self):
+    def _read_loop(self):
         """
         Wait for gamepad input, and then update the gamepad state.
         """

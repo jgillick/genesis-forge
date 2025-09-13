@@ -7,4 +7,5 @@ environments/index
 managers/index
 MPD <mdp/index>
 wrappers/index
+controllers/index
 ```

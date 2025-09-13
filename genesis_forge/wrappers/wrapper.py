@@ -116,10 +116,6 @@ class Wrapper:
         """Uses the :meth:`get_observations` of the :attr:`env` that can be overwritten to change the returned data."""
         return self.env.get_observations()
 
-    def render(self) -> RenderFrame | list[RenderFrame] | None:
-        """Uses the :meth:`render` of the :attr:`env` that can be overwritten to change the returned data."""
-        return self.env.render()
-
     def close(self):
         """Closes the wrapper and :attr:`env`."""
         return self.env.close()

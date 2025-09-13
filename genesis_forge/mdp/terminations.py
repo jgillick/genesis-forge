@@ -62,7 +62,7 @@ def bad_orientation(
     return tilt_angle > limit_angle
 
 
-def root_height_below_minimum(
+def base_height_below_minimum(
     env: GenesisEnv,
     minimum_height: float = 0.05,
     entity_attr: str = "robot",
@@ -123,6 +123,39 @@ def contact_force(
     Returns:
         The total force for the contact manager for each environment
     """
-    force_magnitudes = torch.norm(contact_manager.contacts[:, :, :], dim=-1)
-    violated = force_magnitudes > threshold
-    return torch.any(violated, dim=1)
+    return torch.any(
+        torch.norm(contact_manager.contacts, dim=-1) > threshold, dim=-1
+    ).detach()
+
+
+def contact_force_with_grace_period(
+    env: GenesisEnv,
+    contact_manager: ContactManager,
+    threshold: float = 100.0,
+    grace_steps: int = 10,
+) -> torch.Tensor:
+    """
+    Terminate if contact force exceeds threshold, with a grace period at episode start.
+
+    This is useful for quadrupeds that may start in slightly unstable positions
+    and need a few steps to stabilize before fall detection becomes active.
+
+    Args:
+        env: The Genesis environment containing the robot
+        contact_manager: The contact manager to check for contact
+        threshold: The force threshold for contact detection (default: 100.0 N)
+        grace_steps: Number of steps at episode start to ignore contacts (default: 10)
+
+    Returns:
+        Boolean tensor indicating which environments should terminate
+    """
+    # Don't terminate during grace period (early in episode)
+    in_grace_period = env.episode_length <= grace_steps
+
+    # Check contact forces
+    contact_exceeded = torch.any(
+        torch.norm(contact_manager.contacts, dim=-1) > threshold, dim=-1
+    )
+
+    # Only terminate if past grace period AND contact exceeded
+    return (~in_grace_period) & contact_exceeded.detach()

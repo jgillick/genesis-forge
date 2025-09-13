@@ -1,11 +1,13 @@
 import os
 import math
 import torch
-from typing import Tuple, Any, Callable
+from typing import Tuple, Any, Callable, Literal
 
 from genesis.vis.camera import Camera
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
+
+RecordingType = Literal["active", "background"]
 
 
 def capped_cubic_episode_trigger(episode_id: int) -> bool:
@@ -52,8 +54,8 @@ class VideoWrapper(Wrapper):
                   If defined, each video will overwrite the previous video with this name.
 
     Example::
-        class MyEnv(GenesisEnv):
 
+        class MyEnv(GenesisEnv):
             __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -77,6 +79,7 @@ class VideoWrapper(Wrapper):
             ...training code...
 
     Record every 1500 steps::
+
         env = MyEnv()
         env = VideoWrapper(
             env,
@@ -84,7 +87,6 @@ class VideoWrapper(Wrapper):
             out_dir="./videos",
             step_trigger=lambda step: step % 1500 == 0
         )
-        env.build()
     """
 
     def __init__(
@@ -98,14 +100,22 @@ class VideoWrapper(Wrapper):
         fps: int = 60,
         env_idx: int = 0,
         filename: str = None,
+        record_final_episode: bool = True,
+        logging: bool = True,
     ):
         super().__init__(env)
+        self._is_recording: bool = False
+        self._logging: bool = logging
         self._current_step: int = 0
         self._current_episode: int = 0
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
-        self._next_frame_step: int = 0
-        self._is_recording: bool = False
+        self._record_final_episode: bool = record_final_episode
+
+        # active: a triggered recording that will save to file
+        # background: a recording that will only be saved if the environment is closed.
+        #             This is so you get a video of the final episode, even if it was not triggered.
+        self._recording_type: RecordingType = "background"
 
         self._cam: Camera = None
         self._camera_attr = camera_attr
@@ -156,18 +166,21 @@ class VideoWrapper(Wrapper):
             extras,
         ) = super().step(actions)
 
-        # Increment step/episode count
-        self._current_step += 1
+        if self._current_step % self._steps_per_frame == 0:
+            self._cam.render()
+
+        # Stop recording if the recording stop step is reached
+        if self._is_recording and self._recording_stop_step <= self._current_step:
+            self.finish_recording()
+
+        # Increment episode count
         terminated = False if terminateds is None else terminateds[self._env_idx]
         truncated = False if truncateds is None else truncateds[self._env_idx]
         if terminated or truncated:
             self._current_episode += 1
-
-        # If recording, render the frame
-        if self._is_recording:
-            self._render_step()
-            if self._recording_stop_step <= self._current_step:
-                self.finish_recording()
+            if not self._is_recording and self._record_final_episode:
+                self.start_recording("background")
+        self._current_step += 1
 
         return (
             observations,
@@ -183,36 +196,38 @@ class VideoWrapper(Wrapper):
             self.finish_recording()
         super().close()
 
-    def start_recording(self):
+    def start_recording(self, type: RecordingType = "active"):
         """Start recording a video."""
+        # Clear existing frames
+        if self._is_recording:
+            self._cam._recorded_imgs.clear()
+
         self._is_recording = True
+        self._recording_type = type
         self._recording_start_step = self._current_step
-        self._next_frame_step = self._current_step
         self._recording_stop_step = self._current_step + self._video_length_steps
         self._cam.start_recording()
-        self._render_step()
 
     def finish_recording(self):
-        """Stop recording and save the video."""
+        """
+        Stop recording and save the video, if the recording type is 'active'.
+        """
         if not self._is_recording and self._cam is not None:
             return
 
         # Save recording
-        filename = self._filename or f"{self._recording_start_step}.mp4"
-        filepath = os.path.join(self._out_dir, filename)
-        self._cam.stop_recording(filepath, fps=self._actual_fps)
+        if self._recording_type == "active":
+            filename = self._filename or f"{self._recording_start_step}.mp4"
+            filepath = os.path.join(self._out_dir, filename)
+            if self._logging:
+                print(f"Saving recording to {filepath}")
+            self._cam.stop_recording(filepath, fps=self._actual_fps)
+        else:
+            self._cam.pause_recording()
 
         # Reset recording state
         self._is_recording = False
         self._recording_stop_step = 0
-
-    def _render_step(self):
-        """Render a frame of the video."""
-        if not self._is_recording:
-            return
-        if self._current_step >= self._next_frame_step:
-            self._cam.render()
-            self._next_frame_step = self._current_step + self._steps_per_frame
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""

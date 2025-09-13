@@ -62,13 +62,27 @@ class VelocityCommandManager(CommandManager):
     - Y-axis: Left/right relative to robot's current orientation
     - Z-axis: Yaw rotation around robot's vertical axis
 
-    To use the manager:
-        1. Create the manager in your environment's init method
-        2. Call it in your step method (`self.command_manager.step()`)
-        3. Call it in your reset method  (`self.command_manager.reset(env_ids)`)
-        4. Get the target velocity command with the `command` property for your reward and observation functions
+    :::{admonition} Debug Visualization
+
+        If you set `debug_visualizer` to True, arrows will be rendered above your robot
+        showing the commanded velocity vs the actual velocity.
+
+        Arrow meanings:
+
+        - GREEN: Commanded velocity (robot-relative, transformed to world coordinates for visualization)
+          When joystick is "forward", this arrow points in the robot's forward direction
+        - BLUE: Actual robot velocity in world coordinates
+
+    Args:
+        env: The environment to control
+        range: The ranges of linear & angular velocities
+        standing_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
+        resample_time_s: The time interval between changing the command
+        debug_visualizer: Enable the debug arrow visualization
+        debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::
+
         class MyEnv(GenesisEnv):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -124,23 +138,6 @@ class VelocityCommandManager(CommandManager):
                     ],
                     dim=-1,
                 )
-
-    Debug Visualization:
-        If you set `debug_visualizer` to True, arrows will be rendered above your robot
-        showing the commanded velocity vs the actual velocity.
-
-        Arrow meanings:
-        - GREEN: Commanded velocity (robot-relative, transformed to world coordinates for visualization)
-          When joystick is "forward", this arrow points in the robot's forward direction
-        - BLUE: Actual robot velocity in world coordinates
-
-    Args:
-        env: The environment to control
-        range: The ranges of linear & angular velocities
-        standing_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
-        resample_time_s: The time interval between changing the command
-        debug_visualizer: Enable the debug arrow visualization
-        debug_visualizer_cfg: The configuration for the debug visualizer
     """
 
     def __init__(

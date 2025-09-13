@@ -10,7 +10,7 @@ from genesis_forge.wrappers.wrapper import Wrapper
 
 class RslRlWrapper(Wrapper):
     """
-    A wrapper for the rsl_rl framework.
+    A wrapper that makes your genesis forge environment compatible with the rsl_rl training framework.
 
     IMPORTANT: This should be the last wrapper, as the change in the step and get_observations methods might break other wrappers.
 
@@ -53,7 +53,7 @@ class RslRlWrapper(Wrapper):
         ) = super().step(actions)
 
         # Combine terminated and truncated
-        dones = terminated | truncated
+        dones = (terminated | truncated).detach()
 
         # Add observations and timeouts to extras
         if extras is None:
@@ -95,7 +95,7 @@ class RslRlWrapper(Wrapper):
             extras = {}
         if "observations" not in extras:
             extras["observations"] = {}
-        extras["observations"]["critic"] = obs
+        extras["observations"]["critic"] = obs.detach()
         return extras
 
     def _format_obs_group(self, obs: torch.Tensor):
@@ -103,5 +103,9 @@ class RslRlWrapper(Wrapper):
         If we're using rsl_rl 3.0+, put the observations into a TensorDict
         """
         if self.rsl3:
-            obs = TensorDict({"policy": obs, "critic": obs}, batch_size=[obs.shape[0]])
+            obs = TensorDict(
+                {"policy": obs.detach(), "critic": obs.detach()},
+                batch_size=[obs.shape[0]],
+                device=gs.device,
+            )
         return obs

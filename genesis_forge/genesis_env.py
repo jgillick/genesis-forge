@@ -1,8 +1,4 @@
-"""
-Simplified Spider Robot Environment with Curriculum Learning
-Focuses on core objectives with progressive difficulty
-"""
-
+from __future__ import annotations
 import math
 import torch
 import genesis as gs
@@ -15,7 +11,7 @@ EnvMode = Literal["train", "eval", "play"]
 
 class GenesisEnv:
     """
-    Base vectorized environment for Genesis.
+    Base environment class for your simulated robot environment.
 
     Args:
         num_envs: Number of parallel environments.
@@ -24,6 +20,30 @@ class GenesisEnv:
         max_episode_random_scaling: Scale the maximum episode length by this amount (+/-) so that not all environments reset at the same time.
         headless: Whether to run the environment in headless mode.
         extras_logging_key: The key used, in info/extras dict, which is returned by step and reset functions, to send data to tensorboard by the RL agent.
+
+    Example::
+
+        class MyEnv(GenesisEnv):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                # ...Define scene here...
+                self.scene = gs.Scene( ... )
+                self.terrain = self.scene.add_entity(gs.morphs.Plane())
+                self.robot = self.scene.add_entity( ... )
+
+            def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
+                # ...step logic here...
+                return obs, rewards, terminations, truncations, info
+
+            def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+                # ...reset logic here...
+                return obs, info
+
+            def get_observations(self) -> torch.Tensor:
+                # ...define current observations here...
+                return obs
+
     """
 
     action_space: spaces.Space | None = None
@@ -37,14 +57,12 @@ class GenesisEnv:
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         headless: bool = True,
-        mode: EnvMode = "train",
         extras_logging_key: str = "episode",
     ):
         self.dt = dt
         self.device = gs.device
         self.num_envs = num_envs
         self.headless = headless
-        self.mode = mode
         self.scene: gs.Scene = None
         self.robot: RigidEntity = None
         self.terrain: RigidEntity = None
@@ -80,11 +98,7 @@ class GenesisEnv:
 
     @property
     def unwrapped(self):
-        """Returns the base non-wrapped environment.
-
-        Returns:
-            Env: The base non-wrapped :class:`GenesisEnv` instance
-        """
+        """Returns this environment, not a wrapped version of it."""
         return self
 
     @property
@@ -95,8 +109,7 @@ class GenesisEnv:
     @property
     def extras(self) -> dict:
         """
-        The extras/infos dictionary that should be returned by the step and reset functions.
-        This dictionary will be cleared at the start of every step.
+        The extras/infos dictionary reset at the start of every step, and contains additional data about the environment during that step.
         """
         return self._extras
 
@@ -148,8 +161,8 @@ class GenesisEnv:
 
     def build(self) -> None:
         """
-        Builds the scene and other supporting components necessary for the training environment.
-        This assumes that the scene has already been constructed and assigned to the <env>.scene attribute.
+        Builds the environment before the first step.
+        The Genesis scene and all the scene entities must be added before calling this method.
         """
         assert (
             self.scene is not None
@@ -160,13 +173,13 @@ class GenesisEnv:
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """
-        Take an action for each parallel environment.
+        Performs a step in all environments with the given actions.
 
         Args:
-            actions: Batch of actions with the :attr:`action_space` shape.
+            actions: Batch of actions for each environment with the :attr:`action_space` shape.
 
         Returns:
-            Batch of (observations, rewards, terminations, truncations, infos/extras)
+            Batch of (observations, rewards, terminations, truncations, info/extras)
         """
         self._extras = {}
         self._extras[self.extras_logging_key] = {}
@@ -190,10 +203,11 @@ class GenesisEnv:
         envs_idx: list[int] = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
-        Reset one or all parallel environments.
+        Reset one or more environments.
+        Each of the registered managers will also be reset for those environments.
 
         Args:
-            envs_idx: The environment ids to reset. If None, all environments are reset.
+            env_ids: The environment ids to reset. If None, all environments are reset.
 
         Returns:
             A batch of observations and info from the vectorized environment.
@@ -233,7 +247,23 @@ class GenesisEnv:
 
     def get_observations(self) -> torch.Tensor:
         """
-        Return the current observations for each environment.
+        Returns the current observations for each environment.
+        Override this method to return the observations for your environment.
+
+        Example::
+
+            def get_observations(self) -> torch.Tensor:
+                return torch.cat(
+                [
+                    self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
+                    self.projected_gravity,  # 3
+                    self.commands * self.commands_scale,  # 3
+                    (self.dof_pos - self.default_dof_pos) * self.obs_scales["dof_pos"],  # 12
+                    self.dof_vel * self.obs_scales["dof_vel"],  # 12
+                    self.actions,  # 12
+                ],
+                axis=-1,
+            )
         """
         if self.observation_space is not None:
             return torch.zeros(
@@ -245,8 +275,4 @@ class GenesisEnv:
 
     def close(self):
         """Close the environment."""
-        pass
-
-    def render(self):
-        """Not implemented."""
         pass

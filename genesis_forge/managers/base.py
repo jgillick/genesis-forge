@@ -15,7 +15,7 @@ ManagerType = Literal[
 
 class BaseManager:
     """
-    A base manager describing the interface for all other managers
+    The base class used to define the interface for all other managers
     """
 
     def __init__(

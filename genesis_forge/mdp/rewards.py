@@ -23,18 +23,20 @@ Aliveness
 """
 
 
-def is_alive(env: GenesisEnv, term_manager: TerminationManager) -> torch.Tensor:
+def is_alive(env: GenesisEnv, termination_manager: TerminationManager) -> torch.Tensor:
     """
     Reward for being alive and not terminating this step.
     """
-    return (~term_manager.terminated).float()
+    return (~termination_manager.terminated).float().detach()
 
 
-def is_terminated(env: GenesisEnv, term_manager: TerminationManager) -> torch.Tensor:
+def is_terminated(
+    env: GenesisEnv, termination_manager: TerminationManager
+) -> torch.Tensor:
     """
     Penalize terminated episodes that terminated.
     """
-    return term_manager.terminated.float()
+    return termination_manager.terminated.float().detach()
 
 
 """

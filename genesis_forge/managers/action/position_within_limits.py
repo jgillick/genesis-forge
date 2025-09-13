@@ -7,7 +7,7 @@ from .position_action_manager import PositionActionManager, DofValue
 
 class PositionWithinLimitsActionManager(PositionActionManager):
     """
-    Converts actions from the range -1.0 - 1.0 to DOF positions within the limits of the actuators.
+    This is similar to `PositionActionManager` but converts actions from the range -1.0 - 1.0 to DOF positions within the limits of the actuators.
 
     Args:
         env: The environment to manage the DOF actuators for.
@@ -26,6 +26,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         resample_randomization_s: The time interval to resample the randomization values.
 
     Example::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -97,7 +98,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
     def build(self):
         """
-        Get position Limits and convert to shape (num_envs, limit)
+        Builds the manager and initialized all the buffers.
         """
         super().build()
 
@@ -108,7 +109,14 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
     def handle_actions(self, actions: torch.Tensor) -> None:
         """
-        Convert the actions into DOF positions and set the DOF actuators.
+        Converts the actions to position commands, and send them to the DOF actuators.
+        Override this function if you want to change the action handling logic.
+
+        Args:
+            actions: The incoming step actions to handle.
+
+        Returns:
+            The processed and handled actions.
         """
         actions = actions.clamp(-1.0, 1.0)
         self._actions = actions

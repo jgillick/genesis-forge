@@ -14,7 +14,7 @@ DofValue = dict[str, T] | T
 """Mapping of DOF name (literal or regex) to value."""
 
 
-def ensure_dof_pattern(value: DofValue) -> dict[str, Any] | None:
+def _ensure_dof_pattern(value: DofValue) -> dict[str, Any] | None:
     """
     Ensures the value is a dictionary in the form: {<joint name or regex>: <value>}.
 
@@ -45,9 +45,31 @@ class PositionActionManager(BaseActionManager):
 
     .. math::
 
-       \text{action} = \text{offset} + \text{scaling} \times \text{input action}
+       output = offset + scaling * action
+
+    If `use_default_offset` is `True`, the `offset` will be set to the `default_pos` value for each DOF/joint.
+
+    Args:
+        env: The environment to manage the DOF actuators for.
+        joint_names: The joint names to manage.
+        default_pos: The default DOF positions.
+        scale: How much to scale the action.
+        offset: Offset factor for the action.
+        use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
+        clip: Clip the action values to the range.
+        pd_kp: The PD kp values.
+        pd_kv: The PD kv values.
+        max_force: The max force values.
+        damping: The damping values.
+        stiffness: The stiffness values.
+        frictionloss: The frictionloss values.
+        reset_random_scale: Scale all DOF values on reset by this amount +/-.
+        quiet_action_errors: Whether to quiet action errors.
+        randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
+        resample_randomization_s: The time interval to resample the randomization values.
 
     Example::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -74,6 +96,7 @@ class PositionActionManager(BaseActionManager):
                 )
 
     Example using the manager directly::
+
         class MyEnv(GenesisEnv):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -138,41 +161,21 @@ class PositionActionManager(BaseActionManager):
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
     ):
-        """
-        Args:
-            env: The environment to manage the DOF actuators for.
-            joint_names: The joint names to manage.
-            default_pos: The default DOF positions.
-            scale: How much to scale the action.
-            offset: Offset factor for the action.
-            use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
-            clip: Clip the action values to the range.
-            pd_kp: The PD kp values.
-            pd_kv: The PD kv values.
-            max_force: The max force values.
-            damping: The damping values.
-            stiffness: The stiffness values.
-            frictionloss: The frictionloss values.
-            reset_random_scale: Scale all DOF values on reset by this amount +/-.
-            quiet_action_errors: Whether to quiet action errors.
-            randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
-            resample_randomization_s: The time interval to resample the randomization values.
-        """
         super().__init__(env)
         self._has_initialized = False
-        self._default_pos_cfg = ensure_dof_pattern(default_pos)
-        self._offset_cfg = ensure_dof_pattern(offset)
-        self._scale_cfg = ensure_dof_pattern(scale)
-        self._clip_cfg = ensure_dof_pattern(clip)
-        self._pd_kp_cfg = ensure_dof_pattern(pd_kp)
-        self._pd_kv_cfg = ensure_dof_pattern(pd_kv)
-        self._max_force_cfg = ensure_dof_pattern(max_force)
-        self._damping_cfg = ensure_dof_pattern(damping)
-        self._stiffness_cfg = ensure_dof_pattern(stiffness)
-        self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
+        self._default_pos_cfg = _ensure_dof_pattern(default_pos)
+        self._offset_cfg = _ensure_dof_pattern(offset)
+        self._scale_cfg = _ensure_dof_pattern(scale)
+        self._clip_cfg = _ensure_dof_pattern(clip)
+        self._pd_kp_cfg = _ensure_dof_pattern(pd_kp)
+        self._pd_kv_cfg = _ensure_dof_pattern(pd_kv)
+        self._max_force_cfg = _ensure_dof_pattern(max_force)
+        self._damping_cfg = _ensure_dof_pattern(damping)
+        self._stiffness_cfg = _ensure_dof_pattern(stiffness)
+        self._frictionloss_cfg = _ensure_dof_pattern(frictionloss)
         self._quiet_action_errors = quiet_action_errors
         self._enabled_dof = None
-        self._noise_scale = noise_scale if self.env.mode != "play" else 0.0
+        self._noise_scale = noise_scale
         self._use_default_offset = use_default_offset
 
         self._default_dofs_pos: torch.Tensor = None
@@ -195,7 +198,7 @@ class PositionActionManager(BaseActionManager):
     @property
     def action_space(self) -> tuple[float, float]:
         """
-        If using the default action handler, the action space is [-1, 1].
+        Returns the actions space for the environment, based on the number of DOFs defined in this action manager.
         """
         return spaces.Box(
             low=-np.inf,
@@ -224,7 +227,9 @@ class PositionActionManager(BaseActionManager):
 
     @property
     def default_dofs_pos(self) -> torch.Tensor:
-        """Return the default DOF positions."""
+        """
+        Return the default DOF positions.
+        """
         return self._default_dofs_pos
 
     """
@@ -232,14 +237,27 @@ class PositionActionManager(BaseActionManager):
     """
 
     def get_dofs_position(self, noise: float = 0.0):
-        """Return the position of the enabled DOFs."""
+        """
+        Return the current position of the enabled DOFs.
+        This is a wrapper for `RigidEntity.get_dofs_position`.
+
+        Args:
+            noise: The maximum amount of random noise to add to the position values returned.
+        """
         pos = self.env.robot.get_dofs_position(self.dofs_idx)
         if noise > 0.0:
             pos = self._add_random_noise(pos, noise)
         return pos
 
     def get_dofs_velocity(self, noise: float = 0.0, clip: tuple[float, float] = None):
-        """Return the velocity of the enabled DOFs."""
+        """
+        Return the current velocity of the enabled DOFs.
+        This is a wrapper for `RigidEntity.get_dofs_velocity`.
+
+        Args:
+            noise: The maximum amount of random noise to add to the velocity values returned.
+            clip: Clip the velocity returned.
+        """
         vel = self.env.robot.get_dofs_velocity(self.dofs_idx)
         if noise > 0.0:
             vel = self._add_random_noise(vel, noise)
@@ -248,11 +266,21 @@ class PositionActionManager(BaseActionManager):
         return vel
 
     def get_dofs_force(self, noise: float = 0.0, clip_to_max_force: bool = False):
-        """Return the force of the enabled DOFs."""
+        """
+        Return the force experienced by the enabled DOFs.
+        This is a wrapper for `RigidEntity.get_dofs_force`.
+
+        Args:
+            noise: The maximum amount of random noise to add to the force values returned.
+            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter.
+
+        Returns:
+            The force experienced by the enabled DOFs.
+        """
         force = self.env.robot.get_dofs_force(self.dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
-        if clip_to_max_force:
+        if clip_to_max_force and self._force_range is not None:
             force = force.clamp(self._force_range[0], self._force_range[1])
         return force
 
@@ -261,7 +289,9 @@ class PositionActionManager(BaseActionManager):
     """
 
     def build(self):
-        """Define the buffers for the DOF values."""
+        """
+        Builds the manager and initialized all the buffers.
+        """
 
         # Find all enabled joints by names/patterns
         self._enabled_dof = dict()
@@ -270,7 +300,7 @@ class PositionActionManager(BaseActionManager):
                 continue
             name = joint.name
             for pattern in self._joint_name_cfg:
-                if re.match(pattern, name):
+                if re.match(f"^{pattern}$", name):
                     self._enabled_dof[name] = joint.dof_start
                     break
 
@@ -341,15 +371,27 @@ class PositionActionManager(BaseActionManager):
 
     def step(self, actions: torch.Tensor) -> None:
         """
-        Convert the actions into DOF positions and set the DOF actuators.
+        Take the incoming actions for this step and handle them.
+
+        Args:
+            actions: The incoming step actions to handle.
         """
         if not self.enabled:
             return
         super().step(actions)
         self.handle_actions(actions)
 
-    def handle_actions(self, actions: torch.Tensor):
-        """Convert actions to position commands, and send them to the DOF actuators."""
+    def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
+        """
+        Converts the actions to position commands, and send them to the DOF actuators.
+        Override this function if you want to change the action handling logic.
+
+        Args:
+            actions: The incoming step actions to handle.
+
+        Returns:
+            The processed and handled actions.
+        """
 
         # Validate actions
         if not self._quiet_action_errors:
@@ -366,8 +408,6 @@ class PositionActionManager(BaseActionManager):
                 min=self._clip_values[:, 0],
                 max=self._clip_values[:, 1],
             )
-        # actions = torch.clip(actions, -100, 100)
-        # actions = actions * 0.25 + self._offset_values
 
         # Set target positions
         self.env.robot.control_dofs_position(actions, self.dofs_idx)
@@ -440,7 +480,7 @@ class PositionActionManager(BaseActionManager):
         value_arr = [default_value] * self.num_actions
         for pattern, value in values.items():
             for i, name in enumerate(self._enabled_dof.keys()):
-                if not is_set[i] and re.match(pattern, name):
+                if not is_set[i] and re.match(f"^{pattern}$", name):
                     is_set[i] = True
                     value_arr[i] = value
         return value_arr

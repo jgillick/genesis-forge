@@ -17,7 +17,13 @@ class EntityManager(BaseManager):
     """
     Provides options for resetting an entity and adding noise and randomization to its state.
 
+    Args:
+        env: The environment instance.
+        entity_attr: The attribute name of the environment that the entity is stored in.
+        on_reset: The reset configuration for the entity.
+
     Example::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -54,13 +60,6 @@ class EntityManager(BaseManager):
         entity_attr: str,
         on_reset: dict[str, EntityResetConfig],
     ):
-        """
-        Initialize the entity manager.
-
-        Args:
-            env: The environment instance.
-            entity_attr: The attribute name of the environment that the entity is stored in.
-        """
         super().__init__(env, type="entity")
         if hasattr(env, "add_entity_manager"):
             env.add_entity_manager(self)

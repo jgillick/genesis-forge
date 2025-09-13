@@ -32,11 +32,12 @@ class EntityResetConfig(TypedDict):
     fn: ResetConfigFn | ResetConfigFnClass
     """
     Function, or class function, that will be called on reset.
-    The args passed to the function are:
-        - env: The environment instance.
-        - entity: The entity instance.
-        - envs_idx: The environment ids for which the entity is to be reset.
-        - **params: Additional parameters to pass to the function from the params dictionary.
+
+    Args:
+        env: The environment instance.
+        entity: The entity instance.
+        envs_idx: The environment ids for which the entity is to be reset.
+        **params: Additional parameters to pass to the function from the params dictionary.
     """
 
     params: dict[str, Any]

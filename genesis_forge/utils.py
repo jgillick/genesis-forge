@@ -54,7 +54,7 @@ def entity_projected_gravity(entity: RigidEntity) -> torch.Tensor:
     return transform_by_quat(gravity, inv_base_quat)
 
 
-def links_idx_by_name_pattern(entity: RigidEntity, name_re: str) -> list[int]:
+def links_idx_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[int]:
     """
     Find a list of entity links by name regex pattern, and return their indices.
 
@@ -67,6 +67,6 @@ def links_idx_by_name_pattern(entity: RigidEntity, name_re: str) -> list[int]:
     """
     links_idx = []
     for link in entity.links:
-        if re.match(name_re, link.name):
+        if link.name == name_pattern or re.match(f"^{name_pattern}$", link.name):
             links_idx.append(link.idx)
     return links_idx

@@ -31,7 +31,13 @@ class ObservationManager(BaseManager):
     """
     Defines the observations and observation space for the environment.
 
+    Args:
+        env: The environment.
+        cfg: The configuration for the observation manager.
+        noise: The range of random noise to add to all observations.
+
     Example with ManagedEnvironment::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -129,12 +135,6 @@ class ObservationManager(BaseManager):
         cfg: dict[str, ObservationConfig],
         noise: tuple[float, float] | None = None,
     ):
-        """
-        Args:
-            env: The environment.
-            cfg: The configuration for the observation manager.
-            noise: The range of random noise to add to all observations.
-        """
         super().__init__(env, "observation")
         self.cfg = cfg
         self.noise = noise
@@ -185,17 +185,17 @@ class ObservationManager(BaseManager):
                 value = fn(env=self.env, **params)
 
                 # Convert to tensor, if necessary
-                if not isinstance(value, torch.Tensor):
-                    value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
+                # if not isinstance(value, torch.Tensor):
+                #     value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
 
                 # Apply scale
                 if scale is not None and scale != 1.0:
-                    value = value * scale
+                    value *= scale
 
                 # Add noise
                 if noise is not None and noise != 0.0:
                     noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
-                    value = value + noise_value
+                    value += noise_value
 
                 obs.append(value)
             except Exception as e:

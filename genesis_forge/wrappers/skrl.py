@@ -8,7 +8,7 @@ from genesis_forge.wrappers.wrapper import Wrapper as GenesisWrapper
 
 class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     """
-    Wraps a Genesis environment to be used with skrl.
+    A wrapper that makes your genesis forge environment compatible with the skrl training framework.
     """
 
     can_be_wrapped = False
@@ -62,12 +62,10 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
         return self.env.state()
 
     def render(self, *args, **kwargs) -> Any:
-        """Render the environment
-
-        :return: Any value from the wrapped environment
-        :rtype: any
         """
-        return self._env.render(*args, **kwargs)
+        Not implemented for Genesis Forge environments.
+        """
+        pass
 
     def close(self) -> None:
         """Close the environment"""

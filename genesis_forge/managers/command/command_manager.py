@@ -17,8 +17,15 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 class CommandManager(BaseManager):
     """
     Generates a command from uniform distribution of values.
+    You can use this to regularly sample a commands for each environment, such as a height command, a target destination, or a specific pose.
 
-    Example:
+    Args:
+        env: The environment to control
+        range: The number range, or dict of ranges, to generate target command(s) for
+        resample_time_s: The time interval between changing the command
+
+    Example::
+
         class MyEnv(GenesisEnv):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -58,10 +65,6 @@ class CommandManager(BaseManager):
                     dim=-1,
                 )
 
-    Args:
-        env: The environment to control
-        range: The number range, or dict of ranges, to generate target command(s) for
-        resample_time_s: The time interval between changing the command
     """
 
     def __init__(
@@ -163,15 +166,18 @@ class CommandManager(BaseManager):
         Bypass the internal command controller, and generate the command values with an external control function.
         This can be used to connect a gamepad, joystick, or other external controller to the command manager.
 
+        Args:
+            controller: A function that takes the step index and returns a tensor of command values with the shape (num_envs, num_ranges).
+
         Example::
+
             N_ENVS = 1
             MIN_HEIGHT = 0.1
             MAX_HEIGHT = 0.2
 
             # Create environment
             class MyEnv(GenesisEnv):
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
+                def config(self):
                     self.height_command = CommandManager(self, range=(MIN_HEIGHT, MAX_HEIGHT))
                 # ...
 
@@ -187,9 +193,6 @@ class CommandManager(BaseManager):
             env = MyEnv(num_envs=N_ENVS)
             env.build()
             env.command_manager.use_external_controller(gamepad_controller)
-
-        Args:
-            controller: A function that takes the step index and returns a tensor of command values with the shape (num_envs, num_ranges).
         """
         self._external_controller = controller
 
@@ -201,7 +204,12 @@ class CommandManager(BaseManager):
         """
         A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
 
+        Args:
+            gamepad: The gamepad to use.
+            range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+
         Example::
+
             # Create environment
             class MyEnv(GenesisEnv):
                 def __init__(self, *args, **kwargs):
@@ -220,6 +228,7 @@ class CommandManager(BaseManager):
             env.command_manager.use_gamepad(gamepad_controller, range_axis=3)
 
         Example with multiple ranges::
+
             # Create environment
             class MyEnv(GenesisEnv):
                 def __init__(self, *args, **kwargs):
@@ -247,11 +256,6 @@ class CommandManager(BaseManager):
                     "cmd1": 2,
                     "cmd2": 3,
                 })
-
-
-        Args:
-            gamepad: The gamepad to use.
-            range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
         """
         self._external_controller = self._gamepad_axis_command
 

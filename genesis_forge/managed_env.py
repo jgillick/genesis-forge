@@ -3,7 +3,7 @@ from typing import Any
 from gymnasium import spaces
 import genesis as gs
 
-from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.genesis_env import GenesisEnv, EnvMode
 from genesis_forge.managers.base import BaseManager, ManagerType
 
 
@@ -11,6 +11,14 @@ class ManagedEnvironment(GenesisEnv):
     """
     An environment which moves a lot of the logic of the environment to manager classes.
     This helps to keep the environment code clean and modular.
+
+    Args:
+        num_envs: Number of parallel environments.
+        dt: Simulation time step.
+        max_episode_length_sec: Maximum episode length in seconds.
+        max_episode_random_scaling: Randomly scale the maximum episode length by this amount (+/-) so that not all environments reset at the same time.
+        headless: Run the environment in headless mode.
+        extras_logging_key: The key used, in info/extras dict, which is returned by step and reset functions, to send data to tensorboard by the RL agent.
 
     Example::
 
@@ -80,22 +88,36 @@ class ManagedEnvironment(GenesisEnv):
                         "actions": {"fn": lambda: env.actions},
                     },
                 )
-
-
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        num_envs: int = 1,
+        dt: float = 1 / 100,
+        max_episode_length_sec: int | None = 10,
+        max_episode_random_scaling: float = 0.0,
+        headless: bool = True,
+        extras_logging_key: str = "episode",
+    ):
+        super().__init__(
+            num_envs=num_envs,
+            dt=dt,
+            max_episode_length_sec=max_episode_length_sec,
+            max_episode_random_scaling=max_episode_random_scaling,
+            headless=headless,
+            extras_logging_key=extras_logging_key,
+        )
 
         self.managers: dict[ManagerType, BaseManager | list[BaseManager] | None] = {
-            "action": None,  # there can only be one
-            "observation": None,  # there can only be one
-            "reward": [],
-            "termination": [],
             "contact": [],
-            "terrain": [],
             "entity": [],
             "command": [],
+            "terrain": [],
+            # there can only be one of each of these
+            "action": None,
+            "observation": None,
+            "reward": None,
+            "termination": None,
         }
 
         self._action_space = None
@@ -104,9 +126,11 @@ class ManagedEnvironment(GenesisEnv):
             (self.num_envs,), device=gs.device, dtype=gs.tc_float
         )
         self._terminated_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=torch.bool
+            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
         )
-        self._truncated_buf = torch.zeros_like(self._terminated_buf)
+        self._truncated_buf = torch.zeros(
+            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
+        )
 
     """
     Properties
@@ -114,7 +138,9 @@ class ManagedEnvironment(GenesisEnv):
 
     @property
     def action_space(self) -> torch.Tensor:
-        """The action space, provided by the action manager, if it exists."""
+        """
+        The action space, provided by the action manager, if it exists.
+        """
         if self.managers["action"] is not None:
             return self.managers["action"].action_space
         if self._action_space is not None:
@@ -130,7 +156,9 @@ class ManagedEnvironment(GenesisEnv):
 
     @property
     def observation_space(self) -> spaces.Space:
-        """The observation space, provided by the observation manager, if it exists."""
+        """
+        The observation space, provided by the observation manager, if it exists.
+        """
         if self.managers["observation"] is not None:
             return self.managers["observation"].observation_space
         if self._observation_space is not None:
@@ -151,6 +179,11 @@ class ManagedEnvironment(GenesisEnv):
     def add_manager(self, manager_type: ManagerType, manager: BaseManager):
         """
         Adds a manager to the environment.
+        This will automatically be called by the manager class.
+
+        Args:
+            manager_type: The type of manager to add.
+            manager: The manager to add.
         """
         if manager_type not in self.managers:
             raise ValueError(f"'{manager_type}' is not a valid manager type.")
@@ -170,11 +203,33 @@ class ManagedEnvironment(GenesisEnv):
     """
 
     def config(self):
-        """Configure the environment managers here."""
+        """
+        Override this method and initialize all your managers here.
+
+        Example::
+
+            def config(self):
+                EntityManager(
+                    self,
+                    entity_attr="robot",
+                    on_reset={
+                        "position": {
+                            "fn": reset.position,
+                            "params": {
+                                "position": INITIAL_BODY_POSITION,
+                                "quat": INITIAL_QUAT,
+                            },
+                        },
+                    },
+                )
+        """
         pass
 
     def build(self):
-        """Called when the scene is built"""
+        """
+        Builds the environment before the first step.
+        The Genesis scene and all the scene entities must be added before calling this method.
+        """
         super().build()
         self.config()
 
@@ -184,10 +239,10 @@ class ManagedEnvironment(GenesisEnv):
             self.managers["action"].build()
         for contact_manager in self.managers["contact"]:
             contact_manager.build()
-        for termination_manager in self.managers["termination"]:
-            termination_manager.build()
-        for reward_manager in self.managers["reward"]:
-            reward_manager.build()
+        if self.managers["termination"] is not None:
+            self.managers["termination"].build()
+        if self.managers["reward"] is not None:
+            self.managers["reward"].build()
         for command_manager in self.managers["command"]:
             command_manager.build()
         for entity_manager in self.managers["entity"]:
@@ -199,7 +254,13 @@ class ManagedEnvironment(GenesisEnv):
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """
-        Performs a step in the environment.
+        Performs a step in all environments with the given actions.
+
+        Args:
+            actions: Batch of actions for each environment with the :attr:`action_space` shape.
+
+        Returns:
+            Batch of (observations, rewards, terminations, truncations, extras)
         """
         super().step(actions)
 
@@ -217,26 +278,26 @@ class ManagedEnvironment(GenesisEnv):
             contact_manager.step()
 
         # Calculate termination and truncation
-        self._terminated_buf[:] = False
-        self._truncated_buf[:] = False
-        for termination_manager in self.managers["termination"]:
-            terminated, truncated = termination_manager.step()
-            self._terminated_buf[:] |= terminated
-            self._truncated_buf[:] |= truncated
-        dones = self._terminated_buf | self._truncated_buf
-        reset_env_idx = dones.nonzero(as_tuple=False).reshape((-1,))
+        reset_env_idx = None
+        truncated = self._truncated_buf
+        terminated = self._terminated_buf
+        if self.managers["termination"] is not None:
+            terminated, truncated = self.managers["termination"].step()
+            reset_env_idx = (
+                (terminated | truncated).nonzero(as_tuple=False).reshape((-1,)).detach()
+            )
 
         # Calculate rewards
-        self._reward_buf[:] = 0.0
-        for reward_manager in self.managers["reward"]:
-            self._reward_buf += reward_manager.step()
+        rewards = self._reward_buf
+        if self.managers["reward"] is not None:
+            rewards = self.managers["reward"].step()
 
         # Command managers
         for command_manager in self.managers["command"]:
             command_manager.step()
 
         # Reset environments
-        if reset_env_idx.numel() > 0:
+        if reset_env_idx is not None and reset_env_idx.numel() > 0:
             self.reset(reset_env_idx)
 
         # Get observation
@@ -244,28 +305,37 @@ class ManagedEnvironment(GenesisEnv):
 
         return (
             obs,
-            self._reward_buf,
-            self._terminated_buf,
-            self._truncated_buf,
+            rewards,
+            terminated,
+            truncated,
             self.extras,
         )
 
     def reset(
         self, env_ids: list[int] | None = None
     ) -> tuple[torch.Tensor, dict[str, Any]]:
-        """Reset managers."""
+        """
+        Reset one or more environments.
+        Each of the registered managers will also be reset for those environments.
+
+        Args:
+            env_ids: The environment ids to reset. If None, all environments are reset.
+
+        Returns:
+            A batch of observations (if env_ids is None) and an info dictionary from the vectorized environment.
+        """
         (obs, _) = super().reset(env_ids)
 
         if self.managers["action"] is not None:
-            self.action_manager.reset(env_ids)
+            self.managers["action"].reset(env_ids)
         for entity_manager in self.managers["entity"]:
             entity_manager.reset(env_ids)
         for contact_manager in self.managers["contact"]:
             contact_manager.reset(env_ids)
-        for termination_manager in self.managers["termination"]:
-            termination_manager.reset(env_ids)
-        for reward_manager in self.managers["reward"]:
-            reward_manager.reset(env_ids)
+        if self.managers["termination"] is not None:
+            self.managers["termination"].reset(env_ids)
+        if self.managers["reward"] is not None:
+            self.managers["reward"].reset(env_ids)
         for command_manager in self.managers["command"]:
             command_manager.reset(env_ids)
         if self.managers["observation"] is not None:
@@ -279,7 +349,11 @@ class ManagedEnvironment(GenesisEnv):
         return obs, self.extras
 
     def get_observations(self) -> torch.Tensor:
-        """Return the current observations for each environment."""
+        """
+        Returns the current observations for each environment.
+        If you use the ObservationManager, this will be handled automatically.
+        Otherwise, override this method to return the observations.
+        """
         if self.managers["observation"] is not None:
             return self.managers["observation"].get_observations()
         return super().get_observations()

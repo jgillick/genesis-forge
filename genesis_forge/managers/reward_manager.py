@@ -33,10 +33,9 @@ class RewardManager(BaseManager):
         logging_tag: The section name used to log the rewards to tensorboard.
 
     Example with ManagedEnvironment::
-        class MyEnv(ManagedEnvironment):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
 
+        class MyEnv(ManagedEnvironment):
+            def config(self):
                 self.reward_manager = RewardManager(
                     self,
                     cfg={
@@ -128,6 +127,7 @@ class RewardManager(BaseManager):
         if not self.enabled:
             return self._reward_buf
 
+        dt = self.env.dt
         for name, cfg in self.cfg.items():
             fn = cfg["fn"]
             weight = cfg.get("weight", 0.0)
@@ -137,8 +137,17 @@ class RewardManager(BaseManager):
             if weight == 0:
                 continue
 
-            value = fn(self.env, **params) * weight * self.env.dt
+            # Get reward value from function
+            value = fn(self.env, **params).detach()
+            if weight != 1.0:
+                value = value * weight
+            if dt != 1.0:
+                value = value * dt
+
+            # Add to reward buffer
             self._reward_buf += value
+
+            # Add to episode data for logging (if enabled)
             if self.logging_enabled:
                 self._episode_data[name] += value
 
@@ -152,23 +161,27 @@ class RewardManager(BaseManager):
         if self.enabled and self.logging_enabled:
             logging_dict = self.env.extras[self.env.extras_logging_key]
 
+            # Get episode lengths for the reset environments
             episode_lengths = self._episode_length[envs_idx]
             valid_episodes = episode_lengths > 0
-            for name, value in self._episode_data.items():
-                # Log episodes with at least one step (otherwise it could cause a divide by zero error)
-                if torch.any(valid_episodes):
-                    # Calculate average for each episode based on its actual length
-                    episode_avg = torch.zeros_like(value[envs_idx])
-                    episode_avg[valid_episodes] = (
-                        value[envs_idx][valid_episodes]
-                        / episode_lengths[valid_episodes]
-                    )
 
-                    # Take the mean across valid episodes only
-                    episode_mean = torch.mean(episode_avg[valid_episodes])
+            # Only proceed if there are valid episodes to log
+            if torch.any(valid_episodes):
+                for name, value in self._episode_data.items():
+                    # Get values for reset environments
+                    episode_values = value[envs_idx]
+
+                    # Calculate episode averages efficiently
+                    # Use in-place operations to avoid creating temporary tensors
+                    episode_avg = episode_values.clone()
+                    episode_avg[valid_episodes] /= episode_lengths[valid_episodes]
+
+                    # Calculate mean across valid episodes only
+                    episode_mean = episode_avg[valid_episodes].mean()
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
 
-                # Reset episodic sum
+                # Reset episodic data
                 self._episode_data[name][envs_idx] = 0.0
 
+        # Reset episode lengths for the reset environments
         self._episode_length[envs_idx] = 0

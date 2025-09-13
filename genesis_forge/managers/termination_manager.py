@@ -33,10 +33,9 @@ class TerminationManager(BaseManager):
         logging_tag: The section tag used to log the termination signals to tensorboard.
 
     Example with ManagedEnvironment::
-        class MyEnv(ManagedEnvironment):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
 
+        class MyEnv(ManagedEnvironment):
+            def config(self):
                 self.termination_manager = TerminationManager(
                     self,
                     term_cfg={
@@ -47,13 +46,8 @@ class TerminationManager(BaseManager):
                     },
                 )
 
-            def step(self, actions: torch.Tensor):
-                _, reward, terminated, truncated, info = super().step(actions)
-
-                obs = self.observations()
-                return obs, reward, terminated, truncated, info
-
     Example using the termination manager directly::
+
         class MyEnv(GenesisEnv):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -105,7 +99,7 @@ class TerminationManager(BaseManager):
         env: GenesisEnv,
         term_cfg: dict[str, TerminationConfig],
         logging_enabled: bool = True,
-        logging_tag: str = "Dones",
+        logging_tag: str = "Terminations",
     ):
         super().__init__(env, type="termination")
 
@@ -116,7 +110,6 @@ class TerminationManager(BaseManager):
             env.num_envs, device=gs.device, dtype=torch.bool
         )
         self._truncated_buf = torch.zeros_like(self._terminated_buf)
-        self._term_data: dict[str, torch.Tensor] = dict()
 
     @property
     def dones(self) -> torch.Tensor:
@@ -141,45 +134,48 @@ class TerminationManager(BaseManager):
             terminated - The termination signals for the environments. Shape is (num_envs,).
             truncated - The truncation signals for the environments. Shape is (num_envs,).
         """
-        self._term_data = dict()
         self._terminated_buf[:] = False
         self._truncated_buf[:] = False
         if not self.enabled:
             return self._terminated_buf, self._truncated_buf
 
+        logging_dict = self.env.extras[self.env.extras_logging_key]
         for name, cfg in self.term_cfg.items():
             try:
                 fn = cfg["fn"]
                 params = cfg.get("params", dict())
                 trunc = cfg.get("time_out", False)
 
-                # Get value and ensure it's boolean
-                value = fn(self.env, **params)
+                # Get termination value
+                value = fn(self.env, **params).detach()
+
+                # Convert to bool in-place if needed to avoid creating new tensor
                 if value.dtype != torch.bool:
                     print(
                         f"Warning: Termination function '{name}' returned {value.dtype} tensor, converting to bool"
                     )
-                    value = value.bool()
-                self._term_data[name] = value
+                    # Use explicit conversion to avoid PyTorch's .bool() behavior with negative values
+                    if value.dtype == torch.float32 or value.dtype == torch.float16:
+                        value = value > 0.0  # Only positive values indicate termination
+                    elif value.dtype == torch.int32 or value.dtype == torch.int64:
+                        value = value > 0  # Only positive integers indicate termination
+                    else:
+                        value = value.bool()
 
-                # Add to the correct buffer
+                # Add to the correct buffer using in-place operations
                 if trunc:
                     self._truncated_buf |= value
                 else:
                     self._terminated_buf |= value
+
+                # Efficient logging - avoid CPU transfer and multiple tensor operations
+                if self.logging_enabled:
+                    logging_dict[f"{self.logging_tag} / {name}"] = (
+                        value.float().mean().detach()
+                    )
 
             except Exception as e:
                 print(f"Error calculating termination for '{name}'")
                 raise e
 
         return self._terminated_buf, self._truncated_buf
-
-    def reset(self, env_ids: list[int] = None):
-        """Track terminated/truncated environments."""
-        super().reset(env_ids)
-        if not self.logging_enabled or not self.enabled:
-            return
-
-        logging_dict = self.env.extras[self.env.extras_logging_key]
-        for name, value in self._term_data.items():
-            logging_dict[f"{self.logging_tag} / {name}"] = value.float().mean()

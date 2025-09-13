@@ -1,3 +1,4 @@
+from __future__ import annotations
 import torch
 import torch.nn.functional as F
 import genesis as gs
@@ -9,12 +10,17 @@ from genesis_forge.managers import BaseManager
 
 class TerrainManager(BaseManager):
     """
-    Provides utility functions for the terrain.
+    Provides useful functions for the environment terrain.
     The manager maps out the sizes and heights of the terrain and subterrain.
     This allows your environment to calculate the robot's height above rough terrain.
     You can also generate random positions on the terrain or subterrain to place your robots on reset.
 
+    Args:
+        env: The environment instance.
+        terrain_attr: The attribute name of the terrain in the environment.
+
     Example::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -49,13 +55,6 @@ class TerrainManager(BaseManager):
                     height_offset=0.15,
                 )
                 self.robot.set_pos(pos, envs_idx=envs_idx)
-
-    Args:
-        env: The environment instance.
-        terrain_attr: The attribute name of the terrain in the environment.
-
-    Returns:
-        The terrain manager instance.
     """
 
     def __init__(
@@ -76,6 +75,17 @@ class TerrainManager(BaseManager):
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
 
+        # Pre-allocated buffers for terrain height calculation to avoid memory allocations
+        self._norm_coords_buffer = torch.zeros(
+            (self.env.num_envs, 2), device=gs.device, dtype=gs.tc_float
+        )
+        self._grid_buffer = torch.zeros(
+            (self.env.num_envs, 1, 1, 2), device=gs.device, dtype=gs.tc_float
+        )
+        self._heights_buffer = torch.zeros(
+            self.env.num_envs, device=gs.device, dtype=gs.tc_float
+        )
+
     def build(self):
         """Cache the terrain height field"""
         self._terrain = self.env.__getattribute__(self._terrain_attr)
@@ -92,44 +102,60 @@ class TerrainManager(BaseManager):
         Returns:
             Heights in the torch.Tensor of shape (n_envs,)
         """
+        n_envs = x.shape[0]
+
         # No height field, so we can assume the height is consistent
         if self._height_field is None:
-            base_height = torch.zeros_like(x)
-            base_height[:] = self._origin[2]
-            return base_height
+            self._heights_buffer[:n_envs] = self._origin[2]
+            return self._heights_buffer[:n_envs]
 
         # Normalize coordinates to [-1, 1] range expected by grid_sample
         (x_min, x_max, y_min, y_max) = self._bounds
-        norm_x = 2 * (x - x_min) / (x_max - x_min) - 1
-        norm_y = 2 * (y - y_min) / (y_max - y_min) - 1
-        coords = torch.stack([norm_x, norm_y], dim=1)
 
-        # Reshape grid to (n_coords, 1, 1, 2) for grid_sample
-        grid = coords.unsqueeze(1).unsqueeze(1)
+        # Use pre-allocated buffer and in-place operations to avoid memory allocation
+        norm_x = self._norm_coords_buffer[:n_envs, 0]
+        norm_y = self._norm_coords_buffer[:n_envs, 1]
 
-        # Expand the height field to match the number of coordinates
-        height_field = self._height_field.expand(
-            coords.shape[0], 1, -1, -1
-        )  # (n_coords, 1, height, width)
+        # In-place normalization to avoid creating new tensors
+        # norm_x = 2 * (norm_x - x_min) / (x_max - x_min) - 1
+        norm_x.copy_(x)
+        norm_x.sub_(x_min)
+        norm_x.div_(x_max - x_min)
+        norm_x.mul_(2)
+        norm_x.sub_(1)
+        # norm_y = 2 * (norm_y - y_min) / (y_max - y_min) - 1
+        norm_y.copy_(y)
+        norm_y.sub_(y_min)
+        norm_y.div_(y_max - y_min)
+        norm_y.mul_(2)
+        norm_y.sub_(1)
+
+        # Use pre-allocated grid buffer
+        grid = self._grid_buffer[:n_envs]
+        grid[:, 0, 0, 0] = norm_x
+        grid[:, 0, 0, 1] = norm_y
 
         # Border padding mode isn't supported on Mac GPU (mps)
         # https://github.com/pytorch/pytorch/issues/125098
         if gs.device.type == "mps":
             padding_mode = "zeros"
-            grid = grid.clamp(-1, 1)
+            grid.clamp_(-1, 1)
         else:
             padding_mode = "border"
 
+        # Use the height field directly without expansion to save memory
+        # The height field is already in the correct format (1, height, width)
         interpolated = F.grid_sample(
-            height_field,  # (n_coords, 1, height, width)
-            grid,  # (n_coords, 1, 1, 2)
+            self._height_field.unsqueeze(0).expand(n_envs, -1, -1, -1),
+            grid,
             mode="bilinear",
             padding_mode=padding_mode,
             align_corners=True,
         )
 
         # Extract the height values at the specific coordinates
-        heights = interpolated.squeeze(1).squeeze(1).squeeze(1)  # (n_coords,)
+        heights = self._heights_buffer[:n_envs]
+        heights.copy_(interpolated[:, 0, 0, 0])
 
         return heights
 
@@ -194,9 +220,15 @@ class TerrainManager(BaseManager):
         y_min = y_origin + buffer_y_size
         y_max = y_origin + y_size - buffer_y_size
 
-        # Output
-        output[out_idx, 0] = torch.rand(num, device=gs.device) * (x_max - x_min) + x_min
-        output[out_idx, 1] = torch.rand(num, device=gs.device) * (y_max - y_min) + y_min
+        # Generate random positions in-place to avoid memory allocation
+        output[out_idx, 0] = (
+            torch.rand_like(output[out_idx, 0]) * (x_max - x_min) + x_min
+        )
+        output[out_idx, 1] = (
+            torch.rand_like(output[out_idx, 1]) * (y_max - y_min) + y_min
+        )
+
+        # Get terrain heights
         terrain_heights = self.get_terrain_height(
             output[out_idx, 0], output[out_idx, 1]
         )
@@ -257,12 +289,37 @@ class TerrainManager(BaseManager):
         if pos.ndim == 2:
             pos = pos[0]
 
-        # Get the total bounds of the terrain
-        (x_min, y_min, _) = aabb[0]
-        (x_max, y_max, _) = aabb[1]
-        self._origin = pos
-        self._size = (x_max - x_min, y_max - y_min)
-        self._bounds = (x_min, x_max, y_min, y_max)
+        # For terrain morphs, use the morph's position and size information
+        # instead of relying solely on AABB which might be incorrect
+        if (
+            hasattr(morph, "pos")
+            and hasattr(morph, "n_subterrains")
+            and morph.n_subterrains is not None
+        ):
+            # Use morph position as origin
+            self._origin = morph.pos
+
+            # Calculate total terrain size from subterrain configuration
+            subterrain_size = morph.subterrain_size
+            n_subterrains = morph.n_subterrains
+
+            total_x_size = subterrain_size[0] * n_subterrains[0]
+            total_y_size = subterrain_size[1] * n_subterrains[1]
+            self._size = (total_x_size, total_y_size)
+
+            # Calculate bounds from origin and size
+            x_min = self._origin[0]
+            y_min = self._origin[1]
+            x_max = x_min + total_x_size
+            y_max = y_min + total_y_size
+            self._bounds = (x_min, x_max, y_min, y_max)
+        else:
+            # Fallback to AABB method for non-terrain morphs
+            (x_min, y_min, _) = aabb[0]
+            (x_max, y_max, _) = aabb[1]
+            self._origin = pos
+            self._size = (x_max - x_min, y_max - y_min)
+            self._bounds = (x_min, x_max, y_min, y_max)
 
         # Get subterrain bounds
         if hasattr(morph, "n_subterrains") and morph.n_subterrains is not None:

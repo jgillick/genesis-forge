@@ -29,7 +29,7 @@ EXPERIMENT_NAME = "go2-terrain"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=220)
+parser.add_argument("--max_iterations", type=int, default=1200)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -37,28 +37,34 @@ args = parser.parse_args()
 
 def training_cfg(exp_name: str, max_iterations: int):
     return {
+        "runner_class_name": "OnPolicyRunner",
+        "seed": 1,
+        "num_steps_per_env": 24,
+        "save_interval": 100,
+        "empirical_normalization": None,
         "algorithm": {
             "class_name": "PPO",
+            "value_loss_coef": 1.0,
+            "use_clipped_value_loss": True,
             "clip_param": 0.2,
-            "desired_kl": 0.01,
             "entropy_coef": 0.01,
-            "gamma": 0.99,
-            "lam": 0.95,
-            "learning_rate": 0.001,
-            "max_grad_norm": 1.0,
             "num_learning_epochs": 5,
             "num_mini_batches": 4,
+            "learning_rate": 1.0e-3,
             "schedule": "adaptive",
-            "use_clipped_value_loss": True,
-            "value_loss_coef": 1.0,
+            "gamma": 0.99,
+            "lam": 0.95,
+            "desired_kl": 0.01,
+            "max_grad_norm": 1.0,
         },
-        "init_member_classes": {},
         "policy": {
-            "activation": "elu",
+            "class_name": "ActorCritic",
+            "init_noise_std": 1.0,
+            "actor_obs_normalization": False,
+            "critic_obs_normalization": False,
             "actor_hidden_dims": [512, 256, 128],
             "critic_hidden_dims": [512, 256, 128],
-            "init_noise_std": 1.0,
-            "class_name": "ActorCritic",
+            "activation": "elu",
         },
         "runner": {
             "checkpoint": -1,
@@ -71,12 +77,7 @@ def training_cfg(exp_name: str, max_iterations: int):
             "resume_path": None,
             "run_name": "",
         },
-        "runner_class_name": "OnPolicyRunner",
-        "seed": 1,
-        "num_steps_per_env": 24,
-        "save_interval": 100,
-        "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"]},
+        "obs_groups": {"policy": ["policy"], "critic": ["policy"]},
     }
 
 
@@ -118,6 +119,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Setup training runner and train
     print("💪 Training model...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_dir, device=gs.device)
+    runner.git_status_repos = ["."]
     runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=False)
     env.close()
 
@@ -185,7 +187,7 @@ def main():
     train(cfg, args.num_envs, log_path, args.max_iterations)
 
     # Record a video of best episode
-    record_video(cfg, log_path)
+    # record_video(cfg, log_path)
 
 
 if __name__ == "__main__":

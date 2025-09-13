@@ -176,3 +176,17 @@ class Go2CEnv(ManagedEnvironment):
             },
         )
 ```
+
+## Citation
+
+If you used Genesis Forge in your research, we would appreciate it if you could cite it.
+
+```
+@misc{Genesis,
+  author = {Jeremy Gillick},
+  title = {Genesis Forge: A modular framework for RL robot learning},
+  month = {September},
+  year = {2025},
+  url = {https://github.com/jgillick/genesis-forge}
+}
+```

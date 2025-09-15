@@ -13,10 +13,10 @@ It provides a flexible and modular architecture for getting your robot up and ru
 ## Key Features
 
 - Modular Environment Design: Build complex environments using composable managers
-- Built-in RL Integration: Seamless integration with popular RL libraries (SKRL, RSL-RL)
 - Comprehensive contact/collision manager
 - Automatically record video snippets during training
-- Interfaces with game controllers for hands-on policy evaluation and play-mode.
+- Connect a game controller for hands-on policy evaluation and play-mode.
+- Seamless integration with popular RL libraries: RSL-RL and SKRL
 
 ```{toctree}
 :maxdepth: 1

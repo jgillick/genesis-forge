@@ -40,7 +40,7 @@ class Go2CEnv(ManagedEnvironment):
 
         # Construct the scene
         self.scene = gs.Scene(
-            show_viewer=not self.headless,
+            show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
         )
         self.scene.add_entity(gs.morphs.Plane())

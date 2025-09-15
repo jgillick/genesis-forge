@@ -1,0 +1,116 @@
+# Contact Manager
+
+The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.
+
+:::{caution}
+The contact manager is experimental and might have some unexpected behaviors.
+:::
+
+## Basic Usage
+
+```python
+from genesis_forge.managers import ContactManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        # Detect the body hitting the ground
+        self.contact_manager = ContactManager(
+            self,
+            entity_attr="robot",
+            sensor_links=["body"],
+            with_entity_attr="terrain"
+        )
+
+        # Terminate when the body touches the floor with more than 10N
+        TerminationManager(
+            self,
+            logging_enabled=True,
+            term_cfg={
+                "body_contact": {
+                    "fn": terminations.contact_force,
+                    "params": {
+                        "threshold": 10.0,
+                        "contact_manager": self.contact_manager,
+                    },
+                },
+            },
+        )
+```
+
+## Foot Air Time Tracking
+
+To encourage your robot to take longer steps, use air time tracking and rewards:
+
+```python
+self.foot_contact_manager = ContactManager(
+    self,
+    link_names=[".*_foot"],
+    track_air_time=True,
+    air_time_contact_threshold=5.0, # only consider steps with at least 5N of force
+)
+
+RewardManager(
+    self,
+    logging_enabled=True,
+    cfg={
+        "foot_air_time": {
+            "weight": 1.0,
+            "fn": rewards.feet_air_time,
+            "params": {
+                "time_threshold": 1.0, # reward foot steps with 1 second of air time
+                "contact_manager": self.foot_contact_manager,
+            },
+        },
+    }
+)
+```
+
+## Self-contacts
+
+Penalize or terminate on the robot hitting itself.
+
+```python
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        # Detect the body links colliding with other body liks
+        self.contact_manager = ContactManager(
+            self,
+            entity_attr="robot",
+            with_entity_attr="robot"
+        )
+
+        RewardManager(
+            self,
+            logging_enabled=True,
+            cfg={
+                "Self contact": {
+                    "weight": -1.0,
+                    "fn": rewards.contact_force,
+                    "params": {
+                        "threshold": 1.0, # Only collisions that are above 1.0N
+                        "contact_manager": self.self_contact,
+                    },
+                },
+            },
+        )
+```
+
+## Contact Visualization
+
+To visualize which contacts are being registered, you can enable debugging, with the `debug_visualizer` param, and red spheres will appear where the contacts happen.
+
+```python
+self.contact_manager = ContactManager(
+    self,
+    entity_attr="robot",
+    sensor_links=["body"],
+    with_entity_attr="terrain"
+    debug_visualizer=True
+)
+```
+
+:::{caution}
+This can slow down the simulation since the debug spheres need to be calculated and rendered for each environment on every step.
+
+It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
+:::

@@ -1,4 +1,4 @@
-# Installation
+# ⚙️ Installation
 
 This guide will help you install Genesis Forge and its dependencies.
 

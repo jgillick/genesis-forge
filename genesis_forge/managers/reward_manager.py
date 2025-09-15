@@ -138,11 +138,10 @@ class RewardManager(BaseManager):
                 continue
 
             # Get reward value from function
+            weight *= dt
             value = fn(self.env, **params).detach()
             if weight != 1.0:
                 value = value * weight
-            if dt != 1.0:
-                value = value * dt
 
             # Add to reward buffer
             self._reward_buf += value
@@ -164,20 +163,17 @@ class RewardManager(BaseManager):
             # Get episode lengths for the reset environments
             episode_lengths = self._episode_length[envs_idx]
             valid_episodes = episode_lengths > 0
+            has_valid_episodes = torch.any(valid_episodes)
 
-            # Only proceed if there are valid episodes to log
-            if torch.any(valid_episodes):
-                for name, value in self._episode_data.items():
-                    # Get values for reset environments
-                    episode_values = value[envs_idx]
+            for name, value in self._episode_data.items():
+                # Log episodes with at least one step (otherwise it could cause a divide by zero error)
+                # Do this inside the loop, so that we don't need a second loop to reset the episode data
+                if has_valid_episodes:
+                    # Calculate average for each episode based on its actual length
+                    value[envs_idx][valid_episodes] /= episode_lengths[valid_episodes]
 
-                    # Calculate episode averages efficiently
-                    # Use in-place operations to avoid creating temporary tensors
-                    episode_avg = episode_values.clone()
-                    episode_avg[valid_episodes] /= episode_lengths[valid_episodes]
-
-                    # Calculate mean across valid episodes only
-                    episode_mean = episode_avg[valid_episodes].mean()
+                    # Take the mean across all valid episodes
+                    episode_mean = torch.mean(value[envs_idx][valid_episodes])
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
 
                 # Reset episodic data

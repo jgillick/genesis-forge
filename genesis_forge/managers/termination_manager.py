@@ -134,11 +134,11 @@ class TerminationManager(BaseManager):
             terminated - The termination signals for the environments. Shape is (num_envs,).
             truncated - The truncation signals for the environments. Shape is (num_envs,).
         """
-        self._terminated_buf[:] = False
-        self._truncated_buf[:] = False
         if not self.enabled:
             return self._terminated_buf, self._truncated_buf
 
+        self._terminated_buf[:] = False
+        self._truncated_buf[:] = False
         logging_dict = self.env.extras[self.env.extras_logging_key]
         for name, cfg in self.term_cfg.items():
             try:
@@ -149,27 +149,15 @@ class TerminationManager(BaseManager):
                 # Get termination value
                 value = fn(self.env, **params).detach()
 
-                # Convert to bool in-place if needed to avoid creating new tensor
-                if value.dtype != torch.bool:
-                    print(
-                        f"Warning: Termination function '{name}' returned {value.dtype} tensor, converting to bool"
-                    )
-                    # Use explicit conversion to avoid PyTorch's .bool() behavior with negative values
-                    if value.dtype == torch.float32 or value.dtype == torch.float16:
-                        value = value > 0.0  # Only positive values indicate termination
-                    elif value.dtype == torch.int32 or value.dtype == torch.int64:
-                        value = value > 0  # Only positive integers indicate termination
-                    else:
-                        value = value.bool()
-
                 # Add to the correct buffer using in-place operations
                 if trunc:
                     self._truncated_buf |= value
                 else:
                     self._terminated_buf |= value
 
-                # Efficient logging - avoid CPU transfer and multiple tensor operations
-                if self.logging_enabled:
+                # Logging, if there are some terminations and timeouts
+                dones = value.nonzero(as_tuple=True)[0]
+                if self.logging_enabled and dones.numel() > 0:
                     logging_dict[f"{self.logging_tag} / {name}"] = (
                         value.float().mean().detach()
                     )

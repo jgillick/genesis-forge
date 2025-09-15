@@ -27,43 +27,36 @@ class CommandManager(BaseManager):
     Example::
 
         class MyEnv(GenesisEnv):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+            def config(self):
+                # Create a height command
                 self.height_command = CommandManager(self, range=(0.1, 0.2))
 
-            def step(self, actions: torch.Tensor):
-                super().step(actions)
-                # ...handle actions and rewards calculations ...
-
-                self.command_manager.step()
-                obs = self.get_observations()
-                return obs, rewards, terminations, timeouts, info
-
-
-            def reset(self, env_ids: Sequence[int] = None):
-                super().reset(env_ids)
-                # ...do reset logic here...
-
-                self.command_manager.reset(envs_ids)
-                obs = self.get_observations()
-                return obs, info
-
-            def calculate_rewards():
-                target_height = self.command_manager.command
-                base_pos = self.robot.get_pos()
-                height_reward = torch.square(base_pos[:, 2] - target_height)
-
-                # ...additional reward calculations here...
-
-            def get_observations(self):
-                return torch.cat(
-                    [
-                        self.command_manager.command,
-                        # ...additional observations here...
-                    ],
-                    dim=-1,
+                # Rewards
+                RewardManager(
+                    self,
+                    logging_enabled=True,
+                    cfg={
+                        "base_height_target": {
+                            "weight": -50.0,
+                            "fn": rewards.base_height,
+                            "params": {
+                                "height_command": self.height_command,
+                            },
+                        },
+                        # ... other rewards ...
+                    },
                 )
+
+                # Observations
+                ObservationManager(
+                    self,
+                    cfg={
+                        "height_cmd": {"fn": self.height_command.observation},
+                        # ... other observations ...
+                    },
+                )
+
+
 
     """
 
@@ -225,7 +218,7 @@ class CommandManager(BaseManager):
             env.build()
 
             # Connect joystick axis 3 to the height command
-            env.command_manager.use_gamepad(gamepad_controller, range_axis=3)
+            env.height_command.use_gamepad(gamepad_controller, range_axis=3)
 
         Example with multiple ranges::
 
@@ -250,7 +243,7 @@ class CommandManager(BaseManager):
             env.build()
 
             # Connect joystick axis 2 and 3 to to the indvidual ranges
-            env.command_manager.use_gamepad(
+            env.height_command.use_gamepad(
                 gamepad_controller,
                 range_axis={
                     "cmd1": 2,

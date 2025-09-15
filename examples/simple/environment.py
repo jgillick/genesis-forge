@@ -39,7 +39,6 @@ class Go2SimpleEnv(ManagedEnvironment):
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
-            headless=headless,
         )
 
         # Set the commanded robot direction to be 0.5 along the X axis, for all environments
@@ -52,7 +51,7 @@ class Go2SimpleEnv(ManagedEnvironment):
 
         # Construct the scene
         self.scene = gs.Scene(
-            show_viewer=not self.headless,
+            show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
@@ -88,7 +87,7 @@ class Go2SimpleEnv(ManagedEnvironment):
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
-            res=(1280, 960),
+            res=(1280, 720),
             fov=40,
             env_idx=0,
             debug=True,

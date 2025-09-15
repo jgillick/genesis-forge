@@ -53,7 +53,7 @@ class RslRlWrapper(Wrapper):
         ) = super().step(actions)
 
         # Combine terminated and truncated
-        dones = (terminated | truncated).detach()
+        dones = terminated | truncated
 
         # Add observations and timeouts to extras
         if extras is None:

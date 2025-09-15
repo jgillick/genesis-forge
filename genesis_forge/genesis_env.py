@@ -18,7 +18,6 @@ class GenesisEnv:
         dt: Simulation time step.
         max_episode_length_sec: Maximum episode length in seconds.
         max_episode_random_scaling: Scale the maximum episode length by this amount (+/-) so that not all environments reset at the same time.
-        headless: Whether to run the environment in headless mode.
         extras_logging_key: The key used, in info/extras dict, which is returned by step and reset functions, to send data to tensorboard by the RL agent.
 
     Example::
@@ -56,13 +55,11 @@ class GenesisEnv:
         dt: float = 1 / 100,
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
-        headless: bool = True,
         extras_logging_key: str = "episode",
     ):
         self.dt = dt
         self.device = gs.device
         self.num_envs = num_envs
-        self.headless = headless
         self.scene: gs.Scene = None
         self.robot: RigidEntity = None
         self.terrain: RigidEntity = None

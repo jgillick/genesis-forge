@@ -45,7 +45,7 @@ class PositionActionManager(BaseActionManager):
 
     .. math::
 
-       output = offset + scaling * action
+       position = offset + scaling * action
 
     If `use_default_offset` is `True`, the `offset` will be set to the `default_pos` value for each DOF/joint.
 

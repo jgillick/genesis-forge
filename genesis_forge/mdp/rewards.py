@@ -315,7 +315,7 @@ def contact_force(
 def feet_air_time(
     env: GenesisEnv,
     contact_manager: ContactManager,
-    threshold: float,
+    time_threshold: float,
     vel_cmd_manager: VelocityCommandManager,
 ) -> torch.Tensor:
     """Reward long steps taken by the feet using L2-kernel.
@@ -325,10 +325,19 @@ def feet_air_time(
     the time for which the feet are in the air.
 
     If the commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
+
+    Args:
+        env: The Genesis environment containing the robot
+        contact_manager: The contact manager to check for contact
+        time_threshold: The minimum time (in seconds) the feet should be in the air
+        vel_cmd_manager: The velocity command manager
+
+    Returns:
+        The reward for the feet air time
     """
     made_contact = contact_manager.has_made_contact(env.dt)
     last_air_time = contact_manager.last_air_time
-    reward = torch.sum((last_air_time - threshold) * made_contact, dim=1)
+    reward = torch.sum((last_air_time - time_threshold) * made_contact, dim=1)
     # no reward for zero velocity command
     if vel_cmd_manager is not None:
         reward *= torch.norm(vel_cmd_manager.command[:, :2], dim=1) > 0.1

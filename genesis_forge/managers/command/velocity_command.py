@@ -44,7 +44,7 @@ class VelocityDebugVisualizerConfig(TypedDict):
 
 DEFAULT_VISUALIZER_CONFIG: VelocityDebugVisualizerConfig = {
     "envs_idx": None,
-    "arrow_offset": 0.02,
+    "arrow_offset": 0.03,
     "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
@@ -84,9 +84,8 @@ class VelocityCommandManager(CommandManager):
     Example::
 
         class MyEnv(GenesisEnv):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+            def config(self):
+                # Create a velocity command manager
                 self.command_manager = VelocityCommandManager(
                     self,
                     visualize=True,
@@ -97,46 +96,35 @@ class VelocityCommandManager(CommandManager):
                     }
                 )
 
-            def step(self, actions: torch.Tensor):
-                super().step(actions)
-                # ...handle actions and rewards calculations ...
-
-                self.command_manager.step()
-                obs = self.get_observations()
-                return obs, rewards, terminations, timeouts, info
-
-
-            def reset(self, env_ids: list[int] = None):
-                super().reset(env_ids)
-                # ...do reset logic here...
-
-                self.command_manager.reset(envs_ids)
-                obs = self.get_observations()
-                return obs, info
-
-            def calculate_rewards():
-                target_cmd = self.command_manager.command
-
-                # Tracking of linear velocity commands (xy axes)
-                actual_vel = self.robot.get_vel()
-                lin_vel_error = torch.sum(
-                    torch.square(target_cmd[:, :2] - actual_vel[:, :2]), dim=1
+                RewardManager(
+                    self,
+                    logging_enabled=True,
+                    cfg={
+                        "tracking_lin_vel": {
+                            "weight": 1.0,
+                            "fn": rewards.command_tracking_lin_vel,
+                            "params": {
+                                "vel_cmd_manager": self.velocity_command,
+                            },
+                        },
+                        "tracking_ang_vel": {
+                            "weight": 1.0,
+                            "fn": rewards.command_tracking_ang_vel,
+                            "params": {
+                                "vel_cmd_manager": self.velocity_command,
+                            },
+                        },
+                        # ... other rewards ...
+                    },
                 )
-                line_vel_reward = torch.exp(-lin_vel_error / 0.25)
 
-                # Tracking of angular velocity commands (yaw)
-                ang_vel_error = torch.square(target_cmd[:, 2] - self.base_ang_vel[:, 2])
-                ang_vel_reward = torch.exp(-ang_vel_error / 0.25)
-
-                # ...additional reward calculations here...
-
-            def get_observations(self):
-                return torch.cat(
-                    [
-                        self.command_manager.command,
-                        # ...additional observations here...
-                    ],
-                    dim=-1,
+                # Observations
+                ObservationManager(
+                    self,
+                    cfg={
+                        "velocity_cmd": {"fn": self.velocity_command.observation},
+                        # ... other observations ...
+                    },
                 )
     """
 

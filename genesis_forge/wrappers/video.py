@@ -110,7 +110,8 @@ class VideoWrapper(Wrapper):
         self._current_episode: int = 0
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
-        self._record_final_episode: bool = record_final_episode
+        self._record_final_episode = record_final_episode
+        self._has_recording_buffer = False
 
         # active: a triggered recording that will save to file
         # background: a recording that will only be saved if the environment is closed.
@@ -156,8 +157,6 @@ class VideoWrapper(Wrapper):
         self, actions: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """Record a video image at each step."""
-        self._check_recording_trigger()
-
         (
             observations,
             rewards,
@@ -166,6 +165,7 @@ class VideoWrapper(Wrapper):
             extras,
         ) = super().step(actions)
 
+        self._check_recording_trigger()
         if self._current_step % self._steps_per_frame == 0:
             self._cam.render()
 
@@ -178,6 +178,8 @@ class VideoWrapper(Wrapper):
         truncated = False if truncateds is None else truncateds[self._env_idx]
         if terminated or truncated:
             self._current_episode += 1
+            # If we're not recording, start a background recording at the beginning of the episode
+            # The last one of these will be saved when the environment is closed as the final training episode
             if not self._is_recording and self._record_final_episode:
                 self.start_recording("background")
         self._current_step += 1
@@ -192,17 +194,17 @@ class VideoWrapper(Wrapper):
 
     def close(self):
         """Finish recording on close"""
-        if self._is_recording:
+        if self._is_recording or self._has_recording_buffer:
             self.finish_recording()
         super().close()
 
     def start_recording(self, type: RecordingType = "active"):
         """Start recording a video."""
-        # Clear existing frames
-        if self._is_recording:
-            self._cam._recorded_imgs.clear()
+        # Clear any existing frames
+        self._cam._recorded_imgs.clear()
 
         self._is_recording = True
+        self._has_recording_buffer = False
         self._recording_type = type
         self._recording_start_step = self._current_step
         self._recording_stop_step = self._current_step + self._video_length_steps
@@ -222,16 +224,19 @@ class VideoWrapper(Wrapper):
             if self._logging:
                 print(f"Saving recording to {filepath}")
             self._cam.stop_recording(filepath, fps=self._actual_fps)
+            self._has_recording_buffer = False
         else:
             self._cam.pause_recording()
+            self._has_recording_buffer = True
 
         # Reset recording state
         self._is_recording = False
+        self._recording_type = None
         self._recording_stop_step = 0
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
-        if self._is_recording:
+        if self._is_recording and self._recording_type == "active":
             record = False
         elif self.episode_trigger is not None:
             record = self.episode_trigger(self._current_episode)

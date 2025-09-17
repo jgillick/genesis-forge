@@ -1,6 +1,7 @@
 import torch
-from typing import Literal
+import math
 import genesis as gs
+from typing import Literal, Callable
 from genesis.utils.geom import (
     xyz_to_quat,
 )
@@ -11,6 +12,12 @@ from genesis_forge.managers.terrain_manager import TerrainManager
 from genesis_forge.utils import links_idx_by_name_pattern
 
 from .config import ResetConfigFnClass
+
+XYZRotation = dict[Literal["x", "y", "z"], float | tuple[float, float]]
+"""
+Define the rotation around the X/Y/Z axes.
+The value can either be a distinct value, or a tuple of (min, max) values to randomize within.
+"""
 
 
 def zero_all_dofs_velocity(
@@ -98,6 +105,9 @@ class position(ResetConfigFnClass):
         env: GenesisEnv,
         entity: RigidEntity,
         envs_idx: list[int],
+        position: tuple[float, float, float],
+        quat: tuple[float, float, float, float] | None = None,
+        zero_velocity: bool = True,
     ):
         self._pos_buffer[envs_idx] = self.reset_pos
         entity.set_pos(
@@ -115,15 +125,7 @@ class position(ResetConfigFnClass):
             )
 
 
-def randomize_terrain_position(
-    env: GenesisEnv,
-    entity: RigidEntity,
-    envs_idx: list[int],
-    terrain_manager: TerrainManager,
-    height_offset: float = 0.1e-3,
-    subterrain: str | None = None,
-    zero_velocity: bool = True,
-):
+class randomize_terrain_position(ResetConfigFnClass):
     """
     Place the entity in a random position on the terrain for each environment.
 
@@ -134,16 +136,88 @@ def randomize_terrain_position(
         terrain_manager: The terrain manager to use to generate the random position.
         height_offset: The height offset to add to the random position.
         subterrain: The subterrain to generate the random position on.
+                    Either a string or a callable that returns a string.
+        rotation: The X/Y/Z rotation to set the entity to. Defaults to a random rotation around the z-axis.
+                  Set to None to not set a rotation.
         zero_velocity: Whether to zero the velocity of all the entity's dofs.
                        Defaults to True. This is a safety measure after a sudden change in entity pose.
     """
-    # Randomize positions on the terrain
-    pos = terrain_manager.generate_random_env_pos(
-        envs_idx=envs_idx,
-        subterrain=subterrain,
-        height_offset=height_offset,
-    )
-    entity.set_pos(pos, envs_idx=envs_idx, zero_velocity=zero_velocity)
+
+    def __init__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        terrain_manager: TerrainManager,
+        height_offset: float = 0.1e-3,
+        subterrain: str | Callable[[], str] | None = None,
+        rotation: XYZRotation | None = {"z": (0, 2 * math.pi)},
+        zero_velocity: bool = True,
+    ):
+        super().__init__(env, entity)
+        self.env = env
+        self.rotation = rotation
+        self._rotation_buffer = None
+        self._quat_buffer = None
+
+    def build(self):
+        """
+        Initialize the buffers
+        """
+        self._rotation_buffer = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._quat_buffer = torch.zeros(
+            (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+        )
+
+    def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
+        """
+        Set the rotation quaternion for the given environment ids.
+        """
+        x = rotation["x"] if "x" in rotation else 0
+        y = rotation["y"] if "y" in rotation else 0
+        z = rotation["z"] if "z" in rotation else 0
+        if isinstance(x, tuple):
+            self._rotation_buffer[envs_idx, 0].uniform_(*x)
+        if isinstance(y, tuple):
+            self._rotation_buffer[envs_idx, 1].uniform_(*y)
+        if isinstance(z, tuple):
+            self._rotation_buffer[envs_idx, 2].uniform_(*z)
+
+        # Set angle as quat
+        self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        envs_idx: list[int],
+        terrain_manager: TerrainManager,
+        height_offset: float = 0.1e-3,
+        subterrain: str | Callable[[], str] | None = None,
+        rotation: XYZRotation | None = {"z": (0, 2 * math.pi)},
+        zero_velocity: bool = True,
+    ):
+        # Get the subterrain
+        if subterrain is not None and callable(subterrain):
+            subterrain = subterrain()
+
+        # Randomize positions on the terrain
+        pos = terrain_manager.generate_random_env_pos(
+            envs_idx=envs_idx,
+            subterrain=subterrain,
+            height_offset=height_offset,
+        )
+        entity.set_pos(pos, envs_idx=envs_idx, zero_velocity=zero_velocity)
+
+        # Rotation
+        if rotation is not None:
+            self.define_quat(envs_idx, rotation)
+            entity.set_quat(
+                self._quat_buffer[envs_idx],
+                envs_idx=envs_idx,
+                zero_velocity=zero_velocity,
+            )
 
 
 class randomize_link_mass_shift(ResetConfigFnClass):

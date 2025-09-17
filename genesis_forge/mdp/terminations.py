@@ -3,6 +3,7 @@ Termination functions for the Genesis environment.
 Each of these should return a boolean tensor indicating which environments should terminate, in the tensor shape (num_envs,).
 """
 
+import math
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import entity_projected_gravity
@@ -21,7 +22,7 @@ def timeout(env: GenesisEnv) -> torch.Tensor:
 
 def bad_orientation(
     env: GenesisEnv,
-    limit_angle: float = 0.7,
+    limit_angle: float = 40.0,
     entity_attr: str = "robot",
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
@@ -35,7 +36,7 @@ def bad_orientation(
 
     Args:
         env: The Genesis environment containing the robot
-        limit_angle: Maximum allowed tilt angle in radians (default: 0.7 ~ 40 degrees)
+        limit_angle: Maximum allowed tilt angle in degrees (default: 40 degrees)
         entity_manager: The entity manager for the entity.
         entity_attr: The attribute name of the entity in the environment.
                         This isn't necessary if `entity_manager` is provided.
@@ -59,7 +60,7 @@ def bad_orientation(
     tilt_angle = torch.asin(torch.clamp(tilt_magnitude, max=0.99))
 
     # Terminate if tilt angle exceeds the limit
-    return tilt_angle > limit_angle
+    return tilt_angle > math.radians(limit_angle)
 
 
 def base_height_below_minimum(

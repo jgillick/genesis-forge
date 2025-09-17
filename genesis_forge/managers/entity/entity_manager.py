@@ -10,7 +10,7 @@ from genesis.utils.geom import (
     inv_quat,
 )
 
-from .config import EntityResetConfig
+from .config import EntityResetConfig, ConfigItem
 
 
 class EntityManager(BaseManager):
@@ -33,15 +33,6 @@ class EntityManager(BaseManager):
                     self,
                     entity_attr="robot",
                     on_reset={
-                        "zero_dof": {
-                            "fn": reset.zero_all_dofs_velocity,
-                        },
-                        "rotation": {
-                            "fn": reset.set_rotation,
-                            "params": {
-                                "z": (0, 2 * math.pi),
-                            },
-                        },
                         "position": {
                             "fn": reset.randomize_terrain_position,
                             "params": {
@@ -67,6 +58,11 @@ class EntityManager(BaseManager):
         self.entity: RigidEntity | None = None
         self.on_reset = on_reset
         self._entity_attr = entity_attr
+
+        # Wrap config items
+        self.on_reset: dict[str, ConfigItem] = {}
+        for name, cfg in on_reset.items():
+            self.on_reset[name] = ConfigItem(cfg, env)
 
         # Buffers
         self._global_gravity = torch.tensor(
@@ -138,10 +134,9 @@ class EntityManager(BaseManager):
         self.entity = getattr(self.env, self._entity_attr)
         self._cached_calcs()
 
-        # Initialize reset function classes
+        # Build reset function classes
         for cfg in self.on_reset.values():
-            if inspect.isclass(cfg["fn"]):
-                self._init_fn_class(cfg)
+            cfg.build(self.entity)
 
     def step(self):
         """
@@ -158,14 +153,12 @@ class EntityManager(BaseManager):
         if envs_idx is None:
             envs_idx = torch.arange(self.env.num_envs, device=gs.device)
 
-        for cfg in self.on_reset.values():
-            params = cfg.get("params", {}) or {}
-
-            # Initialize the function class
-            if inspect.isclass(cfg["fn"]):
-                self._init_fn_class(cfg)
-
-            cfg["fn"](self.env, self.entity, envs_idx, **params)
+        for name, cfg in self.on_reset.items():
+            try:
+                cfg.execute(envs_idx)
+            except Exception as e:
+                print(f"Error resetting entity with config: '{name}'")
+                raise e
         return
 
     """
@@ -179,18 +172,3 @@ class EntityManager(BaseManager):
         self._base_pos[:] = self.entity.get_pos()
         self._base_quat[:] = self.entity.get_quat()
         self._inv_base_quat = inv_quat(self._base_quat)
-
-    def _init_fn_class(self, cfg: EntityResetConfig):
-        """Initialize a reset function class"""
-        params = cfg.get("params", {}) or {}
-        initialized = cfg.get("_initialized", False)
-        if initialized:
-            return cfg
-
-        cfg["fn"] = cfg["fn"](self.env, self.entity, **params)
-
-        # Clear params so that they cannot be changed after initialization
-        cfg["params"] = None
-
-        cfg["_initialized"] = True
-        return cfg

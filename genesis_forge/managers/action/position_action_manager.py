@@ -56,7 +56,7 @@ class PositionActionManager(BaseActionManager):
         scale: How much to scale the action.
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
-        clip: Clip the action values to the range.
+        clip: Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.
         pd_kp: The PD kp values.
         pd_kv: The PD kv values.
         max_force: The max force values.
@@ -313,22 +313,23 @@ class PositionActionManager(BaseActionManager):
             self.env.num_envs, -1
         )
 
+        # Get the joint limits
+        lower_limit, upper_limit = self.env.robot.get_dofs_limit(self.dofs_idx)
+
         # Map config params to the DOF indices
         self._scale_values = None
         self._offset_values = None
-        self._clip_values = None
         self._kp_values = None
         self._kv_values = None
         self._damping_values = None
         self._stiffness_values = None
         self._frictionloss_values = None
         self._max_force_values = None
+        self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._scale_cfg is not None:
             self._scale_values = self._get_dof_value_tensor(self._scale_cfg)
         if self._clip_cfg is not None:
-            self._clip_values = self._get_dof_value_tensor(
-                self._clip_cfg, [-np.inf, np.inf]
-            )
+            self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
         if self._pd_kp_cfg is not None:
             self._kp_values = self._get_dof_value_tensor(self._pd_kp_cfg)
         if self._pd_kv_cfg is not None:
@@ -369,7 +370,7 @@ class PositionActionManager(BaseActionManager):
                 torch.tensor(force_upper, device=gs.device),
             )
 
-    def step(self, actions: torch.Tensor) -> None:
+    def step(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Take the incoming actions for this step and handle them.
 
@@ -378,8 +379,9 @@ class PositionActionManager(BaseActionManager):
         """
         if not self.enabled:
             return
-        super().step(actions)
-        self.handle_actions(actions)
+        actions = super().step(actions)
+        self._actions = self.handle_actions(actions)
+        return self._actions
 
     def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
@@ -402,12 +404,11 @@ class PositionActionManager(BaseActionManager):
 
         # Process actions
         actions = actions * self._scale_values + self._offset_values
-        if self._clip_values is not None:
-            actions = torch.clamp(
-                actions,
-                min=self._clip_values[:, 0],
-                max=self._clip_values[:, 1],
-            )
+        actions = torch.clamp(
+            actions,
+            min=self._clip_values[:, 0],
+            max=self._clip_values[:, 1],
+        )
 
         # Set target positions
         self.env.robot.control_dofs_position(actions, self.dofs_idx)
@@ -464,8 +465,11 @@ class PositionActionManager(BaseActionManager):
     """
 
     def _get_dof_value_array(
-        self, values: DofValue[T], default_value: T = 0.0
-    ) -> list[Any]:
+        self,
+        values: DofValue[T],
+        default_value: T = 0.0,
+        output: torch.Tensor | list[Any] | None = None,
+    ) -> torch.Tensor | list[Any]:
         """
         Given a DofValue dict, loop over the entries, and set the value to the DOF indices (from dofs_idx) that match the pattern.
 
@@ -477,21 +481,33 @@ class PositionActionManager(BaseActionManager):
             For example, for 4 DOFs: [50, 50, 50, 50]
         """
         is_set = [False] * self.num_actions
-        value_arr = [default_value] * self.num_actions
+        if output is None:
+            output = [default_value] * self.num_actions
         for pattern, value in values.items():
+            found = False
             for i, name in enumerate(self._enabled_dof.keys()):
                 if not is_set[i] and re.match(f"^{pattern}$", name):
+                    if isinstance(output, torch.Tensor) and not isinstance(
+                        value, torch.Tensor
+                    ):
+                        value = torch.tensor(value, device=gs.device)
                     is_set[i] = True
-                    value_arr[i] = value
-        return value_arr
+                    output[i] = value
+                    found = True
+            if not found:
+                print(f"Warning: Joint DOF '{pattern}' not found")
+        return output
 
     def _get_dof_value_tensor(
-        self, values: DofValue[T], default_value: T = 0.0
+        self,
+        values: DofValue[T],
+        default_value: T = 0.0,
+        output: torch.Tensor | list[Any] | None = None,
     ) -> torch.Tensor:
         """
         Wrapper for _get_dof_value_array that returns a tensor.
         """
-        values = self._get_dof_value_array(values, default_value)
+        values = self._get_dof_value_array(values, default_value, output)
         return torch.tensor(values, device=gs.device, dtype=gs.tc_float)
 
     def _add_random_noise(

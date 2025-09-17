@@ -42,12 +42,32 @@ class BaseActionManager(BaseManager):
             dtype=np.float32,
         )
 
+    @property
+    def actions(self) -> torch.Tensor:
+        """
+        The actions for for the current step.
+        """
+        return self._actions
+
+    @property
+    def last_actions(self) -> torch.Tensor:
+        """
+        The actions for for the previous step.
+        """
+        return self._last_actions
+
     def step(self, actions: torch.Tensor) -> None:
         """
         Handle the received actions.
         """
-        self._last_actions = self._actions
-        self._actions = actions
+        # Copy the actions into the manager buffer
+        if self._actions is None:
+            self._last_actions = torch.zeros_like(actions)
+            self._actions = actions.detach().clone()
+        else:
+            self._last_actions = self._actions
+            self._actions[:] = actions[:]
+        return self._actions
 
     def reset(self, envs_idx: list[int] | None):
         """Reset environments."""

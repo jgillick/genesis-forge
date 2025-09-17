@@ -100,10 +100,12 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
         dofs_idx = list(self._enabled_dof.values())
         lower, upper = self.env.robot.get_dofs_limit(dofs_idx)
-        self._pos_limit_lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
-        self._pos_limit_upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)
+        lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
+        upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)
+        self._offset = (upper + lower) * 0.5
+        self._scale = (upper - lower) * 0.5
 
-    def handle_actions(self, actions: torch.Tensor) -> None:
+    def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Converts the actions to position commands, and send them to the DOF actuators.
         Override this function if you want to change the action handling logic.
@@ -114,14 +116,11 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         Returns:
             The processed and handled actions.
         """
-        actions = actions.clamp(-1.0, 1.0)
-        self._actions = actions
-
         # Convert the action from -1 to 1, to absolute position within the actuator limits
-        lower = self._pos_limit_lower
-        upper = self._pos_limit_upper
-        offset = (upper + lower) * 0.5
-        target_positions = actions * (upper - lower) * 0.5 + offset
+        actions.clamp_(-1.0, 1.0)
+        self._actions = actions * self._scale + self._offset
 
         # Set target positions
-        self.env.robot.control_dofs_position(target_positions, self.dofs_idx)
+        self.env.robot.control_dofs_position(self._actions, self.dofs_idx)
+
+        return self._actions

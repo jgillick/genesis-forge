@@ -69,7 +69,7 @@ class GenesisEnv:
         self._extras[extras_logging_key] = {}
 
         self._actions: torch.Tensor = None
-        self.last_actions: torch.Tensor = None
+        self._last_actions: torch.Tensor = None
 
         self.step_count: int = 0
         self.episode_length = torch.zeros(
@@ -112,13 +112,18 @@ class GenesisEnv:
 
     @property
     def actions(self) -> torch.Tensor:
-        """The current actions for each environment for this step."""
+        """
+        The actions for each environment for this step.
+        If you're using an action manager, these are the actions prior to being handled by the action manager.
+        """
         return self._actions
 
-    @actions.setter
-    def actions(self, actions: torch.Tensor):
-        """Set the actions for each environment for this step."""
-        self._actions = actions
+    @property
+    def last_actions(self) -> torch.Tensor:
+        """
+        The actions for for the previous step.
+        """
+        return self._last_actions
 
     @property
     def num_actions(self) -> int:
@@ -183,15 +188,12 @@ class GenesisEnv:
         self.step_count += 1
         self.episode_length += 1
 
-        self.last_actions[:] = self.actions[:]
-        self._actions = actions
-
-        # Clip actions within bounds of action space
-        if self.action_space is not None:
-            self._actions = self.actions.clamp(
-                torch.tensor(self.action_space.low, device=gs.device),
-                torch.tensor(self.action_space.high, device=gs.device),
-            )
+        if self._actions is None:
+            self._actions = actions.detach().clone()
+            self._last_actions = torch.zeros_like(actions, device=gs.device)
+        else:
+            self._last_actions[:] = self._actions[:]
+            self._actions[:] = actions[:]
 
         return None, None, None, None, self._extras
 
@@ -213,18 +215,19 @@ class GenesisEnv:
             envs_idx = torch.arange(self.num_envs, device=gs.device)
 
         # Initial reset, set buffers
-        if self.step_count == 0:
-            self.actions = torch.zeros(
+        if self.step_count == 0 and self.action_space is not None:
+            self._actions = torch.zeros(
                 (self.num_envs, self.action_space.shape[0]),
                 device=gs.device,
                 dtype=gs.tc_float,
             )
-            self.last_actions = torch.zeros_like(self.actions, device=gs.device)
+            self._last_actions = torch.zeros_like(self.actions, device=gs.device)
 
         # Actions
         if envs_idx.numel() > 0:
-            self.actions[envs_idx] = 0.0
-            self.last_actions[envs_idx] = 0.0
+            if self.actions is not None:
+                self.actions[envs_idx] = 0.0
+                self._last_actions[envs_idx] = 0.0
 
             # Episode length
             self.episode_length[envs_idx] = 0

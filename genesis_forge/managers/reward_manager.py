@@ -111,6 +111,13 @@ class RewardManager(BaseManager):
                 (env.num_envs,), device=gs.device, dtype=gs.tc_float
             )
 
+    @property
+    def rewards(self) -> torch.Tensor:
+        """
+        The rewards calculated for the most recent step. Shape is (num_envs,).
+        """
+        return self._reward_buf
+
     """
     Operations
     """

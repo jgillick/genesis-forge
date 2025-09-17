@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 import torch
 import genesis as gs
@@ -495,7 +496,7 @@ class PositionActionManager(BaseActionManager):
                     output[i] = value
                     found = True
             if not found:
-                print(f"Warning: Joint DOF '{pattern}' not found")
+                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
         return output
 
     def _get_dof_value_tensor(

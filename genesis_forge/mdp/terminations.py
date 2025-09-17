@@ -124,9 +124,7 @@ def contact_force(
     Returns:
         The total force for the contact manager for each environment
     """
-    return torch.any(
-        torch.norm(contact_manager.contacts, dim=-1) > threshold, dim=-1
-    ).detach()
+    return torch.any(torch.norm(contact_manager.contacts, dim=-1) > threshold, dim=-1)
 
 
 def contact_force_with_grace_period(

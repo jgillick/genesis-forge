@@ -21,7 +21,7 @@ The value can either be a distinct value, or a tuple of (min, max) values to ran
 
 
 def zero_all_dofs_velocity(
-    _env: GenesisEnv,
+    env: GenesisEnv,
     entity: RigidEntity,
     envs_idx: list[int],
 ):
@@ -32,7 +32,7 @@ def zero_all_dofs_velocity(
 
 
 def set_rotation(
-    _env: GenesisEnv,
+    env: GenesisEnv,
     entity: RigidEntity,
     envs_idx: list[int],
     x: float | tuple[float, float] = 0,

@@ -166,4 +166,6 @@ class TerminationManager(BaseManager):
                 print(f"Error calculating termination for '{name}'")
                 raise e
 
+        self.env.extras["terminations"] = self._terminated_buf
+        self.env.extras["truncations"] = self._truncated_buf
         return self._terminated_buf, self._truncated_buf

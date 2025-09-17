@@ -23,20 +23,22 @@ Aliveness
 """
 
 
-def is_alive(env: GenesisEnv, termination_manager: TerminationManager) -> torch.Tensor:
+def is_alive(env: GenesisEnv) -> torch.Tensor:
     """
     Reward for being alive and not terminating this step.
+    This assumes that `env.extras["terminations"]` is a boolean tensor with the termination signals for the environments.
     """
-    return (~termination_manager.terminated).float().detach()
+    terminations: torch.Tensor = env.extras["terminations"]
+    return (~terminations).float().detach()
 
 
-def is_terminated(
-    env: GenesisEnv, termination_manager: TerminationManager
-) -> torch.Tensor:
+def terminated(env: GenesisEnv) -> torch.Tensor:
     """
     Penalize terminated episodes that terminated.
+    This assumes that `env.extras["terminations"]` is a boolean tensor with the termination signals for the environments.
     """
-    return termination_manager.terminated.float().detach()
+    terminations: torch.Tensor = env.extras["terminations"]
+    return terminations.float().detach()
 
 
 """
@@ -350,7 +352,7 @@ def feet_air_time(
     that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
     the time for which the feet are in the air.
 
-    If the commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
+    If the velocity commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
 
     Args:
         env: The Genesis environment containing the robot

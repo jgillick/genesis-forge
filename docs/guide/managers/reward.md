@@ -42,7 +42,7 @@ class MyEnv(ManagedEnvironment):
 
 ## Reward Configuration
 
-Each reward component requires:
+Each reward config item requires:
 
 - **fn**: A function that computes the reward
 - **weight**: Multiplier for this component (can be negative for penalties)

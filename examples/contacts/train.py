@@ -1,6 +1,5 @@
 import os
 import copy
-import glob
 import torch
 import shutil
 import pickle
@@ -76,7 +75,7 @@ def training_cfg(exp_name: str, max_iterations: int):
         "num_steps_per_env": 24,
         "save_interval": 100,
         "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"]},
+        "obs_groups": {"policy": ["policy"], "critic": ["policy"]},
     }
 
 

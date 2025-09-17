@@ -26,8 +26,6 @@ class ContactManager(BaseManager):
         air_time_contact_threshold: When track_air_time is True, this is the threshold for the contact forces to be considered.
         debug_visualizer: Whether to visualize the contact points.
         debug_visualizer_cfg: The configuration for the contact debug visualizer.
-        use_quaternion_transform: Whether to apply quaternion transformations to force vectors.
-                                    Defaults to False for better performance.
 
     Example with ManagedEnvironment::
 
@@ -141,7 +139,6 @@ class ContactManager(BaseManager):
         air_time_contact_threshold: float = 1.0,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: ContactDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
-        use_quaternion_transform: bool = False,
     ):
         super().__init__(env, "contact")
 
@@ -149,18 +146,18 @@ class ContactManager(BaseManager):
         self._air_time_contact_threshold = air_time_contact_threshold
         self._track_air_time = track_air_time
         self._entity_attr = entity_attr
+        self._target_link_ids = None
         self._with_entity_attr = with_entity_attr
         self._with_links_names = with_links_names
-        self._with_link_ids = None
-        self._target_link_ids = None
+        self._with_link_ids = torch.empty(0, device=gs.device)
+        self._has_with_filter = (
+            with_entity_attr is not None or with_links_names is not None
+        )
 
         self.debug_visualizer = debug_visualizer
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self._debug_nodes = []
         self._contact_position_counts = None
-
-        # Performance optimization options
-        self._use_quaternion_transform = use_quaternion_transform
 
         self.contacts: torch.Tensor | None = None
         """Contact forces experienced by the entity links."""
@@ -263,6 +260,8 @@ class ContactManager(BaseManager):
 
         # Get the link indices
         self._target_link_ids = self._get_links_idx(self._entity_attr, self._link_names)
+        if not self._target_link_ids.is_contiguous():
+            self._target_link_ids = self._target_link_ids.contiguous()
         if self._with_entity_attr or self._with_links_names:
             with_entity_attr = (
                 self._with_entity_attr
@@ -272,6 +271,8 @@ class ContactManager(BaseManager):
             self._with_link_ids = self._get_links_idx(
                 with_entity_attr, self._with_links_names
             )
+            if not self._with_link_ids.is_contiguous():
+                self._with_link_ids = self._with_link_ids.contiguous()
 
         # Initialize buffers
         link_count = self._target_link_ids.shape[0]
@@ -344,10 +345,9 @@ class ContactManager(BaseManager):
                     found = True
             if not found:
                 names = [link.name for link in entity.links]
-                print(
-                    f"Warning: Link {pattern} not found in entity {self._entity_attr}"
+                raise RuntimeError(
+                    f"Link {pattern} not found in entity {self._entity_attr}.\nAvailable links: {names}"
                 )
-                print(f"Available links: {names}")
 
         return torch.tensor(ids, device=gs.device)
 
@@ -372,26 +372,13 @@ class ContactManager(BaseManager):
             force = torch.nan_to_num(force, nan=0.0, posinf=0.0, neginf=0.0)
             print("Warning: Invalid contact forces detected (NaN/inf) and sanitized")
 
+        # Get link quaternions used to transform the contact forces and positions into the local frame
+        links_quat = self.env.scene.rigid_solver.get_links_quat()
+
         # Clear output tensors
         self.contacts.fill_(0.0)
         self.contact_positions.fill_(0.0)
         self._contact_position_counts.fill_(0.0)
-
-        # Prepare tensors for Taichi kernel
-        target_links = self._target_link_ids.to(gs.device)
-        with_links = (
-            self._with_link_ids.to(gs.device)
-            if self._with_link_ids is not None
-            else torch.empty(0, device=gs.device)
-        )
-
-        # Get link quaternions (only needed if using quaternion transform)
-        links_quat = None
-        if self._use_quaternion_transform:
-            links_quat = self.env.scene.rigid_solver.get_links_quat()
-        else:
-            # Create dummy quaternion tensor (won't be used)
-            links_quat = torch.zeros(1, 1, 4, device=gs.device)
 
         # Call unified kernel
         kernel_get_contact_forces(
@@ -400,18 +387,19 @@ class ContactManager(BaseManager):
             link_a.contiguous(),
             link_b.contiguous(),
             links_quat.contiguous(),
-            target_links.contiguous(),
-            with_links.contiguous(),
+            self._target_link_ids.contiguous(),
+            self._with_link_ids.contiguous(),
             self.contacts.contiguous(),
             self.contact_positions.contiguous(),
             self._contact_position_counts.contiguous(),
-            1 if self._with_link_ids is not None else 0,
-            1 if self._use_quaternion_transform else 0,
+            1 if self._has_with_filter else 0,
         )
 
         # Handle debug visualization
         if self.debug_visualizer:
-            self._render_debug_visualizer()
+            self._render_debug_visualizer(
+                self.contacts.clone().detach(), self.contact_positions.clone().detach()
+            )
 
     def _calculate_air_time(self):
         """
@@ -458,9 +446,15 @@ class ContactManager(BaseManager):
             0.0,
         )
 
-    def _render_debug_visualizer(self):
+    def _render_debug_visualizer(
+        self, contacts: torch.Tensor, contact_pos: torch.Tensor
+    ):
         """
         Visualize contact points
+
+        Args:
+            contacts: The contact forces experienced by the entity links.
+            contact_pos: The contact positions for each target link.
         """
         # Clear existing debug objects
         for node in self._debug_nodes:
@@ -473,8 +467,6 @@ class ContactManager(BaseManager):
         cfg = self.visualizer_cfg
 
         # Filter to only the environments we want to visualize
-        contacts = self.contacts
-        contact_pos = self.contact_positions
         if cfg["envs_idx"] is not None:
             contacts = contacts[cfg["envs_idx"]]
             contact_pos = contact_pos[cfg["envs_idx"]]

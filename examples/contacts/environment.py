@@ -138,10 +138,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             range={
                 "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_y": [0, 0],
+                "ang_vel_z": [-0.5, 0.5],
             },
-            standing_probability=0.05,
+            standing_probability=0.0,
             resample_time_s=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -155,11 +155,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             link_names=[".*_calf"],
             track_air_time=True,
-            air_time_contact_threshold=1.0,
-            debug_visualizer=True,
-            debug_visualizer_cfg={
-                "envs_idx": [0],
-            },
+            air_time_contact_threshold=5.0,
         )
 
         ##
@@ -169,7 +165,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             logging_enabled=True,
             cfg={
                 "foot_air_time": {
-                    "weight": 1.25,
+                    "weight": 1.0,
                     "fn": rewards.feet_air_time,
                     "params": {
                         "contact_manager": self.foot_contact_manager,
@@ -177,16 +173,8 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                         "time_threshold": 0.5,
                     },
                 },
-                "base_height_target": {
-                    "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_manager": self.robot_manager,
-                    },
-                },
                 "tracking_lin_vel": {
-                    "weight": 1.0,
+                    "weight": 1.5,
                     "fn": rewards.command_tracking_lin_vel,
                     "params": {
                         "vel_cmd_manager": self.velocity_command,
@@ -194,7 +182,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "tracking_ang_vel": {
-                    "weight": 0.5,
+                    "weight": 0.75,
                     "fn": rewards.command_tracking_ang_vel,
                     "params": {
                         "vel_cmd_manager": self.velocity_command,
@@ -219,6 +207,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                         "action_manager": self.action_manager,
                     },
                 },
+                "terminated": {
+                    "weight": -10.0,
+                    "fn": rewards.terminated,
+                },
             },
         )
 
@@ -237,7 +229,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 10.0,
+                        "limit_angle": 15.0,
                         "entity_manager": self.robot_manager,
                     },
                 },

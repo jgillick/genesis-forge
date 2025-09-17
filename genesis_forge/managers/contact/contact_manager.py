@@ -9,7 +9,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
 )
-from genesis_forge.managers.contact.kernel import _kernel_get_contact_forces
+from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
 
 
 class ContactManager(BaseManager):
@@ -262,17 +262,15 @@ class ContactManager(BaseManager):
         super().build()
 
         # Get the link indices
-        entity = self.env.__getattribute__(self._entity_attr)
-        self._target_link_ids = self._get_links_idx(entity, self._link_names)
+        self._target_link_ids = self._get_links_idx(self._entity_attr, self._link_names)
         if self._with_entity_attr or self._with_links_names:
             with_entity_attr = (
                 self._with_entity_attr
                 if self._with_entity_attr is not None
                 else "robot"
             )
-            with_entity = self.env.__getattribute__(with_entity_attr)
             self._with_link_ids = self._get_links_idx(
-                with_entity, self._with_links_names
+                with_entity_attr, self._with_links_names
             )
 
         # Initialize buffers
@@ -320,9 +318,7 @@ class ContactManager(BaseManager):
     Implementation
     """
 
-    def _get_links_idx(
-        self, entity: RigidEntity, names: list[str] = None
-    ) -> torch.Tensor:
+    def _get_links_idx(self, entity_attr: str, names: list[str] = None) -> torch.Tensor:
         """
         Find the global link indices for the given link names or regular expressions.
 
@@ -333,15 +329,25 @@ class ContactManager(BaseManager):
         Returns:
             List of global link indices.
         """
+        entity = self.env.__getattribute__(entity_attr)
+
         # If link names are not defined, assume all links
         if names is None:
             return torch.tensor([link.idx for link in entity.links], device=gs.device)
 
         ids = []
         for pattern in names:
+            found = False
             for link in entity.links:
                 if pattern == link.name or re.match(f"^{pattern}$", link.name):
                     ids.append(link.idx)
+                    found = True
+            if not found:
+                names = [link.name for link in entity.links]
+                print(
+                    f"Warning: Link {pattern} not found in entity {self._entity_attr}"
+                )
+                print(f"Available links: {names}")
 
         return torch.tensor(ids, device=gs.device)
 
@@ -388,7 +394,7 @@ class ContactManager(BaseManager):
             links_quat = torch.zeros(1, 1, 4, device=gs.device)
 
         # Call unified kernel
-        _kernel_get_contact_forces(
+        kernel_get_contact_forces(
             force.contiguous(),
             position.contiguous(),
             link_a.contiguous(),
@@ -405,7 +411,7 @@ class ContactManager(BaseManager):
 
         # Handle debug visualization
         if self.debug_visualizer:
-            self._render_debug_visualizer_taichi(self.contact_positions)
+            self._render_debug_visualizer()
 
     def _calculate_air_time(self):
         """
@@ -452,12 +458,9 @@ class ContactManager(BaseManager):
             0.0,
         )
 
-    def _render_debug_visualizer_taichi(
-        self,
-        contact_pos: torch.Tensor,
-    ):
+    def _render_debug_visualizer(self):
         """
-        Visualize contact points for Taichi implementation.
+        Visualize contact points
         """
         # Clear existing debug objects
         for node in self._debug_nodes:
@@ -467,19 +470,29 @@ class ContactManager(BaseManager):
         if not self.debug_visualizer:
             return
 
-        # Filter to only the environments we want to visualize
         cfg = self.visualizer_cfg
+
+        # Filter to only the environments we want to visualize
+        contacts = self.contacts
+        contact_pos = self.contact_positions
         if cfg["envs_idx"] is not None:
+            contacts = contacts[cfg["envs_idx"]]
             contact_pos = contact_pos[cfg["envs_idx"]]
 
+        # Filter out contacts below the force threshold
+        if "force_threshold" in cfg and cfg["force_threshold"] != 0.0:
+            force_mask = torch.norm(contacts, dim=-1) > cfg["force_threshold"]
+            contact_pos = contact_pos[force_mask]
+
         # Draw debug spheres
-        if contact_pos.shape[0] > 0:
+        if contact_pos.numel() > 0:
             node = self.env.scene.draw_debug_spheres(
                 poss=contact_pos,
                 radius=cfg["size"],
                 color=cfg["color"],
             )
-            self._debug_nodes.append(node)
+            if node is not None:
+                self._debug_nodes.append(node)
 
     def __repr__(self):
         attrs = [f"link_names={self._link_names}"]

@@ -13,9 +13,13 @@ class ContactDebugVisualizerConfig(TypedDict):
     radius: float
     """The radius of the visualization sphere"""
 
+    force_threshold: float
+    """The threshold, in Newtons, for the contact force to be visualized"""
+
 
 DEFAULT_VISUALIZER_CONFIG: ContactDebugVisualizerConfig = {
     "envs_idx": None,
-    "size": 0.02,
+    "size": 0.03,
     "color": (0.5, 0.0, 0.0, 1.0),
+    "force_threshold": 1.0,
 }

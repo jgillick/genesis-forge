@@ -37,7 +37,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-## Foot Air Time Tracking
+## Air/Contact Time Tracking
 
 To encourage your robot to take longer steps, use air time tracking and rewards:
 
@@ -45,8 +45,8 @@ To encourage your robot to take longer steps, use air time tracking and rewards:
 self.foot_contact_manager = ContactManager(
     self,
     link_names=[".*_foot"],
-    track_air_time=True,
-    air_time_contact_threshold=5.0, # only consider steps with at least 5N of force
+    track_air_time=True, # Whether to track the air/contact time of the links
+    air_time_contact_threshold=5.0, # How much contact force is considered a step
 )
 
 RewardManager(
@@ -57,8 +57,9 @@ RewardManager(
             "weight": 1.0,
             "fn": rewards.feet_air_time,
             "params": {
-                "time_threshold": 1.0, # reward foot steps with 1 second of air time
+                "time_threshold": 0.5, # Target air-time, in seconds
                 "contact_manager": self.foot_contact_manager,
+                "vel_cmd_manager": self.velocity_command, # reduces the penalty if the the velocity command is close to zero
             },
         },
     }

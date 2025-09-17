@@ -124,7 +124,7 @@ class Go2CEnv(ManagedEnvironment):
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z,
+                    "fn": rewards.lin_vel_z_l2,
                 },
             },
         )

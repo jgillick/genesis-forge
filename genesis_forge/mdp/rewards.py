@@ -102,7 +102,7 @@ def dof_similar_to_default(
     return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
 
 
-def lin_vel_z(
+def lin_vel_z_l2(
     env: GenesisEnv,
     entity_attr: str = "robot",
     entity_manager: EntityManager = None,
@@ -126,6 +126,32 @@ def lin_vel_z(
         robot = getattr(env, entity_attr)
         linear_vel = entity_lin_vel(robot)
     return torch.square(linear_vel[:, 2])
+
+
+def ang_vel_xy_l2(
+    env: GenesisEnv,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
+):
+    """
+    Penalize xy-axis base angular velocity using L2 squared kernel.
+
+    Args:
+        env: The Genesis environment containing the entity
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+
+    Returns:
+        torch.Tensor
+    """
+    angle_vel = None
+    if entity_manager is not None:
+        angle_vel = entity_manager.get_angular_velocity()
+    else:
+        robot = getattr(env, entity_attr)
+        angle_vel = entity_ang_vel(robot)
+    return torch.sum(torch.square(angle_vel[:, :2]), dim=1)
 
 
 def flat_orientation_l2(
@@ -165,7 +191,7 @@ Action penalties.
 """
 
 
-def action_rate(env: GenesisEnv) -> torch.Tensor:
+def action_rate_l2(env: GenesisEnv) -> torch.Tensor:
     """
     Penalize changes in actions
 

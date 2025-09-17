@@ -173,14 +173,14 @@ class Go2SimpleEnv(ManagedEnvironment):
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z,
+                    "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
                     },
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate,
+                    "fn": rewards.action_rate_l2,
                 },
                 "similar_to_default": {
                     "weight": -0.1,
@@ -207,7 +207,7 @@ class Go2SimpleEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 0.174,  # ~10 degrees
+                        "limit_angle": 10.0,
                         "entity_manager": self.robot_manager,
                     },
                 },

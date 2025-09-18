@@ -157,6 +157,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             track_air_time=True,
             air_time_contact_threshold=5.0,
         )
+        self.thigh_contact_manager = ContactManager(
+            self,
+            link_names=[".*_thigh"],
+        )
 
         ##
         # Rewards
@@ -165,7 +169,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             logging_enabled=True,
             cfg={
                 "foot_air_time": {
-                    "weight": 1.0,
+                    "weight": 0.25,
                     "fn": rewards.feet_air_time,
                     "params": {
                         "contact_manager": self.foot_contact_manager,
@@ -174,7 +178,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "tracking_lin_vel": {
-                    "weight": 1.5,
+                    "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel,
                     "params": {
                         "vel_cmd_manager": self.velocity_command,
@@ -182,7 +186,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "tracking_ang_vel": {
-                    "weight": 0.75,
+                    "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel,
                     "params": {
                         "vel_cmd_manager": self.velocity_command,
@@ -190,14 +194,29 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "lin_vel_z": {
-                    "weight": -1.0,
+                    "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
                     },
                 },
+                "ang_vel_xy": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2,
+                    "params": {
+                        "entity_manager": self.robot_manager,
+                    },
+                },
+                "undesired_contacts": {
+                    "weight": -1.0,
+                    "fn": rewards.has_contact,
+                    "params": {
+                        "contact_manager": self.thigh_contact_manager,
+                        "threshold": 1.0,
+                    },
+                },
                 "action_rate": {
-                    "weight": -0.005,
+                    "weight": -0.01,
                     "fn": rewards.action_rate_l2,
                 },
                 "similar_to_default": {
@@ -207,9 +226,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                         "action_manager": self.action_manager,
                     },
                 },
-                "terminated": {
-                    "weight": -10.0,
-                    "fn": rewards.terminated,
+                "flat_orientation": {
+                    "weight": -2.5,
+                    "fn": rewards.flat_orientation_l2,
                 },
             },
         )
@@ -229,7 +248,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 15.0,
+                        "limit_angle": 20.0,
                         "entity_manager": self.robot_manager,
                     },
                 },

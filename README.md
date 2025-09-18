@@ -18,37 +18,28 @@ Features:
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.
 - And more...
 
+Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
+
 ## Example
 
-This is literally all it takes to teach a Go2 robot how to follow direction commands. Explore this and other examples [here](./examples/go2/simple/).
+This is all it takes to teach a Go2 robot how to follow direction commands. See the full example [here](./examples/simple/).
 
 ```python
 class Go2CEnv(ManagedEnvironment):
-    def __init__(
-        self,
-        num_envs: int = 1,
-        dt: float = 1 / 50,
-        max_episode_length_s: int | None = 20,
-        headless: bool = True,
-    ):
-        super().__init__(
-            num_envs=num_envs,
-            dt=dt,
-            max_episode_length_sec=max_episode_length_s,
-            headless=headless,
-        )
+    def __init__(self, num_envs: int = 1):
+        super().__init__(num_envs=num_envs)
 
         # Construct the scene
         self.scene = gs.Scene(
-            show_viewer=not headless,
+            show_viewer=True,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
         )
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
                 file="urdf/go2/urdf/go2.urdf",
-                pos=INITIAL_BODY_POSITION,
-                quat=INITIAL_QUAT,
+                pos=[0.0, 0.0, 0.35],
+                quat=[1.0, 0.0, 0.0, 0.0],
             ),
         )
 
@@ -61,8 +52,8 @@ class Go2CEnv(ManagedEnvironment):
                 "position": {
                     "fn": reset.position,
                     "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
+                        "position": [0.0, 0.0, 0.35],
+                        "quat": [1.0, 0.0, 0.0, 0.0],
                     },
                 },
             },
@@ -74,10 +65,7 @@ class Go2CEnv(ManagedEnvironment):
             joint_names=[".*"],
             default_pos={
                 ".*_hip_joint": 0.0,
-                "FL_thigh_joint": 0.8,
-                "FR_thigh_joint": 0.8,
-                "RL_thigh_joint": 1.0,
-                "RR_thigh_joint": 1.0,
+                ".*_thigh_joint": 0.8,
                 ".*_calf_joint": -1.5,
             },
             scale=0.25,
@@ -99,7 +87,6 @@ class Go2CEnv(ManagedEnvironment):
         # Rewards
         RewardManager(
             self,
-            logging_enabled=True,
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
@@ -143,7 +130,7 @@ class Go2CEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 0.174,  # ~10 degrees
+                        "limit_angle": 10, # degrees
                     },
                 },
             },
@@ -176,6 +163,10 @@ class Go2CEnv(ManagedEnvironment):
             },
         )
 ```
+
+## Learn More
+
+Check out the [user guide](https://genesis-forge.readthedocs.io/en/latest/guide/index.html) and [API reference](https://genesis-forge.readthedocs.io/en/latest/api/index.html)
 
 ## Citation
 

@@ -126,7 +126,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "RR_thigh_joint": 1.0,
                 ".*_calf_joint": -1.5,
             },
-            scale=0.25,
+            scale=0.5,
             use_default_offset=True,
             pd_kp=20,
             pd_kv=0.5,
@@ -286,8 +286,3 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
     def build(self):
         super().build()
         self.camera.follow_entity(self.robot)
-
-    def step(self, actions: torch.Tensor):
-        # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos())
-        return super().step(actions)

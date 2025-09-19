@@ -517,5 +517,7 @@ class PositionActionManager(BaseActionManager):
         """
         Add random noise to the tensor values
         """
+        if noise_scale == 0.0:
+            return values
         noise_value = torch.empty_like(values).uniform_(-1, 1) * noise_scale
         return values + noise_value

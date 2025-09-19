@@ -25,6 +25,7 @@ def bad_orientation(
     limit_angle: float = 40.0,
     entity_attr: str = "robot",
     entity_manager: EntityManager = None,
+    grace_steps: int = 0,
 ) -> torch.Tensor:
     """
     Terminate the environment if the robot is tipping over too much.
@@ -40,10 +41,14 @@ def bad_orientation(
         entity_manager: The entity manager for the entity.
         entity_attr: The attribute name of the entity in the environment.
                         This isn't necessary if `entity_manager` is provided.
+        grace_steps: Number of steps at episode start to ignore tilt detection (default: 0)
+                     This gives the robot a chance to stabilize before tilt detection is active.
 
     Returns:
         torch.Tensor: Boolean tensor indicating which environments should terminate
     """
+    in_grace_period = env.episode_length <= grace_steps
+
     # Get the projected gravity vector in body frame
     projected_gravity = None
     if entity_manager is not None:
@@ -60,7 +65,7 @@ def bad_orientation(
     tilt_angle = torch.asin(torch.clamp(tilt_magnitude, max=0.99))
 
     # Terminate if tilt angle exceeds the limit
-    return tilt_angle > math.radians(limit_angle)
+    return (~in_grace_period) & (tilt_angle > math.radians(limit_angle))
 
 
 def base_height_below_minimum(

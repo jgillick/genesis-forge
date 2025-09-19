@@ -1,13 +1,8 @@
-"""
-Simplified Go2 Locomotion Environment using managers to handle everything.
-"""
-
 import os
-import math
 import torch
+import genesis as gs
 import numpy as np
 from PIL import Image
-import genesis as gs
 from typing import Literal
 
 from genesis_forge import ManagedEnvironment
@@ -24,11 +19,10 @@ from genesis_forge.managers import (
 from genesis_forge.managers.entity import reset
 from genesis_forge.mdp import rewards, terminations
 
+
 HEIGHT_OFFSET = 0.4  # How high above the terrain the robot should be placed
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
-
-TerrainType = Literal["flat_terrain", "fractal_terrain"]
 
 
 class Go2RoughTerrainEnv(ManagedEnvironment):
@@ -39,23 +33,22 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
     def __init__(
         self,
         num_envs: int = 1,
-        dt: float = 1 / 50,  # control frequency on real robot is 50hz
+        dt: float = 1 / 50,
         max_episode_length_s: int | None = 20,
         headless: bool = True,
-        terrain: TerrainType = "flat_terrain",
     ):
         super().__init__(
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
-            headless=headless,
         )
-        self._initial_subterrain = terrain
+        self._curriculum_level = 0
+        self._terrain: Terrain | None = terrain
 
         # Construct the scene
         self.scene = gs.Scene(
-            show_viewer=not self.headless,
+            show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
@@ -67,13 +60,9 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             rigid_options=gs.options.RigidOptions(
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
-                enable_joint_limit=True,
                 enable_collision=True,
+                enable_joint_limit=True,
                 enable_self_collision=False,
-                # enable_multi_contact=False,
-                # for this policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
-                max_collision_pairs=30,
             ),
         )
 
@@ -94,46 +83,16 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
-            res=(1280, 960),
+            res=(1280, 720),
             fov=40,
             env_idx=0,
             debug=True,
-        )
-
-    def create_terrain(self, scene: gs.Scene):
-        """
-        Create a random terrain map entity
-        """
-
-        # Create a tiled terrain surface texture
-        # Load a checker image, and tile it 24 times in X and Y directions
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        tile_path = os.path.join(this_dir, "checker.png")
-        checker_image = np.array(Image.open(tile_path))
-        tiled_image = np.tile(checker_image, (24, 24, 1))
-
-        return scene.add_entity(
-            surface=gs.surfaces.Default(
-                diffuse_texture=gs.textures.ImageTexture(
-                    image_array=tiled_image,
-                )
-            ),
-            morph=gs.morphs.Terrain(
-                pos=(-15, -15, 0),
-                n_subterrains=(1, 2),
-                subterrain_size=(15, 15),
-                subterrain_types=[
-                    ["flat_terrain", "fractal_terrain"],
-                ],
-            ),
         )
 
     def config(self):
         """
         Configure the environment managers
         """
-        ##
-        # Terrain manager helps the EntityManager safetly place the robot above the terrain on reset
         self.terrain_manager = TerrainManager(self)
 
         ##
@@ -143,31 +102,15 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             self,
             entity_attr="robot",
             on_reset={
-                # Randomize the robot's rotation after reset
-                "rotation": {
-                    "fn": reset.set_rotation,
-                    "params": {"z": (0, 2 * math.pi)},
-                },
                 # Randomize the robot's position on the terrain after reset
                 "position": {
                     "fn": reset.randomize_terrain_position,
                     "params": {
                         "height_offset": HEIGHT_OFFSET,
                         "terrain_manager": self.terrain_manager,
-                        "subterrain": self._initial_subterrain,
                     },
                 },
             },
-        )
-
-        ##
-        # Contact manager - detect contact between the robot's body and the terrain
-        self.contact_manager = ContactManager(
-            self,
-            link_names=["base"],  # Keep for other uses, but not for fall detection
-            entity_attr="robot",
-            with_entity_attr="terrain",
-            use_quaternion_transform=False,
         )
 
         ##
@@ -189,10 +132,10 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 ".*_calf_joint": -1.5,
             },
             scale=0.25,
-            clip=(-100.0, 100.0),
             use_default_offset=True,
             pd_kp=20,
             pd_kv=0.5,
+            max_force=23.5,
         )
 
         ##
@@ -202,14 +145,92 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             range={
                 "lin_vel_x": [-1.0, 1.0],
                 "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "ang_vel_z": [-0.5, 0.5],
             },
             standing_probability=0.05,
             resample_time_s=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
-                "arrow_offset": 0.02,
+            },
+        )
+
+        ##
+        # Contact manager
+        self.foot_contact_manager = ContactManager(
+            self,
+            link_names=[".*_calf"],
+            track_air_time=True,
+            air_time_contact_threshold=5.0,
+        )
+        self.undesired_contacts = ContactManager(
+            self,
+            link_names=[".*_thigh", "base"],
+        )
+
+        ##
+        # Rewards
+        self.reward_manager = RewardManager(
+            self,
+            logging_enabled=True,
+            cfg={
+                "tracking_lin_vel": {
+                    "weight": 1.5,
+                    "fn": rewards.command_tracking_lin_vel,
+                    "params": {
+                        "vel_cmd_manager": self.velocity_command,
+                        "entity_manager": self.robot_manager,
+                    },
+                },
+                "tracking_ang_vel": {
+                    "weight": 0.75,
+                    "fn": rewards.command_tracking_ang_vel,
+                    "params": {
+                        "vel_cmd_manager": self.velocity_command,
+                        "entity_manager": self.robot_manager,
+                    },
+                },
+                "lin_vel_z": {
+                    "weight": -2.0,
+                    "fn": rewards.lin_vel_z_l2,
+                    "params": {
+                        "entity_manager": self.robot_manager,
+                    },
+                },
+                "ang_vel_xy": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2,
+                    "params": {
+                        "entity_manager": self.robot_manager,
+                    },
+                },
+                "undesired_contacts": {
+                    "weight": -1.0,
+                    "fn": rewards.has_contact,
+                    "params": {
+                        "contact_manager": self.undesired_contacts,
+                        "threshold": 5.0,
+                    },
+                },
+                "action_rate": {
+                    "weight": -0.01,
+                    "fn": rewards.action_rate_l2,
+                },
+                "similar_to_default": {
+                    "weight": -0.1,
+                    "fn": rewards.dof_similar_to_default,
+                    "params": {
+                        "action_manager": self.action_manager,
+                    },
+                },
+                "flat_orientation": {
+                    "weight": -1.5,
+                    "fn": rewards.flat_orientation_l2,
+                },
+                "terminated": {
+                    "weight": -100.0,
+                    "fn": rewards.terminated,
+                },
             },
         )
 
@@ -224,82 +245,15 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                     "fn": terminations.timeout,
                     "time_out": True,
                 },
-                # Use multiple termination conditions for robust fall detection
+                # Terminate if the robot's pitch and yaw angles are too large
                 "bad_orientation": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 0.174,  # ~10 degrees
+                        "limit_angle": 30.0,
                         "entity_manager": self.robot_manager,
+                        "grace_steps": 20,
                     },
                 },
-                # Contact-based fall detection with grace period for training stability
-                # For Go2 (approx 15kg), a significant impact force would be >100N
-                "body_contact": {
-                    "fn": terminations.contact_force,
-                    "params": {
-                        "threshold": 100.0,
-                        "contact_manager": self.contact_manager,
-                    },
-                },
-            },
-        )
-
-        ##
-        # Rewards
-        RewardManager(
-            self,
-            logging_enabled=True,
-            cfg={
-                "base_height_target": {
-                    "weight": -25.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "terrain_manager": self.terrain_manager,
-                        "entity_manager": self.robot_manager,
-                    },
-                },
-                "tracking_lin_vel": {
-                    "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
-                },
-                "tracking_ang_vel": {
-                    "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
-                },
-                "lin_vel_z": {
-                    "weight": -1.0,
-                    "fn": rewards.lin_vel_z,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
-                },
-                "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate,
-                },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
-                },
-                # "terminated": {
-                #     "weight": -10.0,
-                #     "fn": rewards.is_terminated,
-                #     "params": {
-                #         "termination_manager": self.termination_manager,
-                #     },
-                # },
             },
         )
 
@@ -331,26 +285,46 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             },
         )
 
+    def create_terrain(self, scene: gs.Scene):
+        """
+        Create a random terrain map entity
+        """
+
+        # Create a tiled terrain surface texture
+        # Load a checker image, and tile it 24 times in X and Y directions
+        this_dir = os.path.dirname(os.path.abspath(__file__))
+        tile_path = os.path.join(this_dir, "checker.png")
+        checker_image = np.array(Image.open(tile_path))
+        tiled_image = np.tile(checker_image, (24, 24, 1))
+
+        return scene.add_entity(
+            surface=gs.surfaces.Default(
+                diffuse_texture=gs.textures.ImageTexture(
+                    image_array=tiled_image,
+                )
+            ),
+            morph=gs.morphs.Terrain(
+                pos=(-12, -12, 0),
+                n_subterrains=(1, 1),
+                subterrain_size=(12, 12),
+                vertical_scale=0.001,  # the Go2 robot is small
+                subterrain_types=[["random_uniform_terrain"]],
+                subterrain_parameters={
+                    "random_uniform_terrain": {
+                        "min_height": 0.0,
+                        "max_height": 0.1,
+                        "step": 0.05,
+                        "downsampled_scale": 0.25,
+                    },
+                },
+            ),
+        )
+
     def build(self):
         super().build()
         self.camera.follow_entity(self.robot)
 
     def step(self, actions: torch.Tensor):
         # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos()[0, :])
+        self.camera.set_pose(lookat=self.robot.get_pos()[0])
         return super().step(actions)
-
-    def reset(self, envs_idx: list[int] | None = None):
-        # If the average episode length is greater than 10, change the subterrain to fractal
-        if (
-            envs_idx is not None
-            and self.robot_manager.on_reset["position"]["params"]["subterrain"]
-            == "flat_terrain"
-            and self.episode_length.mean(dtype=gs.tc_float) > 200
-        ):
-            self.robot_manager.on_reset["position"]["params"][
-                "subterrain"
-            ] = "fractal_terrain"
-            print("Upgrade terrain")
-
-        return super().reset(envs_idx)

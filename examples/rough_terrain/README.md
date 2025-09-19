@@ -1,7 +1,8 @@
 # Go2 - Rough Terrain
 
-Adds a generated rough terrain and uses a combination of the terrain and entity managers to randomly place the robot
-at a different place on the terrain on each reset.
+**NOTE:** This training program doesn't work yet, and seems to be blocked by [this issue](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727).
+
+Teaches the Go2 robot to walk on rough terrain. This environment uses a combination of the TerrainManager and EntityManager to place each robot randomly at a different place of terrain at each reset.
 
 ```python
 def __init__(self):

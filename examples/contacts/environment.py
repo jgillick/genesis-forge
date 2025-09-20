@@ -85,6 +85,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             env_idx=0,
             debug=True,
         )
+        self.camera.follow_entity(self.robot)
 
     def config(self):
         """
@@ -157,10 +158,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             track_air_time=True,
             air_time_contact_threshold=5.0,
         )
-        self.thigh_contact_manager = ContactManager(
-            self,
-            link_names=[".*_thigh"],
-        )
 
         ##
         # Rewards
@@ -169,7 +166,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             logging_enabled=True,
             cfg={
                 "foot_air_time": {
-                    "weight": 0.25,
+                    "weight": 2.5,
                     "fn": rewards.feet_air_time,
                     "params": {
                         "contact_manager": self.foot_contact_manager,
@@ -205,14 +202,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.ang_vel_xy_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
-                    },
-                },
-                "undesired_contacts": {
-                    "weight": -1.0,
-                    "fn": rewards.has_contact,
-                    "params": {
-                        "contact_manager": self.thigh_contact_manager,
-                        "threshold": 1.0,
                     },
                 },
                 "action_rate": {
@@ -283,6 +272,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             },
         )
 
-    def build(self):
-        super().build()
-        self.camera.follow_entity(self.robot)
+    def step(self, actions: torch.Tensor):
+        self.camera.set_pose(lookat=self.robot.get_pos()[0])
+        return super().step(actions)

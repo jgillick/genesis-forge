@@ -55,7 +55,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinxcontrib.video",
     "myst_parser",
-    "autoapi.extension",
 ]
 
 # Autosummary settings - disabled for now as modules are still in development

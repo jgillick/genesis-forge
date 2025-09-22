@@ -152,7 +152,7 @@ class CommandManager(BaseManager):
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
         """Function that returns the current command for each environment."""
-        return self._command
+        return self.command
 
     def use_external_controller(self, controller: Callable[[int], CommandRange]):
         """

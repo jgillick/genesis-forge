@@ -39,8 +39,7 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
 )
-from genesis_forge.managers.entity import reset
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations
 
 
 class MyFirstEnv(ManagedEnvironment):

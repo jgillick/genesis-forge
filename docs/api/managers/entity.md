@@ -2,8 +2,6 @@
 
 Sends regular commands, such as a velocity direction, to your robot
 
-```{toctree}
-:maxdepth: 2
-entity
-reset
+```{eval-rst}
+.. autoclass:: genesis_forge.managers.EntityManager
 ```

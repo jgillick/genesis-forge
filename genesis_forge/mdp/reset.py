@@ -10,8 +10,7 @@ from genesis.engine.entities import RigidEntity
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.terrain_manager import TerrainManager
 from genesis_forge.utils import links_idx_by_name_pattern
-
-from .config import ResetConfigFnClass
+from genesis_forge.managers.entity.config import ResetConfigFnClass
 
 XYZRotation = dict[Literal["x", "y", "z"], float | tuple[float, float]]
 """
@@ -177,12 +176,19 @@ class randomize_terrain_position(ResetConfigFnClass):
         x = rotation["x"] if "x" in rotation else 0
         y = rotation["y"] if "y" in rotation else 0
         z = rotation["z"] if "z" in rotation else 0
+
         if isinstance(x, tuple):
-            self._rotation_buffer[envs_idx, 0].uniform_(*x)
+            self._rotation_buffer[envs_idx, 0] = torch.empty(
+                len(envs_idx), device=gs.device
+            ).uniform_(*x)
         if isinstance(y, tuple):
-            self._rotation_buffer[envs_idx, 1].uniform_(*y)
+            self._rotation_buffer[envs_idx, 1] = torch.empty(
+                len(envs_idx), device=gs.device
+            ).uniform_(*y)
         if isinstance(z, tuple):
-            self._rotation_buffer[envs_idx, 2].uniform_(*z)
+            self._rotation_buffer[envs_idx, 2] = torch.empty(
+                len(envs_idx), device=gs.device
+            ).uniform_(*z)
 
         # Set angle as quat
         self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])

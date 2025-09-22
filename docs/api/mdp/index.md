@@ -6,6 +6,7 @@ These are a collection of simple functions used to generate rewards, termination
 :maxdepth: 1
 
 observations
+reset
 rewards
 terminations
 ```

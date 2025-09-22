@@ -19,7 +19,7 @@ def config(self):
             "ang_vel_z": [-1.0, 1.0],
         },
         standing_probability=0.05,
-        resample_time_s=5.0,
+        resample_time_sec=5.0,
         debug_visualizer=True,
         debug_visualizer_cfg={
             "envs_idx": [0],

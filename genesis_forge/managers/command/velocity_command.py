@@ -77,7 +77,7 @@ class VelocityCommandManager(CommandManager):
         env: The environment to control
         range: The ranges of linear & angular velocities
         standing_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
-        resample_time_s: The time interval between changing the command
+        resample_time_sec: The time interval between changing the command
         debug_visualizer: Enable the debug arrow visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
 
@@ -132,12 +132,12 @@ class VelocityCommandManager(CommandManager):
         self,
         env: GenesisEnv,
         range: VelocityCommandRange,
-        resample_time_s: float = 5.0,
+        resample_time_sec: float = 5.0,
         standing_probability: float = 0.0,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: VelocityDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
     ):
-        super().__init__(env, range=range, resample_time_sec=resample_time_s)
+        super().__init__(env, range=range, resample_time_sec=resample_time_sec)
         self._arrow_nodes: list = []
         self.standing_probability = standing_probability
         self.debug_visualizer = debug_visualizer

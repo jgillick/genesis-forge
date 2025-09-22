@@ -62,7 +62,7 @@ def main():
 
     # Make changes for eval
     # Pick a new direction every 2 seconds
-    env.unwrapped.velocity_command.resample_time_s = 2.0
+    env.unwrapped.velocity_command.resample_time_sec = 2.0
 
     # Eval
     print("🎬 Loading last model...")

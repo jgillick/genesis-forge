@@ -16,8 +16,7 @@ from genesis_forge.managers import (
     TerrainManager,
     ContactManager,
 )
-from genesis_forge.managers.entity import reset
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations
 
 
 HEIGHT_OFFSET = 0.4  # How high above the terrain the robot should be placed
@@ -148,7 +147,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 "ang_vel_z": [-0.5, 0.5],
             },
             standing_probability=0.05,
-            resample_time_s=5.0,
+            resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

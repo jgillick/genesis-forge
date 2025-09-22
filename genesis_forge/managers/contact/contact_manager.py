@@ -146,7 +146,8 @@ class ContactManager(BaseManager):
         self._air_time_contact_threshold = air_time_contact_threshold
         self._track_air_time = track_air_time
         self._entity_attr = entity_attr
-        self._target_link_ids = None
+        self._link_ids = None
+        self._local_link_ids = None
         self._with_entity_attr = with_entity_attr
         self._with_links_names = with_links_names
         self._with_link_ids = torch.empty(0, device=gs.device)
@@ -182,9 +183,14 @@ class ContactManager(BaseManager):
     """
 
     @property
-    def target_link_ids(self) -> torch.Tensor:
+    def link_ids(self) -> torch.Tensor:
         """The global link indices for the target links."""
-        return self._target_link_ids
+        return self._link_ids
+
+    @property
+    def local_link_ids(self) -> torch.Tensor:
+        """The local link indices for the target links."""
+        return self._local_link_ids
 
     """
     Helper Methods
@@ -259,9 +265,11 @@ class ContactManager(BaseManager):
         super().build()
 
         # Get the link indices
-        self._target_link_ids = self._get_links_idx(self._entity_attr, self._link_names)
-        if not self._target_link_ids.is_contiguous():
-            self._target_link_ids = self._target_link_ids.contiguous()
+        (self._link_ids, self._local_link_ids) = self._get_links_idx(
+            self._entity_attr, self._link_names
+        )
+        if not self._link_ids.is_contiguous():
+            self._link_ids = self._link_ids.contiguous()
         if self._with_entity_attr or self._with_links_names:
             with_entity_attr = (
                 self._with_entity_attr
@@ -275,7 +283,7 @@ class ContactManager(BaseManager):
                 self._with_link_ids = self._with_link_ids.contiguous()
 
         # Initialize buffers
-        link_count = self._target_link_ids.shape[0]
+        link_count = self._link_ids.shape[0]
         self.contacts = torch.zeros(
             (self.env.num_envs, link_count, 3), device=gs.device
         )
@@ -319,7 +327,9 @@ class ContactManager(BaseManager):
     Implementation
     """
 
-    def _get_links_idx(self, entity_attr: str, names: list[str] = None) -> torch.Tensor:
+    def _get_links_idx(
+        self, entity_attr: str, names: list[str] = None
+    ) -> (torch.Tensor, torch.Tensor):
         """
         Find the global link indices for the given link names or regular expressions.
 
@@ -337,11 +347,13 @@ class ContactManager(BaseManager):
             return torch.tensor([link.idx for link in entity.links], device=gs.device)
 
         ids = []
+        local_ids = []
         for pattern in names:
             found = False
             for link in entity.links:
                 if pattern == link.name or re.match(f"^{pattern}$", link.name):
                     ids.append(link.idx)
+                    local_ids.append(link.idx_local)
                     found = True
             if not found:
                 names = [link.name for link in entity.links]
@@ -349,7 +361,10 @@ class ContactManager(BaseManager):
                     f"Link {pattern} not found in entity {self._entity_attr}.\nAvailable links: {names}"
                 )
 
-        return torch.tensor(ids, device=gs.device)
+        return (
+            torch.tensor(ids, device=gs.device),
+            torch.tensor(local_ids, device=gs.device),
+        )
 
     def _calculate_contact_forces(self):
         """
@@ -387,7 +402,7 @@ class ContactManager(BaseManager):
             link_a.contiguous(),
             link_b.contiguous(),
             links_quat.contiguous(),
-            self._target_link_ids.contiguous(),
+            self._link_ids.contiguous(),
             self._with_link_ids.contiguous(),
             self.contacts.contiguous(),
             self.contact_positions.contiguous(),

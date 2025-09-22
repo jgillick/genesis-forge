@@ -22,7 +22,7 @@ class CommandManager(BaseManager):
     Args:
         env: The environment to control
         range: The number range, or dict of ranges, to generate target command(s) for
-        resample_time_s: The time interval between changing the command
+        resample_time_sec: The time interval between changing the command
 
     Example::
 
@@ -121,10 +121,10 @@ class CommandManager(BaseManager):
         return self._resample_time_sec
 
     @resample_time_sec.setter
-    def resample_time_sec(self, resample_time_s: float):
+    def resample_time_sec(self, resample_time_sec: float):
         """Set the time interval (in seconds) between changing the command for each environment."""
-        self._resample_time_sec = resample_time_s
-        self._resample_steps = int(resample_time_s / self.env.dt)
+        self._resample_time_sec = resample_time_sec
+        self._resample_steps = int(resample_time_sec / self.env.dt)
 
     """
     Operations
@@ -270,7 +270,6 @@ class CommandManager(BaseManager):
 
     def resample_command(self, env_ids: Sequence[int]):
         """Create a new command for the given environment ids."""
-        num = torch.empty(len(env_ids), device=gs.device)
 
         # Get range values (this might have changed since init due to curriculum training)
         ranges = None
@@ -280,8 +279,9 @@ class CommandManager(BaseManager):
             ranges = [self._range]
 
         # Resample the command
+        buffer = torch.empty(len(env_ids), device=gs.device)
         for i in range(self._command.shape[1]):
-            self._command[env_ids, i] = num.uniform_(*ranges[i])
+            self._command[env_ids, i] = buffer.uniform_(*ranges[i])
 
     """
     Implementation

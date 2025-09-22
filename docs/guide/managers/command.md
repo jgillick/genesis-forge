@@ -29,7 +29,7 @@ class MyEnv(ManagedEnvironment):
                 "lin_vel_y": [-0.5, 0.5],  # Left/right
                 "ang_vel_z": [-1.0, 1.0],  # Rotation
             },
-            resample_time_s=10,  # Resample new commands every 10 seconds
+            resample_time_sec=10,  # Resample new commands every 10 seconds
             debug_visualizer=True, # Show command arrows
         )
 ```

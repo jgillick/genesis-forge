@@ -7,7 +7,7 @@ These modular classes are used to handle dedicated parts of your environment.
 action/index
 command/index
 contact
-entity/index
+entity
 observation
 reward
 termination

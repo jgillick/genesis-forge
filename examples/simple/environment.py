@@ -13,8 +13,7 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
 )
-from genesis_forge.managers.entity import reset
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations
 
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]

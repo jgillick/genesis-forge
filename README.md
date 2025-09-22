@@ -6,14 +6,15 @@
 
 A robotics RL training frameworks for Genesis inspired by Isaac Lab and Gymnasium.
 The goal of Genesis Forge is to give developers the tools they need to get training quickly, with less of the boilerplate setup.
+Genesis Forge is a modular framework, made up of managers and wrappers, each dedicated to specific areas of your robotics training program.
 
 Features:
 
-- 🦿 Action manager - Control your joints and actuators
-- 🏆 Reward/Termination managers - Simple reward and termination setup with automatic logging
-- ↪️ Command manager - Generate random direction commands with debug visualizations
-- 🏔️ Terrain manager - Randomize locations and curriculum-based placement
-- 💥 Contact manager - Create rewards/terminations based on what your robot touches.
+- 🦿 Action manager - Control your joints and actuators, within limits and with domain randomization
+- 🏆 Reward/Termination managers - Simple, clean, and extensible reward/termination setup with automatic logging
+- ↪️ Command managers - Generates random command values with debug visualization, rewards, and observations
+- 🏔️ Terrain manager - Randomize locations across terrains and curriculum-based placement
+- 💥 Contact manager - Comprehensive contact/collision detection, with related reward and termination functions
 - 🎬 Video Wrapper - Automatically records videos at regular intervals during training
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.
 - And more...
@@ -22,7 +23,7 @@ Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest
 
 ## Example
 
-This is all it takes to teach a Go2 robot how to follow direction commands. See the full example [here](./examples/simple/).
+Here's an example of a environment to teach the Go2 robot how to follow direction commands. See the full runnable example [here](./examples/simple/).
 
 ```python
 class Go2CEnv(ManagedEnvironment):
@@ -140,7 +141,7 @@ class Go2CEnv(ManagedEnvironment):
         ObservationManager(
             self,
             cfg={
-                "velocity_cmd": {"fn": self.velocity_command.observation},
+                "velocity_cmd": { "fn": self.velocity_command.observation },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
                 },

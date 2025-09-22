@@ -15,8 +15,7 @@ from genesis_forge.managers import (
     VelocityCommandManager,
     ContactManager,
 )
-from genesis_forge.managers.entity import reset
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations
 
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.35]
@@ -143,7 +142,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "ang_vel_z": [-0.5, 0.5],
             },
             standing_probability=0.0,
-            resample_time_s=5.0,
+            resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

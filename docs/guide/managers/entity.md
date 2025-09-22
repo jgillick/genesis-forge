@@ -8,7 +8,7 @@ You can see a full example using the entity manager in [examples/simple](https:/
 
 ```python
 from genesis_forge.managers import EntityManager
-from genesis_forge.managers.entity import reset
+from genesis_forge.mdp import reset
 
 class MyEnv(ManagedEnvironment):
     def __init__(self):
@@ -63,7 +63,7 @@ EntityManager(
 
 ## Built-in Reset Functions
 
-Genesis Forge provides many common reset functions in [`genesis_forge.managers.entity.reset`](project:/api/managers/entity/reset.md):
+Genesis Forge provides many common reset functions in [`genesis_forge.mdp.reset`](project:/api/mdp/reset.md):
 
 ## Custom Reset Functions
 
@@ -106,4 +106,4 @@ EntityManager(
 )
 ```
 
-You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/managers/entity/reset.md#genesis_forge.managers.entity.reset.randomize_link_mass_shift):
+You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.managers.mdp.reset.randomize_link_mass_shift):

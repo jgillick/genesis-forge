@@ -44,7 +44,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Construct the scene
         self.scene = gs.Scene(
-            show_viewer=not self.headless,
+            show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
@@ -80,7 +80,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
-            res=(1280, 960),
+            res=(1280, 720),
             fov=40,
             env_idx=0,
             debug=True,
@@ -128,7 +128,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 ".*_calf_joint": -1.5,
             },
             scale=0.25,
-            clip=(-100.0, 100.0),
             use_default_offset=True,
             pd_kp=20,
             pd_kv=0.5,
@@ -143,7 +142,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "lin_vel_y": [-1.0, 1.0],
                 "ang_vel_z": [-1.0, 1.0],
             },
-            standing_probability=0.05,
+            standing_probability=0.02,
             resample_time_s=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -175,7 +174,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "tracking_ang_vel": {
-                    "weight": 1.0,
+                    "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel,
                     "params": {
                         "vel_cmd_manager": self.velocity_command,
@@ -184,14 +183,14 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z,
+                    "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
                     },
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate,
+                    "fn": rewards.action_rate_l2,
                 },
                 "similar_to_default": {
                     "weight": -0.1,
@@ -218,7 +217,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 0.174,  # ~10 degrees
+                        "limit_angle": 10.0,
                         "entity_manager": self.robot_manager,
                     },
                 },
@@ -259,5 +258,5 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
     def step(self, actions: torch.Tensor):
         # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos())
+        self.camera.set_pose(lookat=self.robot.get_pos()[0])
         return super().step(actions)

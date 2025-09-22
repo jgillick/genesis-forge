@@ -1,6 +1,6 @@
 # 🎮 Gamepad Controllers
 
-Genesis Forge currently integrates with the Logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) and [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) controllers.
+Don't you want to use a video game controller to control your trained policy? Genesis Forge currently integrates with the Logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) and [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) controllers.
 
 ```{figure} _images/f710.webp
 :alt: F10 controller
@@ -10,11 +10,11 @@ Genesis Forge currently integrates with the Logitech [F310](https://www.logitech
 The Logitech F710 gamepad controller
 ```
 
-## Installation
+# Installation
 
 To use these controllers, you need to install [HIDAPI](https://github.com/libusb/hidapi) on your computer:
 
-### Mac
+## Mac
 
 With [Homebrew](https://brew.sh/)
 
@@ -22,11 +22,11 @@ With [Homebrew](https://brew.sh/)
 brew install hidapi
 ```
 
-### Windows
+## Windows
 
 Download the windows files from [here](https://github.com/libusb/hidapi/releases) and then place them in `Windows/System32`.
 
-### Linux
+## Linux
 
 Use your package manager to install `libhidapi-dev`, for example:
 
@@ -53,9 +53,7 @@ sudo udevadm control --reload-rules
 
 ## Usage
 
-(see the [Command Manager](managers/command) guide for more information)
-
-If you have command managers defined in your environment, you can setup an eval program to connect the gamepad to the commands in the environment.
+If you have one or more [command managers](./managers//command) defined in your environment, you can easily connect the gamepad to them in your eval program.
 
 For example, let's say you have both a velocity command and a target height command defined in your environment:
 
@@ -73,20 +71,24 @@ self.velocity_command = VelocityCommandManager(
 self.height_command = CommandManager(self, range=(0.2, 0.4))
 ```
 
-Now let's create an eval script that:
+Now let's create an eval script that uses the gamepad controller to set these values:
 
 ```{code-block} python
 :caption: eval.py
+
+# This is where the trained policy was saved
 EXPERIMENT_DIR = "./logs/experiment"
 TRAINED_MODEL = f"{EXPERIMENT_DIR}/model_100.pt"
+[cfg] = pickle.load(open(f"{EXPERIMENT_DIR}/cfgs.pkl", "rb"))
 
+# Initialize the genesis simulator
 gs.init(logging_level="warning", backend=gs.gpu)
 
-# Setup environment
+# Setup the environment
 env = MyEnv(num_envs=1, headless=False)
 env.build()
 
-# Connect to gamepad
+# Connect the gamepad
 gamepad = Gamepad()
 env.velocity_command.use_gamepad(
     gamepad, lin_vel_y_axis=0, lin_vel_x_axis=1, ang_vel_z_axis=2
@@ -95,7 +97,6 @@ env.height_command.use_gamepad(gamepad, range_axis=3)
 
 # Setup policy runner
 env = RslRlWrapper(env)
-[cfg] = pickle.load(open(f"{EXPERIMENT_DIR}/cfgs.pkl", "rb"))
 runner = OnPolicyRunner(env, cfg, EXPERIMENT_DIR, device=gs.device)
 runner.load(TRAINED_MODEL)
 policy = runner.get_inference_policy(device=gs.device)
@@ -107,4 +108,4 @@ with torch.no_grad():
         obs, _rews, _dones, _infos = env.step(actions)
 ```
 
-This will attach the left joystick to X/Y movements, and on the right joystick, left/right will control rotation around the Z axis, and up/down will control height.
+This maps joystick axis 0 and 1 (left joystick) to the robot's Y and X movements, and axis 2 and 3 (right joystick) to rotation and height.

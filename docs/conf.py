@@ -137,6 +137,6 @@ html_context = {
     "doc_path": "docs",
 }
 
-html_logo = "../images/logo.png"
-html_favicon = "../images/logo.png"
+html_logo = "../media/logo.png"
+html_favicon = "../media/logo.png"
 html_title = "Genesis Forge Documentation"

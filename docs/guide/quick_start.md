@@ -22,7 +22,7 @@ This framework is built around the [Genesis Simulator](https://genesis-world.rea
 
 ## Your First Environment
 
-Let's create a simple locomotion environment where a quadruped robot learns to walk forward. Here's a complete example:
+Let's create a simple locomotion environment where a quadruped robot learns to walk forward. Here's a complete environment:
 
 ```{code-block} python
 :caption: environment.py
@@ -71,7 +71,7 @@ class MyFirstEnv(ManagedEnvironment):
         )
 
     def config(self):
-        """Configure all the managers that handle different aspects of the environment."""
+        """Configure managers"""
 
         # Set target velocity (forward at 0.5 m/s)
         self.target_vel = torch.zeros((self.num_envs, 3), device=gs.device)
@@ -92,7 +92,7 @@ class MyFirstEnv(ManagedEnvironment):
             },
         )
 
-        # Action Manager - Maps RL actions to joint positions
+        # Action Manager - Maps step actions to joint positions
         self.action_manager = PositionActionManager(
             self,
             joint_names=[".*"],  # Control all joints
@@ -155,7 +155,7 @@ class MyFirstEnv(ManagedEnvironment):
                 # Terminate if the robot is falling over
                 "fall_over": {
                     "fn": terminations.bad_orientation,
-                    "params": {"limit_angle": 0.174},  # ~10 degrees
+                    "params": {"limit_angle": 10}, # degrees
                 },
             },
         )
@@ -212,7 +212,7 @@ env = VideoWrapper(
     env,
     video_length_sec=10,
     out_dir="./videos",
-    episode_trigger=lambda ep: ep % 10 == 0,  # Record every 10th episode
+    episode_trigger=lambda ep: ep % 2 == 0,  # Record every 2nd episode
 )
 
 # Wrap for RSL-RL compatibility
@@ -318,6 +318,7 @@ env = MyFirstEnv(num_envs=1024)  # Instead of 4096
 
 ## Next Steps
 
+- Learn about the [Gamepad controller integration](./gamepad) for detailed reference
 - Browse the [API Documentation](../api/index.md) for detailed reference
 - Join our [Discord community](https://discord.gg/genesis-forge) for help and discussions
 

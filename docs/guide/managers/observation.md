@@ -154,7 +154,7 @@ cfg={
 
 ## Custom Observation Functions
 
-A custom observation function takes in the environment as the first parameter, as well as any other parameter defined in the `params` dict at the ObservationManager. The returned value should be a tensor with a value, or list of values, for each environment.
+A custom observation function takes in the environment as the first parameter, as well as any other parameter defined in the `params` dict at the ObservationManager. The returned value should be a tensor with value(s) for each environment.
 
 ### Simple Functions
 
@@ -189,7 +189,10 @@ ObservationManager(
     cfg={
         "foot_contact": {
             "fn": feet_in_contact,
-            "params": {"contact_manager": self.contact_manager, "threshold": 5.0},
+            "params": {
+                "contact_manager": self.contact_manager,
+                "threshold": 5.0,
+            },
         },
     },
 )

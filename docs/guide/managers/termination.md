@@ -113,7 +113,22 @@ Adjust termination criteria during training:
 ```python
 class MyEnv(ManagedEnvironment):
     def config(self):
-        self.termination_manager = TerminationManager(self, term_cfg={...})
+        self.termination_manager = TerminationManager(self, term_cfg={
+            "timeout": {
+                "fn": terminations.timeout,
+                "time_out": True,
+            },
+            "bad_orientation": {
+                "fn": terminations.bad_orientation,
+                "params": {"angle_limit": 25},
+            },
+            "too_low": {
+                "fn": terminations.base_height_below_minimum,
+                "params": {
+                    "minimum_height": 0.05
+                }
+            }
+        })
 
     def step(self):
         self.update_curriculum()
@@ -121,22 +136,18 @@ class MyEnv(ManagedEnvironment):
 
     def update_curriculum(self):
         """Make termination criteria stricter over time."""
-        if self.step_count < 100:
-            # Early: very lenient
-            angle_limit = 0.7  # 40 degrees
-            height_threshold = 0.05
-        elif self.step_count < 200:
+        if self.step_count > 200:
             # Mid: moderate
-            angle_limit = 0.5  # 28 degrees
+            angle_limit = 20
             height_threshold = 0.10
         else:
             # Late: strict
-            angle_limit = 0.3  # 17 degrees
+            angle_limit = 17
             height_threshold = 0.15
 
         # Update termination parameters
-        self.termination_manager.term_cfg["bad_orientation"]["params"]["limit_angle"] = angle_limit
-        self.termination_manager.term_cfg["too_low"]["params"]["threshold"] = height_threshold
+        self.termination_manager.term_cfg["bad_orientation"]["params"]["angle_limit"] = angle_limit
+        self.termination_manager.term_cfg["too_low"]["params"]["minimum_height"] = height_threshold
 ```
 
 ## Logging and Analysis

@@ -21,7 +21,7 @@ Features:
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
 
-<video autoplay="" muted="" loop="" playsinline="" src="media/cmd_locomotion.mp4"></video>
+https://github.com/user-attachments/assets/15f75eca-3e0b-46c9-9035-ff39b8d0daa7
 
 ## Example
 

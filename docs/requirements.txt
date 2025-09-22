@@ -7,3 +7,9 @@ sphinxcontrib-napoleon>=0.7
 sphinx-autobuild>=2021.3.14
 nbsphinx>=0.9.3
 sphinxcontrib-video>=0.4.1
+genesis-world>=0.3.3
+gymnasium
+hidapi
+skrl[torch]
+torch
+tensordict

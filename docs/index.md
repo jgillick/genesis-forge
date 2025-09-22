@@ -24,6 +24,8 @@ guide/index
 api/index
 ```
 
+<video autoplay="" muted="" loop="" playsinline="" src="_static/cmd_locomotion.webm"></video>
+
 ## Citation
 
 If you used Genesis Forge in your research, we would appreciate it if you could cite it.

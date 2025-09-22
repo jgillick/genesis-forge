@@ -138,7 +138,20 @@ Adjust rewards based on training progress:
 ```python
 class MyEnv(ManagedEnvironment):
     def config(self):
-        self.reward_manager = RewardManager(self, cfg={...})
+        self.reward_manager = RewardManager(self, cfg={
+            "forward_vel": {
+                "weight": 1.0,
+                "fn": ...,
+            },
+            "upright": {
+                "weight": -1.5,
+                "fn": ...,
+            },
+            "energy": {
+                "weight": 0.0,
+                "fn": ..,
+            },
+        })
 
     def step(self):
         self.update_curriculum()
@@ -146,11 +159,11 @@ class MyEnv(ManagedEnvironment):
 
     def update_curriculum(self):
         """Called periodically during training."""
-        if self.step_count === 100:
+        if self.step_count === 200:
             # Mid training: increase speed focus
             self.reward_manager.cfg["upright"]["weight"] = -2.0
             self.reward_manager.cfg["forward_vel"]["weight"] = 2.0
-        elif self.step_count === 300:
+        elif self.step_count === 500:
             # Late training: add efficiency
             self.reward_manager.cfg["upright"]["weight"] = -1.0
             self.reward_manager.cfg["forward_vel"]["weight"] = 3.0

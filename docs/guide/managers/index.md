@@ -1,12 +1,12 @@
 # Managers
 
-This guide provides practical examples and best practices for using Genesis Forge's manager-based architecture. Each manager handles a specific aspect of your RL environment, making your code more modular and maintainable.
+Each manager handles a specific aspect of your RL environment, making your code more modular and maintainable.
 
 ## Why Use Managers?
 
 Traditional RL environment code often becomes a monolithic mess as features are added. Genesis Forge's manager architecture provides:
 
-1. **Separation of Concerns**: Each manager handles one specific aspect
+1. **Separation of Concerns**: Each manager handles one specific area of your program
 2. **Reusability**: Managers can be shared across environments
 3. **Configurability**: Easy to modify behavior through configuration
 4. **Logging**: Automatic tensorboard logging support
@@ -14,7 +14,7 @@ Traditional RL environment code often becomes a monolithic mess as features are 
 
 ## Basic Example
 
-When your environment class inherits from `ManagedEnvironment`, managers are automatically coordinated throughout your environment's lifecycles.
+When your environment class inherits from `ManagedEnvironment`, managers are automatically coordinated throughout your environment's build/step/reset lifecycles.
 
 ```python
 from genesis_forge import ManagedEnvironment
@@ -36,9 +36,9 @@ class MyEnv(ManagedEnvironment):
 
 All managers follow a consistent lifecycle:
 
-2. **Build** (`build()`): Called before the very first step to initialize manager and its buffers.
-3. **Step** (`step()`): Called at each environment step
-4. **Reset** (`reset()`): Called when environments reset
+2. **Build**: Called before the very first step to initialize manager and its buffers.
+3. **Step**: Called at each environment step
+4. **Reset**: Called when environments reset
 
 Explore the managers to learn more.
 

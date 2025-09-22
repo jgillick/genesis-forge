@@ -1,5 +1,5 @@
 <p align="center">
-<img src="./images/logo_text.png" width="250" />
+<img src="./media/logo_text.png" width="250" />
 </p>
 
 # Genesis Forge
@@ -20,6 +20,8 @@ Features:
 - And more...
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
+
+<video autoplay="" muted="" loop="" playsinline="" src="media/cmd_locomotion.mp4"></video>
 
 ## Example
 

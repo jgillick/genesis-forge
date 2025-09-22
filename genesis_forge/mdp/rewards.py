@@ -6,6 +6,7 @@ Each of these should return a float tensor with the reward value for each enviro
 import torch
 from typing import Union
 import genesis as gs
+from genesis.engine.entities import RigidEntity
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     CommandManager,
@@ -14,6 +15,10 @@ from genesis_forge.managers import (
     ContactManager,
     TerrainManager,
     EntityManager,
+)
+from genesis.utils.geom import (
+    transform_by_quat,
+    inv_quat,
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
 
@@ -396,3 +401,38 @@ def feet_air_time(
     if vel_cmd_manager is not None:
         reward *= torch.norm(vel_cmd_manager.command[:, :2], dim=1) > 0.1
     return reward
+
+
+def feet_slide(
+    env,
+    contact_manager: ContactManager,
+    entity_attr: str = "robot",
+) -> torch.Tensor:
+    """Penalize feet sliding.
+
+    This function penalizes the agent for sliding its feet on the ground. The reward is computed as the
+    norm of the linear velocity of the feet multiplied by a binary contact sensor. This ensures that the
+    agent is penalized only when the feet are in contact with the ground.
+
+    This penalty is less effective at longer foot-contact links (for example, long legs without dedicated foot links),
+    because they might have some velocity while they're being used to move the robot. However, dedicated foot links
+    will be stationary on the ground and not moving while pushing the robot forward.
+
+    Args:
+        env: The Genesis Forge environment
+        contact_manager: The contact manager for the feet
+        entity_attr: The attribute name of the robot entity that the feet are attached to.
+
+    Returns:
+        The penalty for the feet slide
+    """
+    # Get links in contact
+    contacts = torch.norm(contact_manager.contacts[:, :, :], dim=-1) > 1.0
+
+    # Get link velocities.
+    # If the links aren't moving, then they're being used to move the robot and not sliding.
+    link_ids = contact_manager.local_link_ids
+    robot: RigidEntity = getattr(env, entity_attr)
+    link_vel = robot.get_links_vel(links_idx_local=link_ids)
+
+    return torch.sum(link_vel.norm(dim=-1) * contacts, dim=1)

@@ -31,28 +31,15 @@ class MyEnv(ManagedEnvironment):
             },
             resample_time_sec=10,  # Resample new commands every 10 seconds
             debug_visualizer=True, # Show command arrows
+            debug_visualizer_cfg={
+                "envs_idx": [0],  # only debug env 0
+            }
         )
 ```
 
-In this example, ever 10 seconds, the `VelocityCommandManager` will generate random new X/Y/Z commands from the dict of ranges provided, for all environments.
+In this example, the `VelocityCommandManager` will generate random new X/Y/Z commands from the dict of ranges every 10 seconds.
 
-When `debug_visualizer` is `True`, an arrow will be displayed above your robot showing which direction is commanded (green) and which direction your robot is actually moving (blue).
-
-### Standing Probability
-
-Include periods where the robot should stand still:
-
-```python
-VelocityCommandManager(
-    self,
-    range={...},
-    standing_probability=0.2,  # 20% chance of zero command
-)
-```
-
-### Velocity Command Visualization
-
-Enable visual feedback of commands vs actual velocity:
+### Debug visualization
 
 ```python
 VelocityCommandManager(
@@ -66,7 +53,7 @@ VelocityCommandManager(
 )
 ```
 
-Understanding the arrows:
+When `debug_visualizer` is `True`, arrows will be displayed above your robot showing which direction is commanded v.s. which direction your robot is actually moving.
 
 - **Green Arrow**: Commanded velocity (robot-relative, shown in world frame)
 - **Blue Arrow**: Actual robot velocity (world frame)
@@ -76,6 +63,18 @@ The debug arrows can slow down the simulation since they need to be calculated a
 
 It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
 :::
+
+### Standing Probability
+
+Include periods where the robot should stand still:
+
+```python
+VelocityCommandManager(
+    self,
+    range={...},
+    standing_probability=0.2,  # 20% chance of zero command
+)
+```
 
 ### Using Velocity Commands in Rewards
 
@@ -110,11 +109,7 @@ ObservationManager(
     self,
     cfg={
         "velocity_command": {
-            "fn": lambda env: self.velocity_command.observation(),
-        },
-        # Or access raw command
-        "raw_command": {
-            "fn": lambda env: self.velocity_command.command,
+            "fn": self.velocity_command.observation,
         },
     },
 )
@@ -122,7 +117,7 @@ ObservationManager(
 
 ### Gamepad Control
 
-Control commands with a physical gamepad for testing:
+After your policy is trained, you can control the commanded values with a physical game controller:
 
 ```{code-block} python
 :caption: train.py
@@ -160,22 +155,10 @@ self.target_command = CommandManager(self, range={
 })
 ```
 
-### Gamepad Control
-
-Using the height command, from above, as an example:
-
 ```{code-block} python
 :caption: train.py
 
-from genesis_forge.gamepads import Gamepad
-
-#...
-
-# Setup your environment
-env = MyEnv(num_envs=1, headless=False)
-env.build()
-
-# Connect joystick axis 3 to the height command value
+# Connect gamepad axis 3 to the height command value
 gamepad = Gamepad()
 env.command_manager.use_gamepad(gamepad_controller, range_axis=3)
 

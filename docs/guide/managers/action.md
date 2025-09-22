@@ -12,7 +12,7 @@ The most common action manager is `PositionActionManager`. This sets an unbounde
 position = offset + scaling * action
 ```
 
-By setting the offset to a default stable position (via `default_pos` and `use_default_offset` params), the policy will learn what is stable early, which can lead to faster convergence.
+By setting the offset to the default stable position (via `default_pos` and `use_default_offset` params), the policy will learn what is stable early, which can lead to faster convergence.
 
 ```python
 from genesis_forge.managers import PositionActionManager
@@ -166,7 +166,7 @@ action_space = self.action_manager.action_space
 
 ## PositionWithinLimitsActionManager
 
-This action manager sets the action space range to `-1.0 - 1.0` and converts the received action to an absolute position within the limits of your actuator, without any offset or scaling applied. This is useful if you need your policy to use the full range of your actuators, however, it might take longer to learn the default stable position.
+This action manager is similar to PositionActionManager, but sets the action space range to `-1.0 - 1.0` and converts the received action from that range to an absolute position within the limits of your actuator. This is useful if you need your policy to use the full range of your actuators, however, it might take longer to learn the default stable position.
 
 ```python
 from genesis_forge.managers import PositionWithinLimitsActionManager

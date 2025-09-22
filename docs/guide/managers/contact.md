@@ -1,10 +1,10 @@
 # Contact Manager
 
-The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.
-
 :::{caution}
 The contact manager is experimental and might have some unexpected behaviors.
 :::
+
+The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.
 
 ## Basic Usage
 
@@ -37,7 +37,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-## Air/Contact Time Tracking
+## Foot air-time rewards
 
 To encourage your robot to take longer steps, use air time tracking and rewards:
 
@@ -72,6 +72,7 @@ Penalize or terminate on the robot hitting itself.
 
 ```python
 class MyEnv(ManagedEnvironment):
+
     def config(self):
         # Detect the body links colliding with other body liks
         self.contact_manager = ContactManager(
@@ -82,9 +83,8 @@ class MyEnv(ManagedEnvironment):
 
         RewardManager(
             self,
-            logging_enabled=True,
             cfg={
-                "Self contact": {
+                "self_contact": {
                     "weight": -1.0,
                     "fn": rewards.contact_force,
                     "params": {
@@ -106,7 +106,10 @@ self.contact_manager = ContactManager(
     entity_attr="robot",
     sensor_links=["body"],
     with_entity_attr="terrain"
-    debug_visualizer=True
+    debug_visualizer=True,
+    debug_visualizer_cfg={
+        "envs_idx": [0],
+    },
 )
 ```
 

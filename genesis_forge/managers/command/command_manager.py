@@ -1,4 +1,4 @@
-from typing import Tuple, Sequence, Callable
+from typing import Tuple, Callable
 
 import os
 import torch
@@ -142,7 +142,7 @@ class CommandManager(BaseManager):
         )
         self.resample_command(resample_command_envs)
 
-    def reset(self, env_ids: Sequence[int] = None):
+    def reset(self, env_ids: list[int] | None = None):
         """One or more environments have been reset"""
         if not self.enabled:
             return
@@ -268,7 +268,7 @@ class CommandManager(BaseManager):
             self._command, device=gs.device
         )
 
-    def resample_command(self, env_ids: Sequence[int]):
+    def resample_command(self, env_ids: list[int]):
         """Create a new command for the given environment ids."""
 
         # Get range values (this might have changed since init due to curriculum training)

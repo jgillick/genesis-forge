@@ -40,7 +40,7 @@ class MyEnv(ManagedEnvironment):
 
 ## Reset Configuration
 
-Each reward config item has the following possible values:
+Each reset config item has the following possible values:
 
 - **fn**: A function that handles the reset
 - **params** (optional): Additional parameters which will be passed to the function
@@ -67,7 +67,7 @@ Genesis Forge provides many common reset functions in [`genesis_forge.mdp.reset`
 
 ## Custom Reset Functions
 
-It's easy to define your own reset function. The first three params of any reset function are: the environment, the entity, and the environment indices that are being reset. Additionally, any params defined for that reset item in RewardManager will be passed by name.
+It's easy to define your own reset function. The first three params of any reset function are: the environment, the entity, and the environment ids being reset. Additionally, any params defined for that reset item in RewardManager will be passed by name.
 
 For example, let's create a simple reset function that will randomly add mass to the entity's links:
 
@@ -90,20 +90,23 @@ def add_mass_on_reset(
             envs_idx=envs_idx,
         )
 
+class MyEnv(ManagedEnvironment):
+    # ...
 
-EntityManager(
-    self,
-    entity_attr="robot",
-    on_reset={
-        "random_mass": {
-            "fn": add_mass_on_reset,
-            "params": {
-                "link_name": "body",
-                "mass_range": [-0.5, 1.0],
+    def config(self):
+        EntityManager(
+            self,
+            entity_attr="robot",
+            on_reset={
+                "random_mass": {
+                    "fn": add_mass_on_reset,
+                    "params": {
+                        "link_name": "body",
+                        "mass_range": [-0.5, 1.0],
+                    },
+                },
             },
-        },
-    },
-)
+        )
 ```
 
-You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.managers.mdp.reset.randomize_link_mass_shift):
+You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.mdp.reset.randomize_link_mass_shift):

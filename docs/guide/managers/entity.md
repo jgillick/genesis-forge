@@ -109,4 +109,4 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.managers.mdp.reset.randomize_link_mass_shift):
+You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.mdp.reset.randomize_link_mass_shift):

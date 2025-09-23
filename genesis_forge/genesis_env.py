@@ -236,7 +236,7 @@ class GenesisEnv:
         if (
             len(envs_idx) > 0
             and self._max_episode_random_scaling > 0.0
-            and self._base_max_episode_length
+            and self._base_max_episode_length is not None
         ):
             scale = torch.rand((envs_idx.numel(),)) * self._max_episode_random_scaling
             self.max_episode_length[envs_idx] = torch.round(

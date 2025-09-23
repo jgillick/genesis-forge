@@ -46,7 +46,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2CommandDirectionEnv(num_envs=1, headless=False)
+    env = Go2CommandDirectionEnv(num_envs=1, headless=False, max_episode_length_s=None)
     env.build()
 
     # Connect to gamepad

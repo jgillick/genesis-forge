@@ -16,7 +16,7 @@ Genesis Forge is a powerful framework for building reinforcement learning enviro
 - 💥 Comprehensive contact/collision manager
 - 🎬 Automatically record video snippets during training
 - 🕹️ Connect a game controller for hands-on policy evaluation and play-mode.
-- 🤖 Seamless integration with popular RL libraries: RSL-RL and SKRL
+- 🤖 Seamless integration with popular RL libraries: [RSL-RL](https://github.com/leggedrobotics/rsl_rl/tree/main) and [SKRL](https://skrl.readthedocs.io/en/latest/)
 
 ```{toctree}
 :maxdepth: 1

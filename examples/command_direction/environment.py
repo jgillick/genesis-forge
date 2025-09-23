@@ -1,8 +1,7 @@
-"""
-Simplified Go2 Locomotion Environment using managers to handle everything.
-"""
-
 import torch
+import os
+import numpy as np
+from PIL import Image
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
@@ -13,11 +12,14 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
     VelocityCommandManager,
+    CommandManager,
+    TerrainManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
 
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
+HEIGHT_OFFSET = 0.4
+INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
 
 
@@ -38,7 +40,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
-            headless=headless,
         )
 
         # Construct the scene
@@ -146,7 +147,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
-                "arrow_offset": 0.02,
             },
         )
 

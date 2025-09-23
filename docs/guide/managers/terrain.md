@@ -13,9 +13,7 @@ class MyEnv(ManagedEnvironment):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.scene = gs.Scene(
-            # ... scene options ...
-        )
+        self.scene = gs.Scene()
 
         # Define your terrain, like usual
         self.terrain = scene.add_entity(

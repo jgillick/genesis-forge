@@ -27,7 +27,7 @@ class GenesisEnv:
                 super().__init__(*args, **kwargs)
 
                 # ...Define scene here...
-                self.scene = gs.Scene( ... )
+                self.scene = gs.Scene()
                 self.terrain = self.scene.add_entity(gs.morphs.Plane())
                 self.robot = self.scene.add_entity( ... )
 

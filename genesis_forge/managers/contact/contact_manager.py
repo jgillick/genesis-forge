@@ -102,9 +102,7 @@ class ContactManager(BaseManager):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
-                self.scene = gs.Scene(
-                    # ... scene options ...
-                )
+                self.scene = gs.Scene()
 
                 # Add terrain
                 self.terrain = self.scene.add_entity(gs.morphs.Plane())

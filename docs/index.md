@@ -24,7 +24,7 @@ guide/index
 api/index
 ```
 
-<video autoplay="" muted="" loop="" playsinline="" src="_static/cmd_locomotion.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="_static/cmd_locomotion.webm"></video>
 
 ## Citation
 

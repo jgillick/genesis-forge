@@ -60,9 +60,7 @@ class VideoWrapper(Wrapper):
                 super().__init__(*args, **kwargs)
 
                 # Construct the scene
-                self.scene = gs.Scene(
-                    # ... scene options ...
-                )
+                self.scene = gs.Scene()
 
                 # Assign a camera to the `camera` env attribute
                 self.camera = scene.add_camera(pos=(-2.5, -1.5, 1.0))

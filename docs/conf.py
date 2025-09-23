@@ -117,7 +117,7 @@ html_static_path = ["_static"]
 
 # PyData theme options
 html_theme_options = {
-    "github_url": "https://github.com/jgillick/genesis_forge",
+    "github_url": "https://github.com/jgillick/genesis-forge",
     "navbar_end": ["theme-switcher", "navbar-icon-links"],
     "show_nav_level": 2,
     "navigation_depth": 3,

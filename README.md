@@ -23,6 +23,19 @@ Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest
 
 https://github.com/user-attachments/assets/15f75eca-3e0b-46c9-9035-ff39b8d0daa7
 
+## Install
+
+Before installing Genesis Forge, ensure you have:
+
+- Python >=3.10,<3.14
+- pip package manager
+
+(Optional) CUDA-compatible GPU for faster training
+
+```shell
+pip install genesis-forge
+```
+
 ## Example
 
 Here's an example of a environment to teach the Go2 robot how to follow direction commands. See the full runnable example [here](./examples/simple/).

@@ -3,8 +3,8 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "genesis_forge"
-version = "0.1.1"
+name = "genesis-forge"
+version = "0.1.0"
 authors = [{ name = "Jeremy Gillick" }]
 description = "A robotics RL training frameworks for Genesis inspired by Isaac Lab and Gymnasium."
 readme = "README.md"
@@ -25,8 +25,8 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 
 [project.urls]
-Homepage = "https://github.com/jgillick/genesis_forge"
-Issues = "https://github.com/jgillick/genesis_forge/issues"
+Homepage = "https://github.com/jgillick/genesis-forge"
+Issues = "https://github.com/jgillick/genesis-forge/issues"
 
 [tool.hatch.build.targets.sdist]
 exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]

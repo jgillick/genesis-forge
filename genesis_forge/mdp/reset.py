@@ -231,6 +231,12 @@ class randomize_link_mass_shift(ResetConfigFnClass):
     Randomly add/subtract mass to one or more links of the entity.
     This picks a random value from `add_mass_range` and passes it to `set_mass_shift` for each environment.
     This means that on subsequent calls, the mass can continue to either decrease or increase.
+
+    Args:
+        env: The environment
+        entity: The entity to set the rotation of.
+        link_name: The name, or regex pattern, of the link(s) to set the inertial mass for.
+        add_mass_range: The range of the mass that can be added or subtracted each reset.
     """
 
     def __init__(
@@ -240,13 +246,6 @@ class randomize_link_mass_shift(ResetConfigFnClass):
         link_name: str,
         add_mass_range: tuple[float, float] = (-0.2, 0.2),
     ):
-        """
-        Args:
-            env: The environment
-            entity: The entity to set the rotation of.
-            link_name: The name, or regex pattern, of the link(s) to set the inertial mass for.
-            add_mass_range: The range of the mass that can be added or subtracted each reset.
-        """
         self.env = _env
         self.add_mass_range = add_mass_range
         self._entity = entity
@@ -256,9 +255,6 @@ class randomize_link_mass_shift(ResetConfigFnClass):
         self.build()
 
     def build(self):
-        """
-        Find the links and initialize buffers
-        """
         self._links_idx = []
         self._orig_mass = None
         if self._link_name is not None:
@@ -273,10 +269,9 @@ class randomize_link_mass_shift(ResetConfigFnClass):
         env: GenesisEnv,
         entity: RigidEntity,
         envs_idx: list[int],
+        link_name: str,
+        add_mass_range: tuple[float, float] = (-0.2, 0.2),
     ):
-        """
-        Randomly shift the link masses
-        """
         # Randomize mass
         self._mass_shift_buffer[envs_idx, :].uniform_(*self.add_mass_range)
 

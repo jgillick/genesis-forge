@@ -149,6 +149,7 @@ class ContactManager(BaseManager):
         self._with_entity_attr = with_entity_attr
         self._with_links_names = with_links_names
         self._with_link_ids = torch.empty(0, device=gs.device)
+        self._with_local_link_ids = None
         self._has_with_filter = (
             with_entity_attr is not None or with_links_names is not None
         )
@@ -274,7 +275,7 @@ class ContactManager(BaseManager):
                 if self._with_entity_attr is not None
                 else "robot"
             )
-            self._with_link_ids = self._get_links_idx(
+            (self._with_link_ids, self._with_local_link_ids) = self._get_links_idx(
                 with_entity_attr, self._with_links_names
             )
             if not self._with_link_ids.is_contiguous():
@@ -334,30 +335,33 @@ class ContactManager(BaseManager):
         Args:
             entity: The entity to find the links in.
             names: The names, or name regex patterns, of the links to find.
+            include_local_idx: Include a tensor of the local link indices, as well
 
-        Returns:
-            List of global link indices.
+        Returns: Tuple of global and local link index tensors.
         """
         entity = self.env.__getattribute__(entity_attr)
 
-        # If link names are not defined, assume all links
-        if names is None:
-            return torch.tensor([link.idx for link in entity.links], device=gs.device)
-
         ids = []
         local_ids = []
-        for pattern in names:
-            found = False
+
+        if names is None:
+            # If link names are not defined, assume all links
             for link in entity.links:
-                if pattern == link.name or re.match(f"^{pattern}$", link.name):
-                    ids.append(link.idx)
-                    local_ids.append(link.idx_local)
-                    found = True
-            if not found:
-                names = [link.name for link in entity.links]
-                raise RuntimeError(
-                    f"Link {pattern} not found in entity {self._entity_attr}.\nAvailable links: {names}"
-                )
+                ids.append(link.idx)
+                local_ids.append(link.idx_local)
+        else:
+            for pattern in names:
+                found = False
+                for link in entity.links:
+                    if pattern == link.name or re.match(f"^{pattern}$", link.name):
+                        ids.append(link.idx)
+                        local_ids.append(link.idx_local)
+                        found = True
+                if not found:
+                    names = [link.name for link in entity.links]
+                    raise RuntimeError(
+                        f"Link {pattern} not found in entity {self._entity_attr}.\nAvailable links: {names}"
+                    )
 
         return (
             torch.tensor(ids, device=gs.device),

@@ -33,10 +33,7 @@ class Go2CEnv(ManagedEnvironment):
         super().__init__(num_envs=num_envs)
 
         # Construct the scene
-        self.scene = gs.Scene(
-            show_viewer=True,
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
-        )
+        self.scene = gs.Scene(show_viewer=False)
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(

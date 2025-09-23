@@ -15,11 +15,7 @@ class MyEnv(ManagedEnvironment):
         super().__init__()
 
         # Construct the scene
-        self.scene = gs.Scene(
-            # ... scene settings ...
-        )
-
-        # Robot entity
+        self.scene = gs.Scene()
         self.robot = self.scene.add_entity(gs.morphs.URDF(file="urdf/go2/urdf/go2.urdf"))
 
     def config(self):

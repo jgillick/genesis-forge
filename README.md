@@ -11,10 +11,10 @@ Genesis Forge is a modular framework, made up of managers and wrappers, each ded
 Features:
 
 - 🦿 Action manager - Control your joints and actuators, within limits and with domain randomization
-- 🏆 Reward/Termination managers - Simple, clean, and extensible reward/termination setup with automatic logging
-- ↪️ Command managers - Generates random command values with debug visualization, rewards, and observations
+- 🏆 Reward/Termination managers - Simple and extensible reward/termination setup with automatic logging
+- ↪️ Command managers - Generates random command values with debug visualization
 - 🏔️ Terrain manager - Randomize locations across terrains and curriculum-based placement
-- 💥 Contact manager - Comprehensive contact/collision detection, with related reward and termination functions
+- 💥 Contact manager - Comprehensive contact/collision detection and reward/termination functions
 - 🎬 Video Wrapper - Automatically records videos at regular intervals during training
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.
 - And more...

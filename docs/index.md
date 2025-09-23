@@ -7,6 +7,7 @@
 ```
 
 <br />
+
 Genesis Forge is a powerful framework for building reinforcement learning environments using the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator. It provides a flexible and modular architecture to get your robot up and running quickly with less boilerplate work.
 
 ## Key Features

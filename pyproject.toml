@@ -27,3 +27,6 @@ license-files = ["LICENSE"]
 [project.urls]
 Homepage = "https://github.com/jgillick/genesis_forge"
 Issues = "https://github.com/jgillick/genesis_forge/issues"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]

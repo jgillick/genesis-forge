@@ -17,6 +17,8 @@ def timeout(env: GenesisEnv) -> torch.Tensor:
     """
     Terminate the environment if the episode length exceeds the maximum episode length.
     """
+    if env.max_episode_length is None:
+        return torch.zeros(env.num_envs, dtype=torch.bool)
     return env.episode_length > env.max_episode_length
 
 

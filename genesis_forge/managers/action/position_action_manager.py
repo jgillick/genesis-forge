@@ -325,7 +325,6 @@ class PositionActionManager(BaseActionManager):
         self._damping_values = None
         self._stiffness_values = None
         self._frictionloss_values = None
-        self._max_force_values = None
         self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._scale_cfg is not None:
             self._scale_values = self._get_dof_value_tensor(self._scale_cfg)

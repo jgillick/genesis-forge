@@ -43,7 +43,6 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             max_episode_random_scaling=0.1,
         )
         self._curriculum_level = 0
-        self._terrain: Terrain | None = terrain
 
         # Construct the scene
         self.scene = gs.Scene(

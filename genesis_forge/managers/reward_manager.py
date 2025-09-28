@@ -105,6 +105,7 @@ class RewardManager(BaseManager):
         self._episode_length = torch.zeros(
             (self.env.num_envs,), device=gs.device, dtype=torch.int32
         )
+        self._episode_mean: dict[str, torch.Tensor] = dict()
         self._episode_data: dict[str, torch.Tensor] = dict()
         for name in self.cfg.keys():
             self._episode_data[name] = torch.zeros(
@@ -117,6 +118,23 @@ class RewardManager(BaseManager):
         The rewards calculated for the most recent step. Shape is (num_envs,).
         """
         return self._reward_buf
+
+    @property
+    def episode_data(self) -> dict[str, torch.Tensor]:
+        """
+        Get the accumulated reward data for the current episode of all environments.
+        """
+        return self._episode_data
+    
+    """
+    Helpers
+    """
+    def last_episode_mean_reward(self, name: str) -> float:
+        """
+        Get the last mean reward for an epsidoe for a given reward name.
+        The mean reward is only calculated when episodes end/reset.
+        """
+        return self._episode_mean.get(name, 0.0)
 
     """
     Operations
@@ -146,9 +164,7 @@ class RewardManager(BaseManager):
 
             # Get reward value from function
             weight *= dt
-            value = fn(self.env, **params).detach()
-            if weight != 1.0:
-                value = value * weight
+            value = fn(self.env, **params) * weight
 
             # Add to reward buffer
             self._reward_buf += value
@@ -173,14 +189,19 @@ class RewardManager(BaseManager):
             has_valid_episodes = torch.any(valid_episodes)
 
             for name, value in self._episode_data.items():
+                # Don't log items that have zero weight
+                cfg = self.cfg[name]
+                weight = cfg.get("weight", 0.0)
+
                 # Log episodes with at least one step (otherwise it could cause a divide by zero error)
                 # Do this inside the loop, so that we don't need a second loop to reset the episode data
-                if has_valid_episodes:
+                if weight != 0 and has_valid_episodes:
                     # Calculate average for each episode based on its actual length
                     value[envs_idx][valid_episodes] /= episode_lengths[valid_episodes]
 
                     # Take the mean across all valid episodes
                     episode_mean = torch.mean(value[envs_idx][valid_episodes])
+                    self._episode_mean[name] = episode_mean.item()
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
 
                 # Reset episodic data

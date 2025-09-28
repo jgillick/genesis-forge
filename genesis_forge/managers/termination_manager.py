@@ -147,7 +147,7 @@ class TerminationManager(BaseManager):
                 trunc = cfg.get("time_out", False)
 
                 # Get termination value
-                value = fn(self.env, **params).detach()
+                value = fn(self.env, **params)
 
                 # Add to the correct buffer using in-place operations
                 if trunc:

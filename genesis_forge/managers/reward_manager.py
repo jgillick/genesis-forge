@@ -102,8 +102,8 @@ class RewardManager(BaseManager):
         self._reward_buf = torch.zeros(
             (env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
-        self._episode_length = torch.zeros(
-            (self.env.num_envs,), device=gs.device, dtype=torch.int32
+        self._episode_seconds = torch.zeros(
+            (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
         self._episode_mean: dict[str, torch.Tensor] = dict()
         self._episode_data: dict[str, torch.Tensor] = dict()
@@ -147,12 +147,12 @@ class RewardManager(BaseManager):
         Returns:
             The rewards for the environments. Shape is (num_envs,).
         """
-        self._reward_buf[:] = 0.0
-        self._episode_length += 1
         if not self.enabled:
             return self._reward_buf
 
         dt = self.env.dt
+        self._reward_buf[:] = 0.0
+        self._episode_seconds += dt
         for name, cfg in self.cfg.items():
             fn = cfg["fn"]
             weight = cfg.get("weight", 0.0)
@@ -183,29 +183,22 @@ class RewardManager(BaseManager):
         if self.enabled and self.logging_enabled:
             logging_dict = self.env.extras[self.env.extras_logging_key]
 
-            # Get episode lengths for the reset environments
-            episode_lengths = self._episode_length[envs_idx]
-            valid_episodes = episode_lengths > 0
-            has_valid_episodes = torch.any(valid_episodes)
-
+            episode_seconds = self._episode_seconds[envs_idx]
             for name, value in self._episode_data.items():
                 # Don't log items that have zero weight
                 cfg = self.cfg[name]
                 weight = cfg.get("weight", 0.0)
+                if weight != 0:
+                    # Calculate average for each environment
+                    value[envs_idx] /= episode_seconds
 
-                # Log episodes with at least one step (otherwise it could cause a divide by zero error)
-                # Do this inside the loop, so that we don't need a second loop to reset the episode data
-                if weight != 0 and has_valid_episodes:
-                    # Calculate average for each episode based on its actual length
-                    value[envs_idx][valid_episodes] /= episode_lengths[valid_episodes]
-
-                    # Take the mean across all valid episodes
-                    episode_mean = torch.mean(value[envs_idx][valid_episodes])
+                    # Take the mean across all episodes
+                    episode_mean = torch.mean(value[envs_idx])
                     self._episode_mean[name] = episode_mean.item()
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
 
-                # Reset episodic data
+                # Reset episodic data 
                 self._episode_data[name][envs_idx] = 0.0
 
-        # Reset episode lengths for the reset environments
-        self._episode_length[envs_idx] = 0
+        # Reset episode seconds to nearly zero, to prevent divide by zero errors
+        self._episode_seconds[envs_idx] = 1e-10

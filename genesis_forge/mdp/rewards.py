@@ -228,7 +228,7 @@ def command_tracking_lin_vel(
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
-    Penalize not tracking commanded linear velocity (xy axes)
+    Reward for tracking commanded linear velocity (xy axes)
 
     Args:
         env: The Genesis environment containing the robot
@@ -240,7 +240,7 @@ def command_tracking_lin_vel(
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
-        torch.Tensor: Penalty for tracking of linear velocity commands (xy axes)
+        torch.Tensor: Reward for tracking of linear velocity commands (xy axes)
     """
     assert (
         command is not None or vel_cmd_manager is not None
@@ -269,7 +269,7 @@ def command_tracking_ang_vel(
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
-    Penalize not tracking commanded angular velocity (yaw)
+    Reward for tracking commanded angular velocity (yaw)
 
     Args:
         env: The Genesis Forge environment
@@ -281,7 +281,7 @@ def command_tracking_ang_vel(
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
 
     Returns:
-        torch.Tensor: Penalty for tracking of angular velocity commands (yaw)
+        torch.Tensor: Reward for tracking of angular velocity commands (yaw)
     """
     assert (
         commanded_ang_vel is not None or vel_cmd_manager is not None

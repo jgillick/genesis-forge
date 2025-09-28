@@ -137,6 +137,14 @@ class GenesisEnv:
         if self.observation_space is not None:
             return self.observation_space.shape[0]
         return 0
+    
+    @property
+    def max_episode_length_steps(self) -> int | None:
+        """
+        The max episode length, in steps, for each environment.
+        If episode randomization scaling is enabled, this will be the base max episode length before scaling.
+        """
+        return self._base_max_episode_length
 
     """
     Utilities

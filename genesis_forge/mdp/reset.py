@@ -9,7 +9,7 @@ from genesis.utils.geom import (
 from genesis.engine.entities import RigidEntity
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.terrain_manager import TerrainManager
-from genesis_forge.utils import links_idx_by_name_pattern
+from genesis_forge.utils import links_by_name_pattern
 from genesis_forge.managers.entity.config import ResetConfigFnClass
 
 XYZRotation = dict[Literal["x", "y", "z"], float | tuple[float, float]]
@@ -250,18 +250,19 @@ class randomize_link_mass_shift(ResetConfigFnClass):
         self.add_mass_range = add_mass_range
         self._entity = entity
         self._link_name = link_name
-        self._links_idx = []
+        self._links_idx_local = []
         self._mass_shift_buffer: torch.tensor | None = None
         self.build()
 
     def build(self):
-        self._links_idx = []
+        self._links_idx_local = []
         self._orig_mass = None
         if self._link_name is not None:
-            self._links_idx = links_idx_by_name_pattern(self._entity, self._link_name)
-            if len(self._links_idx) > 0:
+            links = links_by_name_pattern(self._entity, self._link_name)
+            if len(links) > 0:
+                self._links_idx_local = [link.idx_local for link in links]
                 self._mass_shift_buffer = torch.zeros(
-                    (self.env.num_envs, len(self._links_idx)), device=gs.device
+                    (self.env.num_envs, len(self._links_idx_local)), device=gs.device
                 )
 
     def __call__(
@@ -278,6 +279,6 @@ class randomize_link_mass_shift(ResetConfigFnClass):
         # Set mass on entity
         self._entity.set_mass_shift(
             self._mass_shift_buffer,
-            links_idx_local=self._links_idx,
+            links_idx_local=self._links_idx_local,
             envs_idx=envs_idx,
         )

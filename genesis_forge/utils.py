@@ -2,6 +2,7 @@ import re
 import torch
 import genesis as gs
 from genesis.engine.entities import RigidEntity
+from genesis.engine.entities.rigid_entity.rigid_link import RigidLink
 
 from genesis.utils.geom import (
     transform_by_quat,
@@ -54,9 +55,9 @@ def entity_projected_gravity(entity: RigidEntity) -> torch.Tensor:
     return transform_by_quat(gravity, inv_base_quat)
 
 
-def links_idx_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[int]:
+def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidLink]:
     """
-    Find a list of entity links by name regex pattern, and return their indices.
+    Find a list of entity links by name regex pattern.
 
     Args:
         entity: The entity to find the links in.
@@ -65,8 +66,8 @@ def links_idx_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[in
     Returns:
         List of global link indices.
     """
-    links_idx = []
+    links = []
     for link in entity.links:
         if link.name == name_pattern or re.match(f"^{name_pattern}$", link.name):
-            links_idx.append(link.idx)
-    return links_idx
+            links.append(link)
+    return links

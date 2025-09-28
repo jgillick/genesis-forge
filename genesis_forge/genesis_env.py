@@ -78,10 +78,9 @@ class GenesisEnv:
         self.max_episode_length: torch.Tensor = None
 
         self._max_episode_length_sec = 0.0
-        self._max_episode_random_scaling = 0.0
         self._base_max_episode_length = None
+        self._max_episode_random_scaling = max_episode_random_scaling
         if max_episode_length_sec and max_episode_length_sec > 0:
-            self._max_episode_random_scaling = max_episode_random_scaling / self.dt
             self.max_episode_length = torch.zeros(
                 (self.num_envs,), device=gs.device, dtype=gs.tc_int
             )
@@ -238,9 +237,10 @@ class GenesisEnv:
             and self._max_episode_random_scaling > 0.0
             and self._base_max_episode_length is not None
         ):
-            scale = torch.rand((envs_idx.numel(),)) * self._max_episode_random_scaling
+            max_random_scaling = self._base_max_episode_length * self._max_episode_random_scaling
+            randomization = torch.empty((envs_idx.numel(),)).uniform_(-1.0, 1.0) * max_random_scaling 
             self.max_episode_length[envs_idx] = torch.round(
-                self._base_max_episode_length + scale
+                self._base_max_episode_length + randomization
             ).to(gs.tc_int)
 
         return None, self.extras

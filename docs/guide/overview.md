@@ -45,8 +45,8 @@ dynamically change the reward configurations as the training program progresses.
 For example, to adjust the weights:
 
 ```python
-self.reward_manager.cfg["base_height_target"]["weight"] = -25.0
-self.reward_manager.cfg["similar_to_default"]["weight"] = -0.05
+self.reward_manager.cfg["base_height_target"].weight = -25.0
+self.reward_manager.cfg["similar_to_default"].weight = -0.05
 ```
 
 ## Available Managers

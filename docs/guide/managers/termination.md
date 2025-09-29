@@ -146,8 +146,8 @@ class MyEnv(ManagedEnvironment):
             height_threshold = 0.15
 
         # Update termination parameters
-        self.termination_manager.term_cfg["bad_orientation"]["params"]["angle_limit"] = angle_limit
-        self.termination_manager.term_cfg["too_low"]["params"]["minimum_height"] = height_threshold
+        self.termination_manager.term_cfg["bad_orientation"].params["angle_limit"] = angle_limit
+        self.termination_manager.term_cfg["too_low"].params["minimum_height"] = height_threshold
 ```
 
 ## Logging and Analysis

@@ -58,7 +58,6 @@ class RslRlWrapper(Wrapper):
         # Add observations and timeouts to extras
         if extras is None:
             extras = {}
-        extras["time_outs"] = truncated
         extras = self._add_observations_to_extras(obs, extras)
 
         obs = self._format_obs_group(obs)

@@ -161,13 +161,13 @@ class MyEnv(ManagedEnvironment):
         """Called periodically during training."""
         if self.step_count === 200:
             # Mid training: increase speed focus
-            self.reward_manager.cfg["upright"]["weight"] = -2.0
-            self.reward_manager.cfg["forward_vel"]["weight"] = 2.0
+            self.reward_manager.cfg["upright"].weight = -2.0
+            self.reward_manager.cfg["forward_vel"].weight = 2.0
         elif self.step_count === 500:
             # Late training: add efficiency
-            self.reward_manager.cfg["upright"]["weight"] = -1.0
-            self.reward_manager.cfg["forward_vel"]["weight"] = 3.0
-            self.reward_manager.cfg["energy"]["weight"] = -0.01
+            self.reward_manager.cfg["upright"].weight = -1.0
+            self.reward_manager.cfg["forward_vel"].weight = 3.0
+            self.reward_manager.cfg["energy"].weight = -0.01
 ```
 
 ## Logging and Analysis

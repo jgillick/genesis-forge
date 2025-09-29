@@ -1,9 +1,9 @@
 import torch
 from typing import TypedDict, Callable, Any
-
 import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.managers.config import TerminationConfigItem
 
 
 class TerminationConfig(TypedDict):
@@ -106,10 +106,21 @@ class TerminationManager(BaseManager):
         self.term_cfg = term_cfg
         self.logging_enabled = logging_enabled
         self.logging_tag = logging_tag
+
+        # Wrap config items
+        self.term_cfg: dict[str, TerminationConfigItem] = {}
+        for name, cfg in term_cfg.items():
+            self.term_cfg[name] = TerminationConfigItem(cfg, env)
+
+        # Buffers
         self._terminated_buf = torch.zeros(
             env.num_envs, device=gs.device, dtype=torch.bool
         )
         self._truncated_buf = torch.zeros_like(self._terminated_buf)
+
+    """
+    Properties
+    """
 
     @property
     def dones(self) -> torch.Tensor:
@@ -126,6 +137,17 @@ class TerminationManager(BaseManager):
         """The truncation signals for the environments. Shape is (num_envs,)."""
         return self._truncated_buf
 
+    """
+    Operations
+    """
+
+    def build(self):
+        """
+        Build any config item function classes.
+        """
+        for cfg in self.term_cfg.values():
+            cfg.build()
+
     def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Calculate the termination/truncation signals for this step
@@ -140,17 +162,14 @@ class TerminationManager(BaseManager):
         self._terminated_buf[:] = False
         self._truncated_buf[:] = False
         logging_dict = self.env.extras[self.env.extras_logging_key]
-        for name, cfg in self.term_cfg.items():
+        for name, term_item in self.term_cfg.items():
             try:
-                fn = cfg["fn"]
-                params = cfg.get("params", dict())
-                trunc = cfg.get("time_out", False)
-
                 # Get termination value
-                value = fn(self.env, **params)
+                params = term_item.params
+                value = term_item.fn(self.env, **params)
 
                 # Add to the correct buffer using in-place operations
-                if trunc:
+                if term_item.time_out:
                     self._truncated_buf |= value
                 else:
                     self._terminated_buf |= value
@@ -167,5 +186,5 @@ class TerminationManager(BaseManager):
                 raise e
 
         self.env.extras["terminations"] = self._terminated_buf
-        self.env.extras["truncations"] = self._truncated_buf
+        self.env.extras["time_outs"] = self._truncated_buf
         return self._terminated_buf, self._truncated_buf

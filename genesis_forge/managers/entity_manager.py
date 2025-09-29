@@ -1,6 +1,7 @@
 import torch
 import inspect
 import genesis as gs
+from typing import TypedDict, Callable, Any
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
@@ -9,8 +10,30 @@ from genesis.utils.geom import (
     transform_by_quat,
     inv_quat,
 )
+from genesis_forge.managers.config import ConfigItem, ResetMdpFnClass
 
-from .config import EntityResetConfig, ConfigItem
+ResetConfigFn = Callable[[GenesisEnv, RigidEntity, list[int], ...], None]
+
+
+class EntityResetConfig(TypedDict):
+    """Defines an entity reset item."""
+
+    fn: ResetConfigFn | ResetMdpFnClass
+    """
+    Function, or class function, that will be called on reset.
+
+    Args:
+        env: The environment instance.
+        entity: The entity instance.
+        envs_idx: The environment ids for which the entity is to be reset.
+        **params: Additional parameters to pass to the function from the params dictionary.
+    """
+
+    params: dict[str, Any]
+    """Additional parameters to pass to the function."""
+
+    weight: float
+    """The weight of the reward item."""
 
 
 class EntityManager(BaseManager):
@@ -136,7 +159,7 @@ class EntityManager(BaseManager):
 
         # Build reset function classes
         for cfg in self.on_reset.values():
-            cfg.build(self.entity)
+            cfg.build(entity=self.entity)
 
     def step(self):
         """

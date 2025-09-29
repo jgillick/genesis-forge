@@ -4,6 +4,7 @@ from typing import TypedDict, Callable, Any
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.managers.config import RewardConfigItem
 
 
 class RewardConfig(TypedDict):
@@ -94,9 +95,13 @@ class RewardManager(BaseManager):
     ):
         super().__init__(env, type="reward")
 
-        self.cfg = cfg
         self.logging_enabled = logging_enabled
         self.logging_tag = logging_tag
+
+        # Wrap config items
+        self.cfg: dict[str, RewardConfigItem] = {}
+        for name, cfg in cfg.items():
+            self.cfg[name] = RewardConfigItem(cfg, env)
 
         # Initialize buffers
         self._reward_buf = torch.zeros(
@@ -125,10 +130,11 @@ class RewardManager(BaseManager):
         Get the accumulated reward data for the current episode of all environments.
         """
         return self._episode_data
-    
+
     """
     Helpers
     """
+
     def last_episode_mean_reward(self, name: str) -> float:
         """
         Get the last mean reward for an epsidoe for a given reward name.
@@ -139,6 +145,13 @@ class RewardManager(BaseManager):
     """
     Operations
     """
+
+    def build(self):
+        """
+        Build any config item function classes.
+        """
+        for cfg in self.cfg.values():
+            cfg.build()
 
     def step(self) -> torch.Tensor:
         """
@@ -154,17 +167,13 @@ class RewardManager(BaseManager):
         self._reward_buf[:] = 0.0
         self._episode_seconds += dt
         for name, cfg in self.cfg.items():
-            fn = cfg["fn"]
-            weight = cfg.get("weight", 0.0)
-            params = cfg.get("params", dict())
-
             # Don't calculate reward if the weight is zero
-            if weight == 0:
+            if cfg.weight == 0:
                 continue
 
             # Get reward value from function
-            weight *= dt
-            value = fn(self.env, **params) * weight
+            weight = cfg.weight * dt
+            value = cfg.fn(self.env, **cfg.params) * weight
 
             # Add to reward buffer
             self._reward_buf += value
@@ -187,8 +196,7 @@ class RewardManager(BaseManager):
             for name, value in self._episode_data.items():
                 # Don't log items that have zero weight
                 cfg = self.cfg[name]
-                weight = cfg.get("weight", 0.0)
-                if weight != 0:
+                if cfg.weight != 0:
                     # Calculate average for each environment
                     value[envs_idx] /= episode_seconds
 
@@ -197,7 +205,7 @@ class RewardManager(BaseManager):
                     self._episode_mean[name] = episode_mean.item()
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
 
-                # Reset episodic data 
+                # Reset episodic data
                 self._episode_data[name][envs_idx] = 0.0
 
         # Reset episode seconds to nearly zero, to prevent divide by zero errors

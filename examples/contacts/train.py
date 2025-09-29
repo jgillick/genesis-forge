@@ -103,6 +103,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Setup training runner and train
     print("💪 Training model...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_dir, device=gs.device)
+    runner.git_status_repos = ["."]
     runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=False)
     env.close()
 

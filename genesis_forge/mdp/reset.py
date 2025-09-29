@@ -10,7 +10,7 @@ from genesis.engine.entities import RigidEntity
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.terrain_manager import TerrainManager
 from genesis_forge.utils import links_by_name_pattern
-from genesis_forge.managers.entity.config import ResetConfigFnClass
+from genesis_forge.managers import ResetMdpFnClass
 
 XYZRotation = dict[Literal["x", "y", "z"], float | tuple[float, float]]
 """
@@ -64,7 +64,7 @@ def set_rotation(
     entity.set_quat(quat, envs_idx=envs_idx)
 
 
-class position(ResetConfigFnClass):
+class position(ResetMdpFnClass):
     """
     Reset the entity to a fixed position and (optional) rotation
 
@@ -124,7 +124,7 @@ class position(ResetConfigFnClass):
             )
 
 
-class randomize_terrain_position(ResetConfigFnClass):
+class randomize_terrain_position(ResetMdpFnClass):
     """
     Place the entity in a random position on the terrain for each environment.
 
@@ -226,7 +226,7 @@ class randomize_terrain_position(ResetConfigFnClass):
             )
 
 
-class randomize_link_mass_shift(ResetConfigFnClass):
+class randomize_link_mass_shift(ResetMdpFnClass):
     """
     Randomly add/subtract mass to one or more links of the entity.
     This picks a random value from `add_mass_range` and passes it to `set_mass_shift` for each environment.

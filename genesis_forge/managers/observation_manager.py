@@ -5,9 +5,9 @@ from gymnasium import spaces
 import genesis as gs
 from typing import TypedDict, Tuple, Callable, Any
 from genesis.engine.entities import RigidEntity
-
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.managers.config import ObservationConfigItem
 
 
 class ObservationConfig(TypedDict):
@@ -141,6 +141,11 @@ class ObservationManager(BaseManager):
         self._observation_size = 1
         self._observation_space = None
 
+        # Wrap config items
+        self.cfg: dict[str, ObservationConfigItem] = {}
+        for name, cfg in cfg.items():
+            self.cfg[name] = ObservationConfigItem(cfg, env)
+
     @property
     def observation_space(self) -> spaces.Space:
         """The observation space."""
@@ -158,6 +163,12 @@ class ObservationManager(BaseManager):
             )
             return
 
+        # Build any config item function classes.
+        for name, cfg in self.cfg.items():
+            cfg.build()
+            assert callable(cfg.fn), f"Observation function {name} is not callable"
+
+        # Make an initial observation and create the observation space
         obs = self.get_observations()
         self._observation_size = obs.shape[1]
         self._observation_space = spaces.Box(
@@ -175,24 +186,18 @@ class ObservationManager(BaseManager):
         obs = []
         for name, cfg in self.cfg.items():
             try:
-                fn = cfg["fn"]
-                params = cfg.get("params", dict())
-                noise = cfg.get("noise", self.noise)
-                scale = cfg.get("scale", 1.0)
 
                 # Get values
-                assert callable(fn), f"Observation function {name} is not callable"
-                value = fn(env=self.env, **params)
-
-                # Convert to tensor, if necessary
-                # if not isinstance(value, torch.Tensor):
-                #     value = torch.tensor(value, device=gs.device, dtype=gs.tc_float)
+                params = cfg.params
+                value = cfg.fn(env=self.env, **params)
 
                 # Apply scale
+                scale = cfg.scale
                 if scale is not None and scale != 1.0:
                     value *= scale
 
                 # Add noise
+                noise = cfg.noise or self.noise
                 if noise is not None and noise != 0.0:
                     noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
                     value += noise_value
@@ -203,11 +208,3 @@ class ObservationManager(BaseManager):
                 raise e
 
         return torch.cat(obs, dim=-1)
-
-    def step(self):
-        """Called when the environment is stepped"""
-        pass
-
-    def reset(self, env_ids: list[int] | None = None):
-        """One or more environments have been reset"""
-        pass

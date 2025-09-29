@@ -4,6 +4,8 @@ The Terrain Manager loads a terrain and provides helpful function, like calculat
 
 You can see a full example using the reward manager in [examples/rough_terrain](https://github.com/jgillick/genesis-forge/tree/main/examples/rough_terrain).
 
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/terrain.webm"></video>
+
 ## Basic Usage
 
 ```python

@@ -1,5 +1,7 @@
 # 🎮 Gamepad Controllers
 
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../_static/gamepad.webm"></video>
+
 Don't you want to use a video game controller to control your trained policy? Genesis Forge currently integrates with the Logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) and [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) controllers.
 
 ```{figure} _images/f710.webp

@@ -21,6 +21,14 @@ The easiest way to install Genesis Forge is via pip:
 pip install genesis-forge
 ```
 
+Currently, due to some recent [bug fixes](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727) with Genesis Simulator, it's recommended to also install Genesis Simulator from source (this is in addition to installing `genesis-force`).
+
+```shell
+git clone https://github.com/Genesis-Embodied-AI/Genesis.git
+cd Genesis
+pip install .
+```
+
 ### From Source
 
 To install the latest development version from source:

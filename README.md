@@ -21,7 +21,10 @@ Features:
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
 
-https://github.com/user-attachments/assets/15f75eca-3e0b-46c9-9035-ff39b8d0daa7
+<img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" height="240" />
+<img src="media/gamepad.gif" alt="Gamepad controller interface" height="240" />
+<img src="media/terrain.gif" alt="Rough terrain" height="240" />
+<img src="media/spider.gif" alt="Complex robots" height="240" />
 
 ## Install
 

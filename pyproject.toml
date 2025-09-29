@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genesis-forge"
-version = "0.1.1"
+version = "0.1.2"
 authors = [{ name = "Jeremy Gillick" }]
 description = "A robotics RL training frameworks for Genesis inspired by Isaac Lab and Gymnasium."
 readme = "README.md"

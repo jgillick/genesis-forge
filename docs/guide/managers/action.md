@@ -152,7 +152,7 @@ noisy_pos = self.action_manager.get_dofs_position(noise=0.01)
 
 ```python
 # Get the last actions sent to the robot
-last_actions = self.action_manager.get_actions()
+actions = self.action_manager.get_actions()
 
 # Get the default positions
 default_pos = self.action_manager.default_dofs_pos

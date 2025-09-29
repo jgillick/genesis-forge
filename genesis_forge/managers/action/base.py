@@ -16,8 +16,8 @@ class BaseActionManager(BaseManager):
 
     def __init__(self, env: GenesisEnv):
         super().__init__(env, type="action")
+        self._raw_actions = None
         self._actions = None
-        self._last_actions = None
 
     """
     Properties
@@ -47,14 +47,18 @@ class BaseActionManager(BaseManager):
         """
         The actions for for the current step.
         """
+        if self._actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
         return self._actions
-
+    
     @property
-    def last_actions(self) -> torch.Tensor:
+    def raw_actions(self) -> torch.Tensor:
         """
-        The actions for for the previous step.
+        The actions received from the policy, before being converted.
         """
-        return self._last_actions
+        if self._raw_actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
+        return self._raw_actions
 
     def step(self, actions: torch.Tensor) -> None:
         """
@@ -62,11 +66,11 @@ class BaseActionManager(BaseManager):
         """
         # Copy the actions into the manager buffer
         if self._actions is None:
-            self._last_actions = torch.zeros_like(actions)
             self._actions = actions.detach().clone()
+            self._raw_actions = actions.detach().clone()
         else:
-            self._last_actions = self._actions
             self._actions[:] = actions[:]
+            self._raw_actions[:] = actions[:]
         return self._actions
 
     def reset(self, envs_idx: list[int] | None):

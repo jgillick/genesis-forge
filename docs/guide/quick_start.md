@@ -182,7 +182,7 @@ class MyFirstEnv(ManagedEnvironment):
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.05,
                 },
-                "last_actions": {
+                "actions": {
                     "fn": lambda env: self.action_manager.get_actions(),
                 },
             },

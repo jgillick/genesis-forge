@@ -98,7 +98,11 @@ class MyEnv(ManagedEnvironment):
 
 ## Contact Visualization
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/contacts_debugs.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/contacts_debug.webm" width="100%"></video>
+
+<p align="center">
+<em>Foot contacts are marked in red</em>
+</p>
 
 To visualize which contacts are being registered, you can enable debugging, with the `debug_visualizer` param, and red spheres will appear where the contacts happen.
 

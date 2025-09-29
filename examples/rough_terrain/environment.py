@@ -243,6 +243,12 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                     "fn": terminations.timeout,
                     "time_out": True,
                 },
+                "out_of_bounds": {
+                    "fn": terminations.out_of_bounds,
+                    "params": {
+                        "terrain_manager": self.terrain_manager,
+                    },
+                },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "bad_orientation": {
                     "fn": terminations.bad_orientation,
@@ -304,7 +310,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             morph=gs.morphs.Terrain(
                 pos=(-12, -12, 0),
                 n_subterrains=(1, 1),
-                subterrain_size=(12, 12),
+                subterrain_size=(24, 24),
                 vertical_scale=0.001,  # the Go2 robot is small
                 subterrain_types=[["random_uniform_terrain"]],
                 subterrain_parameters={

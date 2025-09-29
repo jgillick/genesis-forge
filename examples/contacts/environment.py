@@ -190,7 +190,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "lin_vel_z": {
-                    "weight": -2.0,
+                    "weight": -1.0,
                     "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
@@ -204,7 +204,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     },
                 },
                 "action_rate": {
-                    "weight": -0.01,
+                    "weight": -0.005,
                     "fn": rewards.action_rate_l2,
                 },
                 "similar_to_default": {

@@ -1,6 +1,6 @@
 # Go2 - Rough Terrain
 
-**NOTE:** This training program doesn't work yet, and seems to be blocked by [this issue](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727).
+**NOTE:** This requires the [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) to be installed from source, in order to get this [bug fix](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727), which affects rough terrain contacts.
 
 Teaches the Go2 robot to walk on rough terrain. This environment uses a combination of the TerrainManager and EntityManager to place each robot randomly at a different place of terrain at each reset.
 

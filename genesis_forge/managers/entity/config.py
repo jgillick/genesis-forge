@@ -49,13 +49,10 @@ class EntityResetConfig(TypedDict):
     """The weight of the reward item."""
 
 
-from typing import Callable
-
-
 class ParamsDict(dict):
     """
-    The params dictionary that will call a function when a key is set or changed.
-    We use this to rebuild a reset class, if a parameter is changed.
+    The params dictionary with an on-change callback handler.
+    We use this to rebuild a reset class when a parameter is changed.
     """
 
     def __init__(self, params: dict, on_change: Callable[[], None]):

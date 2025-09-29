@@ -89,6 +89,14 @@ class TerrainManager(BaseManager):
         self._terrain = self.env.__getattribute__(self._terrain_attr)
         self._map_terrain()
 
+    def get_bounds(self, subterrain: str | None = None) -> tuple[float, float, float, float]:
+        """
+        Get the bounds of the terrain, or subterrain
+        """
+        if subterrain is not None and subterrain in self._subterrain_bounds:
+            return self._subterrain_bounds[subterrain]
+        return self._bounds
+
     def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
         Get interpolated terrain height at world coordinates (x, y).

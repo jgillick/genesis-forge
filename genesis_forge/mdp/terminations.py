@@ -10,6 +10,7 @@ from genesis_forge.utils import entity_projected_gravity
 from genesis_forge.managers import (
     ContactManager,
     EntityManager,
+    TerrainManager
 )
 
 
@@ -97,6 +98,43 @@ def base_height_below_minimum(
         base_pos = entity.get_pos()
     return base_pos[:, 2] < minimum_height
 
+
+def out_of_bounds(
+    env: GenesisEnv,
+    terrain_manager: TerrainManager,
+    subterrain: str | None = None,
+    border_margin: float = 0.5,
+    entity_attr: str = "robot",
+) -> torch.Tensor:
+    """
+    Terminate if the entity's base position is outside of the terrain.
+
+    Args:
+        env: The Genesis environment containing the robot
+        terrain_manager: The terrain manager to check for out of bounds
+        subterrain: The subterrain to keep the robot inside of
+        border_margin: The margin (in meters) to add to the terrain bounds
+                       This terminates the episode before the robot falls off the terrain.
+        entity_attr: The attribute name of the entity in the environment.
+                        This isn't necessary if `entity_manager` is provided.
+    """
+    # Get the entity's base position
+    entity = getattr(env, entity_attr)
+    position = entity.get_pos()
+    
+    # Get terrain bounds
+    (x_min, x_max, y_min, y_max) = terrain_manager.get_bounds(subterrain)
+    x_min_bound, x_max_bound = x_min + border_margin, x_max - border_margin
+    y_min_bound, y_max_bound = y_min + border_margin, y_max - border_margin
+    
+    # Check bounds
+    x_pos, y_pos = position[:, 0], position[:, 1]
+    return (
+        (x_pos < x_min_bound) |
+        (x_pos > x_max_bound) |
+        (y_pos < y_min_bound) |
+        (y_pos > y_max_bound)
+    )
 
 def has_contact(
     _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1

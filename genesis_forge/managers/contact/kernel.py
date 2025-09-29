@@ -59,10 +59,10 @@ def kernel_get_contact_forces(
             if should_include:
                 # Get contact force and position
                 force_vec = ti.Vector.zero(ti.f32, 3)
-                pos_vec = ti.Vector.zero(ti.f32, 3)
                 for j in ti.static(range(3)):
                     force_vec[j] = contact_forces[i_b, i_c, j]
-                    pos_vec[j] = contact_positions[i_b, i_c, j]
+                    output_positions[i_b, i_t, j] += contact_positions[i_b, i_c, j]
+                position_counts[i_b, i_t] += 1
 
                 # Get quaternions for both links
                 quat_a = ti.Vector.zero(ti.f32, 4)
@@ -71,7 +71,7 @@ def kernel_get_contact_forces(
                     quat_a[j] = links_quat[i_b, contact_link_a, j]
                     quat_b[j] = links_quat[i_b, contact_link_b, j]
 
-                # Transform force and position to local frame of target link
+                # Transform force to local frame of target link
                 if is_target_b:
                     force_vec = ti_inv_transform_by_quat(force_vec, quat_b)
                 else:
@@ -80,8 +80,6 @@ def kernel_get_contact_forces(
                 # Accumulate force and position
                 for j in ti.static(range(3)):
                     output_forces[i_b, i_t, j] += force_vec[j]
-                    output_positions[i_b, i_t, j] += pos_vec[j]
-                position_counts[i_b, i_t] += 1
 
     # Final pass: compute average positions for all links
     for i_b, i_t in ti.ndrange(output_forces.shape[0], output_forces.shape[1]):

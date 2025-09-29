@@ -159,7 +159,6 @@ class EntityManager(BaseManager):
             except Exception as e:
                 print(f"Error resetting entity with config: '{name}'")
                 raise e
-        return
 
     """
     Implementation

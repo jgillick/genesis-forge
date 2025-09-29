@@ -174,7 +174,7 @@ class VideoWrapper(Wrapper):
         # Increment episode count
         terminated = False if terminateds is None else terminateds[self._env_idx]
         truncated = False if truncateds is None else truncateds[self._env_idx]
-        if terminated or truncated:
+        if torch.any(terminated or truncated):
             self._current_episode += 1
             # If we're not recording, start a background recording at the beginning of the episode
             # The last one of these will be saved when the environment is closed as the final training episode

@@ -34,7 +34,7 @@ pip install .
 To install the latest development version from source:
 
 ```shell
-git clone https://github.com/yourusername/genesis-forge.git
+git clone https://github.com/jgillick/genesis-forge.git
 cd genesis-forge
 pip install -e .
 ```

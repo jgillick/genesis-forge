@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from gymnasium import spaces
-
+import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 
@@ -12,12 +12,16 @@ class BaseActionManager(BaseManager):
 
     Args:
         env: The environment to manage the DOF actuators for.
+        delay_step: The number of steps to delay the actions for.
+                    This is an easy way to emulate the latency in the system.
     """
 
-    def __init__(self, env: GenesisEnv):
+    def __init__(self, env: GenesisEnv, delay_step: int = 0):
         super().__init__(env, type="action")
         self._raw_actions = None
         self._actions = None
+        self._delay_step = delay_step
+        self._action_delay_buffer = []
 
     """
     Properties
@@ -50,7 +54,7 @@ class BaseActionManager(BaseManager):
         if self._actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._actions
-    
+
     @property
     def raw_actions(self) -> torch.Tensor:
         """
@@ -64,18 +68,30 @@ class BaseActionManager(BaseManager):
         """
         Handle the received actions.
         """
+        # Action delay buffer
+        if self._delay_step > 0:
+            self._action_delay_buffer.insert(0, actions)
+            actions = self._action_delay_buffer.pop()
+
         # Copy the actions into the manager buffer
+        self._raw_actions = actions
         if self._actions is None:
-            self._actions = actions.detach().clone()
-            self._raw_actions = actions.detach().clone()
+            self._actions = self._raw_actions.clone()
         else:
-            self._actions[:] = actions[:]
-            self._raw_actions[:] = actions[:]
+            self._actions[:] = self._raw_actions[:]
         return self._actions
 
     def reset(self, envs_idx: list[int] | None):
         """Reset environments."""
-        pass
+        if (
+            self._delay_step > 0
+            and len(self._action_delay_buffer) < self._delay_step
+            and self.num_actions > 0
+        ):
+            while len(self._action_delay_buffer) < self._delay_step:
+                self._action_delay_buffer.append(
+                    torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
+                )
 
     def get_actions(self) -> torch.Tensor:
         """

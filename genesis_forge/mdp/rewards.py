@@ -59,7 +59,7 @@ def base_height(
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
-    Penalize base height away from target
+    Penalize base height away from target, using the L2 squared kernel.
 
     Args:
         env: The Genesis environment containing the robot

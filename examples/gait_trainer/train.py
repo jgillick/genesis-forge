@@ -11,24 +11,14 @@ from genesis_forge.wrappers import (
     VideoWrapper,
     RslRlWrapper,
 )
-from environment import Go2SimpleEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
+from environment import Go2GaitTrainingEnv
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "go2-simple"
+EXPERIMENT_NAME = "gait-training"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=101)
+parser.add_argument("--max_iterations", type=int, default=500)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -86,7 +76,7 @@ def main():
     if args.device == "cpu":
         backend = gs.cpu
         torch.set_default_device("cpu")
-    gs.init(logging_level="warning", backend=backend)
+    gs.init(logging_level="warning", backend=backend, performance_mode=True)
 
     # Logging directory
     log_base_dir = "./logs"
@@ -105,7 +95,7 @@ def main():
     )
 
     # Create environment
-    env = Go2SimpleEnv(num_envs=args.num_envs, headless=True)
+    env = Go2GaitTrainingEnv(num_envs=args.num_envs, headless=True)
 
     # Record videos in regular intervals
     env = VideoWrapper(

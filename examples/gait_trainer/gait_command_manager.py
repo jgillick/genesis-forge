@@ -5,18 +5,22 @@ from "Sim-to-Real Learning of All Common Bipedal Gaits via Periodic Reward Compo
 
 import torch
 import genesis as gs
-from typing import Dict, Tuple, TypedDict
+from typing import Dict, Tuple, TypedDict, Literal
 from genesis.engine.entities import RigidEntity
 from genesis_forge.managers.command.command_manager import CommandManager, CommandRange
 from genesis_forge.managers import ContactManager
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.gamepads import Gamepad
 
 GAIT_PERIOD_RANGE = [0.3, 0.6]
 FOOT_CLEARANCE_RANGE = [0.04, 0.12]
 CURRICULUM_CHECK_EVERY_STEPS = 500
 
+GaitName = Literal["walk", "trot", "pronk", "pace", "bound"]
+FootName = Literal["FL", "FR", "RL", "RR"]
+
 # The foot/leg phase offsets relative to each other for each gait
-GAIT_OFFSETS = {
+GAIT_OFFSETS: dict[GaitName, dict[FootName, float]] = {
     "walk": {
         "FL": 0.0,  # Front-left foot starts first
         "RR": 0.25,  # Rear-right foot follows
@@ -80,6 +84,9 @@ class GaitCommandManager(CommandManager):
         self._robot_entity_attr = robot_entity_attr
         self._foot_names = foot_names
         self.foot_links = []
+        self._gamepad: Gamepad | None = None
+        self._gamepad_btn_pressed: bool = False
+        self._gamepad_gait_idx = 0
 
         # Initial ranges - these will be expanded in the curriculum
         self._num_gaits = 1
@@ -112,6 +119,8 @@ class GaitCommandManager(CommandManager):
         """
         The combined gait command
         """
+        if self._gamepad is not None:
+            return self._process_gamepad_input()
         return torch.cat(
             [
                 self.foot_offset,
@@ -164,28 +173,7 @@ class GaitCommandManager(CommandManager):
         # Select a random gait for these environments
         selected_gait_idx = torch.randint(0, self._num_gaits, (1,), device=gs.device)
         gait_name = list(GAIT_OFFSETS.keys())[selected_gait_idx]
-        gait_offsets = GAIT_OFFSETS[gait_name]
-
-        # Define the foot offsets for the selected gait
-        self.foot_offset[env_ids, 0] = gait_offsets["FL"]
-        self.foot_offset[env_ids, 1] = gait_offsets["FR"]
-        self.foot_offset[env_ids, 2] = gait_offsets["RL"]
-        self.foot_offset[env_ids, 3] = gait_offsets["RR"]
-
-        # Foot clearance is set in the gait command manager
-        # pronk and bound gait should be at minimum foot clearance
-        if gait_name in ["pronk", "bound"]:
-            min_clearance = FOOT_CLEARANCE_RANGE[0]
-            self.foot_height[env_ids, 0] = min_clearance
-        else:
-            self.foot_height[env_ids, 0] = torch.empty(
-                len(env_ids), device=gs.device
-            ).uniform_(*FOOT_CLEARANCE_RANGE)
-
-        # Gait period
-        self.gait_period[env_ids, 0] = torch.empty(
-            len(env_ids), device=gs.device
-        ).uniform_(*GAIT_PERIOD_RANGE)
+        self._set_gait(gait_name, env_ids)
 
     def build(self):
         """
@@ -244,6 +232,16 @@ class GaitCommandManager(CommandManager):
             ],
             dim=-1,
         )
+
+    def use_gamepad(self, gamepad: Gamepad):
+        """
+        Control the command using a gamepad.
+        Pressing the X button will cycle through the gaits.
+        """
+        self._gamepad = gamepad
+        self._num_gaits = len(GAIT_OFFSETS)
+        self._gamepad_gait_idx = 0
+        self._set_gait("walk")
 
     """
     Rewards
@@ -319,3 +317,46 @@ class GaitCommandManager(CommandManager):
         vel_weight[stance_indices, :] = -1  # speed is penalized during stance phase
 
         return vel_weight * velocity + force_weight * force
+
+    def _set_gait(self, gait_name: GaitName, env_ids: list[int] | None = None):
+        """
+        Set the gait parameters for the given environments
+        """
+        if env_ids is None:
+            env_ids = torch.arange(self.env.num_envs, device=gs.device)
+
+        gait_offsets = GAIT_OFFSETS[gait_name]
+
+        # Define the foot offsets for the selected gait
+        self.foot_offset[env_ids, 0] = gait_offsets["FL"]
+        self.foot_offset[env_ids, 1] = gait_offsets["FR"]
+        self.foot_offset[env_ids, 2] = gait_offsets["RL"]
+        self.foot_offset[env_ids, 3] = gait_offsets["RR"]
+
+        # Foot clearance is set in the gait command manager
+        # pronk and bound gait should be at minimum foot clearance
+        if gait_name in ["pronk", "bound"]:
+            min_clearance = FOOT_CLEARANCE_RANGE[0]
+            self.foot_height[env_ids, 0] = min_clearance
+        else:
+            self.foot_height[env_ids, 0] = torch.empty(
+                len(env_ids), device=gs.device
+            ).uniform_(*FOOT_CLEARANCE_RANGE)
+
+        # Gait period
+        self.gait_period[env_ids, 0] = torch.empty(
+            len(env_ids), device=gs.device
+        ).uniform_(*GAIT_PERIOD_RANGE)
+
+    def _process_gamepad_input(self, gamepad: Gamepad):
+        """
+        Select a new gait when the X button is pressed.
+        """
+        if "X" in gamepad.state.buttons:
+            self._gamepad_btn_pressed = True
+        elif self._gamepad_btn_pressed:
+            inc = 1 if self._gamepad_dpad_pressed == "up" else -1
+            self._gamepad_gait_idx = (self._gamepad_gait_idx + inc) % self._num_gaits
+            gait_name = list(GAIT_OFFSETS.keys())[self._gamepad_gait_idx]
+            self._set_gait(gait_name)
+            self._gamepad_btn_pressed = None

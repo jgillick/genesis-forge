@@ -63,6 +63,8 @@ We will be training the robot with the [rsl_rl](https://github.com/leggedrobotic
 pip install tensorboard rsl-rl-lib>=2.2.4
 ```
 
+**ALSO:** Be sure you've installed the latest _source_ version of the [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis). There are some post v0.3.3 bug fixes that this example relies on. 
+
 Now you can run the training with:
 
 ```bash

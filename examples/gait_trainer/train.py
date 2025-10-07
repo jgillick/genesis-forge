@@ -24,7 +24,7 @@ parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def training_cfg(exp_name: str, max_iterations: int):
+def training_cfg(exp_name: str, max_iterations: int, num_envs: int):
     return {
         "algorithm": {
             "class_name": "PPO",
@@ -62,7 +62,7 @@ def training_cfg(exp_name: str, max_iterations: int):
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
-        "num_steps_per_env": 24,
+        "num_steps_per_env": round(98_304/ num_envs), # https://ar5iv.labs.arxiv.org/html/2109.11978
         "save_interval": 100,
         "empirical_normalization": None,
         "obs_groups": {"policy": ["policy"], "critic": ["policy", "critic"]},
@@ -88,7 +88,7 @@ def main():
     print(f"Logging to: {log_path}")
 
     # Load training configuration and save snapshot of training configs
-    cfg = training_cfg(experiment_name, args.max_iterations)
+    cfg = training_cfg(experiment_name, args.max_iterations, args.num_envs)
     pickle.dump(
         [cfg],
         open(os.path.join(log_path, "cfgs.pkl"), "wb"),

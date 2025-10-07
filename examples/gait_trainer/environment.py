@@ -1,7 +1,4 @@
 import torch
-import os
-import numpy as np
-from PIL import Image
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
@@ -12,8 +9,6 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
     VelocityCommandManager,
-    CommandManager,
-    TerrainManager,
     ContactManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations, observations
@@ -38,13 +33,15 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         dt: float = 1 / 50,  # control frequency on real robot is 50hz
         max_episode_length_s: int | None = 8,
         headless: bool = True,
+        gamepad_control: bool = False,
     ):
         super().__init__(
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
-            max_episode_random_scaling=0.5,
+            max_episode_random_scaling=0.2,
         )
+        self._gamepad_control = gamepad_control
         self._next_curriculum_check_step = CURRICULUM_CHECK_EVERY_STEPS
 
         # Construct the scene
@@ -84,12 +81,13 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(2.5, 1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
             env_idx=0,
             debug=True,
+            GUI=self._gamepad_control,
         )
 
     def config(self):
@@ -152,16 +150,12 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-0.0, 0.0],
+                "lin_vel_x": [-1.5, 1.5],
+                "lin_vel_y": [0.0, 0.0],
                 "ang_vel_z": [-1.0, 1.0],
             },
             standing_probability=0.00,
             resample_time_sec=5.0,
-            debug_visualizer=True,
-            debug_visualizer_cfg={
-                "envs_idx": [0],
-            },
         )
 
         ##
@@ -320,8 +314,9 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         self.camera.follow_entity(self.robot)
 
     def step(self, actions: torch.Tensor):
-        # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos()[0])
+        # Render the camera if not headless
+        if self._gamepad_control:
+            self.camera.render()
         return super().step(actions)
 
     def reset(self, envs_idx: list[int] | None = None):
@@ -346,7 +341,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         gait_phase_reward = self.reward_manager.last_episode_mean_reward(
             "gait_phase_reward", before_weight=True
         )
-        if gait_phase_reward > 0.75:
+        if gait_phase_reward > 0.725:
             self.gait_command_manager.increment_num_gaits()
             self.gait_command_manager.increment_gait_period_range()
 

@@ -4,8 +4,9 @@ from "Sim-to-Real Learning of All Common Bipedal Gaits via Periodic Reward Compo
 """
 
 import torch
+import random
 import genesis as gs
-from typing import Dict, Tuple, TypedDict, Literal
+from typing import TypedDict, Literal
 from genesis.engine.entities import RigidEntity
 from genesis_forge.managers.command.command_manager import CommandManager, CommandRange
 from genesis_forge.managers import ContactManager
@@ -16,22 +17,24 @@ GAIT_PERIOD_RANGE = [0.3, 0.6]
 FOOT_CLEARANCE_RANGE = [0.04, 0.12]
 CURRICULUM_CHECK_EVERY_STEPS = 500
 
-GaitName = Literal["walk", "trot", "pronk", "pace", "bound"]
+GaitName = Literal["walk", "trot", "pronk", "pace", "bound", "canter"]
 FootName = Literal["FL", "FR", "RL", "RR"]
 
-# The foot/leg phase offsets relative to each other for each gait
+# Gait configuration
+# Phase offsets for each foot in different gaits (0.0 = start of cycle, 0.5 = mid-cycle)
+# Each gait defines when each foot contacts the ground relative each other in the gait cycle.
 GAIT_OFFSETS: dict[GaitName, dict[FootName, float]] = {
-    "walk": {
-        "FL": 0.0,  # Front-left foot starts first
-        "RR": 0.25,  # Rear-right foot follows
-        "FR": 0.5,  # Front-right foot follows
-        "RL": 0.75,  # Rear-left foot follows
-    },
+    # "walk": {
+    #     "FL": 0.0,
+    #     "FR": 0.5,
+    #     "RL": 0.75,
+    #     "RR": 0.25,
+    # },
     "trot": {
-        "FL": 0.0,
+        "FL": 0.0, # Front-left foot
         "FR": 0.5,
         "RL": 0.5,
-        "RR": 0.0,
+        "RR": 0.0, # Rear-right foot
     },
     "pronk": {
         "FL": 0.0,
@@ -51,6 +54,12 @@ GAIT_OFFSETS: dict[GaitName, dict[FootName, float]] = {
         "RL": 0.5,
         "RR": 0.5,
     },
+    # "canter": {
+    #     "FL": 0.67,
+    #     "FR": 0.33,
+    #     "RL": 0.33,
+    #     "RR": 0.0,
+    # },
 }
 
 
@@ -120,7 +129,7 @@ class GaitCommandManager(CommandManager):
         The combined gait command
         """
         if self._gamepad is not None:
-            return self._process_gamepad_input()
+            self._process_gamepad_input()
         return torch.cat(
             [
                 self.foot_offset,
@@ -170,8 +179,13 @@ class GaitCommandManager(CommandManager):
         """
         Resample the command for the given environments
         """
+
+        # Do not resample if using gamepad control
+        if self._gamepad is not None:
+            return
+
         # Select a random gait for these environments
-        selected_gait_idx = torch.randint(0, self._num_gaits, (1,), device=gs.device)
+        selected_gait_idx = random.randint(0, self._num_gaits - 1) if self._num_gaits > 1 else 0
         gait_name = list(GAIT_OFFSETS.keys())[selected_gait_idx]
         self._set_gait(gait_name, env_ids)
 
@@ -236,12 +250,12 @@ class GaitCommandManager(CommandManager):
     def use_gamepad(self, gamepad: Gamepad):
         """
         Control the command using a gamepad.
-        Pressing the X button will cycle through the gaits.
+        Pressing the A button will cycle through the gaits.
         """
         self._gamepad = gamepad
         self._num_gaits = len(GAIT_OFFSETS)
         self._gamepad_gait_idx = 0
-        self._set_gait("walk")
+        self._set_gait(list(GAIT_OFFSETS.keys())[0])
 
     """
     Rewards
@@ -348,15 +362,15 @@ class GaitCommandManager(CommandManager):
             len(env_ids), device=gs.device
         ).uniform_(*GAIT_PERIOD_RANGE)
 
-    def _process_gamepad_input(self, gamepad: Gamepad):
+    def _process_gamepad_input(self):
         """
-        Select a new gait when the X button is pressed.
+        Select a new gait when the A button is pressed.
         """
-        if "X" in gamepad.state.buttons:
+        if "A" in self._gamepad.state.buttons:
             self._gamepad_btn_pressed = True
         elif self._gamepad_btn_pressed:
-            inc = 1 if self._gamepad_dpad_pressed == "up" else -1
-            self._gamepad_gait_idx = (self._gamepad_gait_idx + inc) % self._num_gaits
+            self._gamepad_btn_pressed = False
+            self._gamepad_gait_idx = (self._gamepad_gait_idx + 1) % self._num_gaits
             gait_name = list(GAIT_OFFSETS.keys())[self._gamepad_gait_idx]
+            print(f"Selecting gait: {gait_name}")
             self._set_gait(gait_name)
-            self._gamepad_btn_pressed = None

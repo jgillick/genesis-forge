@@ -10,7 +10,7 @@ from genesis_forge.wrappers import RslRlWrapper
 from genesis_forge.gamepads import Gamepad
 from environment import Go2GaitTrainingEnv
 
-EXPERIMENT_NAME = "go2-command"
+EXPERIMENT_NAME = "go2-gait"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
@@ -46,7 +46,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2GaitTrainingEnv(num_envs=1, headless=False, max_episode_length_s=None)
+    env = Go2GaitTrainingEnv(num_envs=1, max_episode_length_s=None, gamepad_control=True)
     env.build()
 
     # Connect to gamepad

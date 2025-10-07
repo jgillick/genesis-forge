@@ -60,7 +60,7 @@ class RslRlWrapper(Wrapper):
             extras = {}
         extras = self._add_observations_to_extras(obs, extras)
 
-        obs = self._format_obs_group(obs)
+        obs = self._format_obs_group(obs, extras)
         return obs, rewards, dones, extras
 
     def reset(self):
@@ -68,7 +68,7 @@ class RslRlWrapper(Wrapper):
         Converts observations into a TensorDict for rsl_rl 3.0+
         """
         (obs, extras) = self.env.reset()
-        obs = self._format_obs_group(obs)
+        obs = self._format_obs_group(obs, extras)
         return obs, extras
 
     def get_observations(self):
@@ -79,7 +79,7 @@ class RslRlWrapper(Wrapper):
 
         # rsl_rl 3.0+ just returns the observations
         if self.rsl3:
-            obs = self._format_obs_group(obs)
+            obs = self._format_obs_group(obs, self.env.extras)
             return obs
 
         # Earlier versions of rsl_rl adds critic observations to the extras dictionary
@@ -94,17 +94,26 @@ class RslRlWrapper(Wrapper):
             extras = {}
         if "observations" not in extras:
             extras["observations"] = {}
-        extras["observations"]["critic"] = obs.detach()
+        if "critic" not in extras["observations"]:
+            extras["observations"]["critic"] = obs
         return extras
 
-    def _format_obs_group(self, obs: torch.Tensor):
+    def _format_obs_group(
+        self, obs: torch.Tensor, extras: dict | None
+    ) -> torch.Tensor | TensorDict:
         """
         If we're using rsl_rl 3.0+, put the observations into a TensorDict
         """
         if self.rsl3:
-            obs = TensorDict(
-                {"policy": obs.detach(), "critic": obs.detach()},
-                batch_size=[obs.shape[0]],
-                device=gs.device,
-            )
+            if extras is not None and "observations" in extras:
+                if isinstance(extras["observations"], TensorDict):
+                    obs = extras["observations"]
+                else:
+                    obs = TensorDict(extras["observations"], device=gs.device)
+            else:
+                obs = TensorDict(
+                    {"policy": obs},
+                    batch_size=[obs.shape[0]],
+                    device=gs.device,
+                )
         return obs

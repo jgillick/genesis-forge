@@ -25,6 +25,8 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         quiet_action_errors: Whether to quiet action errors.
         randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
         resample_randomization_s: The time interval to resample the randomization values.
+        delay_step: The number of steps to delay the actions for.
+                    This is an easy way to emulate the latency in the system.
 
     Example::
 
@@ -70,6 +72,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         noise_scale: float = 0.0,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
+        delay_step: int = 0,
     ):
         super().__init__(
             env,
@@ -84,6 +87,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             noise_scale=noise_scale,
             action_handler=action_handler,
             quiet_action_errors=quiet_action_errors,
+            delay_step=delay_step,
         )
 
         _pos_limit_lower: torch.Tensor = None

@@ -95,8 +95,7 @@ python ./eval.py ./logs/go2-command/
 
 If you have a logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) or [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) you can control the robot in the trained policy yourself.
 
-First, you need to make sure that HIDAPI is installed on your machine.
-https://github.com/libusb/hidapi?tab=readme-ov-file#installing-hidapi
+First, follow the [gamepad installation instructions](https://genesis-forge.readthedocs.io/en/latest/guide/gamepad.html#installation).
 
 Then, connect your gamepad, and run the following command:
 

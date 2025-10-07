@@ -21,6 +21,7 @@ from genesis.utils.geom import (
     inv_quat,
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
+from genesis_forge.managers import MdpFnClass
 
 """
 Aliveness
@@ -59,7 +60,7 @@ def base_height(
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
-    Penalize base height away from target
+    Penalize base height away from target, using the L2 squared kernel.
 
     Args:
         env: The Genesis environment containing the robot
@@ -190,6 +191,62 @@ def flat_orientation_l2(
     # Penalize the xy-components (horizontal tilt) using L2 squared kernel
     # A flat orientation means these components should be close to zero
     return torch.sum(torch.square(projected_gravity[:, :2]), dim=1)
+
+
+class body_acceleration_exp(MdpFnClass):
+    """
+    Penalize jerky body acceleration to encourage smooth locomotion.
+
+    Args:
+        env: The Genesis environment containing the robot
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity_attr` parameter.
+        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+        sensitivity: The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.
+    """
+
+    def __init__(
+        self,
+        env: GenesisEnv,
+        entity_attr: str = "robot",
+        entity_manager: EntityManager = None,
+        sensitivity: float = 0.10,
+    ):
+        super().__init__(env)
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        entity_attr: str = "robot",
+        entity_manager: EntityManager = None,
+        sensitivity: float = 0.10,
+    ):
+        # Current velocities
+        curr_lin_vel = None
+        curr_ang_vel = None
+        if entity_manager is not None:
+            curr_lin_vel = entity_manager.get_linear_velocity()
+            curr_ang_vel = entity_manager.get_angular_velocity()
+        else:
+            robot = getattr(env, self._entity_attr)
+            curr_lin_vel = entity_lin_vel(robot)
+            curr_ang_vel = entity_ang_vel(robot)
+
+        # Calculate acceleration from previous step
+        if hasattr(self, "prev_lin_vel"):
+            lin_acc = (curr_lin_vel - self.prev_lin_vel) / env.dt
+            ang_acc = (curr_ang_vel - self.prev_ang_vel) / env.dt
+        else:
+            lin_acc = torch.zeros_like(curr_lin_vel)
+            ang_acc = torch.zeros_like(curr_ang_vel)
+
+        # Store for next step
+        self.prev_lin_vel = curr_lin_vel.clone()
+        self.prev_ang_vel = curr_ang_vel.clone()
+
+        # Calculate penalty using exponential kernel
+        pelvis_motion = torch.norm(lin_acc, dim=-1) + torch.norm(ang_acc, dim=-1)
+        return 1 - torch.exp(-sensitivity * pelvis_motion)
 
 
 """

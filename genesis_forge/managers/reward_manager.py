@@ -135,12 +135,22 @@ class RewardManager(BaseManager):
     Helpers
     """
 
-    def last_episode_mean_reward(self, name: str) -> float:
+    def last_episode_mean_reward(self, name: str, before_weight: bool = True) -> float:
         """
-        Get the last mean reward for an epsidoe for a given reward name.
+        Get the last mean reward for an episode for a given reward name.
         The mean reward is only calculated when episodes end/reset.
+
+        Args:
+            name: The name of the reward to get the mean for.
+            before_weight: If True, this will be the base reward value before the weight was applied.
+
+        Returns:
+            The last mean reward for an episode for a given reward name.
         """
-        return self._episode_mean.get(name, 0.0)
+        rew = self._episode_mean.get(name, 0.0)
+        if before_weight:
+            rew /= self.cfg[name].weight
+        return rew
 
     """
     Operations

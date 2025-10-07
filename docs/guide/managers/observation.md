@@ -154,29 +154,7 @@ cfg={
 
 ## Custom Observation Functions
 
-A custom observation function takes in the environment as the first parameter, as well as any other parameter defined in the `params` dict at the ObservationManager. The returned value should be a tensor with value(s) for each environment.
-
-### Simple Functions
-
-```python
-def get_height_above_ground(env):
-    """Distance from base to ground."""
-    base_height = env.robot.get_pos()[:, 2]
-    terrain_height = env.terrain.get_height_at(env.robot.get_pos())
-    return base_height - terrain_height
-
-ObservationManager(
-    self,
-    cfg={
-        "height": {
-            "fn": get_height_above_ground,
-            "scale": 1.0,
-        },
-    },
-)
-```
-
-### Complex Observations
+A custom observation function takes in the environment as the first parameter, as well as any other parameter defined in the `params` dict at the ObservationManager. The returned value should be a tensor with a float value for each environment.
 
 ```python
 def feet_in_contact(env, contact_manager: ContactManager, threshold=1.0):
@@ -196,4 +174,83 @@ ObservationManager(
         },
     },
 )
+```
+
+## Asymmetrical observations (policy v.s. critic)
+
+In some cases, you might want to have different observation sets for specific components of your algorithm. For example, in an actor-critic model, you might want to have a set of "privileged" observations specifically for the critic that the policy doesn't have access to.
+
+By giving the critic privileged information (like ground truth contact forces or internal robot states), the value estimates can become more accurate. This provides a better training signal for the actor, leading to faster and more stable policy learning. The policy still learns to act based only on realistic sensor data, while the critic can make better value predictions.
+
+To do this, just define the component name on the observation manager.
+
+:::{important}
+You must at least define a nameless, or "policy", observation set. This represents the observations that will be available to your policy during deployment (e.g., real sensor data).
+:::
+
+```python
+# Policy observations - what the robot can actually sense during deployment
+ObservationManager(
+    self,
+    name="policy",
+    noise=0.1,  # Add noise to simulate real sensor noise
+    cfg={
+        "velocity_cmd": { "fn": self.velocity_command.observation },
+        "angle_velocity": { "fn": lambda env: self.robot_manager.get_angular_velocity() },
+        "linear_velocity": { "fn": lambda env: self.robot_manager.get_linear_velocity() },
+        "projected_gravity": { "fn": lambda env: self.robot_manager.get_projected_gravity() },
+        "dof_position": { "fn": lambda env: self.action_manager.get_dofs_position() },
+        "dof_velocity": {
+            "fn": lambda env: self.action_manager.get_dofs_velocity(),
+            "scale": 0.05,
+        },
+        "actions": { "fn": lambda env: self.action_manager.get_actions() },
+    },
+)
+
+# Critic observations - includes privileged information for better value estimation
+ObservationManager(
+    self,
+    name="critic",
+    noise=0.0,  # Critic observations should not be noisy
+    cfg={
+        # Privileged observations (not available to policy at runtime)
+        "foot_contact_force": {
+            "fn": observations.contact_force,
+            "params": {
+                "contact_manager": self.foot_contact_manager,
+            },
+        },
+        "dof_force": {
+            "fn": lambda env: self.action_manager.get_dofs_force(),
+            "scale": 0.1,
+        },
+        # Same observations as policy (for consistency)
+        "velocity_cmd": { "fn": self.velocity_command.observation },
+        "angle_velocity": { "fn": lambda env: self.robot_manager.get_angular_velocity() },
+        "linear_velocity": { "fn": lambda env: self.robot_manager.get_linear_velocity() },
+        "projected_gravity": { "fn": lambda env: self.robot_manager.get_projected_gravity() },
+        "dof_position": { "fn": lambda env: self.action_manager.get_dofs_position() },
+        "dof_velocity": {
+            "fn": lambda env: self.action_manager.get_dofs_velocity(),
+            "scale": 0.05,
+        },
+        "actions": { "fn": lambda env: self.action_manager.get_actions() },
+    },
+)
+```
+
+By default, the `policy` observation set will be returned as the main observations in the step function. However, all named sets will be set in a [TensorDict](https://docs.pytorch.org/tensordict/stable/index.html) and assigned to `extras["observations"]`.
+
+```
+obs, rewards, terminations, truncations, extras = env.step(actions)
+
+print(obs) # <- Policy observations
+print(extras["observations"]) # <- TensorDict with all observations
+```
+
+The [rsl_rl wrapper](project:/api/wrappers/rsl_rl.md) will automatically route these to the RSL_RL algorithm. But be sure to set the rsl_rl `obs_groups` config properly:
+
+```
+"obs_groups": {"policy": ["policy"], "critic": ["critic"]},
 ```

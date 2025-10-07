@@ -1,10 +1,31 @@
 import torch
-from typing import Any
+from typing import Any, TypedDict
 from gymnasium import spaces
 import genesis as gs
-
+from tensordict import TensorDict
 from genesis_forge.genesis_env import GenesisEnv, EnvMode
 from genesis_forge.managers.base import BaseManager, ManagerType
+from genesis_forge.managers import (
+    ContactManager,
+    EntityManager,
+    CommandManager,
+    TerrainManager,
+    PositionActionManager,
+    ObservationManager,
+    RewardManager,
+    TerminationManager,
+)
+
+
+class ManagersDict(TypedDict):
+    contact: list[ContactManager]
+    entity: list[EntityManager]
+    command: list[CommandManager]
+    terrain: list[TerrainManager]
+    action: PositionActionManager | None
+    observation: list[ObservationManager]
+    reward: RewardManager | None
+    termination: TerminationManager | None
 
 
 class ManagedEnvironment(GenesisEnv):
@@ -105,14 +126,14 @@ class ManagedEnvironment(GenesisEnv):
             extras_logging_key=extras_logging_key,
         )
 
-        self.managers: dict[ManagerType, BaseManager | list[BaseManager] | None] = {
+        self.managers: ManagersDict = {
             "contact": [],
             "entity": [],
             "command": [],
             "terrain": [],
             # there can only be one of each of these
             "action": None,
-            "observation": None,
+            "observation": [],
             "reward": None,
             "termination": None,
         }
@@ -154,10 +175,13 @@ class ManagedEnvironment(GenesisEnv):
     @property
     def observation_space(self) -> spaces.Space:
         """
-        The observation space, provided by the observation manager, if it exists.
+        The observation space for the "policy" observation manager, if it exists.
         """
-        if self.managers["observation"] is not None:
-            return self.managers["observation"].observation_space
+        if len(self.managers["observation"]) > 0:
+            for obs in self.managers["observation"]:
+                if obs.name == "policy":
+                    return obs.observation_space
+            return self.managers["observation"][0].observation_space
         if self._observation_space is not None:
             return self._observation_space
         return None
@@ -244,8 +268,8 @@ class ManagedEnvironment(GenesisEnv):
             command_manager.build()
         for entity_manager in self.managers["entity"]:
             entity_manager.build()
-        if self.managers["observation"] is not None:
-            self.managers["observation"].build()
+        for obs in self.managers["observation"]:
+            obs.build()
 
     def step(
         self, actions: torch.Tensor
@@ -260,6 +284,7 @@ class ManagedEnvironment(GenesisEnv):
             Batch of (observations, rewards, terminations, truncations, extras)
         """
         super().step(actions)
+        self.extras["observations"] = TensorDict({}, device=gs.device)
 
         # Execute the actions and a simulation step
         if self.managers["action"] is not None:
@@ -297,7 +322,7 @@ class ManagedEnvironment(GenesisEnv):
         if reset_env_idx is not None and reset_env_idx.numel() > 0:
             self.reset(reset_env_idx)
 
-        # Get observation
+        # Get observations
         obs = self.get_observations()
 
         return (
@@ -335,8 +360,8 @@ class ManagedEnvironment(GenesisEnv):
             self.managers["reward"].reset(env_ids)
         for command_manager in self.managers["command"]:
             command_manager.reset(env_ids)
-        if self.managers["observation"] is not None:
-            self.managers["observation"].reset(env_ids)
+        for obs_manager in self.managers["observation"]:
+            obs_manager.reset(env_ids)
 
         # Only get observations when env_ids is None because this will be the initial reset called before the first step
         # Otherwise, the observations are ignored
@@ -347,10 +372,27 @@ class ManagedEnvironment(GenesisEnv):
 
     def get_observations(self) -> torch.Tensor:
         """
-        Returns the current observations for each environment.
+        Returns the current observations for this step.
         If you use the ObservationManager, this will be handled automatically.
         Otherwise, override this method to return the observations.
         """
-        if self.managers["observation"] is not None:
-            return self.managers["observation"].get_observations()
+        if len(self.managers["observation"]) > 0:
+            # We already have observations for this step
+            if (
+                "observations" in self.extras
+                and "policy" in self.extras["observations"]
+            ):
+                return self.extras["observations"]["policy"]
+            if "observations" not in self.extras:
+                self.extras["observations"] = TensorDict({}, device=gs.device)
+
+            # Get observations
+            policy_obs = None
+            for obs_manager in self.managers["observation"]:
+                obs = obs_manager.get_observations()
+                self.extras["observations"][obs_manager.name] = obs
+                if obs_manager.name == "policy":
+                    policy_obs = obs
+            return policy_obs
+
         return super().get_observations()

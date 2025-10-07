@@ -76,6 +76,9 @@ class CommandManager(BaseManager):
 
         num_ranges = len(range) if isinstance(range, dict) else 1
         self._command = torch.zeros(env.num_envs, num_ranges, device=gs.device)
+        self._range_idx = {}
+        if isinstance(range, dict):
+            self._range_idx = {key: i for i, key in enumerate(range.keys())}
 
     """
     Properties
@@ -129,6 +132,22 @@ class CommandManager(BaseManager):
     """
     Operations
     """
+
+    def get_command(self, key: str) -> torch.Tensor:
+        """
+        If the range is a dict, get the command values for the given key.
+        """
+        if not isinstance(self._range, dict):
+            raise ValueError("The range is not a dict")
+        return self._command[:, self._range_idx[key]]
+
+    def get_command_idx(self, key: str) -> int:
+        """
+        If the range is a dict, get the command index for the given key.
+        """
+        if not isinstance(self._range, dict):
+            raise ValueError("The range is not a dict")
+        return self._range_idx[key]
 
     def step(self):
         """Resample the command if necessary"""

@@ -4,16 +4,18 @@
 
 # Genesis Forge
 
-A robotics RL training frameworks for Genesis inspired by Isaac Lab and Gymnasium.
-The goal of Genesis Forge is to give developers the tools they need to get training quickly, with less of the boilerplate setup.
-Genesis Forge is a modular framework, made up of managers and wrappers, each dedicated to specific areas of your robotics training program.
+Genesis Forge is a powerful robotics reinforcement learning framework using the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator. It provides a flexible and modular architecture to get your robot up and running quickly with less boilerplate work.
 
-Features:
+## RL Robotics What?
+
+Today, modern robots learn to balance, walk, and manipulate objects using AI/[Reinforcement Learning](https://huggingface.co/learn/deep-rl-course/en/unit1/what-is-rl) algorithms. You simply create a program that defines a task and provides feedback on the robot's performance — much like training a dog with treats and commands. Genesis Forge is a framework that makes this very easy to do, with [documentation](https://genesis-forge.readthedocs.io/en/latest/guide/index.html) and [examples](https://github.com/jgillick/genesis-forge/tree/main/examples) to get you started.
+
+## Features:
 
 - 🦿 Action manager - Control your joints and actuators, within limits and with domain randomization
-- 🏆 Reward/Termination managers - Simple and extensible reward/termination setup with automatic logging
-- ↪️ Command managers - Generates random command values with debug visualization
-- 🏔️ Terrain manager - Randomize locations across terrains and curriculum-based placement
+- 🏆 Reward/Termination managers - Simple and extensible reward/termination handling with automatic logging
+- ↪️ Command managers - Commands your robot with debug visualization
+- 🏔️ Terrain manager - Helpful terrain utilities and curriculums
 - 💥 Contact manager - Comprehensive contact/collision detection and reward/termination functions
 - 🎬 Video Wrapper - Automatically records videos at regular intervals during training
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.
@@ -21,14 +23,10 @@ Features:
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
 
-<div>
-    <img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="48%" />
-    <img src="media/gamepad.gif" alt="Gamepad controller interface" width="48%" />
-</div>
-<div>
-    <img src="media/terrain.gif" alt="Rough terrain" width="48%" />
-    <img src="media/spider.gif" alt="Complex robots" width="48%" />
-</div>
+<img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" height="240" />
+<img src="media/gamepad.gif" alt="Gamepad controller interface" height="240" />
+<img src="media/terrain.gif" alt="Rough terrain" height="240" />
+<img src="media/spider.gif" alt="Complex robots" height="240" />
 
 ## Install
 
@@ -192,8 +190,8 @@ Check out the [user guide](https://genesis-forge.readthedocs.io/en/latest/guide/
 
 If you used Genesis Forge in your research, we would appreciate it if you could cite it.
 
-```
-@misc{Genesis,
+```bibtex
+@misc{Genesis-Forge,
   author = {Jeremy Gillick},
   title = {Genesis Forge: A modular framework for RL robot environments},
   month = {September},

@@ -4,6 +4,7 @@ from genesis.engine.entities import RigidEntity
 from genesis_forge.managers import (
     PositionActionManager,
     EntityManager,
+    ContactManager,
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
 
@@ -172,3 +173,21 @@ def current_actions(
     if action_manager is not None:
         return action_manager.get_actions()
     return env.actions
+
+
+"""
+Contacts
+"""
+
+
+def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Tensor:
+    """
+    Returns the normalized contact force at each contact point.
+
+    Args:
+        env: The Genesis Forge environment
+        contact_manager: The contact manager to check for contact
+
+    Returns: tensor of shape (num_envs, num_contacts)
+    """
+    return torch.norm(contact_manager.contacts[:, :, :], dim=-1)

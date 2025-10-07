@@ -34,7 +34,10 @@ class ObservationManager(BaseManager):
     Args:
         env: The environment.
         cfg: The configuration for the observation manager.
+        name: The name to categorize the observations under, generally used for asymmetrical RL.
+              It's required to have one observation manager named "policy".
         noise: The range of random noise to add to all observations.
+        history_len: The number of previous observations to include in the observation.
 
     Example with ManagedEnvironment::
 
@@ -133,26 +136,53 @@ class ObservationManager(BaseManager):
         self,
         env: GenesisEnv,
         cfg: dict[str, ObservationConfig],
+        name: str = "policy",
+        history_len: int | None = None,
         noise: tuple[float, float] | None = None,
     ):
         super().__init__(env, "observation")
+        self._name = name
         self.cfg = cfg
         self.noise = noise
         self._observation_size = 1
         self._observation_space = None
+
+        if history_len is not None and history_len < 1:
+            raise ValueError("history_len must be greater than 0")
+        self._history_len = history_len if history_len is not None else 1
+        self._history = []
 
         # Wrap config items
         self.cfg: dict[str, ObservationConfigItem] = {}
         for name, cfg in cfg.items():
             self.cfg[name] = ObservationConfigItem(cfg, env)
 
+    """
+    Properties
+    """
+
+    @property
+    def name(self) -> str:
+        """
+        The name to categorize the observations under
+        This is generally used for asymmetrical RL and it's required to have
+        one observation manager named "policy".
+        """
+        return self._name
+
     @property
     def observation_space(self) -> spaces.Space:
         """The observation space."""
         return self._observation_space
 
+    """
+    Public methods
+    """
+
     def build(self):
-        """Make an initial observation in order to determine the observation space"""
+        """
+        Determine the observation space and setup the buffers.
+        """
         if not self.enabled:
             self._observation_size = 1
             self._observation_space = spaces.Box(
@@ -169,8 +199,9 @@ class ObservationManager(BaseManager):
             assert callable(cfg.fn), f"Observation function {name} is not callable"
 
         # Make an initial observation and create the observation space
-        obs = self.get_observations()
-        self._observation_size = obs.shape[1]
+        obs = self._perform_observation()
+        single_obs_size = obs.shape[1]
+        self._observation_size = single_obs_size * self._history_len
         self._observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -178,15 +209,31 @@ class ObservationManager(BaseManager):
             dtype=np.float32,
         )
 
+        # Fill history buffer
+        shape = (self.env.num_envs, single_obs_size)
+        self._history = [
+            torch.zeros(shape, device=gs.device) for _ in range(self._history_len)
+        ]
+
     def get_observations(self) -> torch.Tensor:
         """Generate current observations for all environments."""
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
 
+        self._history.pop()
+        obs = self._perform_observation()
+        self._history.insert(0, obs)
+        return torch.cat(self._history, dim=-1)
+
+    """
+    Private methods.
+    """
+
+    def _perform_observation(self) -> torch.Tensor:
+        """Perform a round of observations."""
         obs = []
         for name, cfg in self.cfg.items():
             try:
-
                 # Get values
                 params = cfg.params
                 value = cfg.fn(env=self.env, **params)
@@ -206,5 +253,4 @@ class ObservationManager(BaseManager):
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e
-
         return torch.cat(obs, dim=-1)

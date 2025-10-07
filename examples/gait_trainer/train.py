@@ -11,30 +11,20 @@ from genesis_forge.wrappers import (
     VideoWrapper,
     RslRlWrapper,
 )
-from environment import Go2CommandDirectionEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
+from environment import Go2GaitTrainingEnv
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "go2-command"
+EXPERIMENT_NAME = "go2-gait"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=220)
+parser.add_argument("--max_iterations", type=int, default=1500)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def training_cfg(exp_name: str, max_iterations: int):
+def training_cfg(exp_name: str, max_iterations: int, num_envs: int):
     return {
         "algorithm": {
             "class_name": "PPO",
@@ -72,10 +62,10 @@ def training_cfg(exp_name: str, max_iterations: int):
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
-        "num_steps_per_env": 24,
+        "num_steps_per_env": round(98_304/ num_envs), # https://ar5iv.labs.arxiv.org/html/2109.11978
         "save_interval": 100,
         "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"], "critic": ["policy"]},
+        "obs_groups": {"policy": ["policy"], "critic": ["policy", "critic"]},
     }
 
 
@@ -98,14 +88,14 @@ def main():
     print(f"Logging to: {log_path}")
 
     # Load training configuration and save snapshot of training configs
-    cfg = training_cfg(experiment_name, args.max_iterations)
+    cfg = training_cfg(experiment_name, args.max_iterations, args.num_envs)
     pickle.dump(
         [cfg],
         open(os.path.join(log_path, "cfgs.pkl"), "wb"),
     )
 
     # Create environment
-    env = Go2CommandDirectionEnv(num_envs=args.num_envs, headless=True)
+    env = Go2GaitTrainingEnv(num_envs=args.num_envs, headless=True)
 
     # Record videos in regular intervals
     env = VideoWrapper(

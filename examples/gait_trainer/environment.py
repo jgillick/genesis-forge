@@ -16,14 +16,15 @@ from genesis_forge.managers import (
     TerrainManager,
     ContactManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations, observations
 
-from gate_command_manager import GaitCommandManager
+from gait_command_manager import GaitCommandManager
 
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+CURRICULUM_CHECK_EVERY_STEPS = 300
 
 
 class Go2GaitTrainingEnv(ManagedEnvironment):
@@ -44,6 +45,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.5,
         )
+        self._next_curriculum_check_step = CURRICULUM_CHECK_EVERY_STEPS
 
         # Construct the scene
         self.scene = gs.Scene(
@@ -154,7 +156,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 "lin_vel_y": [-0.0, 0.0],
                 "ang_vel_z": [-1.0, 1.0],
             },
-            standing_probability=0.02,
+            standing_probability=0.00,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -176,7 +178,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
 
         ##
         # Rewards
-        RewardManager(
+        self.reward_manager = RewardManager(
             self,
             logging_enabled=True,
             cfg={
@@ -195,7 +197,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                     "weight": -25.0,
                     "fn": rewards.base_height,
                     "params": {
-                        "target_height": 0.3,
+                        "target_height": 0.35,
                         "entity_manager": self.robot_manager,
                     },
                 },
@@ -215,8 +217,15 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "entity_manager": self.robot_manager,
                     },
                 },
+                "body_acceleration": {
+                    "weight": -0.1,
+                    "fn": rewards.body_acceleration_exp,
+                    "params": {
+                        "entity_manager": self.robot_manager,
+                    },
+                },
                 "lin_vel_z": {
-                    "weight": -0.5,
+                    "weight": -0.1,
                     "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
@@ -285,6 +294,26 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
             },
         )
+        ObservationManager(
+            self,
+            name="critic",
+            history_len=5,
+            cfg={
+                "foot_contact_force": {
+                    "fn": observations.contact_force,
+                    "params": {
+                        "contact_manager": self.foot_contact_manager,
+                    },
+                },
+                "dof_force": {
+                    "fn": observations.entity_dofs_force,
+                    "params": {
+                        "action_manager": self.action_manager,
+                    },
+                    "scale": 0.1,
+                },
+            },
+        )
 
     def build(self):
         super().build()
@@ -294,3 +323,37 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         # Keep the camera fixed on the robot
         self.camera.set_pose(lookat=self.robot.get_pos()[0])
         return super().step(actions)
+
+    def reset(self, envs_idx: list[int] | None = None):
+        reset = super().reset(envs_idx)
+        if envs_idx is not None:
+            self.update_curriculum()
+        return reset
+
+    def update_curriculum(self):
+        """
+        Check the curriculum
+        """
+        # Limit how often we check/update the curriculum
+        if self.step_count < self._next_curriculum_check_step:
+            return
+        self._next_curriculum_check_step = (
+            self.step_count + CURRICULUM_CHECK_EVERY_STEPS
+        )
+
+        # Gait phase
+        # Increase gaits and period range if the base gait reward is over 0.7
+        gait_phase_reward = self.reward_manager.last_episode_mean_reward(
+            "gait_phase_reward", before_weight=True
+        )
+        if gait_phase_reward > 0.75:
+            self.gait_command_manager.increment_num_gaits()
+            self.gait_command_manager.increment_gait_period_range()
+
+        # Foot clearance
+        # Increase foot clearance range, if the base reward is over 0.8
+        foot_height_reward = self.reward_manager.last_episode_mean_reward(
+            "foot_height_reward", before_weight=True
+        )
+        if foot_height_reward > 0.8:
+            self.gait_command_manager.increment_foot_clearance_range()

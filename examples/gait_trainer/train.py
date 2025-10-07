@@ -14,11 +14,11 @@ from genesis_forge.wrappers import (
 from environment import Go2GaitTrainingEnv
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "gait-training"
+EXPERIMENT_NAME = "go2-gait"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=500)
+parser.add_argument("--max_iterations", type=int, default=1500)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -65,7 +65,7 @@ def training_cfg(exp_name: str, max_iterations: int):
         "num_steps_per_env": 24,
         "save_interval": 100,
         "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"], "critic": ["policy"]},
+        "obs_groups": {"policy": ["policy"], "critic": ["policy", "critic"]},
     }
 
 
@@ -102,7 +102,8 @@ def main():
         env,
         video_length_sec=12,
         out_dir=os.path.join(log_path, "videos"),
-        episode_trigger=lambda episode_id: episode_id % 5 == 0,
+        episode_trigger=lambda episode_id: True,
+        # episode_trigger=lambda episode_id: episode_id % 2 == 0,
     )
 
     # Build the environment

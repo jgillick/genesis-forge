@@ -13,15 +13,21 @@ from genesis_forge.genesis_env import GenesisEnv
 
 GAIT_PERIOD_RANGE = [0.3, 0.6]
 FOOT_CLEARANCE_RANGE = [0.04, 0.12]
-CURRICULUM_CHECK_EVERY_STEPS = 400
+CURRICULUM_CHECK_EVERY_STEPS = 500
 
 # The foot/leg phase offsets relative to each other for each gait
 GAIT_OFFSETS = {
+    "walk": {
+        "FL": 0.0,  # Front-left foot starts first
+        "RR": 0.25,  # Rear-right foot follows
+        "FR": 0.5,  # Front-right foot follows
+        "RL": 0.75,  # Rear-left foot follows
+    },
     "trot": {
-        "FL": 0.0,  # Front-left foot
+        "FL": 0.0,
         "FR": 0.5,
         "RL": 0.5,
-        "RR": 0.0,  # Rear-right foot
+        "RR": 0.0,
     },
     "pronk": {
         "FL": 0.0,
@@ -89,7 +95,7 @@ class GaitCommandManager(CommandManager):
         self.gait_time = torch.zeros(
             env.num_envs, 1, dtype=torch.float, device=gs.device
         )
-        self.gate_phase = torch.zeros(
+        self.gait_phase = torch.zeros(
             env.num_envs, 1, dtype=torch.float, device=gs.device
         )
         self.clock_input = torch.zeros(
@@ -98,8 +104,8 @@ class GaitCommandManager(CommandManager):
             dtype=torch.float,
             device=gs.device,
         )
-        self.gait_phase_reward_sums = torch.tensor(0.0, device=gs.device)
-        self.foot_height_reward_sums = torch.tensor(0.0, device=gs.device)
+        self.gait_phase_reward_sums = 0.0
+        self.foot_height_reward_sums = 0.0
 
     @property
     def command(self) -> torch.Tensor:
@@ -115,12 +121,48 @@ class GaitCommandManager(CommandManager):
             dim=-1,
         )
 
+    """
+    Curriculum operations
+    """
+
+    def increment_num_gaits(self):
+        """
+        If training is going well, increase the number of available gaits by 1.
+        """
+        self._num_gaits = min(self._num_gaits + 1, len(GAIT_OFFSETS))
+
+    def increment_gait_period_range(self):
+        """
+        If training is going well, increase the possible gait period range by 0.05.
+        """
+        self._gait_period_range[0] = max(
+            self._gait_period_range[0] - 0.05, GAIT_PERIOD_RANGE[0]
+        )
+        self._gait_period_range[1] = min(
+            self._gait_period_range[1] + 0.05, GAIT_PERIOD_RANGE[1]
+        )
+
+    def increment_foot_clearance_range(self):
+        """
+        If training is going well, increase the possible foot clearance range by 0.05.
+        """
+        self._foot_clearance_range[0] = max(
+            self._foot_clearance_range[0] - 0.01, FOOT_CLEARANCE_RANGE[0]
+        )
+        self._foot_clearance_range[1] = min(
+            self._foot_clearance_range[1] + 0.01, FOOT_CLEARANCE_RANGE[1]
+        )
+
+    """
+    Command lifecycle operations
+    """
+
     def resample_command(self, env_ids: list[int]):
         """
         Resample the command for the given environments
         """
         # Select a random gait for these environments
-        selected_gait_idx = torch.randint(0, len(GAIT_OFFSETS), (1,), device=gs.device)
+        selected_gait_idx = torch.randint(0, self._num_gaits, (1,), device=gs.device)
         gait_name = list(GAIT_OFFSETS.keys())[selected_gait_idx]
         gait_offsets = GAIT_OFFSETS[gait_name]
 
@@ -159,11 +201,26 @@ class GaitCommandManager(CommandManager):
         """
         Increment the gait time and phase
         """
-        self._check_curriculum()
         super().step()
 
         self.gait_time = (self.gait_time + self.env.dt) % self.gait_period
-        self.gate_phase = self.gait_time / self.gait_period
+        self.gait_phase = self.gait_time / self.gait_period
+
+        # Populate clock input with foot-specific phase information
+        for i in range(4):  # For each foot (FL, FR, RL, RR)
+            # Calculate individual foot phase
+            foot_phase = (self.gait_phase + self.foot_offset[:, i].unsqueeze(1)) % 1.0
+
+            # Sine/Cosine components
+            self.clock_input[:, i] = torch.sin(2 * torch.pi * foot_phase).squeeze(-1)
+            self.clock_input[:, i + 4] = torch.cos(2 * torch.pi * foot_phase).squeeze(
+                -1
+            )
+
+        # Metics
+        self.env.extras[self.env.extras_logging_key]["Metrics / num_gaits"] = (
+            torch.tensor(self._num_gaits, dtype=torch.float, device=gs.device)
+        )
 
     def reset(self, env_ids: list[int] | None = None):
         """
@@ -174,7 +231,7 @@ class GaitCommandManager(CommandManager):
         super().reset(env_ids)
         self.clock_input[env_ids, :] = 0.0
         self.gait_time[env_ids] = 0.0
-        self.gate_phase[env_ids] = 0.0
+        self.gait_phase[env_ids] = 0.0
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
         """
@@ -187,6 +244,10 @@ class GaitCommandManager(CommandManager):
             ],
             dim=-1,
         )
+
+    """
+    Rewards
+    """
 
     def foot_height_reward(
         self, env: GenesisEnv, sensitivity: float = 0.1
@@ -242,7 +303,7 @@ class GaitCommandManager(CommandManager):
         velocity = torch.norm(link.get_vel(), dim=-1).view(-1, 1)
 
         # Phase
-        phi = (self.gate_phase + self.foot_offset[:, foot_idx].unsqueeze(1)) % 1.0
+        phi = (self.gait_phase + self.foot_offset[:, foot_idx].unsqueeze(1)) % 1.0
         phi *= 2 * torch.pi
 
         swing_indices = (phi >= 0.0) & (phi < torch.pi)
@@ -258,50 +319,3 @@ class GaitCommandManager(CommandManager):
         vel_weight[stance_indices, :] = -1  # speed is penalized during stance phase
 
         return vel_weight * velocity + force_weight * force
-
-    def _check_curriculum(self):
-        """
-        Check the robot's progress and increase the gaits and ranges if the robot is making progress.
-        """
-
-        # Only check every <CURRICULUM_CHECK_EVERY_STEPS> steps
-        if (
-            self.env.step_count > 0
-            and self.env.step_count % CURRICULUM_CHECK_EVERY_STEPS == 0
-        ):
-            phase_reward_mean = (
-                self.gait_phase_reward_sums / CURRICULUM_CHECK_EVERY_STEPS
-            )
-            foot_reward_mean = (
-                self.foot_height_reward_sums / CURRICULUM_CHECK_EVERY_STEPS
-            )
-            print("Curriculum check!")
-            print(f"Gait phase reward mean: {phase_reward_mean}")
-            print(f"Foot height reward mean: {foot_reward_mean}")
-
-            # Gait phase
-            if phase_reward_mean > 0.8:
-                self._num_gaits = min(self._num_gaits + 1, len(GAIT_OFFSETS))
-                self._gait_period_range[0] = max(
-                    self._gait_period_range[0] - 0.05, GAIT_PERIOD_RANGE[0]
-                )
-                self._gait_period_range[1] = min(
-                    self._gait_period_range[1] + 0.05, GAIT_PERIOD_RANGE[1]
-                )
-
-            # Foot clearance
-            if foot_reward_mean > 0.8:
-                self._foot_clearance_range[0] = max(
-                    self._foot_clearance_range[0] - 0.01, FOOT_CLEARANCE_RANGE[0]
-                )
-                self._foot_clearance_range[1] = min(
-                    self._foot_clearance_range[1] + 0.01, FOOT_CLEARANCE_RANGE[1]
-                )
-
-            # Reset rewards and log metrics
-            self.gait_phase_reward_sums = torch.tensor(0.0, device=gs.device)
-            self.foot_height_reward_sums = torch.tensor(0.0, device=gs.device)
-            self.env.extras[self.env.extras_logging_key]["Metrics / num_gaits"] = (
-                torch.tensor(self._num_gaits, dtype=torch.float, device=gs.device)
-            )
-            print(self.env.extras["episode"]["Metrics / num_gaits"])

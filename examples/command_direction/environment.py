@@ -85,6 +85,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             env_idx=0,
             debug=True,
         )
+        self.camera.follow_entity(self.robot)
 
     def config(self):
         """
@@ -251,11 +252,11 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             },
         )
 
-    def build(self):
-        super().build()
-        self.camera.follow_entity(self.robot)
+    # def build(self):
+    #     super().build()
+    #     self.camera.follow_entity(self.robot)
 
-    def step(self, actions: torch.Tensor):
-        # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos()[0])
-        return super().step(actions)
+    # def step(self, actions: torch.Tensor):
+    #     # Keep the camera fixed on the robot
+    #     self.camera.set_pose(lookat=self.robot.get_pos()[0])
+    #     return super().step(actions)

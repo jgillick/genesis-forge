@@ -42,7 +42,6 @@ autodoc_default_options = {
 project = "Genesis Forge"
 copyright = "2025, Jeremy Gillick"
 author = "Jeremy Gillick"
-release = "0.0.1"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

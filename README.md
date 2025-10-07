@@ -190,8 +190,8 @@ Check out the [user guide](https://genesis-forge.readthedocs.io/en/latest/guide/
 
 If you used Genesis Forge in your research, we would appreciate it if you could cite it.
 
-```
-@misc{Genesis,
+```bibtex
+@misc{Genesis-Forge,
   author = {Jeremy Gillick},
   title = {Genesis Forge: A modular framework for RL robot environments},
   month = {September},

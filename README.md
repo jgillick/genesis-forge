@@ -23,10 +23,12 @@ Today, modern robots learn to balance, walk, and manipulate objects using AI/[Re
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
 
-<img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="45%" />
-<img src="media/gamepad.gif" alt="Gamepad controller interface" width="45%" />
-<img src="media/terrain.gif" alt="Rough terrain" width="45%" />
-<img src="media/spider.gif" alt="Complex robots" width="45%" />
+<div>
+<img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="48%" />
+<img src="media/gamepad.gif" alt="Gamepad controller interface" width="48%" />
+<img src="media/terrain.gif" alt="Rough terrain" width="48%" />
+<img src="media/spider.gif" alt="Complex robots" width="48%" />
+</div>
 
 ## Install
 

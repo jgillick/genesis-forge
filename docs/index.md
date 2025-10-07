@@ -8,7 +8,11 @@
 
 <br />
 
-Genesis Forge is a powerful framework for building reinforcement learning environments using the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator. It provides a flexible and modular architecture to get your robot up and running quickly with less boilerplate work.
+Genesis Forge is a powerful robotics reinforcement learning framework using the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator. It provides a flexible and modular architecture to get your robot up and running quickly with less boilerplate work.
+
+## RL Robotics What?
+
+Today, modern robots learn to balance, walk, manipulate objects, and more, using AI/[Reinforcement Learning](https://huggingface.co/learn/deep-rl-course/en/unit1/what-is-rl) algorithms. You simply create a program that defines a task and provides feedback on the robot's performance — much like training a dog with treats and commands. Genesis Forge is a framework that makes this very easy to, with [documentation](https://genesis-forge.readthedocs.io/en/latest/guide/index.html) and [examples](https://github.com/jgillick/genesis-forge/tree/main/examples) to get you started.
 
 ## Key Features
 

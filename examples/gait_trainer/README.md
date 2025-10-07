@@ -28,7 +28,7 @@ This leads to natural gait emergence without requiring reference trajectories or
 
 ### Curriculum learning
 
-For a complex training program like this, it's best to setup a curriculum learning process. This way the robot has the ability to learn one behavior before being expected to learn the rest. In this case, we start by only teaching the trot gait. As the gait reward value hits `0.8`, we add an additional gait (pronk). This repeats until we've included all configured gaits.
+For a complex training program like this, it's best to setup a curriculum learning process. This way the robot has the ability to learn one behavior before being expected to learn the rest. In this case, we start by only teaching the trot gait. When the gait reward is high enough, we add an additional gait (pronk). This repeats until we've included all configured gaits.
 
 Similarly, we increment the minimum foot clearance and gait period target ranges as the robot's rewards hit target values.
 
@@ -84,3 +84,17 @@ Now you can view the trained policy:
 ```bash
 python ./eval.py
 ```
+
+## Gamepad playing
+
+If you have a logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) or [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) you can try out trained model like a video game. This way you can see how the model handles different controls.
+
+First, follow the [gamepad installation instructions](https://genesis-forge.readthedocs.io/en/latest/guide/gamepad.html#installation).
+
+Then, connect your gamepad, and run the following command:
+
+```python
+python ./gamepad.py
+```
+
+You should now be able to use the joysticks to control the Go2 robot.

@@ -311,9 +311,7 @@ class GaitCommandManager(CommandManager):
 
         force_weight[swing_indices, :] = -1  # force is penalized during swing phase
         vel_weight[swing_indices, :] = 0  # speed is not penalized during swing phase
-        force_weight[stance_indices, :] = (
-            0  # force is not penalized during stance phase
-        )
+        force_weight[stance_indices, :] = 0  # force is not penalized during stance
         vel_weight[stance_indices, :] = -1  # speed is penalized during stance phase
 
         return vel_weight * velocity + force_weight * force

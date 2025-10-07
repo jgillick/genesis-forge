@@ -11,7 +11,6 @@ class MdpFnClass:
 
     def __init__(self, env: GenesisEnv):
         self.env = env
-        pass
 
     def build(self):
         """Called during the environment build phase and when MDP params are changed."""

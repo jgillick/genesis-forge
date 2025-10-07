@@ -2,7 +2,7 @@ import torch
 from typing import Any, TypedDict
 from gymnasium import spaces
 import genesis as gs
-
+from tensordict import TensorDict
 from genesis_forge.genesis_env import GenesisEnv, EnvMode
 from genesis_forge.managers.base import BaseManager, ManagerType
 from genesis_forge.managers import (
@@ -284,7 +284,7 @@ class ManagedEnvironment(GenesisEnv):
             Batch of (observations, rewards, terminations, truncations, extras)
         """
         super().step(actions)
-        self.extras["observations"] = {}
+        self.extras["observations"] = TensorDict({}, device=gs.device)
 
         # Execute the actions and a simulation step
         if self.managers["action"] is not None:
@@ -384,7 +384,7 @@ class ManagedEnvironment(GenesisEnv):
             ):
                 return self.extras["observations"]["policy"]
             if "observations" not in self.extras:
-                self.extras["observations"] = {}
+                self.extras["observations"] = TensorDict({}, device=gs.device)
 
             # Get observations
             policy_obs = None

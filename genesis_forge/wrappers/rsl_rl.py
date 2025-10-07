@@ -106,7 +106,10 @@ class RslRlWrapper(Wrapper):
         """
         if self.rsl3:
             if extras is not None and "observations" in extras:
-                obs = TensorDict(extras["observations"], device=gs.device)
+                if isinstance(extras["observations"], TensorDict):
+                    obs = extras["observations"]
+                else:
+                    obs = TensorDict(extras["observations"], device=gs.device)
             else:
                 obs = TensorDict(
                     {"policy": obs},

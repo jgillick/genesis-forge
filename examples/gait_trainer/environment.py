@@ -150,7 +150,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.5, 1.5],
+                "lin_vel_x": [-1.0, 1.0],
                 "lin_vel_y": [0.0, 0.0],
                 "ang_vel_z": [-1.0, 1.0],
             },

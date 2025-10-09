@@ -373,7 +373,7 @@ class ContactManager(BaseManager):
                 if not found:
                     names = [link.name for link in entity.links]
                     raise RuntimeError(
-                        f"Link {pattern} not found in entity {self._entity_attr}.\nAvailable links: {names}"
+                        f"Link '{pattern}' not found in entity '{self._entity_attr}'.\nAvailable links: {names}"
                     )
 
         return (

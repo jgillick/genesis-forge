@@ -55,39 +55,47 @@ def base_height(
     env: GenesisEnv,
     target_height: Union[float, torch.Tensor] = None,
     height_command: CommandManager = None,
-    terrain_manager: TerrainManager = None,
     entity_attr: str = "robot",
-    entity_manager: EntityManager = None,
+    sensor_attr: str | None = None,
+    terrain_manager: TerrainManager = None,
 ) -> torch.Tensor:
     """
     Penalize base height away from target, using the L2 squared kernel.
+
+    The entity's actual height is calculated either directly from the entity and, optionally, the terrain manager,
+    or from a lidar sensor mounted to the bottom of the entity.
+
+    The target height is either defined statically with the `target_height` argument, or dynamically
+    from the height command manager (`height_command` argument).
 
     Args:
         env: The Genesis environment containing the robot
         target_height: The target height to penalize the base height away from
         height_command: Get the target height from a height command manager. This expects the command to have a single range value.
-        terrain_manager: The terrain manager will adjust the height based on the terrain height.
         entity_attr: The attribute name of the entity in the environment.
-        entity_manager: The entity manager for the entity.
+        sensor_attr: The attribute name of the lidar grid sensor mounted to the bottom of the robot, used to register the robot's height.
+                     If this is provided, the entity_attr and entity_manager args are ignored.
+        terrain_manager: Use the terrain manager to get the robot's height above the terrain (not used if sensor_attr is provided)
 
     Returns:
         torch.Tensor: Penalty for base height away from target
     """
-    robot = None
-    if entity_manager is not None:
-        robot = entity_manager.entity
+    if sensor_attr is not None:
+        # Get the minimum height from the sensor grid
+        sensor = getattr(env, sensor_attr)
+        entity_height = torch.mean(sensor.read().distances)
     else:
-        robot = getattr(env, entity_attr)
+        base_pos = getattr(env, entity_attr).get_pos()
+        height_offset = 0.0
+        if terrain_manager is not None:
+            height_offset = terrain_manager.get_terrain_height(
+                base_pos[:, 0], base_pos[:, 1]
+            )
+        entity_height = base_pos[:, 2] - height_offset
 
-    base_pos = robot.get_pos()
-    height_offset = 0.0
-    if terrain_manager is not None:
-        height_offset = terrain_manager.get_terrain_height(
-            base_pos[:, 0], base_pos[:, 1]
-        )
     if height_command is not None:
         target_height = height_command.command.squeeze(-1)
-    return torch.square(base_pos[:, 2] - height_offset - target_height)
+    return torch.square(entity_height - target_height)
 
 
 def dof_similar_to_default(

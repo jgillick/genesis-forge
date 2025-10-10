@@ -36,12 +36,6 @@ GAIT_OFFSETS: dict[GaitName, dict[FootName, float]] = {
         "RL": 0.5,
         "RR": 0.0, # Rear-right foot
     },
-    "pronk": {
-        "FL": 0.0,
-        "FR": 0.0,
-        "RL": 0.0,
-        "RR": 0.0,
-    },
     "pace": {
         "FL": 0.5,
         "FR": 0.0,
@@ -53,6 +47,12 @@ GAIT_OFFSETS: dict[GaitName, dict[FootName, float]] = {
         "FR": 0.0,
         "RL": 0.5,
         "RR": 0.5,
+    },
+    "pronk": {
+        "FL": 0.0,
+        "FR": 0.0,
+        "RL": 0.0,
+        "RR": 0.0,
     },
     # "canter": {
     #     "FL": 0.67,
@@ -103,6 +103,7 @@ class GaitCommandManager(CommandManager):
             (GAIT_PERIOD_RANGE[0] + GAIT_PERIOD_RANGE[1]) / 2
         ] * 2
         self._foot_clearance_range = [FOOT_CLEARANCE_RANGE[0]] * 2
+        self._all_gaits_learned = False
 
         # Buffers
         self.foot_offset = torch.zeros((env.num_envs, 4), device=gs.device)
@@ -120,8 +121,7 @@ class GaitCommandManager(CommandManager):
             dtype=torch.float,
             device=gs.device,
         )
-        self.gait_phase_reward_sums = 0.0
-        self.foot_height_reward_sums = 0.0
+        self._gait_selected = torch.zeros(env.num_envs, dtype=torch.long, device=gs.device)
 
     @property
     def command(self) -> torch.Tensor:
@@ -147,7 +147,15 @@ class GaitCommandManager(CommandManager):
         """
         If training is going well, increase the number of available gaits by 1.
         """
-        self._num_gaits = min(self._num_gaits + 1, len(GAIT_OFFSETS))
+        if self._all_gaits_learned:
+            return
+        
+        # All gaits have now been mastered
+        if self._num_gaits == len(GAIT_OFFSETS):
+            self._all_gaits_learned = True
+            print("🎯 All gaits learned! Switching to uniform sampling.")
+        else:
+            self._num_gaits = min(self._num_gaits + 1, len(GAIT_OFFSETS))
 
     def increment_gait_period_range(self):
         """
@@ -179,15 +187,29 @@ class GaitCommandManager(CommandManager):
         """
         Resample the command for the given environments
         """
-
         # Do not resample if using gamepad control
         if self._gamepad is not None:
             return
 
-        # Select a random gait for these environments
-        selected_gait_idx = random.randint(0, self._num_gaits - 1) if self._num_gaits > 1 else 0
-        gait_name = list(GAIT_OFFSETS.keys())[selected_gait_idx]
-        self._set_gait(gait_name, env_ids)
+        # Convert env_ids to tensor if it's a list
+        if isinstance(env_ids, list):
+            env_ids = torch.tensor(env_ids, device=gs.device, dtype=torch.long)
+        
+        gait_names = list(GAIT_OFFSETS.keys())[:self._num_gaits]
+        if self._num_gaits == 1:
+            # Only one gait available - set all to the same gait
+            self._set_gait(gait_names[0], env_ids)
+            self._gait_selected[env_ids] = 0
+        else:
+            # Generate a random list of gait indices
+            gait_indices = self._generate_random_gait_indices(len(env_ids))
+            for gait_idx in range(self._num_gaits):
+                mask = gait_indices == gait_idx
+                if mask.any():
+                    selected_envs = env_ids[mask]
+                    gait_name = gait_names[gait_idx]
+                    self._set_gait(gait_name, selected_envs)
+                    self._gait_selected[selected_envs] = gait_idx
 
     def build(self):
         """
@@ -204,25 +226,17 @@ class GaitCommandManager(CommandManager):
         Increment the gait time and phase
         """
         super().step()
+        self._log_metrics()
 
+        # Update periodic gait values
         self.gait_time = (self.gait_time + self.env.dt) % self.gait_period
         self.gait_phase = self.gait_time / self.gait_period
-
-        # Populate clock input with foot-specific phase information
-        for i in range(4):  # For each foot (FL, FR, RL, RR)
-            # Calculate individual foot phase
+        for i in range(4):  # FL, FR, RL, RR
             foot_phase = (self.gait_phase + self.foot_offset[:, i].unsqueeze(1)) % 1.0
-
-            # Sine/Cosine components
             self.clock_input[:, i] = torch.sin(2 * torch.pi * foot_phase).squeeze(-1)
             self.clock_input[:, i + 4] = torch.cos(2 * torch.pi * foot_phase).squeeze(
                 -1
             )
-
-        # Metics
-        self.env.extras[self.env.extras_logging_key]["Metrics / num_gaits"] = (
-            torch.tensor(self._num_gaits, dtype=torch.float, device=gs.device)
-        )
 
     def reset(self, env_ids: list[int] | None = None):
         """
@@ -255,7 +269,7 @@ class GaitCommandManager(CommandManager):
         self._gamepad = gamepad
         self._num_gaits = len(GAIT_OFFSETS)
         self._gamepad_gait_idx = 0
-        self._set_gait(list(GAIT_OFFSETS.keys())[0])
+        self._gamepad_select_gait(list(GAIT_OFFSETS.keys())[0])
 
     """
     Rewards
@@ -275,9 +289,7 @@ class GaitCommandManager(CommandManager):
             foot_vel_xy_norm * torch.square(foot_pos[:, :, 2] - self.foot_height),
             dim=-1,
         )
-        reward = torch.exp(-clearance_error / sensitivity)
-        self.foot_height_reward_sums += reward.mean()
-        return reward
+        return torch.exp(-clearance_error / sensitivity)
 
     def gait_phase_reward(
         self, env: GenesisEnv, contact_manager: ContactManager
@@ -290,9 +302,11 @@ class GaitCommandManager(CommandManager):
         rl = self._foot_phase_reward(2, contact_manager)
         rr = self._foot_phase_reward(3, contact_manager)
         quad_reward = fl.flatten() + fr.flatten() + rl.flatten() + rr.flatten()
-        reward = torch.exp(quad_reward)
-        self.gait_phase_reward_sums += reward.mean()
-        return reward
+        return torch.exp(quad_reward)
+
+    """
+    Private methods
+    """
 
     def _foot_phase_reward(
         self, foot_idx: int, contact_manager: ContactManager
@@ -329,36 +343,55 @@ class GaitCommandManager(CommandManager):
         vel_weight[stance_indices, :] = -1  # speed is penalized during stance phase
 
         return vel_weight * velocity + force_weight * force
-
-    def _set_gait(self, gait_name: GaitName, env_ids: list[int] | None = None):
+    
+    def _set_gait(self, gait_name: GaitName, env_ids: torch.Tensor | None = None):
         """
-        Set the gait parameters for the given environments
+        Set the gait for a batch of environments
         """
         if env_ids is None:
             env_ids = torch.arange(self.env.num_envs, device=gs.device)
-
+            
         gait_offsets = GAIT_OFFSETS[gait_name]
-
-        # Define the foot offsets for the selected gait
+        
+        # Define the foot offsets for the selected gait (vectorized assignment)
         self.foot_offset[env_ids, 0] = gait_offsets["FL"]
         self.foot_offset[env_ids, 1] = gait_offsets["FR"]
         self.foot_offset[env_ids, 2] = gait_offsets["RL"]
         self.foot_offset[env_ids, 3] = gait_offsets["RR"]
 
-        # Foot clearance is set in the gait command manager
-        # pronk and bound gait should be at minimum foot clearance
+        # Foot clearance
+        # Pronk and bound gait should be at minimum foot clearance
         if gait_name in ["pronk", "bound"]:
-            min_clearance = FOOT_CLEARANCE_RANGE[0]
-            self.foot_height[env_ids, 0] = min_clearance
+            self.foot_height[env_ids, 0] = self._foot_clearance_range[0]
         else:
             self.foot_height[env_ids, 0] = torch.empty(
                 len(env_ids), device=gs.device
-            ).uniform_(*FOOT_CLEARANCE_RANGE)
+            ).uniform_(*self._foot_clearance_range)
 
         # Gait period
         self.gait_period[env_ids, 0] = torch.empty(
             len(env_ids), device=gs.device
-        ).uniform_(*GAIT_PERIOD_RANGE)
+        ).uniform_(*self._gait_period_range)
+    
+    def _generate_random_gait_indices(self, num: int) -> torch.Tensor:
+        """
+        Pick a list of random gait indices, with the most recent gaits having a higher probability of
+        being picked.
+        If self._all_gaits_learned is True, all gaits are equally weighted.
+        """
+        
+        if not self._all_gaits_learned:
+            # If we haven't learned all gaits yet, weight the recent gaits exponentially higher
+            weights = torch.arange(self._num_gaits, device=gs.device).exp()
+        else:
+            # Otherwise, all gaits are equally weighted
+            weights = torch.ones(self._num_gaits, device=gs.device)
+
+        # Normalize: the sum of all weights should be 1
+        weights /= weights.sum()
+        weights = weights[:self._num_gaits].expand(num, -1)
+
+        return torch.multinomial(weights, 1).squeeze(-1)
 
     def _process_gamepad_input(self):
         """
@@ -370,5 +403,39 @@ class GaitCommandManager(CommandManager):
             self._gamepad_btn_pressed = False
             self._gamepad_gait_idx = (self._gamepad_gait_idx + 1) % self._num_gaits
             gait_name = list(GAIT_OFFSETS.keys())[self._gamepad_gait_idx]
-            print(f"Selecting gait: {gait_name}")
-            self._set_gait(gait_name)
+            self._gamepad_select_gait(gait_name)
+    
+    def _gamepad_select_gait(self, gait_name: GaitName):
+        """
+        Select a new gait when the A button is pressed.
+        """
+        print(f"💃 Selecting gait: {gait_name}")
+        env_idx = 0
+            
+        # Define the foot offsets for the selected gait (vectorized assignment)
+        gait_offsets = GAIT_OFFSETS[gait_name]
+        self.foot_offset[env_idx, 0] = gait_offsets["FL"]
+        self.foot_offset[env_idx, 1] = gait_offsets["FR"]
+        self.foot_offset[env_idx, 2] = gait_offsets["RL"]
+        self.foot_offset[env_idx, 3] = gait_offsets["RR"]
+
+        # Foot clearance
+        # Pronk and bound gait should be at minimum foot clearance, all others should be at the middle of the range
+        if gait_name in ["pronk", "bound"]:
+            self.foot_height[env_idx, 0] = FOOT_CLEARANCE_RANGE[0]
+        else:
+            mid_foot_clearance = (FOOT_CLEARANCE_RANGE[0] + FOOT_CLEARANCE_RANGE[1]) / 2
+            self.foot_height[env_idx, 0] = mid_foot_clearance
+
+        # Gait period
+        mid_gait_period = (GAIT_PERIOD_RANGE[0] + GAIT_PERIOD_RANGE[1]) / 2
+        self.gait_period[env_idx, 0] = mid_gait_period
+    
+    def _log_metrics(self):
+        self.env.extras[self.env.extras_logging_key]["Metrics / num_gaits"] = self._num_gaits
+        
+        # Log gait distribution if multiple gaits are active
+        gait_names = list(GAIT_OFFSETS.keys())
+        for i, gait_name in enumerate(gait_names):
+            count = (self._gait_selected == i).sum()
+            self.env.extras[self.env.extras_logging_key][f"Metrics / gait_{gait_name}_envs"] = count

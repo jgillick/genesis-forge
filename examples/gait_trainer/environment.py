@@ -19,7 +19,7 @@ from gait_command_manager import GaitCommandManager
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
-CURRICULUM_CHECK_EVERY_STEPS = 300
+CURRICULUM_CHECK_EVERY_STEPS = 100
 
 
 class Go2GaitTrainingEnv(ManagedEnvironment):
@@ -31,7 +31,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         self,
         num_envs: int = 1,
         dt: float = 1 / 50,  # control frequency on real robot is 50hz
-        max_episode_length_s: int | None = 8,
+        max_episode_length_s: int | None = 20,
         headless: bool = True,
         gamepad_control: bool = False,
     ):
@@ -39,7 +39,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
-            max_episode_random_scaling=0.2,
+            max_episode_random_scaling=0.4,
         )
         self._gamepad_control = gamepad_control
         self._next_curriculum_check_step = CURRICULUM_CHECK_EVERY_STEPS
@@ -60,9 +60,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
-                max_collision_pairs=30,
+                max_collision_pairs=60,
             ),
         )
 
@@ -144,6 +142,15 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             link_names=[".*_foot"],
             air_time_contact_threshold=1.0,
         )
+        self.body_contact_manager = ContactManager(
+            self,
+            link_names=["base"],
+            air_time_contact_threshold=1.0,
+        )
+        self.bad_contact_manager = ContactManager(
+            self,
+            link_names=[".*_thigh", ".*_calf"],
+        )
 
         ##
         # Commanded direction
@@ -155,7 +162,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 "ang_vel_z": [-1.0, 1.0],
             },
             standing_probability=0.00,
-            resample_time_sec=5.0,
+            resample_time_sec=3.0,
         )
 
         ##
@@ -168,6 +175,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 "RL": "RL_foot",
                 "RR": "RR_foot",
             },
+            resample_time_sec=4.0,
         )
 
         ##
@@ -229,6 +237,13 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                     "weight": -0.01,
                     "fn": rewards.action_rate_l2,
                 },
+                "bad_contact": {
+                    "weight": -1.0,
+                    "fn": rewards.contact_force,
+                    "params": {
+                        "contact_manager": self.bad_contact_manager,
+                    },
+                }
             },
         )
 
@@ -251,6 +266,14 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "entity_manager": self.robot_manager,
                     },
                 },
+                # Terminate if the body falls over
+                "body_contact": {
+                    "fn": terminations.contact_force,
+                    "params": {
+                        "contact_manager": self.body_contact_manager,
+                        "threshold": 1.0,
+                    },
+                }
             },
         )
 
@@ -288,6 +311,9 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
             },
         )
+        # Priviledged observations for the "critic" policy
+        # The "policy" observations will also be included with these observations by rsl_rl via the obs_groups config.
+        # You can keep the observation groups entirely separate by setting obs_groups to {"policy": ["policy"], "critic": ["critic"]}
         ObservationManager(
             self,
             name="critic",
@@ -341,7 +367,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         gait_phase_reward = self.reward_manager.last_episode_mean_reward(
             "gait_phase_reward", before_weight=True
         )
-        if gait_phase_reward > 0.725:
+        if gait_phase_reward > 0.75:
             self.gait_command_manager.increment_num_gaits()
             self.gait_command_manager.increment_gait_period_range()
 

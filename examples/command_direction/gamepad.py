@@ -28,8 +28,9 @@ def get_latest_model(log_dir: str) -> str:
             f"Warning: No model files found at '{log_dir}' (you might need to train more)."
         )
         exit(1)
-    model_checkpoints.sort()
-    return model_checkpoints[-1]
+    # Sort by the file with the highest number
+    sorted_models = sorted(model_checkpoints, key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+    return sorted_models[-1]
 
 
 def main():

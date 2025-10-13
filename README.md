@@ -1,5 +1,5 @@
 <p align="center">
-<img src="./media/logo_text.png" width="250" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/media/logo_text.png" width="250" />
 </p>
 
 # Genesis Forge
@@ -24,10 +24,10 @@ Today, modern robots learn to balance, walk, and manipulate objects using [Reinf
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
 
 <div>
-<img src="media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="48%" />
-<img src="media/gamepad.gif" alt="Gamepad controller interface" width="48%" />
-<img src="media/terrain.gif" alt="Rough terrain" width="48%" />
-<img src="media/spider.gif" alt="Complex robots" width="48%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="48%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/media/gamepad.gif" alt="Gamepad controller interface" width="48%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/media/terrain.gif" alt="Rough terrain" width="48%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/media/spider.gif" alt="Complex robots" width="48%" />
 </div>
 
 ## Install

@@ -432,7 +432,8 @@ def feet_air_time(
     env: GenesisEnv,
     contact_manager: ContactManager,
     time_threshold: float,
-    vel_cmd_manager: VelocityCommandManager,
+    time_threshold_max: float | None = None,
+    vel_cmd_manager: VelocityCommandManager | None = None,
 ) -> torch.Tensor:
     """Reward long steps taken by the feet using L2-kernel.
 
@@ -446,6 +447,8 @@ def feet_air_time(
         env: The Genesis Forge environment
         contact_manager: The contact manager to check for contact
         time_threshold: The minimum time (in seconds) the feet should be in the air
+        time_threshold_max: (optional) The maximum time (in seconds) the feet should be in the air. 
+                            If the time is greater than this value, then the reward is zero.
         vel_cmd_manager: The velocity command manager
 
     Returns:
@@ -453,7 +456,13 @@ def feet_air_time(
     """
     made_contact = contact_manager.has_made_contact(env.dt)
     last_air_time = contact_manager.last_air_time
-    reward = torch.sum((last_air_time - time_threshold) * made_contact, dim=1)
+
+    # Calculate the air time
+    air_time =(last_air_time - time_threshold) * made_contact
+    if time_threshold_max is not None:
+        air_time = torch.clamp(air_time, max=time_threshold_max - time_threshold)
+    reward = torch.sum(air_time, dim=1)
+
     # no reward for zero velocity command
     if vel_cmd_manager is not None:
         reward *= torch.norm(vel_cmd_manager.command[:, :2], dim=1) > 0.1

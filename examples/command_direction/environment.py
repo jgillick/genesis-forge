@@ -1,7 +1,3 @@
-import torch
-import os
-import numpy as np
-from PIL import Image
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
@@ -252,11 +248,3 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             },
         )
 
-    # def build(self):
-    #     super().build()
-    #     self.camera.follow_entity(self.robot)
-
-    # def step(self, actions: torch.Tensor):
-    #     # Keep the camera fixed on the robot
-    #     self.camera.set_pose(lookat=self.robot.get_pos()[0])
-    #     return super().step(actions)

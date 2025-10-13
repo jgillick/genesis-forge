@@ -8,8 +8,6 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
     VelocityCommandManager,
-    CommandManager,
-    TerrainManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
 

@@ -13,20 +13,19 @@ from genesis_forge.managers import (
 from genesis_forge.mdp import reset, rewards, terminations
 
 
-HEIGHT_OFFSET = 0.515
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
+INITIAL_BODY_POSITION = [0.0, 0.0, 0.515]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
 
 
 class BerkeleyHumanoidEnv(ManagedEnvironment):
     """
-    Example training environment for the Go2 robot.
+    Example training environment for the Berkeley Humanoid robot.
     """
 
     def __init__(
         self,
         num_envs: int = 1,
-        dt: float = 1 / 50,  # control frequency on real robot is 50hz
+        dt: float = 1 / 50,
         max_episode_length_s: int | None = 20,
         headless: bool = True,
     ):
@@ -43,7 +42,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
+                camera_pos=(2.5, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
@@ -52,7 +51,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
-                enable_self_collision=False,
+                enable_self_collision=True,
                 enable_joint_limit=True,
             ),
         )
@@ -71,7 +70,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(2.5, 0.0, 2.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -103,17 +102,10 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
         )
 
         ##
-        # Joint Actions
+        # Joint Actions & actuator configuration
         self.action_manager = PositionActionManager(
             self,
-            joint_names=[
-                ".*_HR",
-                ".*_HAA",
-                ".*_HFE",
-                ".*_KFE",
-                ".*_FFE",
-                ".*_FAA",
-            ],
+            joint_names=[".*"],
             default_pos={
                 "LL_HR": -0.071,
                 "LR_HR": 0.071,
@@ -128,10 +120,18 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 "LL_FAA": 0.126,
                 "LR_FAA": -0.126,
             },
-            scale=0.25,
+            scale=0.5,
             use_default_offset=True,
-            pd_kp=20,  # Not actual values for the robot, just for example
-            pd_kv=0.5,  # Not actual values for the robot, just for example
+            pd_kp=15.0,
+            pd_kv=1.0,
+            max_force={
+                ".*_HR": 20.0,
+                ".*_HAA": 20.0,
+                ".*_HFE": 30.0,
+                ".*_KFE": 30.0,
+                ".*_FFE": 20.0,
+                ".*_FAA": 5.0,
+            },
         )
 
         ##
@@ -141,21 +141,27 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             range={
                 "lin_vel_x": [0.0, 1.0],
                 "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [0.5, 0.5],
+                "ang_vel_z": [-0.5, 0.5],
             },
             standing_probability=0.02,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
+                "arrow_offset": 0.12,
             },
         )
 
         ##
-        # Contact manager
+        # Contact managers
         self.torso_contact_manager = ContactManager(
             self,
             link_names=["torso"],
+        )
+        self.feet_contact_manager = ContactManager(
+            self,
+            link_names=[".*_faa"],
+            track_air_time=True,
         )
 
         ##
@@ -199,10 +205,20 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                     "fn": rewards.action_rate_l2,
                 },
                 "similar_to_default": {
-                    "weight": -0.1,
+                    "weight": -0.05,
                     "fn": rewards.dof_similar_to_default,
                     "params": {
                         "action_manager": self.action_manager,
+                    },
+                },
+                "feet_air_time": {
+                    "weight": 2.0,
+                    "fn": rewards.feet_air_time,
+                    "params": {
+                        "time_threshold": 0.2,
+                        "time_threshold_max": 0.5,
+                        "contact_manager": self.feet_contact_manager,
+                        "vel_cmd_manager": self.velocity_command,
                     },
                 },
             },
@@ -257,11 +273,3 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             },
         )
 
-    # def build(self):
-    #     super().build()
-    #     self.camera.follow_entity(self.robot)
-
-    # def step(self, actions: torch.Tensor):
-    #     # Keep the camera fixed on the robot
-    #     self.camera.set_pose(lookat=self.robot.get_pos()[0])
-    #     return super().step(actions)

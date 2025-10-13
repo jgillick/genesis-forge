@@ -1,7 +1,7 @@
 # Contact Manager
 
 :::{important}
-It's recommended to install [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) from source, in order to get this [bug fix](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727), which affects the contact manager.
+The contact manager requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+.
 :::
 
 The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.

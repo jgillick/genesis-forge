@@ -156,7 +156,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.base_height,
                     "params": {
                         "target_height": 0.3,
-                        "entity_manager": self.robot_manager,
+                        "entity_attr": "robot",
                     },
                 },
                 "tracking_lin_vel": {

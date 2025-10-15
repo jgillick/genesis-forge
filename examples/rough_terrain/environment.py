@@ -1,9 +1,7 @@
 import os
-import torch
 import genesis as gs
 import numpy as np
 from PIL import Image
-from typing import Literal
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
@@ -65,7 +63,6 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         )
 
         # Create terrain
-        # self.terrain = self.scene.add_entity(gs.morphs.Plane())
         self.terrain = self.create_terrain(self.scene)
 
         # Robot
@@ -327,8 +324,3 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
     def build(self):
         super().build()
         self.camera.follow_entity(self.robot)
-
-    def step(self, actions: torch.Tensor):
-        # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos()[0])
-        return super().step(actions)

@@ -200,7 +200,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                     "fn": rewards.base_height,
                     "params": {
                         "target_height": 0.35,
-                        "entity_manager": self.robot_manager,
+                        "entity_attr": "robot",
                     },
                 },
                 "tracking_lin_vel": {
@@ -243,7 +243,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                     "params": {
                         "contact_manager": self.bad_contact_manager,
                     },
-                }
+                },
             },
         )
 
@@ -273,7 +273,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "contact_manager": self.body_contact_manager,
                         "threshold": 1.0,
                     },
-                }
+                },
             },
         )
 

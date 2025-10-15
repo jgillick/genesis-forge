@@ -151,7 +151,7 @@ class Go2SimpleEnv(ManagedEnvironment):
                     "fn": rewards.base_height,
                     "params": {
                         "target_height": 0.3,
-                        "entity_manager": self.robot_manager,
+                        "entity_attr": "robot",
                     },
                 },
                 "tracking_lin_vel": {
@@ -245,8 +245,3 @@ class Go2SimpleEnv(ManagedEnvironment):
     def build(self):
         super().build()
         self.camera.follow_entity(self.robot)
-
-    def step(self, actions: torch.Tensor):
-        # Keep the camera fixed on the robot
-        self.camera.set_pose(lookat=self.robot.get_pos())
-        return super().step(actions)

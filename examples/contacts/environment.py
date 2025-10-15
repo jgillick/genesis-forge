@@ -270,7 +270,3 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
             },
         )
-
-    def step(self, actions: torch.Tensor):
-        self.camera.set_pose(lookat=self.robot.get_pos()[0])
-        return super().step(actions)

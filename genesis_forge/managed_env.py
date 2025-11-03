@@ -14,10 +14,12 @@ from genesis_forge.managers import (
     ObservationManager,
     RewardManager,
     TerminationManager,
+    ActuatorManager,
 )
 
 
 class ManagersDict(TypedDict):
+    actuator: ActuatorManager | None
     contact: list[ContactManager]
     entity: list[EntityManager]
     command: list[CommandManager]
@@ -132,6 +134,7 @@ class ManagedEnvironment(GenesisEnv):
             "command": [],
             "terrain": [],
             # there can only be one of each of these
+            "actuator": None,
             "action": None,
             "observation": [],
             "reward": None,
@@ -256,6 +259,8 @@ class ManagedEnvironment(GenesisEnv):
 
         for terrain_manager in self.managers["terrain"]:
             terrain_manager.build()
+        if self.managers["actuator"] is not None:
+            self.managers["actuator"].build()
         if self.managers["action"] is not None:
             self.managers["action"].build()
         for contact_manager in self.managers["contact"]:
@@ -348,6 +353,8 @@ class ManagedEnvironment(GenesisEnv):
         """
         (obs, _) = super().reset(env_ids)
 
+        if self.managers["actuator"] is not None:
+            self.managers["actuator"].reset(env_ids)
         if self.managers["action"] is not None:
             self.managers["action"].reset(env_ids)
         for entity_manager in self.managers["entity"]:

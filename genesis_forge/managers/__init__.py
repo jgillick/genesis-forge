@@ -8,6 +8,7 @@ from .contact import ContactManager
 from .terrain_manager import TerrainManager
 from .entity_manager import EntityManager
 from .observation_manager import ObservationManager
+from .actuator import ActuatorManager
 from .config import (
     MdpFnClass,
     ResetMdpFnClass,
@@ -27,4 +28,5 @@ __all__ = [
     "ObservationManager",
     "MdpFnClass",
     "ResetMdpFnClass",
+    "ActuatorManager",
 ]

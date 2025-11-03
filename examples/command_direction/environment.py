@@ -2,6 +2,7 @@ import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
+    ActuatorManager,
     RewardManager,
     TerminationManager,
     EntityManager,
@@ -106,14 +107,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         ##
         # Joint Actions
-        self.action_manager = PositionActionManager(
+        self.actuator_manager = ActuatorManager(
             self,
-            joint_names=[
-                "FL_.*_joint",
-                "FR_.*_joint",
-                "RL_.*_joint",
-                "RR_.*_joint",
-            ],
+            joint_names=[".*"],
             default_pos={
                 ".*_hip_joint": 0.0,
                 "FL_thigh_joint": 0.8,
@@ -122,10 +118,14 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "RR_thigh_joint": 1.0,
                 ".*_calf_joint": -1.5,
             },
+            kp=20,
+            kv=0.5,
+        )
+        self.action_manager = PositionActionManager(
+            self,
             scale=0.25,
             use_default_offset=True,
-            pd_kp=20,
-            pd_kv=0.5,
+            actuator_manager=self.actuator_manager,
         )
 
         ##
@@ -245,4 +245,3 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
             },
         )
-

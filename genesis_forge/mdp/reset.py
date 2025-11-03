@@ -268,6 +268,10 @@ class randomize_link_mass_shift(ResetMdpFnClass):
                 self._mass_shift_buffer = torch.zeros(
                     (self.env.num_envs, len(self._links_idx_local)), device=gs.device
                 )
+            else:
+                raise ValueError(
+                    f"No links found with name/pattern '{self._link_name}'"
+                )
 
     def __call__(
         self,
@@ -282,7 +286,7 @@ class randomize_link_mass_shift(ResetMdpFnClass):
 
         # Set mass on entity
         self._entity.set_mass_shift(
-            self._mass_shift_buffer,
+            self._mass_shift_buffer[envs_idx],
             links_idx_local=self._links_idx_local,
             envs_idx=envs_idx,
         )

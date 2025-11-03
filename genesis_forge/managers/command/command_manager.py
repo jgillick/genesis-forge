@@ -314,9 +314,9 @@ class CommandManager(BaseManager):
             ranges = [self._range]
 
         # Resample the command
-        buffer = torch.empty(len(env_ids), device=gs.device)
         for i in range(self._command.shape[1]):
-            self._command[env_ids, i] = buffer.uniform_(*ranges[i])
+            buffer = torch.empty(len(env_ids), device=gs.device).uniform_(*ranges[i])
+            self._command[env_ids, i] = buffer
 
     """
     Implementation

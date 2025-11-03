@@ -1,29 +1,25 @@
-import torch
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
+    ActuatorManager,
     RewardManager,
     TerminationManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
     VelocityCommandManager,
-    ContactManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations, observations
-
-from gait_command_manager import GaitCommandManager
+from genesis_forge.managers.actuator import NoisyValue
+from genesis_forge.mdp import reset, rewards, terminations
 
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
-CURRICULUM_CHECK_EVERY_STEPS = 100
 
 
-class Go2GaitTrainingEnv(ManagedEnvironment):
+class Go2CommandDirectionEnv(ManagedEnvironment):
     """
     Example training environment for the Go2 robot.
     """
@@ -34,16 +30,13 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         dt: float = 1 / 50,  # control frequency on real robot is 50hz
         max_episode_length_s: int | None = 20,
         headless: bool = True,
-        gamepad_control: bool = False,
     ):
         super().__init__(
             num_envs=num_envs,
             dt=dt,
             max_episode_length_sec=max_episode_length_s,
-            max_episode_random_scaling=0.4,
+            max_episode_random_scaling=0.1,
         )
-        self._gamepad_control = gamepad_control
-        self._next_curriculum_check_step = CURRICULUM_CHECK_EVERY_STEPS
 
         # Construct the scene
         self.scene = gs.Scene(
@@ -61,7 +54,9 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                max_collision_pairs=60,
+                # for this locomotion policy there are usually no more than 30 collision pairs
+                # set a low value can save memory
+                max_collision_pairs=30,
             ),
         )
 
@@ -74,20 +69,19 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 file="urdf/go2/urdf/go2.urdf",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
-                links_to_keep=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
             ),
         )
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(2.5, 1.5, 1.0),
+            pos=(-2.5, -1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
             env_idx=0,
             debug=True,
-            GUI=self._gamepad_control,
         )
+        self.camera.follow_entity(self.robot)
 
     def config(self):
         """
@@ -109,6 +103,14 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "zero_velocity": True,
                     },
                 },
+                # Randomly add/subtract mass to the robot's body
+                "mass": {
+                    "fn": reset.randomize_link_mass_shift,
+                    "params": {
+                        "link_name": "base",
+                        "add_mass_range": [-0.5, 0.5],
+                    },
+                },
             },
         )
 
@@ -116,45 +118,27 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         # Joint Actions
         self.actuator_manager = ActuatorManager(
             self,
-            joint_names=[
-                "FL_.*_joint",
-                "FR_.*_joint",
-                "RL_.*_joint",
-                "RR_.*_joint",
-            ],
+            joint_names=[".*"],
             default_pos={
-                ".*_hip_joint": 0.0,
-                "FL_thigh_joint": 0.8,
-                "FR_thigh_joint": 0.8,
-                "RL_thigh_joint": 1.0,
-                "RR_thigh_joint": 1.0,
-                ".*_calf_joint": -1.5,
+                # Randomize the default positions by +/- 0.1 radians
+                ".*_hip_joint": NoisyValue(0.0, 0.05),
+                "FL_thigh_joint": NoisyValue(0.8, 0.05),
+                "FR_thigh_joint": NoisyValue(0.8, 0.05),
+                "RL_thigh_joint": NoisyValue(1.0, 0.05),
+                "RR_thigh_joint": NoisyValue(1.0, 0.05),
+                ".*_calf_joint": NoisyValue(-1.5, 0.05),
             },
-            kp=20,
-            kv=0.5,
+            kp=NoisyValue(20, 3.0),  # +/- 3.0
+            kv=NoisyValue(0.5, 0.15),  # +/- 0.15
+            damping=NoisyValue(1.0, 0.5),  # +/- 0.5
+            frictionloss=NoisyValue(0.2, 0.1),  # +/- 0.1
         )
         self.action_manager = PositionActionManager(
             self,
             scale=0.25,
+            delay_step=1,
             use_default_offset=True,
             actuator_manager=self.actuator_manager,
-        )
-
-        ##
-        # Contact manager
-        self.foot_contact_manager = ContactManager(
-            self,
-            link_names=[".*_foot"],
-            air_time_contact_threshold=1.0,
-        )
-        self.body_contact_manager = ContactManager(
-            self,
-            link_names=["base"],
-            air_time_contact_threshold=1.0,
-        )
-        self.bad_contact_manager = ContactManager(
-            self,
-            link_names=[".*_thigh", ".*_calf"],
         )
 
         ##
@@ -163,48 +147,28 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             self,
             range={
                 "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [0.0, 0.0],
+                "lin_vel_y": [-1.0, 1.0],
                 "ang_vel_z": [-1.0, 1.0],
             },
-            standing_probability=0.00,
-            resample_time_sec=3.0,
-        )
-
-        ##
-        # Gait command manager
-        self.gait_command_manager = GaitCommandManager(
-            self,
-            foot_names={
-                "FL": "FL_foot",
-                "FR": "FR_foot",
-                "RL": "RL_foot",
-                "RR": "RR_foot",
+            standing_probability=0.02,
+            resample_time_sec=5.0,
+            debug_visualizer=True,
+            debug_visualizer_cfg={
+                "envs_idx": [0],
             },
-            resample_time_sec=4.0,
         )
 
         ##
         # Rewards
-        self.reward_manager = RewardManager(
+        RewardManager(
             self,
             logging_enabled=True,
             cfg={
-                "gait_phase_reward": {
-                    "weight": 1.5,
-                    "fn": self.gait_command_manager.gait_phase_reward,
-                    "params": {
-                        "contact_manager": self.foot_contact_manager,
-                    },
-                },
-                "foot_height_reward": {
-                    "weight": 0.9,
-                    "fn": self.gait_command_manager.foot_height_reward,
-                },
                 "base_height_target": {
-                    "weight": -25.0,
+                    "weight": -50.0,
                     "fn": rewards.base_height,
                     "params": {
-                        "target_height": 0.35,
+                        "target_height": 0.3,
                         "entity_attr": "robot",
                     },
                 },
@@ -224,29 +188,22 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "entity_manager": self.robot_manager,
                     },
                 },
-                "body_acceleration": {
-                    "weight": -0.1,
-                    "fn": rewards.body_acceleration_exp,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
-                },
                 "lin_vel_z": {
-                    "weight": -0.1,
+                    "weight": -1.0,
                     "fn": rewards.lin_vel_z_l2,
                     "params": {
                         "entity_manager": self.robot_manager,
                     },
                 },
                 "action_rate": {
-                    "weight": -0.01,
+                    "weight": -0.005,
                     "fn": rewards.action_rate_l2,
                 },
-                "bad_contact": {
-                    "weight": -1.0,
-                    "fn": rewards.contact_force,
+                "similar_to_default": {
+                    "weight": -0.1,
+                    "fn": rewards.dof_similar_to_default,
                     "params": {
-                        "contact_manager": self.bad_contact_manager,
+                        "action_manager": self.action_manager,
                     },
                 },
             },
@@ -267,16 +224,8 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 20.0,
+                        "limit_angle": 10.0,
                         "entity_manager": self.robot_manager,
-                    },
-                },
-                # Terminate if the body falls over
-                "body_contact": {
-                    "fn": terminations.contact_force,
-                    "params": {
-                        "contact_manager": self.body_contact_manager,
-                        "threshold": 1.0,
                     },
                 },
             },
@@ -286,100 +235,34 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         # Observations
         ObservationManager(
             self,
-            name="policy",
-            history_len=5,
             cfg={
-                "gait_command": {
-                    "fn": self.gait_command_manager.observation,
-                },
                 "velocity_cmd": {
                     "fn": self.velocity_command.observation,
                 },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
+                    "noise": 0.05,
                 },
                 "linear_velocity": {
                     "fn": lambda env: self.robot_manager.get_linear_velocity(),
+                    "noise": 0.1,
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
+                    "noise": 0.05,
                 },
                 "dof_position": {
                     "fn": lambda env: self.action_manager.get_dofs_position(),
+                    "noise": 0.01,
                 },
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
-                    "scale": 0.05,
+                    "scale": 0.02,
+                    "noise": 0.1,
                 },
                 "actions": {
                     "fn": lambda env: self.action_manager.get_actions(),
+                    "noise": 0.01,
                 },
             },
         )
-        # Priviledged observations for the "critic" policy
-        # The "policy" observations will also be included with these observations by rsl_rl via the obs_groups config.
-        # You can keep the observation groups entirely separate by setting obs_groups to {"policy": ["policy"], "critic": ["critic"]}
-        ObservationManager(
-            self,
-            name="critic",
-            history_len=5,
-            cfg={
-                "foot_contact_force": {
-                    "fn": observations.contact_force,
-                    "params": {
-                        "contact_manager": self.foot_contact_manager,
-                    },
-                },
-                "dof_force": {
-                    "fn": observations.entity_dofs_force,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
-                    "scale": 0.1,
-                },
-            },
-        )
-
-    def build(self):
-        super().build()
-        self.camera.follow_entity(self.robot)
-
-    def step(self, actions: torch.Tensor):
-        # Render the camera if not headless
-        if self._gamepad_control:
-            self.camera.render()
-        return super().step(actions)
-
-    def reset(self, envs_idx: list[int] | None = None):
-        reset = super().reset(envs_idx)
-        if envs_idx is not None:
-            self.update_curriculum()
-        return reset
-
-    def update_curriculum(self):
-        """
-        Check the curriculum
-        """
-        # Limit how often we check/update the curriculum
-        if self.step_count < self._next_curriculum_check_step:
-            return
-        self._next_curriculum_check_step = (
-            self.step_count + CURRICULUM_CHECK_EVERY_STEPS
-        )
-
-        # Gait phase
-        # Increase gaits and period range if the base gait reward is over 0.7
-        gait_phase_reward = self.reward_manager.last_episode_mean_reward(
-            "gait_phase_reward", before_weight=True
-        )
-        if gait_phase_reward > 0.75:
-            self.gait_command_manager.increment_num_gaits()
-            self.gait_command_manager.increment_gait_period_range()
-
-        # Foot clearance
-        # Increase foot clearance range, if the base reward is over 0.8
-        foot_height_reward = self.reward_manager.last_episode_mean_reward(
-            "foot_height_reward", before_weight=True
-        )
-        if foot_height_reward > 0.8:
-            self.gait_command_manager.increment_foot_clearance_range()

@@ -3,6 +3,7 @@ from typing import Literal
 
 ManagerType = Literal[
     "action",
+    "actuator",
     "reward",
     "termination",
     "contact",

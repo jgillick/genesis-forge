@@ -3,7 +3,8 @@ import torch
 from typing import Callable
 
 from genesis_forge.genesis_env import GenesisEnv
-from .position_action_manager import PositionActionManager, DofValue
+from .position_action_manager import PositionActionManager
+from genesis_forge.managers.actuator import ActuatorManager
 
 
 class PositionWithinLimitsActionManager(PositionActionManager):
@@ -12,18 +13,9 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
     Args:
         env: The environment to manage the DOF actuators for.
-        joint_names: The joint names to manage.
-        default_pos: The default DOF positions.
-        pd_kp: The PD kp values.
-        pd_kv: The PD kv values.
-        max_force: The max force values.
-        damping: The damping values.
-        stiffness: The stiffness values.
-        frictionloss: The frictionloss values.
-        reset_random_scale: Scale all DOF values on reset by this amount +/-.
+        actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         action_handler: A function to handle the actions.
         quiet_action_errors: Whether to quiet action errors.
-        randomization_cfg: The randomization configuration used to randomize the DOF values across all environments and between resets.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
 
@@ -34,7 +26,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
                 super().__init__(*args, **kwargs)
 
             def config(self):
-                self.action_manager = PositionalActionManager(
+                self.actuator_manager = ActuatorManager(
                     self,
                     joint_names=".*",
                     default_pos={
@@ -46,64 +38,44 @@ class PositionWithinLimitsActionManager(PositionActionManager):
                         # Tibia joints
                         "Leg[1-4]_Tibia": 0.6,
                     },
-                    pd_kp={".*": 50},
-                    pd_kv={".*": 0.5},
+                    kp={".*": 50},
+                    kv={".*": 0.5},
                     max_force={".*": 8.0},
                 )
-
-            @property
-            def action_space(self):
-                return self.action_manager.action_space
+                self.action_manager = PositionalActionManager(
+                    self,
+                    actuator_manager=self.actuator_manager,
+                )
 
     """
 
     def __init__(
         self,
         env: GenesisEnv,
-        joint_names: list[str] | str = ".*",
-        default_pos: DofValue = {".*": 0.0},
-        pd_kp: DofValue = None,
-        pd_kv: DofValue = None,
-        max_force: DofValue = None,
-        damping: DofValue = None,
-        stiffness: DofValue = None,
-        frictionloss: DofValue = None,
-        noise_scale: float = 0.0,
+        actuator_manager: ActuatorManager | None = None,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
         delay_step: int = 0,
+        **kwargs,
     ):
         super().__init__(
             env,
-            joint_names=joint_names,
-            default_pos=default_pos,
-            pd_kp=pd_kp,
-            pd_kv=pd_kv,
-            max_force=max_force,
-            damping=damping,
-            stiffness=stiffness,
-            frictionloss=frictionloss,
-            noise_scale=noise_scale,
             action_handler=action_handler,
             quiet_action_errors=quiet_action_errors,
             delay_step=delay_step,
+            actuator_manager=actuator_manager,
+            **kwargs,
         )
 
-        _pos_limit_lower: torch.Tensor = None
-        _pos_limit_upper: torch.Tensor = None
-
     """
-    Operations
+    Lifecycle Operations
     """
 
     def build(self):
         """
         Builds the manager and initialized all the buffers.
         """
-        super().build()
-
-        dofs_idx = list(self._enabled_dof.values())
-        lower, upper = self.env.robot.get_dofs_limit(dofs_idx)
+        lower, upper = self._actuator_manager.get_dofs_limits()
         lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
         upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)
         self._offset = (upper + lower) * 0.5
@@ -125,6 +97,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         self._actions = actions * self._scale + self._offset
 
         # Set target positions
-        self.env.robot.control_dofs_position(self._actions, self.dofs_idx)
+        self._actuator_manager.control_dofs_position(self._actions)
 
         return self._actions

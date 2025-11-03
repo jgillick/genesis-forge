@@ -148,10 +148,6 @@ class VelocityCommandManager(CommandManager):
         )
 
     """
-    Properties
-    """
-
-    """
     Operations
     """
 

@@ -233,14 +233,15 @@ class randomize_terrain_position(ResetMdpFnClass):
 class randomize_link_mass_shift(ResetMdpFnClass):
     """
     Randomly add/subtract mass to one or more links of the entity.
-    This picks a random value from `add_mass_range` and passes it to `set_mass_shift` for each environment.
-    This means that on subsequent calls, the mass can continue to either decrease or increase.
+    This picks a random value from `mass_range` and passes it to `set_mass_shift` for each environment.
+
+    See: https://genesis-world.readthedocs.io/en/latest/api_reference/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_mass_shift
 
     Args:
         env: The environment
         entity: The entity to set the rotation of.
-        link_name: The name, or regex pattern, of the link(s) to set the inertial mass for.
-        add_mass_range: The range of the mass that can be added or subtracted each reset.
+        link_name: The name, or regex pattern, of the link(s) to set the mass for.
+        mass_range: The range of the mass that will be added or subtracted from the link(s) on each reset.
     """
 
     def __init__(
@@ -248,10 +249,9 @@ class randomize_link_mass_shift(ResetMdpFnClass):
         _env: GenesisEnv,
         entity: RigidEntity,
         link_name: str,
-        add_mass_range: tuple[float, float] = (-0.2, 0.2),
+        mass_range: tuple[float, float],
     ):
         self.env = _env
-        self.add_mass_range = add_mass_range
         self._entity = entity
         self._link_name = link_name
         self._links_idx_local = []
@@ -279,10 +279,10 @@ class randomize_link_mass_shift(ResetMdpFnClass):
         entity: RigidEntity,
         envs_idx: list[int],
         link_name: str,
-        add_mass_range: tuple[float, float] = (-0.2, 0.2),
+        mass_range: tuple[float, float],
     ):
         # Randomize mass
-        self._mass_shift_buffer[envs_idx, :].uniform_(*self.add_mass_range)
+        self._mass_shift_buffer[envs_idx, :].uniform_(*mass_range)
 
         # Set mass on entity
         self._entity.set_mass_shift(

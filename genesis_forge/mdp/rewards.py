@@ -9,6 +9,7 @@ import torch
 import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
+    ActuatorManager,
     CommandManager,
     VelocityCommandManager,
     PositionActionManager,
@@ -93,20 +94,29 @@ def base_height(
 
 def dof_similar_to_default(
     env: GenesisEnv,
-    action_manager: PositionActionManager,
+    actuator_manager: ActuatorManager = None,
+    action_manager: PositionActionManager = None,
 ):
     """
     Penalize joint poses far away from default pose
 
     Args:
         env: The Genesis environment containing the robot
-        action_manager: The DOF action manager
+        actuator_manager: The actuator manager for the robot/entity.
+        action_manager: (deprecated) The DOF action manager
 
     Returns:
         torch.Tensor: Penalty for joint poses far away from default pose
     """
-    dof_pos = action_manager.get_dofs_position()
-    default_pos = action_manager.default_dofs_pos
+    assert (
+        actuator_manager is not None or action_manager is not None
+    ), "Either actuator_manager or action_manager must be provided to dof_similar_to_default"
+    if actuator_manager is not None:
+        dof_pos = actuator_manager.get_dofs_position()
+        default_pos = actuator_manager.default_dofs_pos
+    elif action_manager is not None:
+        dof_pos = action_manager.get_dofs_position()
+        default_pos = action_manager.default_dofs_pos
     return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
 
 
@@ -361,8 +371,9 @@ def command_tracking_ang_vel(
 
 def stand_still_joint_deviation_l1(
     env,
+    vel_cmd_manager: VelocityCommandManager,
+    actuator_manager: ActuatorManager = None,
     command_threshold: float = 0.06,
-    vel_cmd_manager: VelocityCommandManager = None,
     action_manager: PositionActionManager = None,
 ) -> torch.Tensor:
     """
@@ -372,17 +383,26 @@ def stand_still_joint_deviation_l1(
         env: The Genesis Forge environment
         command_threshold: The threshold for the command to be considered small
         vel_cmd_manager: The velocity command manager
+        actuator_manager: The actuator manager to get the joint positions and recent actions from.
         action_manager: The action manager to get the joint positions and recent actions from.
 
     Returns:
         torch.Tensor: Penalty for offsets from the default joint positions when the command is very small
     """
-    command = vel_cmd_manager.command
-    joint_pos = action_manager.get_dofs_position()
-    default_pos = action_manager.default_dofs_pos
+    assert (
+        actuator_manager is not None or action_manager is not None
+    ), "Either actuator_manager or action_manager must be provided to stand_still_joint_deviation_l1"
+
+    if actuator_manager is not None:
+        joint_pos = actuator_manager.get_dofs_position()
+        default_pos = actuator_manager.default_dofs_pos
+    elif action_manager is not None:
+        joint_pos = action_manager.get_dofs_position()
+        default_pos = action_manager.default_dofs_pos
     joint_deviation = torch.sum(torch.abs(joint_pos - default_pos), dim=1)
 
     # Penalize motion when command is nearly zero.
+    command = vel_cmd_manager.command
     return joint_deviation * (torch.norm(command[:, :2], dim=1) < command_threshold)
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
+    ActuatorManager,
     PositionActionManager,
     EntityManager,
     ContactManager,
@@ -87,23 +88,28 @@ DOF/Join observations
 
 def entity_dofs_position(
     env: GenesisEnv,
-    action_manager: PositionActionManager = None,
+    actuator_manager: ActuatorManager = None,
     entity_attr: str = "robot",
     dofs_idx: list[int] = None,
+    action_manager: PositionActionManager = None,
 ) -> torch.Tensor:
     """
     The position of the entity's DOFs.
 
     Args:
         env: The Genesis environment containing the entity
-        action_manager: The action manager for the robot/entity.
-                        This is slightly more performant than using the `entity_attr` parameter.
+        actuator_manager: The actuator manager for the robot/entity.
+                          This bypasses the need for dofs_idx and entity_attr parameters.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
         dofs_idx: The indices of the DOFs to get the position of. This isn't necessary if `action_manager` is provided.
+        action_manager: (deprecated) The action manager for the robot/entity.
+                        This bypasses the need for dofs_idx and entity_attr parameters.
 
     Returns:
         torch.Tensor: The position of the entity's DOFs.
     """
+    if actuator_manager is not None:
+        return actuator_manager.get_dofs_position()
     if action_manager is not None:
         return action_manager.get_dofs_position()
     entity: RigidEntity = getattr(env, entity_attr)
@@ -137,26 +143,30 @@ def entity_dofs_velocity(
 
 def entity_dofs_force(
     env: GenesisEnv,
-    action_manager: PositionActionManager = None,
+    actuator_manager: ActuatorManager = None,
     entity_attr: str = "robot",
     dofs_idx: list[int] = None,
     clip_to_max_force: bool = False,
+    action_manager: PositionActionManager = None,
 ) -> torch.Tensor:
     """
     The DOF's force being experienced.
 
     Args:
         env: The Genesis environment containing the entity
-        action_manager: The action manager for the robot/entity.
-                        This is slightly more performant than using the `entity_attr` parameter.
+        actuator_manager: The actuator manager for the robot/entity.
+                          This bypasses the need for dofs_idx and entity_attr parameters.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
         dofs_idx: The indices of the DOFs to get the force of. This isn't necessary if `action_manager` is provided.
         clip_to_max_force: Clip the force to the maximum force defined in the `action_manager`.
+        action_manager: (deprecated) The action manager for the robot/entity.
 
     Returns:
         torch.Tensor: The force of the entity's DOFs.
     """
-    if action_manager is not None:
+    if actuator_manager is not None:
+        return actuator_manager.get_dofs_force(clip_to_max_force=clip_to_max_force)
+    elif action_manager is not None:
         return action_manager.get_dofs_force(clip_to_max_force=clip_to_max_force)
     entity: RigidEntity = getattr(env, entity_attr)
     return entity.get_dofs_force(dofs_idx)

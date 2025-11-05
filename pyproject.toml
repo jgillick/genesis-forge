@@ -12,6 +12,7 @@ requires-python = ">=3.10"
 dependencies = [
   "genesis-world>=0.3.4",
   "gymnasium",
+  "deprecated",
   "hidapi",
   "skrl[torch]",
   "torch",

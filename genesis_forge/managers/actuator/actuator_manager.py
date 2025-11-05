@@ -167,7 +167,7 @@ class ActuatorManager(BaseManager):
         """
         Return the default DOF positions.
         """
-        return self._values["default_pos"].get("buffer", None)
+        return self._values.get("default_pos", {}).get("buffer", None)
 
     @property
     def join_names(self) -> list[str]:

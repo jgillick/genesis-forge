@@ -161,6 +161,7 @@ class ContactManager(BaseManager):
         )
 
         self.debug_visualizer = debug_visualizer
+        self.debug_envs_idx = None
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self._debug_nodes = []
         self._contact_position_counts = None
@@ -285,6 +286,13 @@ class ContactManager(BaseManager):
     def build(self):
         """Initialize link indices and buffers."""
         super().build()
+
+        # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
+        if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
+            self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
+        if self.debug_envs_idx is None:
+            self.debug_envs_idx = list[int](range(self.env.num_envs))
 
         # Get the link indices
         (self._link_ids, self._local_link_ids) = self._get_links_idx(
@@ -507,9 +515,8 @@ class ContactManager(BaseManager):
         cfg = self.visualizer_cfg
 
         # Filter to only the environments we want to visualize
-        if cfg["envs_idx"] is not None:
-            contacts = contacts[cfg["envs_idx"]]
-            contact_pos = contact_pos[cfg["envs_idx"]]
+        contacts = contacts[self.debug_envs_idx]
+        contact_pos = contact_pos[self.debug_envs_idx]
 
         # Filter out contacts below the force threshold
         if "force_threshold" in cfg and cfg["force_threshold"] != 0.0:

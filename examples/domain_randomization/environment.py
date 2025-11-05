@@ -145,7 +145,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.action_manager = PositionActionManager(
             self,
             scale=0.25,
-            delay_step=1,
             use_default_offset=True,
             actuator_manager=self.actuator_manager,
         )
@@ -244,7 +243,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         # Observations
         ObservationManager(
             self,
-            history_len=2,
             cfg={
                 "velocity_cmd": {
                     "fn": self.velocity_command.observation,
@@ -271,7 +269,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "noise": 0.01,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.raw_actions,
+                    "fn": lambda env: self.action_manager.get_actions(),
                 },
             },
         )

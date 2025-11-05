@@ -42,8 +42,8 @@ Here are the relevant snippets:
         },
         kp=NoisyValue(20, 3.0),  # +/- 3.0
         kv=NoisyValue(0.5, 0.15),  # +/- 0.15
-        damping=NoisyValue(2.0, 0.5),  # +/- 0.5
-        frictionloss=NoisyValue(0.2, 0.1),  # +/- 0.1
+        damping=NoisyValue(0.5, 0.25),  # +/- 0.25
+        frictionloss=NoisyValue(0.15, 0.1),  # +/- 0.1
     )
 
     # Set 0.01 noise on all observations

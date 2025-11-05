@@ -14,18 +14,28 @@ if TYPE_CHECKING:
 ValueName = Literal[
     "kp",
     "kv",
+    "default_pos",
+    "force_min",
+    "force_max",
     "damping",
     "stiffness",
     "frictionloss",
-    "force_min",
-    "force_max",
-    "default_pos",
+    "armature",
 ]
 
 
 class BufferItem(TypedDict):
     buffer: torch.Tensor
+    """A buffer of values for each DOF index."""
+
     noise: torch.Tensor
+    """The noise for each index of the buffer."""
+
+    has_noise: bool
+    """Does this value have noise associated with it?"""
+
+    has_been_set: bool
+    """Has this value been set to the actuator at least once?"""
 
 
 ValueBuffers = dict[ValueName, BufferItem]
@@ -47,6 +57,7 @@ class ActuatorManager(BaseManager):
         damping: The damping values.
         stiffness: The stiffness values.
         frictionloss: The frictionloss values.
+        armature: The armature values.
         entity_attr: The attribute of the environment to get the robot from.
         default_noise_scale: (deprecated) This noise scale will be applied to all actuator values. Use `NoisyValue` instead.
 
@@ -86,6 +97,7 @@ class ActuatorManager(BaseManager):
         damping: float | NoisyValue | dict = None,
         stiffness: float | NoisyValue | dict = None,
         frictionloss: float | NoisyValue | dict = None,
+        armature: float | NoisyValue | dict = None,
         default_noise_scale: float = 0.0,
         entity_attr: str = "robot",
     ):
@@ -99,17 +111,24 @@ class ActuatorManager(BaseManager):
         self._damping_cfg = ensure_dof_pattern(damping)
         self._stiffness_cfg = ensure_dof_pattern(stiffness)
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
+        self._armature_cfg = ensure_dof_pattern(armature)
         self._default_noise_scale = default_noise_scale
 
+        self._batch_dofs_enabled = (
+            env.scene.rigid_options.batch_dofs_info
+            and env.scene.rigid_options.batch_links_info
+        )
+
         self._values: ValueBuffers = {
+            "default_pos": None,
+            "force_min": None,
+            "force_max": None,
             "kp": None,
             "kv": None,
             "damping": None,
             "stiffness": None,
             "frictionloss": None,
-            "force_min": None,
-            "force_max": None,
-            "default_pos": None,
+            "armature": None,
         }
 
         if isinstance(joint_names, str):
@@ -196,7 +215,7 @@ class ActuatorManager(BaseManager):
 
         Args:
             noise: The maximum amount of random noise to add to the force values returned.
-            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter.
+            clip_to_max_force: Clip the force returned to the maximum force of the actuators.
 
         Returns:
             The force experienced by the enabled DOFs.
@@ -204,8 +223,9 @@ class ActuatorManager(BaseManager):
         force = self._robot.get_dofs_force(self.dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
-        if clip_to_max_force and self._force_range is not None:
-            force = force.clamp(self._force_range[0], self._force_range[1])
+        if clip_to_max_force:
+            [lower, upper] = self._robot.get_dofs_force_range(self.dofs_idx)
+            force = force.clamp(lower, upper)
         return force
 
     def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -269,7 +289,6 @@ class ActuatorManager(BaseManager):
         # Max force
         # The value can either be a single float or a tuple range
         # First normalize them into two dicts: min and max
-        self._force_range = None
         if self._max_force_cfg is not None:
 
             # Normalize the max_force values into a min & max dict
@@ -289,6 +308,18 @@ class ActuatorManager(BaseManager):
             self._fill_value_buffer("force_min", force_min)
             self._fill_value_buffer("force_max", force_max)
 
+        # Armature
+        # If DOF batching is not enabled, print a warning and set the armature values for all environments without noise.
+        if self._armature_cfg is not None:
+            self._fill_value_buffer("armature", self._armature_cfg)
+            if not self._batch_dofs_enabled:
+                armature = self._values["armature"]
+                if torch.any(armature["noise"] != 0.0):
+                    print(
+                        "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' and 'batch_links_info' are True in RigidOptions."
+                    )
+                self._robot.set_dofs_armature(armature["buffer"], self.dofs_idx)
+
         # Other actuator values
         self._fill_value_buffer("kp", self._kp_cfg)
         self._fill_value_buffer("kv", self._kv_cfg)
@@ -303,35 +334,50 @@ class ActuatorManager(BaseManager):
         """Reset the DOF positions."""
         if not self.enabled:
             return
-        if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
         dofs_idx = self.dofs_idx
 
-        # Set actuator values
-        if self._values["kp"] is not None:
-            kp = self._get_value_buffer("kp")
+        # Set actuator controller values
+        if self._should_set_value("kp"):
+            kp = self._get_value_buffer("kp", envs_idx)
             self._robot.set_dofs_kp(kp, dofs_idx, envs_idx)
-        if self._values["kv"] is not None:
-            kv = self._get_value_buffer("kv")
-            self._robot.set_dofs_kv(kv, dofs_idx, envs_idx)
-        if self._values["damping"] is not None:
-            damping = self._get_value_buffer("damping")
-            self._robot.set_dofs_damping(damping, dofs_idx, envs_idx)
-        if self._values["stiffness"] is not None:
-            stiffness = self._get_value_buffer("stiffness")
-            self._robot.set_dofs_stiffness(stiffness, dofs_idx, envs_idx)
-        if self._values["frictionloss"] is not None:
-            frictionloss = self._get_value_buffer("frictionloss")
-            self._robot.set_dofs_frictionloss(frictionloss, dofs_idx, envs_idx)
-        if self._force_range is not None:
-            lower = self._get_value_buffer("force_min")
-            upper = self._get_value_buffer("force_max")
-            self._robot.set_dofs_force_range(lower, upper, dofs_idx, envs_idx)
+            self._values["kp"]["has_been_set"] = True
 
-        # Reset DOF positions with random scaling
-        position = self._get_value_buffer("default_pos")
+        if self._should_set_value("kv"):
+            kv = self._get_value_buffer("kv", envs_idx)
+            self._robot.set_dofs_kv(kv, dofs_idx, envs_idx)
+            self._values["kv"]["has_been_set"] = True
+
+        if self._should_set_value("damping"):
+            damping = self._get_value_buffer("damping", envs_idx)
+            self._robot.set_dofs_damping(damping, dofs_idx, envs_idx)
+            self._values["damping"]["has_been_set"] = True
+
+        if self._should_set_value("stiffness"):
+            stiffness = self._get_value_buffer("stiffness", envs_idx)
+            self._robot.set_dofs_stiffness(stiffness, dofs_idx, envs_idx)
+            self._values["stiffness"]["has_been_set"] = True
+
+        if self._should_set_value("frictionloss"):
+            frictionloss = self._get_value_buffer("frictionloss", envs_idx)
+            self._robot.set_dofs_frictionloss(frictionloss, dofs_idx, envs_idx)
+            self._values["frictionloss"]["has_been_set"] = True
+
+        if self._should_set_value("armature") and self._batch_dofs_enabled:
+            armature = self._get_value_buffer("armature", envs_idx)
+            self._robot.set_dofs_armature(armature, dofs_idx, envs_idx)
+            self._values["armature"]["has_been_set"] = True
+
+        if self._should_set_value("force_min") or self._should_set_value("force_max"):
+            force_min = self._get_value_buffer("force_min", envs_idx)
+            force_max = self._get_value_buffer("force_max", envs_idx)
+            self._robot.set_dofs_force_range(force_min, force_max, dofs_idx, envs_idx)
+            self._values["force_min"]["has_been_set"] = True
+            self._values["force_max"]["has_been_set"] = True
+
+        # Reset DOF positions
+        default_position = self._get_value_buffer("default_pos", envs_idx)
         self._robot.set_dofs_position(
-            position=position[envs_idx],
+            position=default_position,
             dofs_idx_local=dofs_idx,
             envs_idx=envs_idx,
         )
@@ -339,6 +385,18 @@ class ActuatorManager(BaseManager):
     """
     Internal methods
     """
+
+    def _should_set_value(self, value_name: ValueName) -> bool:
+        """
+        Check if the actuator control value should.
+        We don't want to set the value if we've already set it and there is no noise associated with it.
+        """
+        cfg = self._values[value_name]
+        if cfg is None:
+            return False
+        if cfg["has_been_set"] and not cfg["has_noise"]:
+            return False
+        return True
 
     def _fill_value_buffer(
         self, value_name: ValueName, config: NoisyValue[float] | None
@@ -355,6 +413,7 @@ class ActuatorManager(BaseManager):
         num_dofs = len(self._dofs)
         is_idx_set = [False] * num_dofs
         dof_names = self._dofs.keys()
+        has_noise = False
 
         # Nothing to be done if the config is None
         if config is None:
@@ -378,13 +437,14 @@ class ActuatorManager(BaseManager):
                     if isinstance(value, NoisyValue):
                         noise[i] = value.noise
                         buffer[i] = value.value
+                        has_noise = True
                     else:
                         buffer[i] = value
             if not found:
                 raise RuntimeError(f"Joint DOF '{pattern}' not found.")
 
         # Expand the default postion buffer to the number of environments
-        if value_name == "default_pos":
+        if value_name == "default_pos" or self._batch_dofs_enabled:
             buffer = buffer.unsqueeze(0).expand(self.env.num_envs, -1)
             noise = noise.unsqueeze(0).expand(self.env.num_envs, -1)
 
@@ -392,15 +452,22 @@ class ActuatorManager(BaseManager):
         self._values[value_name] = {
             "buffer": buffer,
             "noise": noise,
+            "has_noise": has_noise,
+            "has_been_set": False,
         }
 
-    def _get_value_buffer(self, name: ValueName) -> torch.Tensor:
+    def _get_value_buffer(
+        self, name: ValueName, envs_idx: list[int] | None = None
+    ) -> torch.Tensor:
         """
         Get the value buffer tensor, with noise applied
         """
-        values = self._values[name]["buffer"]
+        values = self._values[name]["buffer"].clone()
         noise = self._values[name]["noise"]
-        return values + torch.empty_like(values).uniform_(-1, 1) * noise
+        values += torch.empty_like(values).uniform_(-1, 1) * noise
+        if envs_idx is not None and values.ndim == 2:
+            values = values[envs_idx]
+        return values
 
     def _add_random_noise(
         self, values: torch.Tensor, noise_scale: float = 0.0

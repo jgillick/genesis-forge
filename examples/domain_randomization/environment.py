@@ -1,3 +1,4 @@
+import torch
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
@@ -57,6 +58,14 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 # for this locomotion policy there are usually no more than 30 collision pairs
                 # set a low value can save memory
                 max_collision_pairs=30,
+                #
+                # Batching must be enabled to enable domain randomization of the DOF armature settings.
+                # Enabling these settings will SIGNIFICANTLY slow down the simulation,
+                # but will also increase the randomization across all envs.
+                # Uncomment the following 3 lines to enable this:
+                # batch_dofs_info=True,
+                # batch_joints_info=True,
+                # batch_links_info=True,
             ),
         )
 
@@ -103,12 +112,12 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                         "zero_velocity": True,
                     },
                 },
-                # Randomly add/subtract mass to the robot's body
+                # Add/subtract a random amount of mass to the robot's body
                 "mass": {
                     "fn": reset.randomize_link_mass_shift,
                     "params": {
                         "link_name": "base",
-                        "add_mass_range": [-0.5, 0.5],
+                        "mass_range": [-0.5, 1.0],  # kg
                     },
                 },
             },
@@ -120,18 +129,18 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             joint_names=[".*"],
             default_pos={
-                # Randomize the default positions by +/- 0.1 radians
-                ".*_hip_joint": NoisyValue(0.0, 0.05),
-                "FL_thigh_joint": NoisyValue(0.8, 0.05),
-                "FR_thigh_joint": NoisyValue(0.8, 0.05),
-                "RL_thigh_joint": NoisyValue(1.0, 0.05),
-                "RR_thigh_joint": NoisyValue(1.0, 0.05),
-                ".*_calf_joint": NoisyValue(-1.5, 0.05),
+                # Randomize the default positions by +/- 0.05 radians
+                ".*_hip_joint": NoisyValue(0.0, 0.02),
+                "FL_thigh_joint": NoisyValue(0.8, 0.02),
+                "FR_thigh_joint": NoisyValue(0.8, 0.02),
+                "RL_thigh_joint": NoisyValue(1.0, 0.02),
+                "RR_thigh_joint": NoisyValue(1.0, 0.02),
+                ".*_calf_joint": NoisyValue(-1.5, 0.02),
             },
-            kp=NoisyValue(20, 3.0),  # +/- 3.0
-            kv=NoisyValue(0.5, 0.15),  # +/- 0.15
-            damping=NoisyValue(1.0, 0.5),  # +/- 0.5
-            frictionloss=NoisyValue(0.2, 0.1),  # +/- 0.1
+            kp=NoisyValue(25, 2.0),  # +/- 2.0
+            kv=NoisyValue(0.5, 0.05),  # +/- 0.05
+            damping=NoisyValue(2.0, 0.05),  # +/- 0.05
+            frictionloss=NoisyValue(0.2, 0.05),  # +/- 0.05
         )
         self.action_manager = PositionActionManager(
             self,
@@ -224,7 +233,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "fall_over": {
                     "fn": terminations.bad_orientation,
                     "params": {
-                        "limit_angle": 10.0,
+                        "limit_angle": 15.0,
                         "entity_manager": self.robot_manager,
                     },
                 },
@@ -241,15 +250,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
-                    "noise": 0.05,
+                    "noise": 0.01,
                 },
                 "linear_velocity": {
                     "fn": lambda env: self.robot_manager.get_linear_velocity(),
-                    "noise": 0.1,
+                    "noise": 0.01,
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
-                    "noise": 0.05,
+                    "noise": 0.01,
                 },
                 "dof_position": {
                     "fn": lambda env: self.action_manager.get_dofs_position(),
@@ -258,11 +267,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.02,
-                    "noise": 0.1,
+                    "noise": 0.01,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
-                    "noise": 0.01,
+                    "fn": lambda env: self.action_manager.raw_actions,
                 },
             },
         )

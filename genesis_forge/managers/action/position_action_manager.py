@@ -5,7 +5,7 @@ import genesis as gs
 import numpy as np
 from gymnasium import spaces
 from typing import Any, Callable, TypeVar
-
+from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.values import ensure_dof_pattern
@@ -217,8 +217,14 @@ class PositionActionManager(BaseActionManager):
     DOF Getters
     """
 
+    @deprecated(
+        version="0.3,0",
+        reason="Use the actuator manager directly.",
+    )
     def get_dofs_position(self, noise: float = 0.0):
         """
+        Deprecated: Use the actuator manager directly.
+
         Return the current position of the enabled DOFs.
         This is a wrapper for `RigidEntity.get_dofs_position`.
 
@@ -227,8 +233,14 @@ class PositionActionManager(BaseActionManager):
         """
         return self._actuator_manager.get_dofs_position(noise)
 
+    @deprecated(
+        version="0.3,0",
+        reason="Use the actuator manager directly.",
+    )
     def get_dofs_velocity(self, noise: float = 0.0, clip: tuple[float, float] = None):
         """
+        Deprecated: Use the actuator manager directly.
+
         Return the current velocity of the enabled DOFs.
         This is a wrapper for `RigidEntity.get_dofs_velocity`.
 
@@ -238,8 +250,14 @@ class PositionActionManager(BaseActionManager):
         """
         return self._actuator_manager.get_dofs_velocity(noise, clip)
 
+    @deprecated(
+        version="0.3,0",
+        reason="Use the actuator manager directly.",
+    )
     def get_dofs_force(self, noise: float = 0.0, clip_to_max_force: bool = False):
         """
+        Deprecated: Use the actuator manager directly.
+
         Return the force experienced by the enabled DOFs.
         This is a wrapper for `RigidEntity.get_dofs_force`.
 

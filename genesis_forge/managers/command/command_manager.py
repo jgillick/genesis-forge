@@ -183,11 +183,13 @@ class CommandManager(BaseManager):
             limit: Do not set the values beyond this limit range.
                    This is a tuple of `(min_limit, max_limit)`.
         """
+        # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
         if not isinstance(self.range, dict):
             raise ValueError("Cannot increment a non-dict range item")
         range_item = self.range.get(range_key, None) 
         if range_item is None:
             raise ValueError(f"Range item {range_key} not found")
+        range_item = list(range_item)
 
         # Expand single increment/limit values to tuples
         if not isinstance(increment, (list, tuple)):

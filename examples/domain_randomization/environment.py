@@ -244,6 +244,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         # Observations
         ObservationManager(
             self,
+            history_len=2,
             cfg={
                 "velocity_cmd": {
                     "fn": self.velocity_command.observation,

@@ -37,6 +37,7 @@ from genesis_forge.managers import (
     TerminationManager,
     EntityManager,
     ObservationManager,
+    ActuatorManager,
     PositionActionManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
@@ -92,8 +93,8 @@ class MyFirstEnv(ManagedEnvironment):
             },
         )
 
-        # Action Manager - Maps step actions to joint positions
-        self.action_manager = PositionActionManager(
+        # Actuator/Action Managers - Maps step actions to joint positions
+        self.actuator_manager = ActuatorManager(
             self,
             joint_names=[".*"],  # Control all joints
             default_pos={
@@ -104,30 +105,31 @@ class MyFirstEnv(ManagedEnvironment):
                 "RR_thigh_joint": 1.0,
                 ".*_calf_joint": -1.5,
             },
+            kp=20, # PD controller positional gains
+            kv=0.5, # PD controller velocity gains
+        )
+        self.action_manager = PositionActionManager(
+            self,
             scale=0.25,  # Scale actions
             use_default_offset=True, # DOF actions are relative to the default_pos positions
-
-            # PD controller gains
-            pd_kp=20,
-            pd_kv=0.5,
+            actuator_manager=self.actuator_manager,
         )
 
         # Reward Manager - Defines what behaviors to encourage
         RewardManager(
             self,
-            logging_enabled=True,
             cfg={
                 # Maintain target height
                 "base_height": {
                     "weight": -50.0,
                     "fn": rewards.base_height,
-                    "params": {"target_height": 0.3},
+                    "params": { "target_height": 0.3 },
                 },
                 # Track forward velocity
                 "velocity_tracking": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel,
-                    "params": {"command": self.target_vel[:, :2]},
+                    "params": { "command": self.target_vel[:, :2] },
                 },
                 # Minimize vertical motion
                 "vertical_velocity": {

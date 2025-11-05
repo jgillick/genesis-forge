@@ -26,7 +26,8 @@ class MyEnv(ManagedEnvironment):
 
     def config(self):
         """Configure all managers here"""
-        self.action_manager = PositionActionManager(self, ...)
+        self.actuators = ActuatorManager(self, ...)
+        PositionActionManager(self, ...)
         RewardManager(self, ...)
         TerminationManager(self, ...)
         ObservationManager(self, ...)

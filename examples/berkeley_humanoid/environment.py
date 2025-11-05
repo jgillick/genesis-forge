@@ -6,6 +6,7 @@ from genesis_forge.managers import (
     TerminationManager,
     EntityManager,
     ObservationManager,
+    ActuatorManager,
     PositionActionManager,
     VelocityCommandManager,
     ContactManager,
@@ -103,9 +104,11 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
 
         ##
         # Joint Actions & actuator configuration
-        self.action_manager = PositionActionManager(
+        self.actuator_manager = ActuatorManager(
             self,
             joint_names=[".*"],
+            kp=15.0,
+            kv=1.0,
             default_pos={
                 "LL_HR": -0.071,
                 "LR_HR": 0.071,
@@ -120,10 +123,6 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 "LL_FAA": 0.126,
                 "LR_FAA": -0.126,
             },
-            scale=0.5,
-            use_default_offset=True,
-            pd_kp=15.0,
-            pd_kv=1.0,
             max_force={
                 ".*_HR": 20.0,
                 ".*_HAA": 20.0,
@@ -132,6 +131,12 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 ".*_FFE": 20.0,
                 ".*_FAA": 5.0,
             },
+        )
+        self.action_manager = PositionActionManager(
+            self,
+            scale=0.5,
+            use_default_offset=True,
+            actuator_manager=self.actuator_manager,
         )
 
         ##
@@ -272,4 +277,3 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 },
             },
         )
-

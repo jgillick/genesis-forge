@@ -79,8 +79,8 @@ class Go2CEnv(ManagedEnvironment):
             },
         )
 
-        # Joint Actions
-        self.action_manager = PositionActionManager(
+        # Joint Actuators & Actions
+        self.actuator_manager = ActuatorManager(
             self,
             joint_names=[".*"],
             default_pos={
@@ -88,10 +88,14 @@ class Go2CEnv(ManagedEnvironment):
                 ".*_thigh_joint": 0.8,
                 ".*_calf_joint": -1.5,
             },
+            kp=20,
+            kv=0.5,
+        )
+        self.action_manager = PositionActionManager(
+            self,
             scale=0.25,
             use_default_offset=True,
-            pd_kp=20,
-            pd_kv=0.5,
+            actuator_manager=self.actuator_manager,
         )
 
         # Commanded direction

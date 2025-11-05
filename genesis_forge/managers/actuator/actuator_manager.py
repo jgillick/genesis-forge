@@ -62,6 +62,7 @@ class ActuatorManager(BaseManager):
         default_noise_scale: (deprecated) This noise scale will be applied to all actuator values. Use `NoisyValue` instead.
 
     Example::
+
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)

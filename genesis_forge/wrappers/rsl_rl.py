@@ -1,6 +1,6 @@
 import torch
 from tensordict import TensorDict
-from typing import Any
+from typing import Any, Union, Optional
 import genesis as gs
 from importlib import metadata
 
@@ -86,7 +86,9 @@ class RslRlWrapper(Wrapper):
         extras = self._add_observations_to_extras(obs, self.env.extras)
         return obs, extras
 
-    def _add_observations_to_extras(self, obs: torch.Tensor, extras: dict | None):
+    def _add_observations_to_extras(
+        self, obs: torch.Tensor, extras: Optional[dict[str, Any]]
+    ):
         """
         Add the observations to the extras dictionary.
         """
@@ -99,8 +101,8 @@ class RslRlWrapper(Wrapper):
         return extras
 
     def _format_obs_group(
-        self, obs: torch.Tensor, extras: dict | None
-    ) -> torch.Tensor | TensorDict:
+        self, obs: torch.Tensor, extras: Optional[dict[str, Any]]
+    ) -> Union[torch.Tensor, TensorDict]:
         """
         If we're using rsl_rl 3.0+, put the observations into a TensorDict
         """

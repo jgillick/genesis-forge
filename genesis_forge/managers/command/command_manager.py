@@ -156,8 +156,13 @@ class CommandManager(BaseManager):
             self._command[:, self._range_idx[range_key]] = value
         else:
             self._command[envs_idx, self._range_idx[range_key]] = value
-    
-    def increment_range(self, range_key: str, increment: float | tuple[float, float], limit: float | tuple[float, float] = None):
+
+    def increment_range(
+        self,
+        range_key: str,
+        increment: float | tuple[float, float],
+        limit: float | tuple[float, float] = None,
+    ):
         """
         Increment a command range target values by the given amount, with an optional limit.
 
@@ -171,7 +176,7 @@ class CommandManager(BaseManager):
 
             # Increment the range min by -0.25 and max by 1.0
             command_manager.increment_range("height", (-0.25, 1.0))
-            
+
             # Increment the range by (-0.25, 1.0) and keep min above -0.5 and max below 2.0
             command_manager.increment_range("height", (-0.25, 1.0), (-0.5, 2.0))
 
@@ -186,10 +191,10 @@ class CommandManager(BaseManager):
         # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
         if not isinstance(self.range, dict):
             raise ValueError("Cannot increment a non-dict range item")
-        range_item = self.range.get(range_key, None) 
+        range_item = self._range.get(range_key, None)
         if range_item is None:
             raise ValueError(f"Range item {range_key} not found")
-        range_item = list(range_item)
+        range_item = list[float](range_item)  # Ensure it's a list, not a tuple
 
         # Expand single increment/limit values to tuples
         if not isinstance(increment, (list, tuple)):
@@ -206,7 +211,7 @@ class CommandManager(BaseManager):
                 else:
                     value = max(value, limit[i])
             range_item[i] = value
-        self.range[range_key] = range_item
+        self._range[range_key] = range_item
 
     def get_command_idx(self, key: str) -> int:
         """

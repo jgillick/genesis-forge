@@ -152,6 +152,21 @@ class VelocityCommandManager(CommandManager):
     Lifecycle Operations
     """
 
+    def resample_command(self, env_ids: list[int]):
+        """
+        Overwrites commands for environments that should be standing still.
+        """
+        super().resample_command(env_ids)
+        if not self.enabled:
+            return
+
+        num = torch.empty(len(env_ids), device=gs.device)
+        self._is_standing_env[env_ids] = (
+            num.uniform_(0.0, 1.0) <= self.standing_probability
+        )
+        standing_envs_idx = self._is_standing_env.nonzero(as_tuple=False).flatten()
+        self._command[standing_envs_idx, :] = 0.0
+
     def build(self):
         """Build the velocity command manager"""
         super().build()
@@ -196,23 +211,8 @@ class VelocityCommandManager(CommandManager):
         )
 
     """
-    Implementation
+    Internal Implementation
     """
-
-    def _resample_command(self, env_ids: list[int]):
-        """
-        Overwrites commands for environments that should be standing still.
-        """
-        super().resample_command(env_ids)
-        if not self.enabled:
-            return
-
-        num = torch.empty(len(env_ids), device=gs.device)
-        self._is_standing_env[env_ids] = (
-            num.uniform_(0.0, 1.0) <= self.standing_probability
-        )
-        standing_envs_idx = self._is_standing_env.nonzero(as_tuple=False).flatten()
-        self._command[standing_envs_idx, :] = 0.0
 
     def _render_arrows(self):
         """

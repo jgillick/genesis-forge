@@ -65,7 +65,6 @@ class PositionActionManager(BaseActionManager):
                 )
                 self.action_manager = PositionActionManager(
                     self,
-                    joint_names=".*",
                     scale=0.5,
                     use_default_offset=True,
                     actuator_manager=self.actuator_manager,

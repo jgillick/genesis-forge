@@ -156,6 +156,55 @@ class CommandManager(BaseManager):
             self._command[:, self._range_idx[range_key]] = value
         else:
             self._command[envs_idx, self._range_idx[range_key]] = value
+    
+    def increment_range(self, range_key: str, increment: float | tuple[float, float], limit: float | tuple[float, float] = None):
+        """
+        Increment a command range target values by the given amount, with an optional limit.
+
+        Both increment and limit can be passed as a single float or a tuple of two floats.
+        When they are tuples, they represent the increment and limit for both min and max.
+        When they are a single float, they will be applied to both min and max as (-value, +value).
+
+        Example::
+            # Increment the range by 0.5 (+/-) for both min and max
+            command_manager.increment_range("height", 0.5)
+
+            # Increment the range min by -0.25 and max by 1.0
+            command_manager.increment_range("height", (-0.25, 1.0))
+            
+            # Increment the range by (-0.25, 1.0) and keep min above -0.5 and max below 2.0
+            command_manager.increment_range("height", (-0.25, 1.0), (-0.5, 2.0))
+
+        Args:
+            range_key: The key of the command range to increment.
+            increment: The amount to increment the min & max range values by (+/-).
+                       If this is a tuple, it will be: `(min_increment, max_increment)`.
+                       If this is a single float, it will be applied to both min and max as (-increment, +increment).
+            limit: Do not set the values beyond this limit range.
+                   This is a tuple of `(min_limit, max_limit)`.
+        """
+        if not isinstance(self.range, dict):
+            raise ValueError("Cannot increment a non-dict range item")
+        range_item = self.range.get(range_key, None) 
+        if range_item is None:
+            raise ValueError(f"Range item {range_key} not found")
+
+        # Expand single increment/limit values to tuples
+        if not isinstance(increment, (list, tuple)):
+            increment = (-increment, increment)
+        if limit is not None and not isinstance(limit, (list, tuple)):
+            limit = (-limit, limit)
+
+        # Increment the range values
+        for i, value in enumerate(range_item):
+            value += increment[i]
+            if limit is not None:
+                if increment[i] > 0:
+                    value = min(value, limit[i])
+                else:
+                    value = max(value, limit[i])
+            range_item[i] = value
+        self.range[range_key] = range_item
 
     def get_command_idx(self, key: str) -> int:
         """

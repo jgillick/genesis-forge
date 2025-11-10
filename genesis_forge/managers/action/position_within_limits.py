@@ -16,8 +16,8 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         action_handler: A function to handle the actions.
         quiet_action_errors: Whether to quiet action errors.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: The number of steps to delay the actions for, to emulate the latency in the system.
+                    This can be an integer for a fixed delay, or a tuple (min, max) for a per-environment random delay range.
 
     Example::
 
@@ -55,7 +55,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_manager: ActuatorManager | None = None,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
         **kwargs,
     ):
         super().__init__(
@@ -75,6 +75,8 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         """
         Builds the manager and initialized all the buffers.
         """
+        super().build()
+
         lower, upper = self._actuator_manager.get_dofs_limits()
         lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
         upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)

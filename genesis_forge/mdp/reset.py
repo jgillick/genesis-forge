@@ -180,18 +180,19 @@ class randomize_terrain_position(ResetMdpFnClass):
         x = rotation["x"] if "x" in rotation else 0
         y = rotation["y"] if "y" in rotation else 0
         z = rotation["z"] if "z" in rotation else 0
+        n_envs = len(envs_idx)
 
         if isinstance(x, tuple):
             self._rotation_buffer[envs_idx, 0] = torch.empty(
-                len(envs_idx), device=gs.device
+                n_envs, device=gs.device
             ).uniform_(*x)
         if isinstance(y, tuple):
             self._rotation_buffer[envs_idx, 1] = torch.empty(
-                len(envs_idx), device=gs.device
+                n_envs, device=gs.device
             ).uniform_(*y)
         if isinstance(z, tuple):
             self._rotation_buffer[envs_idx, 2] = torch.empty(
-                len(envs_idx), device=gs.device
+                n_envs, device=gs.device
             ).uniform_(*z)
 
         # Set angle as quat

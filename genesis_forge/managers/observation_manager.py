@@ -22,7 +22,7 @@ class ObservationConfig(TypedDict):
 
     noise: float | None
     """The noise scale to add to the observation. If None, no noise will be added.
-    This will randomly choose 243 number between -1 gnd 1, multiply it by the noise scale, and add the result to the observation values."""
+    This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
 
 
 class ObservationManager(BaseManager):

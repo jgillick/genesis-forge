@@ -221,12 +221,13 @@ class ObservationManager(BaseManager):
         self._history.insert(0, buffer)
 
         # Concatenate the history buffers into the pre-allocated output buffer
+        # This is more performant than torch.cat()
         offset = 0
-        for hist_obs in self._history:
-            size = hist_obs.shape[1]
-            self._history_output[:, offset : offset + size] = hist_obs
+        for obs in self._history:
+            size = obs.shape[1]
+            self._history_output[:, offset : offset + size] = obs
             offset += size
-        return self._history_output
+        return self._history_output.clone()
 
     """
     Private methods.

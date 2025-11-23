@@ -198,11 +198,11 @@ class GenesisEnv:
         self.episode_length += 1
 
         if self._actions is None:
-            self._actions = actions.detach().clone()
-            self._last_actions = torch.zeros_like(actions, device=gs.device)
-        else:
-            self._last_actions[:] = self._actions[:]
-            self._actions[:] = actions[:]
+            self._actions = torch.empty_like(actions, device=gs.device)
+            self._last_actions = torch.empty_like(actions, device=gs.device)
+
+        self._last_actions[:] = self._actions[:]
+        self._actions[:] = actions[:]
 
         return None, None, None, None, self._extras
 
@@ -230,7 +230,7 @@ class GenesisEnv:
                 device=gs.device,
                 dtype=gs.tc_float,
             )
-            self._last_actions = torch.zeros_like(self.actions, device=gs.device)
+            self._last_actions = torch.zeros_like(self._actions, device=gs.device)
 
         # Actions
         if envs_idx.numel() > 0:

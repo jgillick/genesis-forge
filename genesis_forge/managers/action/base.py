@@ -76,9 +76,8 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
         if self._actions is None:
-            self._actions = self._raw_actions.clone()
-        else:
-            self._actions[:] = self._raw_actions[:]
+            self._actions = torch.empty_like(actions, device=gs.device)
+        self._actions[:] = self._raw_actions[:]
         return self._actions
 
     def reset(self, envs_idx: list[int] | None):

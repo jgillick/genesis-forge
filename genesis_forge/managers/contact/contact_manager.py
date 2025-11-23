@@ -445,9 +445,7 @@ class ContactManager(BaseManager):
 
         # Handle debug visualization
         if self.debug_visualizer:
-            self._render_debug_visualizer(
-                self.contacts.clone().detach(), self.contact_positions.clone().detach()
-            )
+            self._render_debug_visualizer(self.contacts, self.contact_positions)
 
     def _calculate_air_time(self):
         """

@@ -191,14 +191,8 @@ class ObservationManager(BaseManager):
             )
             return
 
-        # Build any config item function classes.
-        for name, cfg in self.cfg.items():
-            cfg.build()
-            assert callable(cfg.fn), f"Observation function {name} is not callable"
-
-        # Make an initial observation and create the observation space
-        obs = self._perform_observation()
-        single_obs_size = obs.shape[1]
+        # Setup observation functions and the observation space
+        single_obs_size = self._setup_observation_functions()
         self._observation_size = single_obs_size * self._history_len
         self._observation_space = spaces.Box(
             low=-np.inf,
@@ -212,24 +206,54 @@ class ObservationManager(BaseManager):
         self._history = [
             torch.zeros(shape, device=gs.device) for _ in range(self._history_len)
         ]
+        self._history_output = torch.zeros(
+            (self.env.num_envs, self._observation_size),
+            device=gs.device,
+        )
 
     def get_observations(self) -> torch.Tensor:
         """Generate current observations for all environments."""
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
 
-        self._history.pop()
-        obs = self._perform_observation()
-        self._history.insert(0, obs)
-        return torch.cat(self._history, dim=-1)
+        buffer = self._history.pop()
+        self._perform_observation(buffer)
+        self._history.insert(0, buffer)
+
+        # Concatenate the history buffers into the pre-allocated output buffer
+        offset = 0
+        for hist_obs in self._history:
+            size = hist_obs.shape[1]
+            self._history_output[:, offset : offset + size] = hist_obs
+            offset += size
+        return self._history_output
 
     """
     Private methods.
     """
 
-    def _perform_observation(self) -> torch.Tensor:
-        """Perform a round of observations."""
-        obs = []
+    def _setup_observation_functions(self) -> int:
+        """Build all the observation function classes, and determine the observation space."""
+        size = 0
+        for name, cfg in self.cfg.items():
+            try:
+                cfg.build()
+                assert callable(cfg.fn), f"Observation function {name} is not callable"
+                value = cfg.fn(env=self.env, **cfg.params)
+                size += value.shape[1]
+            except Exception as e:
+                print(f"Error generating observation for '{name}'")
+                raise e
+        return size
+
+    def _perform_observation(self, output: torch.Tensor) -> torch.Tensor:
+        """
+        Perform a round of observations.
+
+        Args:
+            output: The output tensor to fill with the observations.
+        """
+        offset = 0
         for name, cfg in self.cfg.items():
             try:
                 # Get values
@@ -247,8 +271,11 @@ class ObservationManager(BaseManager):
                     noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
                     value += noise_value
 
-                obs.append(value)
+                # Copy directly into output buffer
+                value_size = value.shape[-1]
+                output[:, offset : offset + value_size] = value
+                offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e
-        return torch.cat(obs, dim=-1)
+        return output

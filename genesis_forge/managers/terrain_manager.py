@@ -234,15 +234,18 @@ class TerrainManager(BaseManager):
         y_min = y_origin + buffer_y_size
         y_max = y_origin + y_size - buffer_y_size
 
-        # Generate random positions and get the height at those points
-        output[out_idx, 0].uniform_(x_min, x_max)
-        output[out_idx, 1].uniform_(y_min, y_max)
-        terrain_heights = self.get_terrain_height(
-            output[out_idx, 0], output[out_idx, 1]
-        )
+        # Generate random positions
+        x_rand = torch.empty(num, device=gs.device, dtype=gs.tc_float)
+        y_rand = torch.empty(num, device=gs.device, dtype=gs.tc_float)
+        x_rand.uniform_(x_min, x_max)
+        y_rand.uniform_(y_min, y_max)
 
-        # Add the height offset
+        # Get terrain heights at these positions
+        terrain_heights = self.get_terrain_height(x_rand, y_rand)
+        output[out_idx, 0] = x_rand
+        output[out_idx, 1] = y_rand
         output[out_idx, 2] = terrain_heights + height_offset
+        
         return output
 
     def generate_random_env_pos(

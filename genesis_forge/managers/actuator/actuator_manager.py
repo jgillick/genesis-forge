@@ -454,8 +454,10 @@ class ActuatorManager(BaseManager):
 
         # Expand the default postion buffer to the number of environments
         if value_name == "default_pos" or self._batch_dofs_enabled:
-            value_buffer = value_buffer.unsqueeze(0).expand(self.env.num_envs, -1)
-            noise = noise.unsqueeze(0).expand(self.env.num_envs, -1)
+            value_buffer = value_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
+            noise = noise.unsqueeze(0).repeat(self.env.num_envs, 1)
+            noise_buffer = noise_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
+            output_buffer = output_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
 
         # Expand the buffer to the number of environments
         self._values[value_name] = {

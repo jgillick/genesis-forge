@@ -22,7 +22,7 @@ class ObservationConfig(TypedDict):
 
     noise: float | None
     """The noise scale to add to the observation. If None, no noise will be added.
-    This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
+    This will randomly choose 243 number between -1 gnd 1, multiply it by the noise scale, and add the result to the observation values."""
 
 
 class ObservationManager(BaseManager):
@@ -240,7 +240,9 @@ class ObservationManager(BaseManager):
                 cfg.build()
                 assert callable(cfg.fn), f"Observation function {name} is not callable"
                 value = cfg.fn(env=self.env, **cfg.params)
-                size += value.shape[1]
+                value_size = value.shape[-1]
+                if value_size > 0:
+                    size += value.shape[1]
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e
@@ -273,8 +275,9 @@ class ObservationManager(BaseManager):
 
                 # Copy directly into output buffer
                 value_size = value.shape[-1]
-                output[:, offset : offset + value_size] = value
-                offset += value_size
+                if value_size > 0:
+                    output[:, offset : offset + value_size] = value
+                    offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e

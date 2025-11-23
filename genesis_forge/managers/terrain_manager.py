@@ -177,7 +177,7 @@ class TerrainManager(BaseManager):
         subterrain: str | None = None,
         height_offset: float = 0.1e-3,
         output: torch.Tensor | None = None,
-        out_idx: torch.Tensor | None = None,
+        out_idx: torch.Tensor | list[int] | None = None,
     ) -> torch.Tensor:
         """
         Distribute X/Y/Z positions across the terrain or subterrain.
@@ -187,6 +187,7 @@ class TerrainManager(BaseManager):
             num: The number of positions to generate. Not necessary if output is provided
             output: The position tensor to update in-place.
             out_idx: The indices of the output position tensor to update.
+                     Can be a list of ints or a torch.Tensor for better performance.
             usable_ratio: How much of the terrain/subterrain area should be used for random positions.
                           For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain.
                           This helps avoid placing things right on th edge of the terrain/subterrain.
@@ -206,6 +207,8 @@ class TerrainManager(BaseManager):
             output = torch.zeros(num, 3, device=gs.device)
         if out_idx is None:
             out_idx = torch.arange(output.shape[0], device=gs.device)
+        elif isinstance(out_idx, list):
+            out_idx = torch.tensor(out_idx, device=gs.device, dtype=torch.long)
         if num is None:
             num = out_idx.shape[0]
 
@@ -231,24 +234,20 @@ class TerrainManager(BaseManager):
         y_min = y_origin + buffer_y_size
         y_max = y_origin + y_size - buffer_y_size
 
-        # Generate random positions in-place to avoid memory allocation
-        output[out_idx, 0] = (
-            torch.rand_like(output[out_idx, 0]) * (x_max - x_min) + x_min
-        )
-        output[out_idx, 1] = (
-            torch.rand_like(output[out_idx, 1]) * (y_max - y_min) + y_min
-        )
-
-        # Get terrain heights
+        # Generate random positions and get the height at those points
+        output[out_idx, 0].uniform_(x_min, x_max)
+        output[out_idx, 1].uniform_(y_min, y_max)
         terrain_heights = self.get_terrain_height(
             output[out_idx, 0], output[out_idx, 1]
         )
+
+        # Add the height offset
         output[out_idx, 2] = terrain_heights + height_offset
         return output
 
     def generate_random_env_pos(
         self,
-        envs_idx: list[int] | None = None,
+        envs_idx: list[int] | torch.Tensor | None = None,
         usable_ratio: float = 0.5,
         subterrain: str | None = None,
         height_offset: float = 0.1e-3,
@@ -260,6 +259,7 @@ class TerrainManager(BaseManager):
         Args:
             envs_idx: The indices of the environments to generate positions for.
                       If None, positions will be generated for all environments.
+                      Can be a list of ints or a torch.Tensor for better performance.
             usable_ratio: How much of the terrain/subterrain area should be used for random positions.
                           For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain.
                           This helps avoid placing things right on th edge of the terrain/subterrain.
@@ -272,6 +272,8 @@ class TerrainManager(BaseManager):
         """
         if envs_idx is None:
             envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        elif isinstance(envs_idx, list):
+            envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 
         # Update the position buffer in-place
         self.generate_random_positions(

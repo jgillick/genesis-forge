@@ -386,18 +386,15 @@ class ManagedEnvironment(GenesisEnv):
         self.extras["observations"] = self._observations_buf
         self._observations_buf.clear()
 
+        # Get observations
         if len(self.managers["observation"]) > 0:
-            # We already have policy observations for this step
-            if "policy" in self.extras["observations"]:
-                return self.extras["observations"]["policy"]
-
-            # Get observations
             policy_obs = None
             for obs_manager in self.managers["observation"]:
                 obs = obs_manager.get_observations()
                 self.extras["observations"][obs_manager.name] = obs
-
                 if obs_manager.name == "policy":
                     policy_obs = obs
             return policy_obs
+
+        # Otherwise, call super
         return super().get_observations()

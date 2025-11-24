@@ -243,7 +243,7 @@ class ObservationManager(BaseManager):
                 value = cfg.fn(env=self.env, **cfg.params)
                 value_size = value.shape[-1]
                 if value_size > 0:
-                    size += value.shape[1]
+                    size += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e

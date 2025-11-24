@@ -220,21 +220,19 @@ class RewardManager(BaseManager):
 
         # Reset episode seconds to nearly zero, to prevent divide by zero errors
         self._episode_seconds[envs_idx] = 1e-10
-    
 
-    
     """
     Dict-like operations
     """
-    
+
     def __getitem__(self, name: str) -> RewardConfigItem:
         """Get a reward config item by name."""
         return self.cfg[name]
-    
+
     def __setitem__(self, name: str, value: RewardConfigItem):
         """Set a reward config item by name."""
         self.cfg[name] = value
-    
+
     def __delitem__(self, name: str):
         """Delete a reward config item by name."""
         del self.cfg[name]
@@ -242,11 +240,11 @@ class RewardManager(BaseManager):
     def __contains__(self, name: str) -> bool:
         """Check if a reward config item exists by name."""
         return name in self.cfg
-    
+
     def __iter__(self) -> Iterator[str]:
         """Iterate over the reward config item names."""
         return iter(self.cfg.keys())
-    
+
     def __len__(self) -> int:
         """Get the number of reward config items."""
         return len(self.cfg)

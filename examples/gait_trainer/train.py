@@ -62,7 +62,9 @@ def training_cfg(exp_name: str, max_iterations: int, num_envs: int):
         },
         "runner_class_name": "OnPolicyRunner",
         "seed": 1,
-        "num_steps_per_env": round(98_304/ num_envs), # https://ar5iv.labs.arxiv.org/html/2109.11978
+        "num_steps_per_env": round(
+            98_304 / num_envs
+        ),  # https://ar5iv.labs.arxiv.org/html/2109.11978
         "save_interval": 100,
         "empirical_normalization": None,
         "obs_groups": {"policy": ["policy"], "critic": ["policy", "critic"]},

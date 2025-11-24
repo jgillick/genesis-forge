@@ -245,7 +245,7 @@ class TerrainManager(BaseManager):
         output[out_idx, 0] = x_rand
         output[out_idx, 1] = y_rand
         output[out_idx, 2] = terrain_heights + height_offset
-        
+
         return output
 
     def generate_random_env_pos(

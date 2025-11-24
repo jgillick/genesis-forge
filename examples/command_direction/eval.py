@@ -39,7 +39,10 @@ def get_latest_model(log_dir: str) -> str:
         )
         exit(1)
     # Sort by the file with the highest number
-    sorted_models = sorted(model_checkpoints, key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+    sorted_models = sorted(
+        model_checkpoints,
+        key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
+    )
     return sorted_models[-1]
 
 

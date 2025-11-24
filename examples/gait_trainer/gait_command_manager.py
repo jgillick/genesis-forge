@@ -304,7 +304,6 @@ class GaitCommandManager(CommandManager):
         quad_reward = fl.flatten() + fr.flatten() + rl.flatten() + rr.flatten()
         return torch.exp(quad_reward)
 
-
     """
     Private methods
     """

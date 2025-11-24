@@ -7,11 +7,7 @@ import math
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import entity_projected_gravity
-from genesis_forge.managers import (
-    ContactManager,
-    EntityManager,
-    TerrainManager
-)
+from genesis_forge.managers import ContactManager, EntityManager, TerrainManager
 
 
 def timeout(env: GenesisEnv) -> torch.Tensor:
@@ -121,20 +117,21 @@ def out_of_bounds(
     # Get the entity's base position
     entity = getattr(env, entity_attr)
     position = entity.get_pos()
-    
+
     # Get terrain bounds
     (x_min, x_max, y_min, y_max) = terrain_manager.get_bounds(subterrain)
     x_min_bound, x_max_bound = x_min + border_margin, x_max - border_margin
     y_min_bound, y_max_bound = y_min + border_margin, y_max - border_margin
-    
+
     # Check bounds
     x_pos, y_pos = position[:, 0], position[:, 1]
     return (
-        (x_pos < x_min_bound) |
-        (x_pos > x_max_bound) |
-        (y_pos < y_min_bound) |
-        (y_pos > y_max_bound)
+        (x_pos < x_min_bound)
+        | (x_pos > x_max_bound)
+        | (y_pos < y_min_bound)
+        | (y_pos > y_max_bound)
     )
+
 
 def has_contact(
     _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1

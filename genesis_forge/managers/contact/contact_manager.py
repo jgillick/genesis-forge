@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import torch
 import genesis as gs
@@ -294,6 +295,10 @@ class ContactManager(BaseManager):
         if self.debug_envs_idx is None:
             self.debug_envs_idx = list[int](range(self.env.num_envs))
 
+        # Calculate the number of steps per debug render
+        fps = self.visualizer_cfg.get("fps", 30)
+        self._steps_per_debug_render = math.ceil(1.0 / fps / self.env.dt)
+
         # Get the link indices
         (self._link_ids, self._local_link_ids) = self._get_links_idx(
             self._entity_attr, self._link_names
@@ -444,7 +449,10 @@ class ContactManager(BaseManager):
         )
 
         # Handle debug visualization
-        if self.debug_visualizer:
+        if (
+            self.debug_visualizer
+            and self.env.step_count % self._steps_per_debug_render == 0
+        ):
             self._render_debug_visualizer(self.contacts, self.contact_positions)
 
     def _calculate_air_time(self):

@@ -6,13 +6,10 @@ import torch
 import genesis as gs
 
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.utils import entity_lin_vel, transform_by_quat
+from genesis_forge.utils import transform_by_quat
 from genesis_forge.gamepads import Gamepad
 
 from .command_manager import CommandManager, CommandRangeValue
-
-
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class VelocityCommandRange(TypedDict):

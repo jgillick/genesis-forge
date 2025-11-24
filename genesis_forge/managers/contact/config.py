@@ -16,10 +16,14 @@ class ContactDebugVisualizerConfig(TypedDict):
     force_threshold: float
     """The threshold, in Newtons, for the contact force to be visualized"""
 
+    fps: int
+    """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
+
 
 DEFAULT_VISUALIZER_CONFIG: ContactDebugVisualizerConfig = {
     "envs_idx": None,
     "size": 0.03,
     "color": (0.5, 0.0, 0.0, 1.0),
     "force_threshold": 1.0,
+    "fps": 30,
 }

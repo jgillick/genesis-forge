@@ -152,6 +152,7 @@ class ManagedEnvironment(GenesisEnv):
         self._truncated_buf = torch.zeros(
             (self.num_envs,), device=gs.device, dtype=gs.tc_bool
         )
+        self._observations_buf = TensorDict({}, device=gs.device)
 
     """
     Properties
@@ -289,7 +290,6 @@ class ManagedEnvironment(GenesisEnv):
             Batch of (observations, rewards, terminations, truncations, extras)
         """
         super().step(actions)
-        self.extras["observations"] = TensorDict({}, device=gs.device)
 
         # Execute the actions and a simulation step
         if self.managers["action"] is not None:
@@ -383,23 +383,21 @@ class ManagedEnvironment(GenesisEnv):
         If you use the ObservationManager, this will be handled automatically.
         Otherwise, override this method to return the observations.
         """
+        self.extras["observations"] = self._observations_buf
+        self._observations_buf.clear()
+
         if len(self.managers["observation"]) > 0:
-            # We already have observations for this step
-            if (
-                "observations" in self.extras
-                and "policy" in self.extras["observations"]
-            ):
+            # We already have policy observations for this step
+            if "policy" in self.extras["observations"]:
                 return self.extras["observations"]["policy"]
-            if "observations" not in self.extras:
-                self.extras["observations"] = TensorDict({}, device=gs.device)
 
             # Get observations
             policy_obs = None
             for obs_manager in self.managers["observation"]:
                 obs = obs_manager.get_observations()
                 self.extras["observations"][obs_manager.name] = obs
+
                 if obs_manager.name == "policy":
                     policy_obs = obs
             return policy_obs
-
         return super().get_observations()

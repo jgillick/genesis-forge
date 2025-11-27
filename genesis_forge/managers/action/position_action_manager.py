@@ -44,8 +44,8 @@ class PositionActionManager(BaseActionManager):
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
         clip: Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.
         quiet_action_errors: Whether to quiet action errors.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: The number of steps to delay the actions for, to emulate the latency in the system.
+                    This can be an integer for a fixed delay, or a tuple (min, max) for a per-environment random delay range.
 
     Example::
 
@@ -123,7 +123,7 @@ class PositionActionManager(BaseActionManager):
         use_default_offset: bool = True,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
         **kwargs,
     ):
         super().__init__(env, delay_step)
@@ -277,6 +277,7 @@ class PositionActionManager(BaseActionManager):
         """
         Builds the manager and initialized all the buffers.
         """
+        super().build()
 
         # Define the clip values
         lower_limit, upper_limit = self._actuator_manager.get_dofs_limits()

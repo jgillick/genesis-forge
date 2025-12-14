@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from gymnasium import spaces
-import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 
@@ -76,7 +75,7 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
         if self._actions is None:
-            self._actions = torch.empty_like(actions, device=gs.device)
+            self._actions = torch.empty_like(actions, device=self.device)
         self._actions[:] = self._raw_actions[:]
         return self._actions
 
@@ -89,7 +88,7 @@ class BaseActionManager(BaseManager):
         ):
             while len(self._action_delay_buffer) < self._delay_step:
                 self._action_delay_buffer.append(
-                    torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
+                    torch.zeros((self.env.num_envs, self.num_actions), device=self.device)
                 )
 
     def get_actions(self) -> torch.Tensor:

@@ -6,7 +6,6 @@ Each of these should return a float tensor with the reward value for each enviro
 from __future__ import annotations
 
 import torch
-import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
@@ -278,7 +277,7 @@ def action_rate_l2(env: GenesisEnv) -> torch.Tensor:
     actions = env.actions
     last_actions = env.last_actions
     if last_actions is None:
-        return torch.zeros_like(actions, device=gs.device)
+        return torch.zeros_like(actions, device=env.device)
     return torch.sum(torch.square(last_actions - actions), dim=1)
 
 

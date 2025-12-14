@@ -1,9 +1,9 @@
 import torch
 from typing import Any, TypedDict
 from gymnasium import spaces
-import genesis as gs
+import numpy as np
 from tensordict import TensorDict
-from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.genesis_env import EnvMode,GenesisEnv
 from genesis_forge.managers.base import BaseManager, ManagerType
 from genesis_forge.managers import (
     ContactManager,
@@ -119,6 +119,7 @@ class ManagedEnvironment(GenesisEnv):
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         extras_logging_key: str = "episode",
+        env_mode: EnvMode="train"
     ):
         super().__init__(
             num_envs=num_envs,
@@ -126,6 +127,7 @@ class ManagedEnvironment(GenesisEnv):
             max_episode_length_sec=max_episode_length_sec,
             max_episode_random_scaling=max_episode_random_scaling,
             extras_logging_key=extras_logging_key,
+            env_mode=env_mode
         )
 
         self.managers: ManagersDict = {
@@ -135,7 +137,7 @@ class ManagedEnvironment(GenesisEnv):
             "terrain": [],
             # there can only be one of each of these
             "actuator": None,
-            "action": None,
+            "action": [],
             "observation": [],
             "reward": None,
             "termination": None,
@@ -144,15 +146,15 @@ class ManagedEnvironment(GenesisEnv):
         self._action_space = None
         self._observation_space = None
         self._reward_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_float
+            (self.num_envs,), device=self.device, dtype=self.float_dtype
         )
         self._terminated_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
+            (self.num_envs,), device=self.device, dtype=self.bool_dtype
         )
         self._truncated_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
+            (self.num_envs,), device=self.device, dtype=self.bool_dtype
         )
-        self._observations_buf = TensorDict({}, device=gs.device)
+        self._observations_buf = TensorDict({}, device=self.device)
 
     """
     Properties
@@ -163,8 +165,16 @@ class ManagedEnvironment(GenesisEnv):
         """
         The action space, provided by the action manager, if it exists.
         """
-        if self.managers["action"] is not None:
-            return self.managers["action"].action_space
+        num_actions=0
+        for action_manager in self.managers["action"]:
+            num_actions+=action_manager.num_actions
+        if num_actions>0:
+            return spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(num_actions,),
+                dtype=np.float32,
+            )
         if self._action_space is not None:
             return self._action_space
         return None
@@ -262,8 +272,8 @@ class ManagedEnvironment(GenesisEnv):
             terrain_manager.build()
         if self.managers["actuator"] is not None:
             self.managers["actuator"].build()
-        if self.managers["action"] is not None:
-            self.managers["action"].build()
+        for action_manager in self.managers["action"]:
+            action_manager.build()
         for contact_manager in self.managers["contact"]:
             contact_manager.build()
         if self.managers["termination"] is not None:
@@ -292,8 +302,9 @@ class ManagedEnvironment(GenesisEnv):
         super().step(actions)
 
         # Execute the actions and a simulation step
-        if self.managers["action"] is not None:
-            self.managers["action"].step(actions)
+        last_index=0
+        for action_manager in self.managers["action"]:
+            action_manager.step(actions[last_index:(last_index+action_manager.num_actions)])
         self.scene.step()
 
         # Update entity managers
@@ -355,8 +366,8 @@ class ManagedEnvironment(GenesisEnv):
 
         if self.managers["actuator"] is not None:
             self.managers["actuator"].reset(env_ids)
-        if self.managers["action"] is not None:
-            self.managers["action"].reset(env_ids)
+        for action_manager in self.managers["action"]:
+            action_manager.reset(env_ids)
         for entity_manager in self.managers["entity"]:
             entity_manager.reset(env_ids)
         for contact_manager in self.managers["contact"]:
@@ -383,7 +394,7 @@ class ManagedEnvironment(GenesisEnv):
         If you use the ObservationManager, this will be handled automatically.
         Otherwise, override this method to return the observations.
         """
-        self.extras["observations"] = TensorDict({}, device=gs.device)
+        self.extras["observations"] = TensorDict({}, device=self.device)
 
         # Get observations
         if len(self.managers["observation"]) > 0:

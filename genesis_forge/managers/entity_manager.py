@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import torch
-import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis.utils.geom import (
@@ -92,13 +91,13 @@ class EntityManager(BaseManager):
 
         # Buffers
         self._global_gravity = torch.tensor(
-            [0.0, 0.0, -1.0], device=gs.device, dtype=gs.tc_float
+            [0.0, 0.0, -1.0], device=self.device, dtype=self.float_dtype
         ).repeat(env.num_envs, 1)
         self._base_pos = torch.zeros(
-            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+            (env.num_envs, 3), device=self.device, dtype=self.float_dtype
         )
         self._base_quat = torch.zeros(
-            (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+            (env.num_envs, 4), device=self.device, dtype=self.float_dtype
         )
         self._inv_base_quat = torch.zeros_like(self._base_quat)
 
@@ -177,7 +176,7 @@ class EntityManager(BaseManager):
         if not self.enabled:
             return
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = torch.arange(self.env.num_envs, device=self.device)
 
         for name, cfg in self.on_reset.items():
             try:

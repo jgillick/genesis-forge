@@ -5,7 +5,7 @@ import pickle
 import argparse
 from importlib import metadata
 
-import rclpy 
+import rclpy
 from ros2_interface import RosInterface
 
 from environment import Go2SimpleEnv
@@ -62,10 +62,10 @@ def main():
     # Processor backend (GPU or CPU)
     rclpy.init()
     if args.device == "cpu":
-        device=torch.device("cpu")
+        device = torch.device("cpu")
         torch.set_default_device("cpu")
     elif args.device == "gpu":
-        device=torch.device("cpu")
+        device = torch.device("cpu")
         torch.set_default_device("cuda:0")
 
     # Load training configuration
@@ -76,15 +76,15 @@ def main():
     # Setup environment
     env = Go2SimpleEnv(num_envs=1, headless=False, mode="real")
     env.build()
-    pos_joints=[]
-    vel_joints=[]
-    force_joints=[]
+    pos_joints = []
+    vel_joints = []
+    force_joints = []
     ros_interface = RosInterface(pos_joints, vel_joints, force_joints)
     if rclpy.ok():
         rclpy.spin_once(ros_interface, timeout_sec=0.1)
 
     # Update observations to use real sensors
-    setup_observations(env,ros_interface=ros_interface)
+    setup_observations(env, ros_interface=ros_interface)
 
     # Load the trained policy
     print("🎬 Loading last model...")

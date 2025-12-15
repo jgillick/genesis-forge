@@ -60,7 +60,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False)
+    env = Go2SimpleEnv(num_envs=1, headless=False, env_mode="eval")
     env = RslRlWrapper(env)
     env.build()
 

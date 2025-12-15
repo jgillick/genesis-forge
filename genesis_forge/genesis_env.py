@@ -62,7 +62,7 @@ class GenesisEnv:
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         extras_logging_key: str = "episode",
-        env_mode: EnvMode="train"
+        env_mode: EnvMode="train",
     ):
         self.dt = dt
         self.env_mode=env_mode
@@ -78,7 +78,7 @@ class GenesisEnv:
             self.robot: RigidEntity = None
             self.terrain: RigidEntity = None
         else:
-            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            self.device = torch.get_default_device()
             self.float_dtype=torch.float32
             self.int_dtype=torch.int32
             self.bool_dtype=torch.bool

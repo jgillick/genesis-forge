@@ -275,7 +275,7 @@ class ActuatorManager(BaseManager):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Return the force limits of the configured DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_force_limit`.
+        This is a wrapper for `RigidEntity.get_dofs_force_range`.
 
         Args:
             dofs_idx: The indices of the DOFs to get the force limits for. If None, all the DOFs of this actuator manager are used.

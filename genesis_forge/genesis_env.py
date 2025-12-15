@@ -1,11 +1,14 @@
 from __future__ import annotations
 import math
 import torch
+
 try:
     import genesis as gs
 except ImportError:
-    print("Genesis package not found, if your wish to train, eval or play use the appropriatere env_mode when initialising the env")
-    gs=None
+    print(
+        "Genesis package not found, if your wish to train, eval or play use the appropriatere env_mode when initialising the env"
+    )
+    gs = None
 from gymnasium import spaces
 from typing import Any, Literal, TYPE_CHECKING
 
@@ -62,15 +65,15 @@ class GenesisEnv:
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         extras_logging_key: str = "episode",
-        env_mode: EnvMode="train",
+        env_mode: EnvMode = "train",
     ):
         self.dt = dt
-        self.env_mode=env_mode
-        if self.env_mode!="real":
+        self.env_mode = env_mode
+        if self.env_mode != "real":
             self.device = gs.device
-            self.float_dtype=gs.tc_float
-            self.int_dtype=gs.tc_int
-            self.bool_dtype=gs.tc_bool
+            self.float_dtype = gs.tc_float
+            self.int_dtype = gs.tc_int
+            self.bool_dtype = gs.tc_bool
             self.REVOLUTE_JOINT_TYPE = gs.JOINT_TYPE.REVOLUTE
             self.PRISMATIC_JOINT_TYPE = gs.JOINT_TYPE.PRISMATIC
             self.num_envs = num_envs
@@ -79,9 +82,9 @@ class GenesisEnv:
             self.terrain: RigidEntity = None
         else:
             self.device = torch.get_default_device()
-            self.float_dtype=torch.float32
-            self.int_dtype=torch.int32
-            self.bool_dtype=torch.bool
+            self.float_dtype = torch.float32
+            self.int_dtype = torch.int32
+            self.bool_dtype = torch.bool
             self.num_envs = num_envs
 
         self.extras_logging_key = extras_logging_key
@@ -193,7 +196,7 @@ class GenesisEnv:
         Builds the environment before the first step.
         The Genesis scene and all the scene entities must be added before calling this method.
         """
-        if hasattr(self,"scene"):
+        if hasattr(self, "scene"):
             assert (
                 self.scene is not None
             ), "The scene must be constructed and assigned to the <env>.scene attribute before building."

@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 import torch
 import numpy as np
+
 try:
     import genesis as gs
 except ModuleNotFoundError:
     print("Genesis package was not found")
-    gs=None
+    gs = None
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,7 +25,9 @@ if gs is None:
             _quat = quat.copy()
             _quat[..., 1:] *= -1
         else:
-            raise TypeError(f"the input must be either torch.Tensor or np.ndarray. got: {type(quat)=}")
+            raise TypeError(
+                f"the input must be either torch.Tensor or np.ndarray. got: {type(quat)=}"
+            )
         return _quat
 
     def _tc_transform_by_quat(v, quat, out=None):
@@ -38,9 +41,21 @@ if gs is None:
         q_yy, q_yz = torch.unbind(q_y * quat[..., 2:], -1)
         q_zz = q_z[..., 0] * quat[..., 3]
 
-        out[..., 0] = v_x * (q_xx + q_ww - q_yy - q_zz) + v_y * (2.0 * q_xy - 2.0 * q_wz) + v_z * (2.0 * q_xz + 2.0 * q_wy)
-        out[..., 1] = v_x * (2.0 * q_wz + 2.0 * q_xy) + v_y * (q_ww - q_xx + q_yy - q_zz) + v_z * (2.0 * q_yz - 2.0 * q_wx)
-        out[..., 2] = v_x * (2.0 * q_xz - 2.0 * q_wy) + v_y * (2.0 * q_wx + 2.0 * q_yz) + v_z * (q_ww - q_xx - q_yy + q_zz)
+        out[..., 0] = (
+            v_x * (q_xx + q_ww - q_yy - q_zz)
+            + v_y * (2.0 * q_xy - 2.0 * q_wz)
+            + v_z * (2.0 * q_xz + 2.0 * q_wy)
+        )
+        out[..., 1] = (
+            v_x * (2.0 * q_wz + 2.0 * q_xy)
+            + v_y * (q_ww - q_xx + q_yy - q_zz)
+            + v_z * (2.0 * q_yz - 2.0 * q_wx)
+        )
+        out[..., 2] = (
+            v_x * (2.0 * q_xz - 2.0 * q_wy)
+            + v_y * (2.0 * q_wx + 2.0 * q_yz)
+            + v_z * (q_ww - q_xx - q_yy + q_zz)
+        )
 
         out /= (q_ww + q_xx + q_yy + q_zz)[..., None]
 
@@ -60,9 +75,21 @@ if gs is None:
         q_yy, q_yz = quat_T[2] * quat_T[2:]
         q_zz = quat_T[3] * quat_T[3]
 
-        out_T[0] = v_x * (q_xx + q_ww - q_yy - q_zz) + v_y * (2.0 * q_xy - 2.0 * q_wz) + v_z * (2.0 * q_xz + 2.0 * q_wy)
-        out_T[1] = v_x * (2.0 * q_wz + 2.0 * q_xy) + v_y * (q_ww - q_xx + q_yy - q_zz) + v_z * (2.0 * q_yz - 2.0 * q_wx)
-        out_T[2] = v_x * (2.0 * q_xz - 2.0 * q_wy) + v_y * (2.0 * q_wx + 2.0 * q_yz) + v_z * (q_ww - q_xx - q_yy + q_zz)
+        out_T[0] = (
+            v_x * (q_xx + q_ww - q_yy - q_zz)
+            + v_y * (2.0 * q_xy - 2.0 * q_wz)
+            + v_z * (2.0 * q_xz + 2.0 * q_wy)
+        )
+        out_T[1] = (
+            v_x * (2.0 * q_wz + 2.0 * q_xy)
+            + v_y * (q_ww - q_xx + q_yy - q_zz)
+            + v_z * (2.0 * q_yz - 2.0 * q_wx)
+        )
+        out_T[2] = (
+            v_x * (2.0 * q_xz - 2.0 * q_wy)
+            + v_y * (2.0 * q_wx + 2.0 * q_yz)
+            + v_z * (q_ww - q_xx - q_yy + q_zz)
+        )
 
         out_T /= q_ww + q_xx + q_yy + q_zz
 
@@ -81,11 +108,14 @@ if gs is None:
         elif all(isinstance(e, np.ndarray) for e in (v, quat)):
             return _np_transform_by_quat(v, quat, out=None)
         else:
-            raise TypeError(f"The inputs must all be torch.Tensor or np.ndarray. got: {type(v)=} and {type(quat)=}")
+            raise TypeError(
+                f"The inputs must all be torch.Tensor or np.ndarray. got: {type(v)=} and {type(quat)=}"
+            )
+
 else:
-    transform_by_quat=gs.utils.geom.transform_by_quat
-    inv_quat=gs.utils.geom.inv_quat
-    
+    transform_by_quat = gs.utils.geom.transform_by_quat
+    inv_quat = gs.utils.geom.inv_quat
+
 
 def entity_lin_vel(entity: RigidEntity) -> torch.Tensor:
     """
@@ -127,9 +157,7 @@ def entity_projected_gravity(entity: RigidEntity) -> torch.Tensor:
     """
     inv_base_quat = inv_quat(entity.get_quat())
     gravity = torch.tensor(
-        [0.0, 0.0, -1.0], 
-        device=inv_base_quat.device, 
-        dtype=inv_base_quat.dtype
+        [0.0, 0.0, -1.0], device=inv_base_quat.device, dtype=inv_base_quat.dtype
     ).expand(inv_base_quat.shape[0], 3)
     return transform_by_quat(gravity, inv_base_quat)
 

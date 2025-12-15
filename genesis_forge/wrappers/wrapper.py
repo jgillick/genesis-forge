@@ -30,19 +30,19 @@ class Wrapper:
     """
     Properties
     """
-    
+
     @property
     def device(self):
         self.env.device
-    
+
     @property
     def float_dtype(self):
         self.env.float_dtype
-    
+
     @property
     def int_dtype(self):
         self.env.int_dtype
-        
+
     @property
     def bool_dtype(self):
         self.env.bool_dtype

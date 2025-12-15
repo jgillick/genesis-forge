@@ -120,7 +120,7 @@ class ManagedEnvironment(GenesisEnv):
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         extras_logging_key: str = "episode",
-        env_mode: EnvMode="train",
+        env_mode: EnvMode = "train",
     ):
         super().__init__(
             num_envs=num_envs,

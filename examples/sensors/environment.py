@@ -164,10 +164,10 @@ class Go2SimpleEnv(ManagedEnvironment):
             use_default_offset=True,
             actuator_manager=self.actuator_manager,
         )
-        
+
         ##
         # Observations
-        self.observation_manager=ObservationManager(
+        self.observation_manager = ObservationManager(
             self,
             history_len=2,
             cfg={
@@ -192,7 +192,9 @@ class Go2SimpleEnv(ManagedEnvironment):
                 "imu": {
                     "fn": observations.SensorObservation,
                     "params": {
-                        "read": lambda: torch.cat([self.imu.read().lin_acc,self.imu.read().ang_vel],dim=-1),
+                        "read": lambda: torch.cat(
+                            [self.imu.read().lin_acc, self.imu.read().ang_vel], dim=-1
+                        ),
                         "frequency": 25,
                     },
                 },
@@ -201,7 +203,7 @@ class Go2SimpleEnv(ManagedEnvironment):
                 },
             },
         )
-        
+
         ##
         # Rewards
         RewardManager(
@@ -250,23 +252,23 @@ class Go2SimpleEnv(ManagedEnvironment):
                         "action_manager": self.action_manager,
                     },
                 },
-                "lin_acc_jitter":{
-                    "weight":-0.1,
+                "lin_acc_jitter": {
+                    "weight": -0.1,
                     "fn": rewards.imu_lin_acc_jitter,
-                    "params":{
-                        "observation_manager":self.observation_manager,
-                        "obs_item_key":"imu",
-                        "ignore_gravity":True
-                    }
+                    "params": {
+                        "observation_manager": self.observation_manager,
+                        "obs_item_key": "imu",
+                        "ignore_gravity": True,
+                    },
                 },
-                "ang_vel_jitter":{
-                    "weight":-0.1,
+                "ang_vel_jitter": {
+                    "weight": -0.1,
                     "fn": rewards.imu_ang_vel_jitter,
-                    "params":{
-                        "observation_manager":self.observation_manager,
-                        "obs_item_key":"imu",
-                    }
-                }
+                    "params": {
+                        "observation_manager": self.observation_manager,
+                        "obs_item_key": "imu",
+                    },
+                },
             },
         )
 

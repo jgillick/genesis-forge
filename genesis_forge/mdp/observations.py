@@ -6,7 +6,7 @@ from genesis_forge.managers import (
     PositionActionManager,
     EntityManager,
     ContactManager,
-    MdpFnClass
+    MdpFnClass,
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
 from typing import TYPE_CHECKING
@@ -207,6 +207,7 @@ def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Ten
     """
     return torch.norm(contact_manager.contacts[:, :, :], dim=-1)
 
+
 class SensorObservation(MdpFnClass):
     def __init__(
         self,
@@ -217,14 +218,9 @@ class SensorObservation(MdpFnClass):
         super().__init__(env)
         self.last_data = None
         self.next_read_time = 0
-        self.read_interval=1/frequency
+        self.read_interval = 1 / frequency
 
-    def __call__(
-        self,
-        env: GenesisEnv,
-        read: Callable,
-        frequency: float
-    ):
+    def __call__(self, env: GenesisEnv, read: Callable, frequency: float):
         if self.last_data is None or self.env.scene.cur_t >= self.next_read_time:
             self.last_data = read()
             self.next_read_time = self.env.scene.cur_t + self.read_interval

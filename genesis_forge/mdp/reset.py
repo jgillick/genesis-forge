@@ -291,7 +291,7 @@ class randomize_link_mass_shift(ResetMdpFnClass):
             links_idx_local=self._links_idx_local,
             envs_idx=envs_idx,
         )
-        
+
 
 class randomize_link_com_shift(ResetMdpFnClass):
     """
@@ -310,7 +310,9 @@ class randomize_link_com_shift(ResetMdpFnClass):
         _env: GenesisEnv,
         entity: RigidEntity,
         link_name: str,
-        com_shift_ranges: tuple[tuple[float, float],tuple[float, float],tuple[float, float]],
+        com_shift_ranges: tuple[
+            tuple[float, float], tuple[float, float], tuple[float, float]
+        ],
     ):
         self.env = _env
         self._entity = entity
@@ -327,7 +329,7 @@ class randomize_link_com_shift(ResetMdpFnClass):
             if len(links) > 0:
                 self._links_idx_local = [link.idx_local for link in links]
                 self._mass_shift_buffer = torch.zeros(
-                    (self.env.num_envs, len(self._links_idx_local),3), device=gs.device
+                    (self.env.num_envs, len(self._links_idx_local), 3), device=gs.device
                 )
             else:
                 raise ValueError(
@@ -340,7 +342,9 @@ class randomize_link_com_shift(ResetMdpFnClass):
         entity: RigidEntity,
         envs_idx: list[int],
         link_name: str,
-        com_shift_ranges: tuple[tuple[float, float],tuple[float, float],tuple[float, float]],
+        com_shift_ranges: tuple[
+            tuple[float, float], tuple[float, float], tuple[float, float]
+        ],
     ):
         # Randomize mass
         self._mass_shift_buffer[envs_idx, :].uniform_(*com_shift_ranges)

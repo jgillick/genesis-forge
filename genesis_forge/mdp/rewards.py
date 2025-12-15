@@ -316,28 +316,30 @@ def commonad_tracking_position(
     assert (
         command is not None or position_cmd_manager is not None
     ), "Either command or position_cmd_manager must be provided to commonad_tracking_base_position"
-    
+
     if entity_manager is not None:
-        entity=entity_manager.entity
+        entity = entity_manager.entity
     else:
         entity = getattr(env, entity_attr)
-        
+
     if link_name is None or link_name == "":
-        link= entity.links[0]
+        link = entity.links[0]
     else:
         try:
-            link=entity.get_link(link_name)
+            link = entity.get_link(link_name)
         except Exception as e:
-            raise ValueError(f"Link name '{link_name}' not found in entity '{entity_attr}'.")
-    
+            raise ValueError(
+                f"Link name '{link_name}' not found in entity '{entity_attr}'."
+            )
+
     pos = link.get_pos()
     if position_cmd_manager is not None:
         command = position_cmd_manager.command[:, :2]
     else:
         command = command[:, :2]
-        
-    base_pos_error= torch.sum(torch.square(command - pos), dim=1)
-    return torch.square(-base_pos_error/sensitivity)
+
+    base_pos_error = torch.sum(torch.square(command - pos), dim=1)
+    return torch.square(-base_pos_error / sensitivity)
 
 
 """
@@ -349,11 +351,11 @@ def command_tracking_pose(
     env: GenesisEnv,
     command: torch.Tensor = None,
     pose_cmd_manager: PoseCommandManager = None,
-    pos_sensitivity: float = 0.25,  
-    euler_sensitivity: float = 0.25,  
+    pos_sensitivity: float = 0.25,
+    euler_sensitivity: float = 0.25,
     entity_attr: str = "robot",
     link_name: str = None,
-    entity_manager: 'EntityManager' = None,
+    entity_manager: "EntityManager" = None,
 ) -> torch.Tensor:
     """
     Penalize base pose away from target (both position and orientation) with separate sensitivities.
@@ -373,38 +375,43 @@ def command_tracking_pose(
     assert (
         command is not None or pose_cmd_manager is not None
     ), "Either command or position_cmd_manager must be provided to command_tracking_base_pose"
-    
+
     if entity_manager is not None:
-        entity=entity_manager.entity
+        entity = entity_manager.entity
     else:
         entity = getattr(env, entity_attr)
-        
+
     if link_name is None or link_name == "":
-        link= entity.links[0]
+        link = entity.links[0]
     else:
         try:
-            link=entity.get_link(link_name)
+            link = entity.get_link(link_name)
         except Exception as e:
-            raise ValueError(f"Link name '{link_name}' not found in entity '{entity_attr}'.")
-    
+            raise ValueError(
+                f"Link name '{link_name}' not found in entity '{entity_attr}'."
+            )
+
     link_pos = link.get_pos()
-    link_euler = quat_to_xyz(link.get_quat())   
+    link_euler = quat_to_xyz(link.get_quat())
 
     if pose_cmd_manager is not None:
-        command_pos = pose_cmd_manager.command[:, :3]  
-        command_euler = pose_cmd_manager.command[:, 3:6] 
+        command_pos = pose_cmd_manager.command[:, :3]
+        command_euler = pose_cmd_manager.command[:, 3:6]
     else:
-        command_pos = command[:, :3]  
-        command_euler = command[:, 3:6]  
+        command_pos = command[:, :3]
+        command_euler = command[:, 3:6]
 
     pos_error = torch.sum(torch.square(command_pos - link_pos), dim=1)
 
-    euler_error = torch.sum(torch.square(
-        torch.min(
-            torch.abs(command_euler - link_euler),  
-            2 * torch.pi - torch.abs(command_euler - link_euler)  
-        )
-    ), dim=1)
+    euler_error = torch.sum(
+        torch.square(
+            torch.min(
+                torch.abs(command_euler - link_euler),
+                2 * torch.pi - torch.abs(command_euler - link_euler),
+            )
+        ),
+        dim=1,
+    )
 
     pos_penalty = torch.square(-pos_error / pos_sensitivity)
     euler_penalty = torch.square(-euler_error / euler_sensitivity)
@@ -412,6 +419,7 @@ def command_tracking_pose(
     total_penalty = pos_penalty + euler_penalty
 
     return total_penalty
+
 
 """
 Velocity Command Rewards

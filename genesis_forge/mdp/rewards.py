@@ -16,6 +16,7 @@ from genesis_forge.managers import (
     ContactManager,
     TerrainManager,
     EntityManager,
+    ObservationManager
 )
 from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
 from genesis_forge.managers import MdpFnClass
@@ -405,6 +406,66 @@ def stand_still_joint_deviation_l1(
     command = vel_cmd_manager.command
     return joint_deviation * (torch.norm(command[:, :2], dim=1) < command_threshold)
 
+"""
+Imu
+"""
+
+def imu_lin_acc_jitter(
+    _env: GenesisEnv,
+    observation_manager: ObservationManager,
+    obs_item_key: str,
+    ignore_gravity: bool = False,
+) -> torch.Tensor:
+    """
+    Penalize changes in linear acceleration (jerk) using the IMU's internal queue.
+
+    Returns:
+        torch.Tensor of shape (num_envs,)
+    """
+    single_obs_size=3
+    indices=[]
+    running_offset=0
+    for _ in range(observation_manager._history_len):
+        indices.append(list(range(running_offset,running_offset+single_obs_size)))
+        running_offset+=single_obs_size
+    lin_acc_buffer = observation_manager.get_observations(obs_item_key)[:,torch.tensor(indices)]
+    if ignore_gravity:
+        lin_acc_buffer[:,:, 2] += 9.81
+
+    if lin_acc_buffer.shape[0]>1:
+        diffs = lin_acc_buffer[:,1:] - lin_acc_buffer[:,:-1,:]
+    else:
+        print("the observation history buffer only has only the sensor data for one timsteps, the reward will be zero")
+        return torch.zeros(_env.num_envs,1) 
+    mags = torch.norm(diffs, dim=-1)            
+    return mags.sum(dim=1)
+
+def imu_ang_vel_jitter(
+    _env: GenesisEnv,
+    observation_manager: ObservationManager,
+    obs_item_key: str,
+) -> torch.Tensor:
+    """
+    Penalize changes in angular velocity (gyro jerk) using the IMU's internal queue.
+
+    Returns:
+        torch.Tensor of shape (num_envs,)
+    """
+    single_obs_size=3
+    indices=[]
+    running_offset=0
+    for _ in range(observation_manager._history_len):
+        indices.append(list(range(running_offset,running_offset+single_obs_size)))
+        running_offset+=single_obs_size
+    ang_vel_buffer = observation_manager.get_observations(obs_item_key)[:,torch.tensor(indices)]
+
+    if ang_vel_buffer.shape[0]>1:
+        diffs = ang_vel_buffer[:,1:] - ang_vel_buffer[:,:-1,:]
+    else:
+        print("the observation history buffer only has only the sensor data for one timsteps, the reward will be zero")
+        return torch.zeros(_env.num_envs,1) 
+    mags = torch.norm(diffs, dim=-1)            
+    return mags.sum(dim=1)
 
 """
 Contacts

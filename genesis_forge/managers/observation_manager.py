@@ -154,6 +154,9 @@ class ObservationManager(BaseManager):
         self.cfg: dict[str, ObservationConfigItem] = {}
         for name, cfg in cfg.items():
             self.cfg[name] = ObservationConfigItem(cfg, env)
+        
+        self.observation_item_indices={}
+        self.single_obs_size=0
 
     """
     Properties
@@ -192,8 +195,8 @@ class ObservationManager(BaseManager):
             return
 
         # Setup observation functions and the observation space
-        single_obs_size = self._setup_observation_functions()
-        self._observation_size = single_obs_size * self._history_len
+        self.single_obs_size = self._setup_observation_functions()
+        self._observation_size = self.single_obs_size * self._history_len
         self._observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -202,7 +205,7 @@ class ObservationManager(BaseManager):
         )
 
         # Fill history buffer
-        shape = (self.env.num_envs, single_obs_size)
+        shape = (self.env.num_envs, self.single_obs_size)
         self._history = [
             torch.zeros(shape, device=gs.device) for _ in range(self._history_len)
         ]
@@ -211,7 +214,7 @@ class ObservationManager(BaseManager):
             device=gs.device,
         )
 
-    def get_observations(self) -> torch.Tensor:
+    def get_observations(self,name=None) -> torch.Tensor:
         """Generate current observations for all environments."""
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
@@ -227,6 +230,14 @@ class ObservationManager(BaseManager):
             size = obs.shape[1]
             self._history_output[:, offset : offset + size] = obs
             offset += size
+        if name is not None:
+            lower_index,upper_index=self.observation_item_indices[name]
+            indices=[]
+            for offset in range(self._history_len):
+                indices.extend(range(self.single_obs_size*offset+lower_index,
+                                     self.single_obs_size*offset+upper_index))
+            # print( self._history_output.shape,"ll:",lower_index,"ul:",upper_index)
+            return self._history_output.clone()[:,torch.tensor(indices)]
         return self._history_output.clone()
 
     """
@@ -278,6 +289,8 @@ class ObservationManager(BaseManager):
                 value_size = value.shape[-1]
                 if value_size > 0:
                     output[:, offset : offset + value_size] = value
+                    if self.observation_item_indices.get(name) is None:
+                        self.observation_item_indices[name]=(offset,offset+value_size)
                     offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")

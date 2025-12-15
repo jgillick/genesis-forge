@@ -208,7 +208,21 @@ def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Ten
     return torch.norm(contact_manager.contacts[:, :, :], dim=-1)
 
 
+"""
+Rate limited sensors
+"""
+
+
 class SensorObservation(MdpFnClass):
+    """
+    Helper class for arte limited Sensor observations
+
+    Args:
+        env: The Genesis Forge environment
+        read: The function for recieving the data from the sensor
+        frequency: The frequency of the sensor in hertz
+    """
+
     def __init__(
         self,
         env: GenesisEnv,

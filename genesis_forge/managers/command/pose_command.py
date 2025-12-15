@@ -18,6 +18,9 @@ class PoseCommandRange(TypedDict):
     pos_x: CommandRangeValue
     pos_y: CommandRangeValue
     pos_z: CommandRangeValue
+    euler_x: CommandRangeValue
+    euler_y: CommandRangeValue
+    euler_z: CommandRangeValue
 
 
 class PoseDebugVisualizerConfig(TypedDict):
@@ -33,39 +36,41 @@ class PoseDebugVisualizerConfig(TypedDict):
     """The radius of the shaft of the debug arrows"""
 
     commanded_color: Tuple[float, float, float, float]
-    """The color of the commanded velocity arrow"""
-
+    """The color of the pose arrow"""
 
 
 DEFAULT_VISUALIZER_CONFIG: PoseDebugVisualizerConfig = {
     "envs_idx": None,
-    "sphere_offset": 0.03,
-    "sphere_radius": 0.02,
+    "arrow_offset": 0.03,
+    "arrow_radius": 0.02,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
 }
 
 
 class PoseCommandManager(CommandManager):
     """
-    Generates a position command from uniform distribution.
-    The command comprises of a linear velocity in x and y direction and an angular velocity around the z-axis.
+    Generates a pose command from uniform distribution.
+    The command comprises of a (x,y,z) position and (x,y,z) euler angles
 
     IMPORTANT: The position commands are interpreted as world-relative coordinates:
-    - X-axis: x coordinate of the target position
-    - Y-axis: y coordinate of the target position
-    - Z-axis: z coordinate of the target position
+    - pos-X-axis: x coordinate of the target position
+    - pos-Y-axis: y coordinate of the target position
+    - pos-Z-axis: z coordinate of the target position
+    - euler-X-axis: x coordinate of the target orientation
+    - euler-Y-axis: y coordinate of the target orientation
+    - euler-Z-axis: z coordinate of the target orientation
 
     :::{admonition} Debug Visualization
 
-        If you set `debug_visualizer` to True, target sphere will be rendered above the target pos
+        If you set `debug_visualizer` to True, target arrow will be rendered above the target pose
 
         Arrow meanings:
 
-        - GREEN: Commanded position for the robot in the world frame
+        - GREEN: Commanded pose for the robot in the world frame
 
     Args:
         env: The environment to control
-        range: The ranges of linear & angular velocities
+        range: The ranges of positions and orientation
         resample_time_sec: The time interval between changing the command
         debug_visualizer: Enable the debug arrow visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
@@ -75,13 +80,13 @@ class PoseCommandManager(CommandManager):
         class MyEnv(GenesisEnv):
             def config(self):
                 # Create a velocity command manager
-                self.command_manager = PoseCommandManager(
+                self.pose_command_manager = PoseCommandManager(
                     self,
                     visualize=True,
                     range = {
-                        "lin_vel_x_range": (-1.0, 1.0),
-                        "lin_vel_y_range": (-1.0, 1.0),
-                        "ang_vel_z_range": (-0.5, 0.5),
+                        "pos_x_range": (-5.0, 5.0),
+                        "pos_y_range": (-5.0, 5.0),
+                        "euler_z_range": (-1.57, 1.57),
                     }
                 )
 
@@ -89,18 +94,11 @@ class PoseCommandManager(CommandManager):
                     self,
                     logging_enabled=True,
                     cfg={
-                        "tracking_lin_vel": {
+                        "tracking_pose": {
                             "weight": 1.0,
-                            "fn": rewards.command_tracking_lin_vel,
+                            "fn": rewards.command_tracking_pose,
                             "params": {
-                                "vel_cmd_manager": self.velocity_command,
-                            },
-                        },
-                        "tracking_ang_vel": {
-                            "weight": 1.0,
-                            "fn": rewards.command_tracking_ang_vel,
-                            "params": {
-                                "vel_cmd_manager": self.velocity_command,
+                                "pose_cmd_manager": self.pose_command_manager,
                             },
                         },
                         # ... other rewards ...
@@ -111,7 +109,7 @@ class PoseCommandManager(CommandManager):
                 ObservationManager(
                     self,
                     cfg={
-                        "velocity_cmd": {"fn": self.velocity_command.observation},
+                        "pose_cmd": {"fn": self.pose_command_manager.observation},
                         # ... other observations ...
                     },
                 )
@@ -148,12 +146,16 @@ class PoseCommandManager(CommandManager):
             return
 
     def build(self):
-        """Build the position command manager"""
+        """Build the pose command manager"""
         super().build()
 
         # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
-        if not self.debug_visualizer or self.visualizer_cfg is None or self.env.scene is None:
-            return        
+        if (
+            not self.debug_visualizer
+            or self.visualizer_cfg is None
+            or self.env.scene is None
+        ):
+            return
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
         if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
             self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
@@ -166,7 +168,7 @@ class PoseCommandManager(CommandManager):
             return
         super().step()
         self._render_arrow()
-        
+
     def use_gamepad(
         self,
         gamepad: Gamepad,
@@ -185,9 +187,9 @@ class PoseCommandManager(CommandManager):
             pos_x_axis: Map this gamepad axis index to the position in the x-direction.
             pos_y_axis: Map this gamepad axis index to the position in the y-direction.
             pos_z_axis: Map this gamepad axis index to the position in the z-direction.
-            euler_x_axis: Map this gamepad axis index to the euler in the x-direction.
-            euler_y_axis: Map this gamepad axis index to the euler in the y-direction.
-            euler_z_axis: Map this gamepad axis index to the euler in the z-direction.
+            euler_x_axis: Map this gamepad axis index to the orientation in the x-direction.
+            euler_y_axis: Map this gamepad axis index to the orientation in the y-direction.
+            euler_z_axis: Map this gamepad axis index to the orientation in the z-direction.
         """
         super().use_gamepad(
             gamepad,
@@ -207,9 +209,9 @@ class PoseCommandManager(CommandManager):
 
     def _render_arrow(self):
         """
-        Render the command sphere showing position commands.
+        Render the command arrow showing pose commands.
 
-        The commanded position sphere (green) shows the position in the world frame 
+        The commanded pose arrow (green) shows the pose in the world frame
         """
         if not self.debug_visualizer:
             return
@@ -235,7 +237,7 @@ class PoseCommandManager(CommandManager):
         try:
             node = self.env.scene.draw_debug_arrow(
                 pos=pos.cpu().numpy(),
-                vec=np.tile([0,0,1], (pos.shape[0], 1))@euler_to_R(euler),
+                vec=np.tile([0, 0, 1], (pos.shape[0], 1)) @ euler_to_R(euler),
                 color=color,
                 radius=self.visualizer_cfg["arrow_radius"],
             )

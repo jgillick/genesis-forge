@@ -4,10 +4,10 @@ from .termination_manager import TerminationManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
 from .command import (
-    CommandManager, 
+    CommandManager,
     PositionCommandManager,
     PoseCommandManager,
-    VelocityCommandManager
+    VelocityCommandManager,
 )
 from .contact import ContactManager
 from .terrain_manager import TerrainManager

@@ -175,7 +175,11 @@ class VelocityCommandManager(CommandManager):
 
     def build_debug(self):
         """Build the debug components of the velocity command manager"""
-        if not self.debug_visualizer or self.visualizer_cfg is None or self.env.scene is None:
+        if (
+            not self.debug_visualizer
+            or self.visualizer_cfg is None
+            or self.env.scene is None
+        ):
             return
 
         # Pre-allocate buffers

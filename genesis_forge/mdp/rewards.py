@@ -290,7 +290,7 @@ Position Command Rewards
 """
 
 
-def commonad_tracking_base_position(
+def commonad_tracking_position(
     env: GenesisEnv,
     command: torch.Tensor = None,
     position_cmd_manager: PositionCommandManager = None,
@@ -300,7 +300,7 @@ def commonad_tracking_base_position(
     entity_manager: EntityManager = None,
 ) -> torch.Tensor:
     """
-    Penalize base pose away from target.
+    Penalize base pos away from target.
 
     Args:
         env: The Genesis environment containing the robot
@@ -345,7 +345,7 @@ Pose Command Rewards
 """
 
 
-def command_tracking_base_pose(
+def command_tracking_pose(
     env: GenesisEnv,
     command: torch.Tensor = None,
     pose_cmd_manager: PoseCommandManager = None,
@@ -356,7 +356,7 @@ def command_tracking_base_pose(
     entity_manager: 'EntityManager' = None,
 ) -> torch.Tensor:
     """
-    Penalize base pose away from target (both position and Euler angles) with separate sensitivities.
+    Penalize base pose away from target (both position and orientation) with separate sensitivities.
 
     Args:
         env: The Genesis environment containing the robot

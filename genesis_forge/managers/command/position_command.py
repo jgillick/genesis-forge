@@ -35,7 +35,6 @@ class PositionDebugVisualizerConfig(TypedDict):
     """The color of the commanded velocity arrow"""
 
 
-
 DEFAULT_VISUALIZER_CONFIG: PositionDebugVisualizerConfig = {
     "envs_idx": None,
     "sphere_offset": 0.03,
@@ -74,13 +73,13 @@ class PositionCommandManager(CommandManager):
         class MyEnv(GenesisEnv):
             def config(self):
                 # Create a velocity command manager
-                self.command_manager = PositionCommandManager(
+                self.position_command_manager = PositionCommandManager(
                     self,
                     visualize=True,
                     range = {
-                        "lin_vel_x_range": (-1.0, 1.0),
-                        "lin_vel_y_range": (-1.0, 1.0),
-                        "ang_vel_z_range": (-0.5, 0.5),
+                        "pos_x_range": (-5.0, 5.0),
+                        "pos_y_range": (-5.0, 5.0),
+                        "pos_z_range": (0.29, 0.31),
                     }
                 )
 
@@ -88,18 +87,11 @@ class PositionCommandManager(CommandManager):
                     self,
                     logging_enabled=True,
                     cfg={
-                        "tracking_lin_vel": {
+                        "tracking_position": {
                             "weight": 1.0,
-                            "fn": rewards.command_tracking_lin_vel,
+                            "fn": rewards.command_tracking_pos,
                             "params": {
-                                "vel_cmd_manager": self.velocity_command,
-                            },
-                        },
-                        "tracking_ang_vel": {
-                            "weight": 1.0,
-                            "fn": rewards.command_tracking_ang_vel,
-                            "params": {
-                                "vel_cmd_manager": self.velocity_command,
+                                "position_cmd_manager": self.position_command_manager,
                             },
                         },
                         # ... other rewards ...
@@ -110,7 +102,7 @@ class PositionCommandManager(CommandManager):
                 ObservationManager(
                     self,
                     cfg={
-                        "velocity_cmd": {"fn": self.velocity_command.observation},
+                        "position_cmd": {"fn": self.position_command_manager.observation},
                         # ... other observations ...
                     },
                 )
@@ -151,7 +143,11 @@ class PositionCommandManager(CommandManager):
         super().build()
 
         # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
-        if not self.debug_visualizer or self.visualizer_cfg is None or self.env.scene is None:
+        if (
+            not self.debug_visualizer
+            or self.visualizer_cfg is None
+            or self.env.scene is None
+        ):
             return
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
         if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
@@ -160,7 +156,7 @@ class PositionCommandManager(CommandManager):
             self.debug_envs_idx = list[int](range(self.env.num_envs))
 
     def step(self):
-        """Render the command arrows"""
+        """Render the command spheres"""
         if not self.enabled:
             return
         super().step()
@@ -199,7 +195,7 @@ class PositionCommandManager(CommandManager):
         """
         Render the command sphere showing position commands.
 
-        The commanded position sphere (green) shows the position in the world frame 
+        The commanded position sphere (green) shows the position in the world frame
         """
         if not self.debug_visualizer:
             return
@@ -231,4 +227,3 @@ class PositionCommandManager(CommandManager):
                 self._sphere_nodes.append(node)
         except Exception as e:
             print(f"Error adding debug visualizing in PositionCommandManager: {e}")
-            

@@ -3,7 +3,6 @@ from typing import Tuple, TypedDict
 
 import os
 import torch
-import genesis as gs
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import transform_by_quat
@@ -147,7 +146,7 @@ class VelocityCommandManager(CommandManager):
         self.debug_envs_idx = None
 
         self._is_standing_env = torch.zeros(
-            env.num_envs, dtype=torch.bool, device=gs.device
+            env.num_envs, dtype=torch.bool, device=self.device
         )
 
     """
@@ -163,7 +162,7 @@ class VelocityCommandManager(CommandManager):
             return
 
         # Set standing environments
-        rand_buffer = torch.empty(len(env_ids), device=gs.device).uniform_(0.0, 1.0)
+        rand_buffer = torch.empty(len(env_ids), device=self.device).uniform_(0.0, 1.0)
         self._is_standing_env[env_ids] = rand_buffer <= self.standing_probability
         standing_envs_idx = self._is_standing_env.nonzero(as_tuple=False).flatten()
         self._command[standing_envs_idx, :] = 0.0
@@ -179,11 +178,11 @@ class VelocityCommandManager(CommandManager):
             return
 
         # Pre-allocate buffers
-        self._arrow_pos_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
-        self._actual_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
-        self._vec_3d_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
+        self._arrow_pos_buffer = torch.zeros(self.env.num_envs, 3, device=self.device)
+        self._actual_vec_buffer = torch.zeros(self.env.num_envs, 3, device=self.device)
+        self._vec_3d_buffer = torch.zeros(self.env.num_envs, 3, device=self.device)
         self._scene_env_offset = torch.from_numpy(self.env.scene.envs_offset).to(
-            gs.device
+            self.device
         )
 
         # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx

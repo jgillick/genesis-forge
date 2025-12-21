@@ -1,7 +1,6 @@
 import torch
 from tensordict import TensorDict
 from typing import Any, Union, Optional
-import genesis as gs
 from importlib import metadata
 
 from genesis_forge.genesis_env import GenesisEnv
@@ -32,10 +31,6 @@ class RslRlWrapper(Wrapper):
                 self.rsl3 = True
         except:
             pass
-
-    @property
-    def device(self) -> str:
-        return gs.device
 
     def step(
         self, actions: torch.Tensor
@@ -111,11 +106,11 @@ class RslRlWrapper(Wrapper):
                 if isinstance(extras["observations"], TensorDict):
                     obs = extras["observations"]
                 else:
-                    obs = TensorDict(extras["observations"], device=gs.device)
+                    obs = TensorDict(extras["observations"], device=self.device)
             else:
                 obs = TensorDict(
                     {"policy": obs},
                     batch_size=[obs.shape[0]],
-                    device=gs.device,
+                    device=self.device,
                 )
         return obs

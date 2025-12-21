@@ -1,9 +1,10 @@
 import torch
+import numpy as np
 from typing import Any, TypedDict
 from gymnasium import spaces
 import genesis as gs
 from tensordict import TensorDict
-from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.genesis_env import GenesisEnv, EnvMode
 from genesis_forge.managers.base import BaseManager, ManagerType
 from genesis_forge.managers import (
     ContactManager,
@@ -19,12 +20,12 @@ from genesis_forge.managers import (
 
 
 class ManagersDict(TypedDict):
-    actuator: ActuatorManager | None
+    actuator: list[ActuatorManager]
     contact: list[ContactManager]
     entity: list[EntityManager]
     command: list[CommandManager]
     terrain: list[TerrainManager]
-    action: PositionActionManager | None
+    action: list[PositionActionManager]
     observation: list[ObservationManager]
     reward: RewardManager | None
     termination: TerminationManager | None
@@ -119,6 +120,7 @@ class ManagedEnvironment(GenesisEnv):
         max_episode_length_sec: int | None = 10,
         max_episode_random_scaling: float = 0.0,
         extras_logging_key: str = "episode",
+        env_mode: EnvMode = "train",
     ):
         super().__init__(
             num_envs=num_envs,
@@ -126,6 +128,7 @@ class ManagedEnvironment(GenesisEnv):
             max_episode_length_sec=max_episode_length_sec,
             max_episode_random_scaling=max_episode_random_scaling,
             extras_logging_key=extras_logging_key,
+            env_mode=env_mode,
         )
 
         self.managers: ManagersDict = {
@@ -133,26 +136,27 @@ class ManagedEnvironment(GenesisEnv):
             "entity": [],
             "command": [],
             "terrain": [],
+            "actuator": [],
+            "action": [],
             # there can only be one of each of these
-            "actuator": None,
-            "action": None,
             "observation": [],
             "reward": None,
             "termination": None,
         }
 
         self._action_space = None
+        self._action_ranges: list[tuple[int, int]] = []
         self._observation_space = None
         self._reward_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_float
+            (self.num_envs,), device=self.device, dtype=self.float_dtype
         )
         self._terminated_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
+            (self.num_envs,), device=self.device, dtype=self.bool_dtype
         )
         self._truncated_buf = torch.zeros(
-            (self.num_envs,), device=gs.device, dtype=gs.tc_bool
+            (self.num_envs,), device=self.device, dtype=self.bool_dtype
         )
-        self._observations_buf = TensorDict({}, device=gs.device)
+        self._observations_buf = TensorDict({}, device=self.device)
 
     """
     Properties
@@ -161,13 +165,9 @@ class ManagedEnvironment(GenesisEnv):
     @property
     def action_space(self) -> torch.Tensor:
         """
-        The action space, provided by the action manager, if it exists.
+        The action space, provided by the action manager(s), if any exist.
         """
-        if self.managers["action"] is not None:
-            return self.managers["action"].action_space
-        if self._action_space is not None:
-            return self._action_space
-        return None
+        return self._action_space
 
     @action_space.setter
     def action_space(self, action_space: spaces.Space):
@@ -260,10 +260,11 @@ class ManagedEnvironment(GenesisEnv):
 
         for terrain_manager in self.managers["terrain"]:
             terrain_manager.build()
-        if self.managers["actuator"] is not None:
-            self.managers["actuator"].build()
-        if self.managers["action"] is not None:
-            self.managers["action"].build()
+
+        for actuator_manager in self.managers["actuator"]:
+            actuator_manager.build()
+        self._build_action_managers()
+
         for contact_manager in self.managers["contact"]:
             contact_manager.build()
         if self.managers["termination"] is not None:
@@ -292,8 +293,11 @@ class ManagedEnvironment(GenesisEnv):
         super().step(actions)
 
         # Execute the actions and a simulation step
-        if self.managers["action"] is not None:
-            self.managers["action"].step(actions)
+        for i, action_manager in enumerate[PositionActionManager](
+            self.managers["action"]
+        ):
+            (start, end) = self._action_ranges[i]
+            action_manager.step(actions[:, start:end])
         self.scene.step()
 
         # Update entity managers
@@ -353,10 +357,10 @@ class ManagedEnvironment(GenesisEnv):
         """
         (obs, _) = super().reset(env_ids)
 
-        if self.managers["actuator"] is not None:
-            self.managers["actuator"].reset(env_ids)
-        if self.managers["action"] is not None:
-            self.managers["action"].reset(env_ids)
+        for actuator_manager in self.managers["actuator"]:
+            actuator_manager.reset(env_ids)
+        for action_manager in self.managers["action"]:
+            action_manager.reset(env_ids)
         for entity_manager in self.managers["entity"]:
             entity_manager.reset(env_ids)
         for contact_manager in self.managers["contact"]:
@@ -383,7 +387,7 @@ class ManagedEnvironment(GenesisEnv):
         If you use the ObservationManager, this will be handled automatically.
         Otherwise, override this method to return the observations.
         """
-        self.extras["observations"] = TensorDict({}, device=gs.device)
+        self.extras["observations"] = TensorDict({}, device=self.device)
 
         # Get observations
         if len(self.managers["observation"]) > 0:
@@ -397,3 +401,36 @@ class ManagedEnvironment(GenesisEnv):
 
         # Otherwise, call super
         return super().get_observations()
+
+    """
+    Internal methods
+    """
+
+    def _build_action_managers(self):
+        """
+        Build the action managers and combine the action spaces.
+        """
+        if len(self.managers["action"]) == 0:
+            return
+
+        low = []
+        high = []
+        size = 0
+        self._action_ranges = []
+        for action_manager in self.managers["action"]:
+            action_manager.build()
+
+            start = size
+            size += action_manager.action_space.shape[0]
+            end = size
+            self._action_ranges.append((start, end))
+
+            low.append(action_manager.action_space.low)
+            high.append(action_manager.action_space.high)
+
+        self._action_space = spaces.Box(
+            low=np.concatenate(low),
+            high=np.concatenate(high),
+            shape=(size,),
+            dtype=np.float32,
+        )

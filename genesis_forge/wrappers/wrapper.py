@@ -1,7 +1,6 @@
 from typing import Any, TypeVar, Sequence
 
 import torch
-import genesis as gs
 from gymnasium import spaces
 from genesis_forge.genesis_env import GenesisEnv
 
@@ -33,6 +32,22 @@ class Wrapper:
     """
 
     @property
+    def device(self):
+        self.env.device
+
+    @property
+    def float_dtype(self):
+        self.env.float_dtype
+
+    @property
+    def int_dtype(self):
+        self.env.int_dtype
+
+    @property
+    def bool_dtype(self):
+        self.env.bool_dtype
+
+    @property
     def dt(self) -> float:
         """The time step of the environment."""
         return self.env.dt
@@ -43,7 +58,7 @@ class Wrapper:
         return self.env.num_envs
 
     @property
-    def scene(self) -> gs.Scene:
+    def scene(self) -> Any:
         """Get the environment scene."""
         return self.env.scene
 

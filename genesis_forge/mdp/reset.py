@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import torch
 import math
-import genesis as gs
 from genesis.utils.geom import (
     xyz_to_quat,
 )
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.terrain_manager import TerrainManager
 from genesis_forge.utils import links_by_name_pattern
@@ -55,7 +55,7 @@ def set_rotation(
         z: The z angle or range to set the rotation to.
     """
 
-    angle_buffer = torch.zeros((len(envs_idx), 3), device=gs.device)
+    angle_buffer = torch.zeros((len(envs_idx), 3), device=env.device)
     if isinstance(x, tuple):
         angle_buffer[:, 0].uniform_(*x)
     if isinstance(y, tuple):
@@ -90,17 +90,17 @@ class position(ResetMdpFnClass):
         zero_velocity: bool = True,
     ):
         self.zero_velocity = zero_velocity
-        self.reset_pos = torch.tensor(position, device=gs.device)
+        self.reset_pos = torch.tensor(position, device=env.device)
         self._pos_buffer = torch.zeros(
-            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+            (env.num_envs, 3), device=env.device, dtype=env.float_dtype
         )
 
         self.reset_quat = None
         self._quat_buffer = None
         if quat is not None:
-            self.reset_quat = torch.tensor(quat, device=gs.device)
+            self.reset_quat = torch.tensor(quat, device=env.device)
             self._quat_buffer = torch.zeros(
-                (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+                (env.num_envs, 4), device=env.device, dtype=env.float_dtype
             )
 
     def __call__(
@@ -167,10 +167,10 @@ class randomize_terrain_position(ResetMdpFnClass):
         Initialize the buffers
         """
         self._rotation_buffer = torch.zeros(
-            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+            (self.env.num_envs, 3), device=self.env.device, dtype=self.env.float_dtype
         )
         self._quat_buffer = torch.zeros(
-            (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+            (self.env.num_envs, 4), device=self.env.device, dtype=self.env.float_dtype
         )
 
     def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
@@ -184,15 +184,15 @@ class randomize_terrain_position(ResetMdpFnClass):
 
         if isinstance(x, tuple):
             self._rotation_buffer[envs_idx, 0] = torch.empty(
-                n_envs, device=gs.device
+                n_envs, device=self.env.device
             ).uniform_(*x)
         if isinstance(y, tuple):
             self._rotation_buffer[envs_idx, 1] = torch.empty(
-                n_envs, device=gs.device
+                n_envs, device=self.env.device
             ).uniform_(*y)
         if isinstance(z, tuple):
             self._rotation_buffer[envs_idx, 2] = torch.empty(
-                n_envs, device=gs.device
+                n_envs, device=self.env.device
             ).uniform_(*z)
 
         # Set angle as quat
@@ -267,7 +267,8 @@ class randomize_link_mass_shift(ResetMdpFnClass):
             if len(links) > 0:
                 self._links_idx_local = [link.idx_local for link in links]
                 self._mass_shift_buffer = torch.zeros(
-                    (self.env.num_envs, len(self._links_idx_local)), device=gs.device
+                    (self.env.num_envs, len(self._links_idx_local)),
+                    device=self.env.device,
                 )
             else:
                 raise ValueError(
@@ -284,6 +285,71 @@ class randomize_link_mass_shift(ResetMdpFnClass):
     ):
         # Randomize mass
         self._mass_shift_buffer[envs_idx, :].uniform_(*mass_range)
+
+        # Set mass on entity
+        self._entity.set_mass_shift(
+            self._mass_shift_buffer[envs_idx],
+            links_idx_local=self._links_idx_local,
+            envs_idx=envs_idx,
+        )
+
+
+class randomize_link_com_shift(ResetMdpFnClass):
+    """
+    Randomly modify the center of mass(COM) of one or more links of the entity.
+    This picks a random shift from `x_range','y_range','z_range' bounds and passes it to `set_com_shift` for each environment.
+    See: https://genesis-world.readthedocs.io/en/latest/api_reference/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_mass_shift
+    Args:
+        env: The environment
+        entity: The entity to set the rotation of.
+        link_name: The name, or regex pattern, of the link(s) to set the mass for.
+        com_shift_ranges: The range of distance to add to the center of mass(mass)
+    """
+
+    def __init__(
+        self,
+        _env: GenesisEnv,
+        entity: RigidEntity,
+        link_name: str,
+        com_shift_ranges: tuple[
+            tuple[float, float], tuple[float, float], tuple[float, float]
+        ],
+    ):
+        self.env = _env
+        self._entity = entity
+        self._link_name = link_name
+        self._links_idx_local = []
+        self._com_shift_buffer: torch.tensor | None = None
+        self.build()
+
+    def build(self):
+        self._links_idx_local = []
+        self._orig_mass = None
+        if self._link_name is not None:
+            links = links_by_name_pattern(self._entity, self._link_name)
+            if len(links) > 0:
+                self._links_idx_local = [link.idx_local for link in links]
+                self._mass_shift_buffer = torch.zeros(
+                    (self.env.num_envs, len(self._links_idx_local), 3),
+                    device=self.env.device,
+                )
+            else:
+                raise ValueError(
+                    f"No links found with name/pattern '{self._link_name}'"
+                )
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        envs_idx: list[int],
+        link_name: str,
+        com_shift_ranges: tuple[
+            tuple[float, float], tuple[float, float], tuple[float, float]
+        ],
+    ):
+        # Randomize mass
+        self._mass_shift_buffer[envs_idx, :].uniform_(*com_shift_ranges)
 
         # Set mass on entity
         self._entity.set_mass_shift(

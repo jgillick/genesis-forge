@@ -427,12 +427,14 @@ class ActuatorManager(BaseManager):
             return
 
         # Initialize the buffers
-        value_buffer = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
-        noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float).fill_(
-            self._default_noise_scale
+        value_buffer = torch.zeros(
+            (num_dofs,), device=self.device, dtype=self.float_dtype
         )
-        noise_buffer = torch.zeros_like(value_buffer, device=gs.device)
-        output_buffer = torch.zeros_like(value_buffer, device=gs.device)
+        noise = torch.zeros(
+            (num_dofs,), device=self.device, dtype=self.float_dtype
+        ).fill_(self._default_noise_scale)
+        noise_buffer = torch.zeros_like(value_buffer, device=self.device)
+        output_buffer = torch.zeros_like(value_buffer, device=self.device)
 
         for pattern, value in config.items():
             found = False

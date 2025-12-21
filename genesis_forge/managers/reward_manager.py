@@ -1,5 +1,4 @@
 import torch
-import genesis as gs
 from typing import Iterator, TypedDict, Callable, Any
 
 from genesis_forge.genesis_env import GenesisEnv
@@ -105,16 +104,16 @@ class RewardManager(BaseManager):
 
         # Initialize buffers
         self._reward_buf = torch.zeros(
-            (env.num_envs,), device=gs.device, dtype=gs.tc_float
+            (env.num_envs,), device=self.device, dtype=self.float_dtype
         )
         self._episode_seconds = torch.zeros(
-            (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
+            (self.env.num_envs,), device=self.device, dtype=self.float_dtype
         )
         self._episode_mean: dict[str, torch.Tensor] = dict()
         self._episode_data: dict[str, torch.Tensor] = dict()
         for name in self.cfg.keys():
             self._episode_data[name] = torch.zeros(
-                (env.num_envs,), device=gs.device, dtype=gs.tc_float
+                (env.num_envs,), device=self.device, dtype=self.float_dtype
             )
 
     @property
@@ -197,7 +196,7 @@ class RewardManager(BaseManager):
     def reset(self, envs_idx: list[int] | None = None):
         """Log the reward mean values at the end of the episode"""
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = torch.arange(self.env.num_envs, device=self.device)
 
         if self.enabled and self.logging_enabled:
             logging_dict = self.env.extras[self.env.extras_logging_key]

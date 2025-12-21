@@ -1,6 +1,5 @@
 import torch
 from typing import TypedDict, Callable, Any
-import genesis as gs
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.managers.config import TerminationConfigItem
@@ -114,7 +113,7 @@ class TerminationManager(BaseManager):
 
         # Buffers
         self._terminated_buf = torch.zeros(
-            env.num_envs, device=gs.device, dtype=torch.bool
+            env.num_envs, device=self.device, dtype=self.bool_dtype
         )
         self._truncated_buf = torch.zeros_like(self._terminated_buf)
 

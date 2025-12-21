@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from gymnasium import spaces
-import genesis as gs
 from typing import TypedDict, Callable, Any
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
@@ -204,11 +203,11 @@ class ObservationManager(BaseManager):
         # Fill history buffer
         shape = (self.env.num_envs, single_obs_size)
         self._history = [
-            torch.zeros(shape, device=gs.device) for _ in range(self._history_len)
+            torch.zeros(shape, device=self.device) for _ in range(self._history_len)
         ]
         self._history_output = torch.zeros(
             (self.env.num_envs, self._observation_size),
-            device=gs.device,
+            device=self.device,
         )
 
     def get_observations(self) -> torch.Tensor:

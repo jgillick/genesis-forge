@@ -124,66 +124,6 @@ class VelocityActionManager(BaseActionManager):
         self._dofs_vel_buffer: torch.Tensor = None
 
     """
-    Properties
-    """
-    """
-    DOF Getters
-    """
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_position(self, noise: float = 0.0):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current position of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_position`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the position values returned.
-        """
-        return self.actuators.get_dofs_position(noise, self.dofs_idx)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_velocity(self, noise: float = 0.0, clip: tuple[float, float] = None):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current velocity of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_velocity`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the velocity values returned.
-            clip: Clip the velocity returned.
-        """
-        return self.actuators.get_dofs_velocity(noise, clip, self.dofs_idx)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_force(self, noise: float = 0.0, clip_to_max_force: bool = False):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the force experienced by the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_force`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the force values returned.
-            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter.
-
-        Returns:
-            The force experienced by the enabled DOFs.
-        """
-        return self.actuators.get_dofs_force(noise, clip_to_max_force, self.dofs_idx)
-
-    """
     Lifecycle Operations
     """
 

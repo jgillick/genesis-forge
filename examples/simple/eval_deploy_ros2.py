@@ -4,9 +4,10 @@ import torch
 import pickle
 import argparse
 from importlib import metadata
-import genesis as gs
 
-from genesis_forge.wrappers import RslRlWrapper
+import rclpy
+from ros2_interface import RosInterface
+
 from environment import Go2SimpleEnv
 
 try:
@@ -46,13 +47,26 @@ def get_latest_model(log_dir: str) -> str:
     return sorted_models[-1]
 
 
+def setup_observations(env: Go2SimpleEnv, ros_interface: RosInterface):
+    # Assign a function to each observation that will return real sensor data
+    obs = env.observation_manager.cfg
+    obs["angle_velocity"].fn = lambda env: ros_interface.get_angular_velocity()
+    obs["linear_velocity"].fn = lambda env: ros_interface.get_linear_velocity()
+    obs["projected_gravity"].fn = lambda env: torch.zeros(3)
+    obs["dof_position"].fn = lambda env: ros_interface.get_dofs_position()
+    obs["dof_velocity"].fn = lambda env: ros_interface.get_dofs_velocity()
+    # No need to update the actions observation, as that will be handled by the environment automatically
+
+
 def main():
     # Processor backend (GPU or CPU)
-    backend = gs.gpu
+    rclpy.init()
     if args.device == "cpu":
-        backend = gs.cpu
+        device = torch.device("cpu")
         torch.set_default_device("cpu")
-    gs.init(logging_level="warning", backend=backend)
+    elif args.device == "gpu":
+        device = torch.device("cpu")
+        torch.set_default_device("cuda:0")
 
     # Load training configuration
     log_path = f"./logs/{args.exp_name}"
@@ -60,27 +74,36 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False, env_mode="eval")
-    env = RslRlWrapper(env)
+    env = Go2SimpleEnv(num_envs=1, headless=False, mode="real")
     env.build()
+    pos_joints = []
+    vel_joints = []
+    force_joints = []
+    ros_interface = RosInterface(pos_joints, vel_joints, force_joints)
+    if rclpy.ok():
+        rclpy.spin_once(ros_interface, timeout_sec=0.1)
 
-    # Eval
+    # Update observations to use real sensors
+    setup_observations(env, ros_interface=ros_interface)
+
+    # Load the trained policy
     print("🎬 Loading last model...")
-    runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
+    runner = OnPolicyRunner(env, cfg, log_path, device=device)
     runner.load(model)
-    policy = runner.get_inference_policy(device=gs.device)
+    policy = runner.get_inference_policy(device=device)
 
     try:
         obs, _ = env.reset()
         with torch.no_grad():
-            while True:
+            while True and rclpy.ok():
+                rclpy.spin_once(ros_interface, timeout_sec=0.1)
                 actions = policy(obs)
                 obs, _rews, _dones, _infos = env.step(actions)
+                # Get actions to send to the ros_interface
+                ros_interface._pos_actions = env.action_manager.get_actions()
+
     except KeyboardInterrupt:
         pass
-    except gs.GenesisException as e:
-        if e.message != "Viewer closed.":
-            raise e
     except Exception as e:
         raise e
 

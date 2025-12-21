@@ -1,3 +1,8 @@
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# PLACE_HOLDER
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 import os
 import glob
 import torch
@@ -6,7 +11,6 @@ import argparse
 from importlib import metadata
 import genesis as gs
 
-from genesis_forge.wrappers import RslRlWrapper
 from environment import Go2SimpleEnv
 
 try:
@@ -46,6 +50,17 @@ def get_latest_model(log_dir: str) -> str:
     return sorted_models[-1]
 
 
+def setup_observations(env: Go2SimpleEnv):
+    # Assign a function to each observation that will return real sensor data
+    obs = env.observation_manager.cfg
+    obs["angle_velocity"].fn = lambda env: torch.zeros(3)
+    obs["linear_velocity"].fn = lambda env: torch.zeros(3)
+    obs["projected_gravity"].fn = lambda env: torch.zeros(3)
+    obs["dof_position"].fn = lambda env: torch.zeros(12)
+    obs["dof_velocity"].fn = lambda env: torch.zeros(12)
+    # No need to update the actions observation, as that will be handled by the environment automatically
+
+
 def main():
     # Processor backend (GPU or CPU)
     backend = gs.gpu
@@ -60,11 +75,13 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False, env_mode="eval")
-    env = RslRlWrapper(env)
+    env = Go2SimpleEnv(num_envs=1, headless=False, mode="real")
     env.build()
 
-    # Eval
+    # Update observations to use real sensors
+    setup_observations(env)
+
+    # Load the trained policy
     print("🎬 Loading last model...")
     runner = OnPolicyRunner(env, cfg, log_path, device=gs.device)
     runner.load(model)
@@ -76,6 +93,11 @@ def main():
             while True:
                 actions = policy(obs)
                 obs, _rews, _dones, _infos = env.step(actions)
+
+                # Get actions to send to the actuators
+                actions = env.action_manager.get_actions()
+                # ...send the actuator values to the actuators
+
     except KeyboardInterrupt:
         pass
     except gs.GenesisException as e:

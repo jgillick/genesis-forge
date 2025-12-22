@@ -10,13 +10,10 @@ from genesis_forge.gamepads import Gamepad
 from .command_manager import CommandManager, CommandRangeValue
 
 
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
 class PositionCommandRange(TypedDict):
-    pos_x: CommandRangeValue
-    pos_y: CommandRangeValue
-    pos_z: CommandRangeValue
+    x: CommandRangeValue
+    y: CommandRangeValue
+    z: CommandRangeValue
 
 
 class PositionDebugVisualizerConfig(TypedDict):
@@ -26,13 +23,13 @@ class PositionDebugVisualizerConfig(TypedDict):
     """The indices of the environments to visualize. If None, all environments will be visualized."""
 
     sphere_offset: float
-    """The vertical offset of the debug arrows from the top of the robot"""
+    """The vertical offset of the debug sphere from the top of the robot"""
 
     sphere_radius: float
-    """The radius of the shaft of the debug arrows"""
+    """The radius of the shaft of the debug sphere"""
 
     commanded_color: Tuple[float, float, float, float]
-    """The color of the commanded velocity arrow"""
+    """The color of the commanded position sphere"""
 
 
 DEFAULT_VISUALIZER_CONFIG: PositionDebugVisualizerConfig = {
@@ -46,7 +43,7 @@ DEFAULT_VISUALIZER_CONFIG: PositionDebugVisualizerConfig = {
 class PositionCommandManager(CommandManager):
     """
     Generates a position command from uniform distribution.
-    The command comprises of a linear velocity in x and y direction and an angular velocity around the z-axis.
+    The command comprises of a position in the x, y, and z axes.
 
     IMPORTANT: The position commands are interpreted as world-relative coordinates:
     - X-axis: x coordinate of the target position
@@ -75,11 +72,11 @@ class PositionCommandManager(CommandManager):
                 # Create a velocity command manager
                 self.position_command_manager = PositionCommandManager(
                     self,
-                    visualize=True,
+                    debug_visualizer=True,
                     range = {
-                        "pos_x_range": (-5.0, 5.0),
-                        "pos_y_range": (-5.0, 5.0),
-                        "pos_z_range": (0.29, 0.31),
+                        "x": (-5.0, 5.0),
+                        "y": (-5.0, 5.0),
+                        "z": (0.29, 0.31),
                     }
                 )
 
@@ -122,21 +119,9 @@ class PositionCommandManager(CommandManager):
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self.debug_envs_idx = None
 
-        self._is_standing_env = torch.zeros(
-            env.num_envs, dtype=torch.bool, device=gs.device
-        )
-
     """
     Lifecycle Operations
     """
-
-    def resample_command(self, env_ids: list[int]):
-        """
-        Overwrites commands for environments that should be standing still.
-        """
-        super().resample_command(env_ids)
-        if not self.enabled:
-            return
 
     def build(self):
         """Build the position command manager"""
@@ -165,25 +150,25 @@ class PositionCommandManager(CommandManager):
     def use_gamepad(
         self,
         gamepad: Gamepad,
-        pos_x_axis: int = 0,
-        pos_y_axis: int = 1,
-        pos_z_axis: int = 2,
+        x: int = 0,
+        y: int = 1,
+        z: int = 2,
     ):
         """
         Use a connected gamepad to control the command.
 
         Args:
             gamepad: The gamepad to use.
-            pos_x_axis: Map this gamepad axis index to the position in the x-direction.
-            pos_y_axis: Map this gamepad axis index to the position in the y-direction.
-            pos_z_axis: Map this gamepad axis index to the position in the z-direction.
+            x: Map this gamepad axis index to the position in the x-direction.
+            y: Map this gamepad axis index to the position in the y-direction.
+            z: Map this gamepad axis index to the position in the z-direction.
         """
         super().use_gamepad(
             gamepad,
             range_axis={
-                "pos_x": pos_x_axis,
-                "pos_y": pos_y_axis,
-                "pos_z": pos_z_axis,
+                "x": x,
+                "y": y,
+                "z": z,
             },
         )
 
@@ -200,13 +185,13 @@ class PositionCommandManager(CommandManager):
         if not self.debug_visualizer:
             return
 
-        # Remove existing arrows
+        # Remove existing spheres
         for sphere in self._sphere_nodes:
             self.env.scene.clear_debug_object(sphere)
         self._sphere_nodes = []
 
         for i in self.debug_envs_idx:
-            # Target arrow (robot-relative command transformed to world coordinates for visualization)
+            # Target sphere in the world frame for visualization)
             self._draw_sphere(
                 pos=self.command[i],
                 color=self.visualizer_cfg["commanded_color"],

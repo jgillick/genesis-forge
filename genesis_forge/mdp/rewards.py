@@ -290,7 +290,7 @@ Position Command Rewards
 """
 
 
-def commonad_tracking_position(
+def command_tracking_position(
     env: GenesisEnv,
     command: torch.Tensor = None,
     position_cmd_manager: PositionCommandManager = None,
@@ -305,7 +305,7 @@ def commonad_tracking_position(
     Args:
         env: The Genesis environment containing the robot
         command: The commanded XYZ position the the world frame, its shape is(num_envs, 3)
-        position_cmd_manager: The velocity command manager
+        position_cmd_manager: The Position command manager
         sensitivity: A lower value means the reward is more sensitive to the error
         entity_attr: The attribute name of the entity in the environment.
         entity_manager: The entity manager for the entity.
@@ -323,7 +323,7 @@ def commonad_tracking_position(
         entity = getattr(env, entity_attr)
 
     if link_name is None or link_name == "":
-        link = entity.links[0]
+        link = entity.base_link
     else:
         try:
             link = entity.get_link(link_name)
@@ -334,9 +334,7 @@ def commonad_tracking_position(
 
     pos = link.get_pos()
     if position_cmd_manager is not None:
-        command = position_cmd_manager.command[:, :2]
-    else:
-        command = command[:, :2]
+        command = position_cmd_manager.command
 
     base_pos_error = torch.sum(torch.square(command - pos), dim=1)
     return torch.square(-base_pos_error / sensitivity)
@@ -363,7 +361,7 @@ def command_tracking_pose(
     Args:
         env: The Genesis environment containing the robot
         command: The commanded XYZ position and Euler angles (in world frame), shape (num_envs, 6) where first 3 are position and last 3 are Euler angles.
-        position_cmd_manager: The velocity command manager
+        pose_cmd_manager: The Pose command manager
         pos_sensitivity: A lower value means the reward is more sensitive to position error
         euler_sensitivity: A lower value means the reward is more sensitive to Euler angle error
         entity_attr: The attribute name of the entity in the environment.
@@ -374,7 +372,7 @@ def command_tracking_pose(
     """
     assert (
         command is not None or pose_cmd_manager is not None
-    ), "Either command or position_cmd_manager must be provided to command_tracking_base_pose"
+    ), "Either command or pose_cmd_manager must be provided to command_tracking_pose"
 
     if entity_manager is not None:
         entity = entity_manager.entity
@@ -382,7 +380,7 @@ def command_tracking_pose(
         entity = getattr(env, entity_attr)
 
     if link_name is None or link_name == "":
-        link = entity.links[0]
+        link = entity.base_link
     else:
         try:
             link = entity.get_link(link_name)
@@ -395,11 +393,9 @@ def command_tracking_pose(
     link_euler = quat_to_xyz(link.get_quat())
 
     if pose_cmd_manager is not None:
-        command_pos = pose_cmd_manager.command[:, :3]
-        command_euler = pose_cmd_manager.command[:, 3:6]
-    else:
-        command_pos = command[:, :3]
-        command_euler = command[:, 3:6]
+        command = pose_cmd_manager.command
+    command_pos = command[:, :3]
+    command_euler = command[:, 3:6]
 
     pos_error = torch.sum(torch.square(command_pos - link_pos), dim=1)
 

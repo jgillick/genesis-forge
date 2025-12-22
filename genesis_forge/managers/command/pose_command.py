@@ -11,9 +11,6 @@ from genesis_forge.gamepads import Gamepad
 from .command_manager import CommandManager, CommandRangeValue
 
 
-THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
 class PoseCommandRange(TypedDict):
     pos_x: CommandRangeValue
     pos_y: CommandRangeValue
@@ -53,12 +50,12 @@ class PoseCommandManager(CommandManager):
     The command comprises of a (x,y,z) position and (x,y,z) euler angles
 
     IMPORTANT: The position commands are interpreted as world-relative coordinates:
-    - pos-X-axis: x coordinate of the target position
-    - pos-Y-axis: y coordinate of the target position
-    - pos-Z-axis: z coordinate of the target position
-    - euler-X-axis: x coordinate of the target orientation
-    - euler-Y-axis: y coordinate of the target orientation
-    - euler-Z-axis: z coordinate of the target orientation
+    - pos-X: x coordinate of the target position
+    - pos-Y: y coordinate of the target position
+    - pos-Z: z coordinate of the target position
+    - euler-X: x coordinate of the target orientation
+    - euler-Y: y coordinate of the target orientation
+    - euler-Z: z coordinate of the target orientation
 
     :::{admonition} Debug Visualization
 
@@ -82,11 +79,11 @@ class PoseCommandManager(CommandManager):
                 # Create a velocity command manager
                 self.pose_command_manager = PoseCommandManager(
                     self,
-                    visualize=True,
+                    debug_visualizer=True,
                     range = {
-                        "pos_x_range": (-5.0, 5.0),
-                        "pos_y_range": (-5.0, 5.0),
-                        "euler_z_range": (-1.57, 1.57),
+                        "pos_x": (-5.0, 5.0),
+                        "pos_y": (-5.0, 5.0),
+                        "euler_z": (-1.57, 1.57),
                     }
                 )
 
@@ -129,21 +126,9 @@ class PoseCommandManager(CommandManager):
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self.debug_envs_idx = None
 
-        self._is_standing_env = torch.zeros(
-            env.num_envs, dtype=torch.bool, device=gs.device
-        )
-
     """
     Lifecycle Operations
     """
-
-    def resample_command(self, env_ids: list[int]):
-        """
-        Overwrites commands for environments that should be standing still.
-        """
-        super().resample_command(env_ids)
-        if not self.enabled:
-            return
 
     def build(self):
         """Build the pose command manager"""
@@ -172,34 +157,34 @@ class PoseCommandManager(CommandManager):
     def use_gamepad(
         self,
         gamepad: Gamepad,
-        pos_x_axis: int = 0,
-        pos_y_axis: int = 1,
-        pos_z_axis: int = 2,
-        euler_x_axis: int = 3,
-        euler_y_axis: int = 4,
-        euler_z_axis: int = 5,
+        pos_x: int = 0,
+        pos_y: int = 1,
+        pos_z: int = 2,
+        euler_x: int = 3,
+        euler_y: int = 4,
+        euler_z: int = 5,
     ):
         """
         Use a connected gamepad to control the command.
 
         Args:
             gamepad: The gamepad to use.
-            pos_x_axis: Map this gamepad axis index to the position in the x-direction.
-            pos_y_axis: Map this gamepad axis index to the position in the y-direction.
-            pos_z_axis: Map this gamepad axis index to the position in the z-direction.
-            euler_x_axis: Map this gamepad axis index to the orientation in the x-direction.
-            euler_y_axis: Map this gamepad axis index to the orientation in the y-direction.
-            euler_z_axis: Map this gamepad axis index to the orientation in the z-direction.
+            pos_x: Map this gamepad axis index to the position in the x-direction.
+            pos_y: Map this gamepad axis index to the position in the y-direction.
+            pos_z: Map this gamepad axis index to the position in the z-direction.
+            euler_x: Map this gamepad axis index to the orientation in the x-direction.
+            euler_y: Map this gamepad axis index to the orientation in the y-direction.
+            euler_z: Map this gamepad axis index to the orientation in the z-direction.
         """
         super().use_gamepad(
             gamepad,
             range_axis={
-                "pos_x": pos_x_axis,
-                "pos_y": pos_y_axis,
-                "pos_z": pos_z_axis,
-                "euler_x": euler_x_axis,
-                "euler_y": euler_y_axis,
-                "euler_z": euler_z_axis,
+                "pos_x": pos_x,
+                "pos_y": pos_y,
+                "pos_z": pos_z,
+                "euler_x": euler_x,
+                "euler_y": euler_y,
+                "euler_z": euler_z,
             },
         )
 

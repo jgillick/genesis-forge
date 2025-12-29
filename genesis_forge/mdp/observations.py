@@ -213,14 +213,14 @@ Rate limited sensors
 """
 
 
-class SensorObservation(MdpFnClass):
+class RateLimitedObservation(MdpFnClass):
     """
-    Helper class for arte limited Sensor observations
+    Helper class for rate limited observations
 
     Args:
         env: The Genesis Forge environment
-        read: The function for recieving the data from the sensor
-        frequency: The frequency of the sensor in hertz
+        read: The function for recieving observations with a rate limit
+        frequency: The frequency of the observation in hertz
     """
 
     def __init__(

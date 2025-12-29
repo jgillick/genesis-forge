@@ -439,9 +439,6 @@ def imu_lin_acc_jitter(
     if lin_acc_buffer.shape[0] > 1:
         diffs = lin_acc_buffer[:, 1:] - lin_acc_buffer[:, :-1, :]
     else:
-        print(
-            "the observation history buffer only has only the sensor data for one timsteps, the reward will be zero"
-        )
         return torch.zeros(_env.num_envs, 1)
     mags = torch.norm(diffs, dim=-1)
     return mags.sum(dim=1)

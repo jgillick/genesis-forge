@@ -336,8 +336,8 @@ def command_tracking_position(
     if position_cmd_manager is not None:
         command = position_cmd_manager.command
 
-    base_pos_error = torch.sum(torch.square(command - pos), dim=1)
-    return torch.square(-base_pos_error / sensitivity)
+    pos_error = torch.sum(torch.square(command - pos), dim=1)
+    return torch.exp(-pos_error / sensitivity)
 
 
 """
@@ -409,8 +409,8 @@ def command_tracking_pose(
         dim=1,
     )
 
-    pos_penalty = torch.square(-pos_error / pos_sensitivity)
-    euler_penalty = torch.square(-euler_error / euler_sensitivity)
+    pos_penalty = torch.exp(-pos_error / pos_sensitivity)
+    euler_penalty = torch.exp(-euler_error / euler_sensitivity)
 
     total_penalty = pos_penalty + euler_penalty
 

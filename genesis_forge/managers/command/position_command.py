@@ -34,7 +34,7 @@ class PositionDebugVisualizerConfig(TypedDict):
 
 DEFAULT_VISUALIZER_CONFIG: PositionDebugVisualizerConfig = {
     "envs_idx": None,
-    "sphere_offset": 0.03,
+    "sphere_offset": 0.1,
     "sphere_radius": 0.02,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
 }
@@ -62,14 +62,14 @@ class PositionCommandManager(CommandManager):
         env: The environment to control
         range: The ranges of linear & angular velocities
         resample_time_sec: The time interval between changing the command
-        debug_visualizer: Enable the debug arrow visualization
+        debug_visualizer: Enable the debug sphere visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::
 
         class MyEnv(GenesisEnv):
             def config(self):
-                # Create a velocity command manager
+                # Create a position command manager
                 self.position_command_manager = PositionCommandManager(
                     self,
                     debug_visualizer=True,

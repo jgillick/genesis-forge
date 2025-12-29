@@ -49,7 +49,7 @@ class PoseCommandManager(CommandManager):
     Generates a pose command from uniform distribution.
     The command comprises of a (x,y,z) position and (x,y,z) euler angles
 
-    IMPORTANT: The position commands are interpreted as world-relative coordinates:
+    IMPORTANT: The pose commands are interpreted as world-relative coordinates:
     - pos-X: x coordinate of the target position
     - pos-Y: y coordinate of the target position
     - pos-Z: z coordinate of the target position
@@ -76,7 +76,7 @@ class PoseCommandManager(CommandManager):
 
         class MyEnv(GenesisEnv):
             def config(self):
-                # Create a velocity command manager
+                # Create a pose command manager
                 self.pose_command_manager = PoseCommandManager(
                     self,
                     debug_visualizer=True,

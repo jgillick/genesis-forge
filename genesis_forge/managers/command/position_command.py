@@ -114,7 +114,7 @@ class PositionCommandManager(CommandManager):
         debug_visualizer_cfg: PositionDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
     ):
         super().__init__(env, range=range, resample_time_sec=resample_time_sec)
-        self._sphere_nodes: list = []
+        self._sphere_nodes = None
         self.debug_visualizer = debug_visualizer
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self.debug_envs_idx = None
@@ -186,29 +186,28 @@ class PositionCommandManager(CommandManager):
             return
 
         # Remove existing spheres
-        for sphere in self._sphere_nodes:
-            self.env.scene.clear_debug_object(sphere)
-        self._sphere_nodes = []
+        if self._sphere_nodes is not None:
+            self.env.scene.clear_debug_object(self._sphere_nodes)
+        self._sphere_nodes = None
 
-        for i in self.debug_envs_idx:
-            # Target sphere in the world frame for visualization)
-            self._draw_sphere(
-                pos=self.command[i],
-                color=self.visualizer_cfg["commanded_color"],
-            )
+        # Target sphere in the world frame for visualization)
+        self._draw_spheres(
+            pos=self.command[self.debug_envs_idx],
+            color=self.visualizer_cfg["commanded_color"],
+        )
 
-    def _draw_sphere(
+    def _draw_spheres(
         self,
         pos: torch.Tensor,
         color: list[float],
     ):
         try:
-            node = self.env.scene.draw_debug_sphere(
-                pos=pos.cpu().numpy(),
+            nodes = self.env.scene.draw_debug_spheres(
+                poss=pos.cpu().numpy(),
                 color=color,
                 radius=self.visualizer_cfg["sphere_radius"],
             )
-            if node:
-                self._sphere_nodes.append(node)
+            if nodes:
+                self._sphere_nodes=nodes
         except Exception as e:
             print(f"Error adding debug visualizing in PositionCommandManager: {e}")

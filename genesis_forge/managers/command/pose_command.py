@@ -121,7 +121,7 @@ class PoseCommandManager(CommandManager):
         debug_visualizer_cfg: PoseDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
     ):
         super().__init__(env, range=range, resample_time_sec=resample_time_sec)
-        self._sphere_nodes: list = []
+        self._arrow_nodes: list = []
         self.debug_visualizer = debug_visualizer
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self.debug_envs_idx = None

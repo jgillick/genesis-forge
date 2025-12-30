@@ -63,13 +63,15 @@ class VideoWrapper(Wrapper):
     Args:
         env: GenesisEnv
         camera_attr: The attribute of the base environment that contains the camera to use for recording.
+        video_length_sec: Length of each video, in seconds. Use this OR ``video_length_iterations``.
+        video_length_iterations: Length of each video, in iterations. Useful for iteration_trigger to ensure
+                                  recording duration doesn't exceed trigger interval. Requires ``num_steps_per_env``.
         episode_trigger: Function that accepts an episode count integer and returns ``True`` if a recording should be started at this episode
         step_trigger: Function that accepts a step count integer and returns ``True`` if a recording should be started at this step
         iteration_trigger: Function that accepts an iteration count integer and returns ``True`` if a recording should be started at this iteration.
                           Requires ``num_steps_per_env`` to be set to calculate iteration from step count.
-        num_steps_per_env: Number of steps per environment per iteration. Required when using ``iteration_trigger``.
+        num_steps_per_env: Number of steps per environment per iteration. Required when using ``iteration_trigger`` or ``video_length_iterations``.
         initial_iteration: Initial iteration offset (useful when resuming training).
-        video_length_sec: Length of each video, in seconds.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
@@ -119,6 +121,7 @@ class VideoWrapper(Wrapper):
             out_dir="./videos",
             iteration_trigger=lambda it: it % 50 == 0,
             num_steps_per_env=24,  # Should match your training config
+            video_length_iterations=1,  # Record 1 iteration per video
         )
     """
 
@@ -126,7 +129,8 @@ class VideoWrapper(Wrapper):
         self,
         env: GenesisEnv,
         camera_attr: str = "camera",
-        video_length_sec: int = 8,
+        video_length_sec: Optional[int] = None,
+        video_length_iterations: Optional[int] = None,
         episode_trigger: Callable[[int], bool] | None = None,
         step_trigger: Callable[[int], bool] | None = None,
         iteration_trigger: Callable[[int], bool] | None = None,
@@ -161,7 +165,6 @@ class VideoWrapper(Wrapper):
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
-        self._video_length_steps = math.ceil(video_length_sec / self.dt)
         self._steps_per_frame = round(1.0 / fps / self.dt)
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
@@ -169,6 +172,18 @@ class VideoWrapper(Wrapper):
         # Iteration tracking
         self._num_steps_per_env = num_steps_per_env
         self._initial_iteration = initial_iteration
+        self._video_length_iterations = video_length_iterations
+
+        # Calculate video length in steps
+        if video_length_iterations is not None:
+            if num_steps_per_env is None:
+                raise ValueError("num_steps_per_env must be specified when using video_length_iterations")
+            self._video_length_steps = video_length_iterations * num_steps_per_env
+        elif video_length_sec is not None:
+            self._video_length_steps = math.ceil(video_length_sec / self.dt)
+        else:
+            # Default: 8 seconds
+            self._video_length_steps = math.ceil(8 / self.dt)
 
         # Validate trigger configuration
         if iteration_trigger is not None and num_steps_per_env is None:

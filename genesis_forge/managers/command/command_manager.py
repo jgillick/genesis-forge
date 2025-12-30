@@ -381,9 +381,15 @@ class CommandManager(BaseManager):
     def _gamepad_axis_command(self, step_count: int) -> torch.Tensor:
         """
         Get the command from the gamepad.
+        Uses per-step caching to avoid redundant reads (command may be accessed multiple times per step).
         """
         if self._gamepad_cfg is None:
             return self._gamepad_axis_command_buffer
+
+        # Cache: only read gamepad once per step
+        if hasattr(self, '_last_gamepad_step') and self._last_gamepad_step == step_count:
+            return self._gamepad_axis_command_buffer
+        self._last_gamepad_step = step_count
 
         gamepad = self._gamepad_cfg["gamepad"]
         axis_map = self._gamepad_cfg["axis_map"]

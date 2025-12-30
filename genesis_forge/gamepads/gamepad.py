@@ -5,10 +5,12 @@ import threading
 
 from .config import GamepadConfig, GamepadState
 from .logitech import LOGITECH_F710_CONFIG, LOGITECH_F310_CONFIG
+from .dragonrise import DRAGONRISE_CONFIG
 
 GAMEPAD_CONFIGS = [
     LOGITECH_F710_CONFIG,
     LOGITECH_F310_CONFIG,
+    DRAGONRISE_CONFIG,
 ]
 
 
@@ -131,7 +133,8 @@ class Gamepad:
         """
         while self.is_running:
             try:
-                data = self._device.read(64)
+                # Use timeout (10ms) to prevent blocking - important for macOS
+                data = self._device.read(64, timeout_ms=10)
                 if data:
                     try:
                         self._state = self._parse_data(data)

@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from gymnasium import spaces
 import genesis as gs
+from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
@@ -27,8 +28,8 @@ class BaseActionManager(BaseManager):
     Args:
         env: The environment to manage the DOF actuators for.
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
-        actuator_filter: Which joints of the actuator manager that this action manager will control.
-                   These can be full names or regular expressions.
+        actuator_joints: Which joints of the actuator manager that this action manager will control.
+                         These can be full names or regular expressions.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
     """
@@ -37,7 +38,7 @@ class BaseActionManager(BaseManager):
         self,
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
-        actuator_filter: list[str] | str = ".*",
+        actuator_joints: list[str] | str = ".*",
         delay_step: int = 0,
         **kwargs,
     ):
@@ -47,8 +48,8 @@ class BaseActionManager(BaseManager):
         self._delay_step = delay_step
         self._action_delay_buffer = []
         self._actuator_manager = actuator_manager
-        self._actuator_filter = (
-            [actuator_filter] if isinstance(actuator_filter, str) else actuator_filter
+        self._actuator_joints = (
+            [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
         self._dofs: dict[int, str] = {}
         self._actuator_dof_filter: torch.Tensor = None
@@ -86,10 +87,15 @@ class BaseActionManager(BaseManager):
     """
 
     @property
-    def actuators(self) -> ActuatorManager:
+    def actuator_manager(self) -> ActuatorManager:
         """
         Get the actuator manager.
         """
+        return self._actuator_manager
+
+    @property
+    @deprecated(version="0.4.0", reason="Use `actuator_manager` instead")
+    def actuators(self) -> ActuatorManager:
         return self._actuator_manager
 
     @property
@@ -116,7 +122,7 @@ class BaseActionManager(BaseManager):
     @property
     def actuator_dof_filter(self) -> torch.Tensor:
         """
-        An index filer for actuator DOF values.
+        An index filter for the actuator DOF buffer values.
         """
         return self._actuator_dof_filter
 
@@ -151,6 +157,63 @@ class BaseActionManager(BaseManager):
         return self._raw_actions
 
     """
+    DOF convenience wrappers
+    """
+
+    def get_dofs_position(self):
+        """
+        A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
+
+        Returns:
+            position: tuple[torch.Tensor, torch.Tensor]
+                      The position of the DOFs managed by this action manager.
+        """
+        return self.actuator_manager.get_dofs_position(dofs_idx=self.dofs_idx)
+
+    def get_dofs_limits(self):
+        """
+        A wrapper for `RigidEntity.get_dofs_limit` that returns the limits of the controlled DOFs.
+
+        Returns:
+            lower_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                         The lower limit of the positional limits for the entity's dofs.
+            upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                         The upper limit of the positional limits for the entity's dofs.
+        """
+        return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
+
+    def get_dofs_velocity(self, clip: tuple[float, float] = None):
+        """
+        A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
+
+        Args:
+            clip: Range to clip the velocity to.
+
+        Returns:
+            velocity: torch.Tensor, shape (n_envs, n_dofs)
+            The velocity of the enabled DOFs managed by this action manager.
+        """
+        return self.actuator_manager.get_dofs_velocity(
+            clip=clip, dofs_idx=self.dofs_idx
+        )
+
+    def get_dofs_force(self, clip_to_max_force: bool = False):
+        """
+        A wrapper for `RigidEntity.get_dofs_force` that returns the force experienced by the controlled DOFs.
+
+        Args:
+            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                               defined in the actuator manager.
+
+        Returns:
+            force: torch.Tensor, shape (n_envs, n_dofs)
+            The force experienced by the enabled DOFs.
+        """
+        return self.actuator_manager.get_dofs_force(
+            clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
+        )
+
+    """
     Lifecycle Operations
     """
 
@@ -161,7 +224,7 @@ class BaseActionManager(BaseManager):
         # Filter the actuator DOFs that this action manager controls
         actuator_dofs = self._actuator_manager.dofs
         index_filter = []
-        for filter in self._actuator_filter:
+        for filter in self._actuator_joints:
             for index, (name, dof_idx) in enumerate[tuple[str, int]](
                 actuator_dofs.items()
             ):

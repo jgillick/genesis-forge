@@ -186,7 +186,9 @@ class ActuatorManager(BaseManager):
     Actuator handlers
     """
 
-    def get_dofs_position(self, noise: float = 0.0, dofs_idx: list[int] | None = None):
+    def get_dofs_position(
+        self, noise: float = 0.0, dofs_idx: list[int] | None = None
+    ) -> torch.Tensor:
         """
         Return the current position of the configured DOFs.
         This is a wrapper for `RigidEntity.get_dofs_position`.
@@ -196,6 +198,7 @@ class ActuatorManager(BaseManager):
             dofs_idx: The indices of the DOFs to get the position for. If None, all the DOFs of this actuator manager are used.
 
         Returns:
+            position: torch.Tensor, shape (n_envs, n_dofs)
             The position of the enabled DOFs.
         """
         pos = self._robot.get_dofs_position(dofs_idx or self.dofs_idx)
@@ -208,7 +211,7 @@ class ActuatorManager(BaseManager):
         noise: float = 0.0,
         clip: tuple[float, float] = None,
         dofs_idx: list[int] | None = None,
-    ):
+    ) -> torch.Tensor:
         """
         Return the current velocity of the configured DOFs.
         This is a wrapper for `RigidEntity.get_dofs_velocity`.
@@ -219,6 +222,7 @@ class ActuatorManager(BaseManager):
             dofs_idx: The indices of the DOFs to get the velocity for. If None, all the DOFs of this actuator manager are used.
 
         Returns:
+            velocity:torch.Tensor, shape (n_envs, n_dofs)
             The velocity of the enabled DOFs.
         """
         vel = self._robot.get_dofs_velocity(dofs_idx or self.dofs_idx)
@@ -233,7 +237,7 @@ class ActuatorManager(BaseManager):
         noise: float = 0.0,
         clip_to_max_force: bool = False,
         dofs_idx: list[int] | None = None,
-    ):
+    ) -> torch.Tensor:
         """
         Return the force experienced by the configured DOFs.
         This is a wrapper for `RigidEntity.get_dofs_force`.
@@ -244,6 +248,7 @@ class ActuatorManager(BaseManager):
             dofs_idx: The indices of the DOFs to get the force for. If None, all the DOFs of this actuator manager are used.
 
         Returns:
+            force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
         force = self._robot.get_dofs_force(dofs_idx or self.dofs_idx)
@@ -258,15 +263,17 @@ class ActuatorManager(BaseManager):
         self, dofs_idx: list[int] | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Return the limits of the configured DOFs.
+        Return the position limits of the configured DOFs.
         This is a wrapper for `RigidEntity.get_dofs_limit`.
 
         Args:
             dofs_idx: The indices of the DOFs to get the limits for. If None, all the DOFs of this actuator manager are used.
 
         Returns:
-            A tuple of two tensors, the first is the lower limits and the second is the upper limits.
-            Each tensor is of shape (num_envs, num_dofs).
+            lower_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                         The lower limit of the positional limits for the entity's dofs.
+            upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                         The upper limit of the positional limits for the entity's dofs.
         """
         return self._robot.get_dofs_limit(dofs_idx or self.dofs_idx)
 
@@ -425,7 +432,7 @@ class ActuatorManager(BaseManager):
 
     def _should_set_value(self, value_name: ValueName) -> bool:
         """
-        Check if the actuator control value should.
+        Check if the actuator value should be set.
         We don't want to set the value if we've already set it and there is no noise associated with it.
         """
         cfg = self._values[value_name]
@@ -436,7 +443,9 @@ class ActuatorManager(BaseManager):
         return True
 
     def _fill_value_buffer(
-        self, value_name: ValueName, config: NoisyValue[float] | None
+        self,
+        value_name: ValueName,
+        config: dict | None,
     ):
         """
         Given a ActuatorValue dict, loop over the entries, and set them to the appropriate value buffer DOF indices that match

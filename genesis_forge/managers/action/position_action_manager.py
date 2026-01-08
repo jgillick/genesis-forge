@@ -2,10 +2,7 @@ from __future__ import annotations
 import re
 import torch
 import genesis as gs
-import numpy as np
-from gymnasium import spaces
 from typing import Any, Callable, TypeVar
-from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.values import ensure_dof_pattern
@@ -28,8 +25,8 @@ class PositionActionManager(BaseActionManager):
     Args:
         env: The environment to manage the DOF actuators for.
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
-        actuator_filter: Which joints of the actuator manager that this action manager will control.
-                   These can be full names or regular expressions.
+        actuator_joints: Which joints of the actuator manager that this action manager will control.
+                         These can be full names or regular expressions.
         scale: How much to scale the action.
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
@@ -59,6 +56,7 @@ class PositionActionManager(BaseActionManager):
                     scale=0.5,
                     use_default_offset=True,
                     actuator_manager=self.actuator_manager,
+                    actuator_joints=[".*"], # optional joint filter
                 )
 
     Example using the manager directly::
@@ -108,7 +106,7 @@ class PositionActionManager(BaseActionManager):
         self,
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
-        actuator_filter: list[str] | str = ".*",
+        actuator_joints: list[str] | str = ".*",
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
         clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
@@ -122,7 +120,7 @@ class PositionActionManager(BaseActionManager):
             env,
             delay_step=delay_step,
             actuator_manager=actuator_manager,
-            actuator_filter=actuator_filter,
+            actuator_joints=actuator_joints,
             **kwargs,
         )
         self._offset_cfg = ensure_dof_pattern(offset)
@@ -146,64 +144,7 @@ class PositionActionManager(BaseActionManager):
         """
         Return the default DOF positions.
         """
-        return self.actuators.default_dofs_pos[:, self.actuator_dof_filter]
-
-    """
-    DOF Getters
-    """
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_position(self, noise: float = 0.0):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current position of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_position`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the position values returned.
-        """
-        return self.actuators.get_dofs_position(noise, self.dofs_idx)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_velocity(self, noise: float = 0.0, clip: tuple[float, float] = None):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current velocity of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_velocity`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the velocity values returned.
-            clip: Clip the velocity returned.
-        """
-        return self.actuators.get_dofs_velocity(noise, clip, self.dofs_idx)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_force(self, noise: float = 0.0, clip_to_max_force: bool = False):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the force experienced by the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_force`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the force values returned.
-            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter.
-
-        Returns:
-            The force experienced by the enabled DOFs.
-        """
-        return self.actuators.get_dofs_force(noise, clip_to_max_force, self.dofs_idx)
+        return self.actuator_manager.default_dofs_pos[:, self.actuator_dof_filter]
 
     """
     Lifecycle Operations
@@ -216,7 +157,7 @@ class PositionActionManager(BaseActionManager):
         super().build()
 
         # Define the clip values
-        lower_limit, upper_limit = self.actuators.get_dofs_limits(self.dofs_idx)
+        lower_limit, upper_limit = self.actuator_manager.get_dofs_limits(self.dofs_idx)
         self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._clip_cfg is not None:
             self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
@@ -229,9 +170,7 @@ class PositionActionManager(BaseActionManager):
         # Offset
         self._offset_values = None
         if self._use_default_offset:
-            self._offset_values = self.actuators.default_dofs_pos[
-                :, self.actuator_dof_filter
-            ]
+            self._offset_values = self.default_dofs_pos
         else:
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
@@ -277,7 +216,7 @@ class PositionActionManager(BaseActionManager):
         )
 
         # Set target positions
-        self.actuators.control_dofs_position(actions, self.dofs_idx)
+        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
 
         return actions
 

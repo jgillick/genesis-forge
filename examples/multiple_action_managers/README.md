@@ -1,6 +1,33 @@
 # Multiple Action Managers
 
-Demonstrates using multliple action managers for a single robot.
+Demonstrates using multiple action managers for a single robot. This can be useful if some actuators need to be controlled differently
+from each other. Currently, Genesis Forge only has two types of positional action managers, but in the future, it will likely be expanded
+to include velocity or torque based action managers.
+
+To use multiple action managers, you pass a filter to each, specifying which actuators it should control:
+
+```python
+# First define your actuator manager
+self.actuator_manager = ActuatorManager(self, joint_names=".*", kp=20, kv=0.5)
+
+# Then define your action managers
+self.hip_action_manager = PositionWithinLimitsActionManager(
+    self,
+    actuator_manager=self.actuator_manager,
+    actuator_joints=[".*_hip_joint"],
+    limit=(-0.8, 0.8),
+)
+self.leg_action_manager = PositionActionManager(
+    self,
+    actuator_manager=self.actuator_manager,
+    actuator_joints=[
+        ".*_thigh_joint",
+        ".*_calf_joint",
+    ],
+    scale=0.25,
+    clip=(-100.0, 100.0),
+)
+```
 
 ## Training
 

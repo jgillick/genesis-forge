@@ -42,7 +42,7 @@ class Go2SimpleEnv(ManagedEnvironment):
             max_episode_random_scaling=0.1,
         )
 
-        # Set the commanded robot direction to be 0.5 along the X axis, for all environments
+        # Set the target robot direction, along the X axis
         self.target_command = torch.zeros(
             (self.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )

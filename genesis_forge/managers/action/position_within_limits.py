@@ -44,9 +44,9 @@ class PositionWithinLimitsActionManager(PositionActionManager):
                     actuator_joints=[".*"], # optional joint filter
                 )
 
-        Example defining custom limits::
+    Example defining custom limits::
 
-            class MyEnv(ManagedEnvironment):
+        class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 

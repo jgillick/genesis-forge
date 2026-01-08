@@ -13,6 +13,7 @@ from genesis_forge.managers import (
     ObservationManager,
     ActuatorManager,
     PositionActionManager,
+    PositionWithinLimitsActionManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
 
@@ -65,8 +66,6 @@ class Go2SimpleEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
             ),
         )
@@ -137,12 +136,22 @@ class Go2SimpleEnv(ManagedEnvironment):
             kp=20,
             kv=0.5,
         )
-        self.action_manager = PositionActionManager(
+        self.hip_action_manager = PositionWithinLimitsActionManager(
             self,
+            actuator_manager=self.actuator_manager,
+            actuator_joints=[".*_hip_joint"],
+            limit=(-0.6, 0.6),
+        )
+        self.leg_action_manager = PositionActionManager(
+            self,
+            actuator_manager=self.actuator_manager,
+            actuator_joints=[
+                ".*_thigh_joint",
+                ".*_calf_joint",
+            ],
             scale=0.25,
             clip=(-100.0, 100.0),
             use_default_offset=True,
-            actuator_manager=self.actuator_manager,
         )
 
         ##
@@ -190,7 +199,7 @@ class Go2SimpleEnv(ManagedEnvironment):
                     "weight": -0.1,
                     "fn": rewards.dof_similar_to_default,
                     "params": {
-                        "action_manager": self.action_manager,
+                        "action_manager": self.leg_action_manager,
                     },
                 },
             },
@@ -235,14 +244,17 @@ class Go2SimpleEnv(ManagedEnvironment):
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
                 },
                 "dof_position": {
-                    "fn": lambda env: self.action_manager.get_dofs_position(),
+                    "fn": lambda env: self.actuator_manager.get_dofs_position(),
                 },
                 "dof_velocity": {
-                    "fn": lambda env: self.action_manager.get_dofs_velocity(),
+                    "fn": lambda env: self.actuator_manager.get_dofs_velocity(),
                     "scale": 0.05,
                 },
-                "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                "hip_actions": {
+                    "fn": lambda env: self.hip_action_manager.get_actions(),
+                },
+                "leg_actions": {
+                    "fn": lambda env: self.leg_action_manager.get_actions(),
                 },
             },
         )

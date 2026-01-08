@@ -103,7 +103,7 @@ def dof_similar_to_default(
     Args:
         env: The Genesis environment containing the robot
         actuator_manager: The actuator manager for the robot/entity.
-        action_manager: (deprecated) The DOF action manager
+        action_manager: The DOF action manager
 
     Returns:
         torch.Tensor: Penalty for joint poses far away from default pose

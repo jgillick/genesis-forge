@@ -2,26 +2,12 @@ from __future__ import annotations
 import re
 import torch
 import genesis as gs
-import numpy as np
-from gymnasium import spaces
 from typing import Any, Callable, TypeVar
-from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.values import ensure_dof_pattern
 from genesis_forge.managers.actuator import ActuatorManager
 
-deprecated_arg_names = [
-    "joint_names",
-    "default_pos",
-    "pd_kp",
-    "pd_kv",
-    "max_force",
-    "damping",
-    "stiffness",
-    "frictionloss",
-    "noise_scale",
-]
 
 T = TypeVar("T")
 
@@ -39,6 +25,8 @@ class PositionActionManager(BaseActionManager):
     Args:
         env: The environment to manage the DOF actuators for.
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
+        actuator_joints: Which joints of the actuator manager that this action manager will control.
+                         These can be full names or regular expressions.
         scale: How much to scale the action.
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
@@ -68,6 +56,7 @@ class PositionActionManager(BaseActionManager):
                     scale=0.5,
                     use_default_offset=True,
                     actuator_manager=self.actuator_manager,
+                    actuator_joints=[".*"], # optional joint filter
                 )
 
     Example using the manager directly::
@@ -117,6 +106,7 @@ class PositionActionManager(BaseActionManager):
         self,
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
+        actuator_joints: list[str] | str = ".*",
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
         clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
@@ -126,160 +116,48 @@ class PositionActionManager(BaseActionManager):
         delay_step: int = 0,
         **kwargs,
     ):
-        super().__init__(env, delay_step)
+        super().__init__(
+            env,
+            delay_step=delay_step,
+            actuator_manager=actuator_manager,
+            actuator_joints=actuator_joints,
+            **kwargs,
+        )
         self._offset_cfg = ensure_dof_pattern(offset)
         self._scale_cfg = ensure_dof_pattern(scale)
         self._clip_cfg = ensure_dof_pattern(clip)
         self._quiet_action_errors = quiet_action_errors
         self._enabled_dof = None
         self._use_default_offset = use_default_offset
-        self._actuator_manager = actuator_manager
 
         self._dofs_pos_buffer: torch.Tensor = None
 
         if use_default_offset and offset != 0.0:
             raise ValueError("Cannot set both use_default_offset and offset")
 
-        # Deprecated actuator parameters
-        deprecated_actuator_args = {
-            key: kwargs[key] for key in deprecated_arg_names if key in kwargs
-        }
-        if len(deprecated_actuator_args) > 0:
-            dep_list = ", ".join(deprecated_actuator_args.keys())
-            if self._actuator_manager is not None:
-                raise ValueError(
-                    f"Cannot set both actuator_manager and deprecated actuator parameters: {dep_list}"
-                )
-            print(
-                f"Actuator arguments are deprecated in the action manager, instead define an ActuatorManager ({dep_list})"
-            )
-            self._actuator_manager = ActuatorManager(
-                env,
-                joint_names=kwargs.get("joint_names", ".*"),
-                default_pos=kwargs.get("default_pos", {".*": 0.0}),
-                kp=kwargs.get("pd_kp", None),
-                kv=kwargs.get("pd_kv", None),
-                max_force=kwargs.get("max_force", None),
-                damping=kwargs.get("damping", None),
-                stiffness=kwargs.get("stiffness", None),
-                frictionloss=kwargs.get("frictionloss", None),
-                default_noise_scale=kwargs.get("noise_scale", 0.0),
-            )
-        if self._actuator_manager is None:
-            raise ValueError("No ActuatorManager provided.")
-
     """
     Properties
     """
-
-    @property
-    def actuators(self) -> ActuatorManager:
-        """
-        Get the actuator manager.
-        """
-        return self._actuator_manager
-
-    @property
-    def num_actions(self) -> int:
-        """
-        Get the number of actions.
-        """
-        return self._actuator_manager.num_dofs
-
-    @property
-    def action_space(self) -> tuple[float, float]:
-        """
-        Returns the actions space for the environment, based on the number of DOFs defined in this action manager.
-        """
-        return spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self.num_actions,),
-            dtype=np.float32,
-        )
-
-    @property
-    def dofs_idx(self) -> list[int]:
-        """
-        Get the indices of the DOF that are enabled (via joint_names).
-        """
-        return self._actuator_manager.dofs_idx
 
     @property
     def default_dofs_pos(self) -> torch.Tensor:
         """
         Return the default DOF positions.
         """
-        return self._actuator_manager.default_dofs_pos
+        return self.actuator_manager.default_dofs_pos[:, self.actuator_dof_filter]
 
     """
-    DOF Getters
-    """
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_position(self, noise: float = 0.0):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current position of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_position`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the position values returned.
-        """
-        return self._actuator_manager.get_dofs_position(noise)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_velocity(self, noise: float = 0.0, clip: tuple[float, float] = None):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the current velocity of the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_velocity`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the velocity values returned.
-            clip: Clip the velocity returned.
-        """
-        return self._actuator_manager.get_dofs_velocity(noise, clip)
-
-    @deprecated(
-        version="0.3,0",
-        reason="Use the actuator manager directly.",
-    )
-    def get_dofs_force(self, noise: float = 0.0, clip_to_max_force: bool = False):
-        """
-        Deprecated: Use the actuator manager directly.
-
-        Return the force experienced by the enabled DOFs.
-        This is a wrapper for `RigidEntity.get_dofs_force`.
-
-        Args:
-            noise: The maximum amount of random noise to add to the force values returned.
-            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter.
-
-        Returns:
-            The force experienced by the enabled DOFs.
-        """
-        return self._actuator_manager.get_dofs_force(noise, clip_to_max_force)
-
-    """
-    Operations
+    Lifecycle Operations
     """
 
     def build(self):
         """
         Builds the manager and initialized all the buffers.
         """
+        super().build()
 
         # Define the clip values
-        lower_limit, upper_limit = self._actuator_manager.get_dofs_limits()
+        lower_limit, upper_limit = self.actuator_manager.get_dofs_limits(self.dofs_idx)
         self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._clip_cfg is not None:
             self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
@@ -292,7 +170,7 @@ class PositionActionManager(BaseActionManager):
         # Offset
         self._offset_values = None
         if self._use_default_offset:
-            self._offset_values = self._actuator_manager.default_dofs_pos
+            self._offset_values = self.default_dofs_pos
         else:
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
@@ -338,7 +216,7 @@ class PositionActionManager(BaseActionManager):
         )
 
         # Set target positions
-        self._actuator_manager.control_dofs_position(actions)
+        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
 
         return actions
 
@@ -363,7 +241,7 @@ class PositionActionManager(BaseActionManager):
             For example, for 4 DOFs: [50, 50, 50, 50]
         """
         is_set = [False] * self.num_actions
-        dof_names = self._actuator_manager.dofs_names
+        dof_names = list(self.dofs.keys())
         if output is None:
             output = torch.zeros(
                 self.num_actions, device=gs.device, dtype=gs.tc_float

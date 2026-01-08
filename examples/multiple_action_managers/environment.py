@@ -140,7 +140,7 @@ class Go2SimpleEnv(ManagedEnvironment):
             self,
             actuator_manager=self.actuator_manager,
             actuator_joints=[".*_hip_joint"],
-            limit=(-0.8, 0.8),
+            limit=(-0.6, 0.6),
         )
         self.leg_action_manager = PositionActionManager(
             self,

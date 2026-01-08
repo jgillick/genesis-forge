@@ -201,7 +201,8 @@ class ActuatorManager(BaseManager):
             position: torch.Tensor, shape (n_envs, n_dofs)
             The position of the enabled DOFs.
         """
-        pos = self._robot.get_dofs_position(dofs_idx or self.dofs_idx)
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        pos = self._robot.get_dofs_position(dofs_idx)
         if noise > 0.0:
             pos = self._add_random_noise(pos, noise)
         return pos
@@ -225,7 +226,8 @@ class ActuatorManager(BaseManager):
             velocity:torch.Tensor, shape (n_envs, n_dofs)
             The velocity of the enabled DOFs.
         """
-        vel = self._robot.get_dofs_velocity(dofs_idx or self.dofs_idx)
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        vel = self._robot.get_dofs_velocity(dofs_idx)
         if noise > 0.0:
             vel = self._add_random_noise(vel, noise)
         if clip is not None:
@@ -251,7 +253,8 @@ class ActuatorManager(BaseManager):
             force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
-        force = self._robot.get_dofs_force(dofs_idx or self.dofs_idx)
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        force = self._robot.get_dofs_force(dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
         if clip_to_max_force:
@@ -275,7 +278,8 @@ class ActuatorManager(BaseManager):
             upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
                          The upper limit of the positional limits for the entity's dofs.
         """
-        return self._robot.get_dofs_limit(dofs_idx or self.dofs_idx)
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        return self._robot.get_dofs_limit(dofs_idx)
 
     def set_dofs_position(
         self, position: torch.Tensor, dofs_idx: list[int] | None = None

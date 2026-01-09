@@ -11,7 +11,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
 )
-from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
+from genesis_forge.managers.contact.calculate import calculate_contact_forces
 
 from typing import TYPE_CHECKING
 
@@ -151,7 +151,7 @@ class ContactManager(BaseManager):
         self._air_time_contact_threshold = air_time_contact_threshold
         self._track_air_time = track_air_time
         self._entity_attr = entity_attr
-        self._link_ids = None
+        self._link_ids = torch.empty(0, device=gs.device)
         self._local_link_ids = None
         self._with_entity_attr = with_entity_attr
         self._with_links_names = with_links_names
@@ -165,7 +165,6 @@ class ContactManager(BaseManager):
         self.debug_envs_idx = None
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self._debug_nodes = []
-        self._contact_position_counts = None
 
         self.contacts: torch.Tensor | None = None
         """Contact forces experienced by the entity links."""
@@ -325,9 +324,6 @@ class ContactManager(BaseManager):
         self.contact_positions = torch.zeros(
             (self.env.num_envs, link_count, 3), device=gs.device
         )
-        self._contact_position_counts = torch.zeros(
-            (self.env.num_envs, link_count), device=gs.device
-        )
         if self._track_air_time:
             self.last_air_time = torch.zeros(
                 (self.env.num_envs, link_count), device=gs.device
@@ -428,13 +424,10 @@ class ContactManager(BaseManager):
         # Get link quaternions used to transform the contact forces and positions into the local frame
         links_quat = self.env.scene.rigid_solver.get_links_quat()
 
-        # Clear output tensors
+        # Clear output tensors and run calculations
         self.contacts.fill_(0.0)
         self.contact_positions.fill_(0.0)
-        self._contact_position_counts.fill_(0.0)
-
-        # Call unified kernel
-        kernel_get_contact_forces(
+        calculate_contact_forces(
             force.contiguous(),
             position.contiguous(),
             link_a.contiguous(),
@@ -444,8 +437,6 @@ class ContactManager(BaseManager):
             self._with_link_ids.contiguous(),
             self.contacts.contiguous(),
             self.contact_positions.contiguous(),
-            self._contact_position_counts.contiguous(),
-            1 if self._has_with_filter else 0,
         )
 
         # Handle debug visualization

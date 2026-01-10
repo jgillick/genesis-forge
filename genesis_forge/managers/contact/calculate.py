@@ -45,7 +45,7 @@ def _inv_transform_by_quat(
 
 
 @torch.jit.script
-def calculate_target_contacts(
+def calculate_contact_forces(
     contact_forces: torch.Tensor,
     contact_positions: torch.Tensor,
     link_a: torch.Tensor,
@@ -74,9 +74,8 @@ def calculate_target_contacts(
         output_positions: Output position tensor, shape (n_envs, n_target_links, 3)
     """
     n_contacts = contact_forces.shape[1]
-    n_targets = target_link_ids.shape[0]
 
-    # Zero outputs - forces accumulate in world frame, then transform at end
+    # Zero outputs
     output_forces.zero_()
     output_positions.zero_()
 
@@ -84,47 +83,69 @@ def calculate_target_contacts(
     if n_contacts == 0:
         return
 
-    # Compute with_link filter masks if needed
+    # Expand for broadcasting: compare all contacts against all targets at once
+    link_a_exp = link_a.unsqueeze(-1)  # (n_envs, n_contacts, 1)
+    link_b_exp = link_b.unsqueeze(-1)  # (n_envs, n_contacts, 1)
+    targets = target_link_ids.view(1, 1, -1)  # (1, 1, n_targets)
+
+    # Compute masks for all targets at once: (n_envs, n_contacts, n_targets)
+    is_target_a = link_a_exp == targets
+    is_target_b = link_b_exp == targets
+
+    # Apply with_link filter if enabled
     if has_with_filter:
-        with_links = with_link_ids.view(1, 1, -1)
-        link_a_exp = link_a.unsqueeze(-1)
-        link_b_exp = link_b.unsqueeze(-1)
-        link_a_in_with = (link_a_exp == with_links).any(dim=-1)
-        link_b_in_with = (link_b_exp == with_links).any(dim=-1)
-    else:
-        # Dummy tensors
-        link_a_in_with = torch.zeros_like(link_a, dtype=torch.bool)
-        link_b_in_with = torch.zeros_like(link_b, dtype=torch.bool)
+        with_links = with_link_ids.view(1, 1, -1)  # (1, 1, n_with)
+        link_a_with = (link_a_exp == with_links).any(
+            dim=-1, keepdim=True
+        )  # (n_envs, n_contacts, 1)
+        link_b_with = (link_b_exp == with_links).any(
+            dim=-1, keepdim=True
+        )  # (n_envs, n_contacts, 1)
+        is_target_a = is_target_a & link_b_with
+        is_target_b = is_target_b & link_a_with
 
-    # Process forces for each target link
-    for t_idx in range(n_targets):
-        target_link = target_link_ids[t_idx]
+    # Valid mask: (n_envs, n_contacts, n_targets)
+    valid_mask = is_target_a | is_target_b
 
-        # Construct tensor masks
-        is_target_a = link_a == target_link
-        is_target_b = link_b == target_link
-        if has_with_filter:
-            is_target_a = is_target_a & link_b_in_with
-            is_target_b = is_target_b & link_a_in_with
+    # =========================================================================
+    # Calculate positions
+    # =========================================================================
+    valid_mask_pos = valid_mask.unsqueeze(2)  # (n_envs, n_contacts, 1, n_targets)
+    positions_exp = contact_positions.unsqueeze(-1)  # (n_envs, n_contacts, 3, 1)
 
-        # Expand for broadcasting with positions/forces
-        is_target_a = is_target_a.unsqueeze(-1)
-        is_target_b = is_target_b.unsqueeze(-1)
-        valid_mask = is_target_a | is_target_b
+    # Multiply and sum over contacts
+    pos_sum = (positions_exp * valid_mask_pos.float()).sum(
+        dim=1
+    )  # (n_envs, 3, n_targets)
 
-        # Count valid contacts for position averaging
-        contact_count = valid_mask.float().sum(dim=1).clamp(min=1.0)  # (n_envs, 1)
+    # Count per target
+    contact_count = (
+        valid_mask.float().sum(dim=1).clamp(min=1.0).unsqueeze(1)
+    )  # (n_envs, n_targets)
 
-        # Accumulate positions
-        output_positions[:, t_idx, :] = (contact_positions * valid_mask).sum(
-            dim=1
-        ) / contact_count
+    # Average and transpose to (n_envs, n_targets, 3)
+    avg_pos = pos_sum / contact_count  # (n_envs, 3, n_targets)
+    output_positions.copy_(avg_pos.permute(0, 2, 1))
 
-        # Accumulate forces in world frame with single sum
-        # Sign: +1 for is_target_b, -1 for is_target_a_only (a but not b)
-        force_sign = is_target_b.float() - (is_target_a & ~is_target_b).float()
-        output_forces[:, t_idx, :] = (contact_forces * force_sign).sum(dim=1)
+    # =========================================================================
+    # Calculate forces
+    # =========================================================================
 
-    # Transform forces to local frame
+    # Sign: +1 for is_target_b, -1 for is_target_a_only
+    force_sign = (
+        is_target_b.float() - (is_target_a & ~is_target_b).float()
+    )  # (n_envs, n_contacts, n_targets)
+    force_sign = force_sign.unsqueeze(2)  # (n_envs, n_contacts, 1, n_targets)
+
+    # Multiply and sum over contacts
+    forces_exp = contact_forces.unsqueeze(-1)  # (n_envs, n_contacts, 3, 1)
+    world_forces = (forces_exp * force_sign).sum(dim=1)  # (n_envs, 3, n_targets)
+
+    # Transpose to (n_envs, n_targets, 3)
+    output_forces.copy_(world_forces.permute(0, 2, 1))
+
+    # =========================================================================
+    # Convert forces to local frame
+    # =========================================================================
     target_quats = links_quat[:, target_link_ids, :]
     _inv_transform_by_quat(output_forces, target_quats)

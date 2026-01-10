@@ -6,19 +6,16 @@ import torch
 
 
 @torch.jit.script
-def _inv_transform_by_quat_jit(vec: torch.Tensor, quat: torch.Tensor) -> torch.Tensor:
+def _inv_transform_by_quat(
+    vec: torch.Tensor,
+    quat: torch.Tensor,
+) -> None:
     """
     JIT-compiled inverse quaternion rotation (world to local frame).
 
-    Rotates vectors by the inverse of the given quaternions.
-    Uses the formula: v' = q* v q (where q* is quaternion conjugate)
-
     Args:
-        vec: Vectors to rotate (..., 3)
-        quat: Unit quaternions (..., 4) in [w, x, y, z] format (Genesis convention)
-
-    Returns:
-        Rotated vectors (..., 3)
+        vec: Vectors to rotate and output (..., 3) - modified in place
+        quat: Unit quaternions (..., 4) in [w, x, y, z] format
     """
     # Extract quaternion components [w, x, y, z]
     qw = quat[..., 0]
@@ -31,10 +28,6 @@ def _inv_transform_by_quat_jit(vec: torch.Tensor, quat: torch.Tensor) -> torch.T
     vy = vec[..., 1]
     vz = vec[..., 2]
 
-    # For inverse rotation, use conjugate: q* = [w, -x, -y, -z]
-    # Efficient formula: v' = v + 2*w*(q_xyz × v) + 2*(q_xyz × (q_xyz × v))
-    # With conjugate (negated xyz): v' = v - 2*w*(q_xyz × v) + 2*(q_xyz × (q_xyz × v))
-
     # First cross product: q_xyz × v
     cx = qy * vz - qz * vy
     cy = qz * vx - qx * vz
@@ -45,22 +38,21 @@ def _inv_transform_by_quat_jit(vec: torch.Tensor, quat: torch.Tensor) -> torch.T
     ccy = qz * cx - qx * cz
     ccz = qx * cy - qy * cx
 
-    # Final result: v - 2*w*cross1 + 2*cross2
-    rx = vx - 2.0 * qw * cx + 2.0 * ccx
-    ry = vy - 2.0 * qw * cy + 2.0 * ccy
-    rz = vz - 2.0 * qw * cz + 2.0 * ccz
-
-    return torch.stack([rx, ry, rz], dim=-1)
+    # Write result back in place
+    vec[..., 0] = vx - 2.0 * qw * cx + 2.0 * ccx
+    vec[..., 1] = vy - 2.0 * qw * cy + 2.0 * ccy
+    vec[..., 2] = vz - 2.0 * qw * cz + 2.0 * ccz
 
 
 @torch.jit.script
-def calculate_contact_forces(
+def calculate_target_contacts(
     contact_forces: torch.Tensor,
     contact_positions: torch.Tensor,
     link_a: torch.Tensor,
     link_b: torch.Tensor,
     links_quat: torch.Tensor,
     target_link_ids: torch.Tensor,
+    has_with_filter: bool,
     with_link_ids: torch.Tensor,
     output_forces: torch.Tensor,
     output_positions: torch.Tensor,
@@ -76,16 +68,15 @@ def calculate_contact_forces(
         link_b: Second link in each contact, shape (n_envs, n_contacts)
         links_quat: Link quaternions, shape (n_envs, n_links, 4)
         target_link_ids: Target link IDs to collect contact forces for. Tensor shape: (n_target_links)
+        has_with_filter: If the with_link_filter should be applied.
         with_link_ids: If defined, only contacts made with these link IDs AND target_link_ids will be considered. Tensor shape: (n_with_links)
         output_forces: Output force tensor, shape (n_envs, n_target_links, 3)
         output_positions: Output position tensor, shape (n_envs, n_target_links, 3)
     """
-    n_envs = contact_forces.shape[0]
     n_contacts = contact_forces.shape[1]
     n_targets = target_link_ids.shape[0]
-    has_with_filter = with_link_ids.numel() > 0
 
-    # Zero outputs
+    # Zero outputs - forces accumulate in world frame, then transform at end
     output_forces.zero_()
     output_positions.zero_()
 
@@ -93,18 +84,7 @@ def calculate_contact_forces(
     if n_contacts == 0:
         return
 
-    # Pre-compute quaternions for all contacts (shared across all targets)
-    batch_idx = (
-        torch.arange(n_envs, device=link_a.device).view(-1, 1).expand(-1, n_contacts)
-    )
-    quat_a = links_quat[batch_idx, link_a]  # (n_envs, n_contacts, 4)
-    quat_b = links_quat[batch_idx, link_b]  # (n_envs, n_contacts, 4)
-
-    # Transform forces to local frame
-    force_local_a = _inv_transform_by_quat_jit(-contact_forces, quat_a)
-    force_local_b = _inv_transform_by_quat_jit(contact_forces, quat_b)
-
-    # Compute the filter mask for with_link_ids
+    # Compute with_link filter masks if needed
     if has_with_filter:
         with_links = with_link_ids.view(1, 1, -1)
         link_a_exp = link_a.unsqueeze(-1)
@@ -112,43 +92,39 @@ def calculate_contact_forces(
         link_a_in_with = (link_a_exp == with_links).any(dim=-1)
         link_b_in_with = (link_b_exp == with_links).any(dim=-1)
     else:
-        # Dummy tensors (won't be used)
+        # Dummy tensors
         link_a_in_with = torch.zeros_like(link_a, dtype=torch.bool)
         link_b_in_with = torch.zeros_like(link_b, dtype=torch.bool)
 
-    # Process each target link
+    # Process forces for each target link
     for t_idx in range(n_targets):
         target_link = target_link_ids[t_idx]
 
-        # Find contacts where link_a or link_b matches this target
+        # Construct tensor masks
         is_target_a = link_a == target_link
         is_target_b = link_b == target_link
-
-        # Apply with_link filter
-        # target_a valid if link_b is in with_links
-        # target_b valid if link_a is in with_links
         if has_with_filter:
             is_target_a = is_target_a & link_b_in_with
             is_target_b = is_target_b & link_a_in_with
 
-        # Combined mask for any valid contact
+        # Expand for broadcasting with positions/forces
+        is_target_a = is_target_a.unsqueeze(-1)
+        is_target_b = is_target_b.unsqueeze(-1)
         valid_mask = is_target_a | is_target_b
-        valid_mask_float = valid_mask.float()
 
         # Count valid contacts for position averaging
-        contact_count = valid_mask_float.sum(dim=1, keepdim=True).clamp(min=1.0)
+        contact_count = valid_mask.float().sum(dim=1).clamp(min=1.0)  # (n_envs, 1)
 
-        # Accumulate positions: (n_envs, n_contacts, 3) -> (n_envs, 3)
-        masked_positions = contact_positions * valid_mask_float.unsqueeze(-1)
-        avg_position = masked_positions.sum(dim=1) / contact_count
-        output_positions[:, t_idx, :] = avg_position
+        # Accumulate positions
+        output_positions[:, t_idx, :] = (contact_positions * valid_mask).sum(
+            dim=1
+        ) / contact_count
 
-        # Select force based on which link is target (is_target_b takes priority)
-        is_b_float = is_target_b.float().unsqueeze(-1)  # (n_envs, n_contacts, 1)
-        is_a_only_float = (is_target_a & ~is_target_b).float().unsqueeze(-1)
+        # Accumulate forces in world frame with single sum
+        # Sign: +1 for is_target_b, -1 for is_target_a_only (a but not b)
+        force_sign = is_target_b.float() - (is_target_a & ~is_target_b).float()
+        output_forces[:, t_idx, :] = (contact_forces * force_sign).sum(dim=1)
 
-        selected_force = force_local_a * is_a_only_float + force_local_b * is_b_float
-
-        # Apply validity mask and sum
-        masked_force = selected_force * valid_mask_float.unsqueeze(-1)
-        output_forces[:, t_idx, :] = masked_force.sum(dim=1)
+    # Transform forces to local frame
+    target_quats = links_quat[:, target_link_ids, :]
+    _inv_transform_by_quat(output_forces, target_quats)

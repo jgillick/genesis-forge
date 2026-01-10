@@ -11,7 +11,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
 )
-from genesis_forge.managers.contact.calculate import calculate_contact_forces
+from genesis_forge.managers.contact.calculate import calculate_target_contacts
 
 from typing import TYPE_CHECKING
 
@@ -415,28 +415,21 @@ class ContactManager(BaseManager):
         link_b = contacts["link_b"]
         position = contacts["position"]
 
-        # Validate physics engine outputs to prevent NaN/inf propagation
-        # Replace invalid values with zeros
-        if torch.isnan(force).any() or torch.isinf(force).any():
-            force = torch.nan_to_num(force, nan=0.0, posinf=0.0, neginf=0.0)
-            print("Warning: Invalid contact forces detected (NaN/inf) and sanitized")
-
         # Get link quaternions used to transform the contact forces and positions into the local frame
         links_quat = self.env.scene.rigid_solver.get_links_quat()
 
         # Clear output tensors and run calculations
-        self.contacts.fill_(0.0)
-        self.contact_positions.fill_(0.0)
-        calculate_contact_forces(
-            force.contiguous(),
-            position.contiguous(),
-            link_a.contiguous(),
-            link_b.contiguous(),
-            links_quat.contiguous(),
-            self._link_ids.contiguous(),
-            self._with_link_ids.contiguous(),
-            self.contacts.contiguous(),
-            self.contact_positions.contiguous(),
+        calculate_target_contacts(
+            force,
+            position,
+            link_a,
+            link_b,
+            links_quat,
+            self._link_ids,
+            True if self._has_with_filter else 0,
+            self._with_link_ids,
+            self.contacts,
+            self.contact_positions,
         )
 
         # Handle debug visualization

@@ -11,7 +11,8 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
 )
-from genesis_forge.managers.contact.calculate import calculate_target_contacts
+from genesis_forge.managers.contact.calculate import calculate_contact_forces
+from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
 
 from typing import TYPE_CHECKING
 
@@ -165,6 +166,8 @@ class ContactManager(BaseManager):
         self.debug_envs_idx = None
         self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
         self._debug_nodes = []
+
+        self._contact_position_counts = None
 
         self.contacts: torch.Tensor | None = None
         """Contact forces experienced by the entity links."""
@@ -320,10 +323,13 @@ class ContactManager(BaseManager):
         link_count = self._link_ids.shape[0]
         self.contacts = torch.zeros(
             (self.env.num_envs, link_count, 3), device=gs.device
-        )
+        ).contiguous()
         self.contact_positions = torch.zeros(
             (self.env.num_envs, link_count, 3), device=gs.device
-        )
+        ).contiguous()
+        self._contact_position_counts = torch.zeros(
+            (self.env.num_envs, link_count), device=gs.device
+        ).contiguous()
         if self._track_air_time:
             self.last_air_time = torch.zeros(
                 (self.env.num_envs, link_count), device=gs.device
@@ -419,18 +425,35 @@ class ContactManager(BaseManager):
         links_quat = self.env.scene.rigid_solver.get_links_quat()
 
         # Clear output tensors and run calculations
-        calculate_target_contacts(
+        calculate_contact_forces(
             force,
             position,
             link_a,
             link_b,
             links_quat,
             self._link_ids,
-            True if self._has_with_filter else 0,
+            True if self._has_with_filter else False,
             self._with_link_ids,
             self.contacts,
             self.contact_positions,
         )
+
+        # self.contacts.fill_(0.0)
+        # self.contact_positions.fill_(0.0)
+        # self._contact_position_counts.fill_(0.0)
+        # kernel_get_contact_forces(
+        #     force.contiguous(),
+        #     position.contiguous(),
+        #     link_a.contiguous(),
+        #     link_b.contiguous(),
+        #     links_quat.contiguous(),
+        #     self._link_ids.contiguous(),
+        #     1 if self._has_with_filter else 0,
+        #     self._with_link_ids.contiguous(),
+        #     self.contacts,
+        #     self.contact_positions,
+        #     self._contact_position_counts,
+        # )
 
         # Handle debug visualization
         if (

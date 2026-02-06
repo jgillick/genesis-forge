@@ -211,13 +211,29 @@ class ObservationManager(BaseManager):
             device=gs.device,
         )
 
-    def get_observations(self) -> torch.Tensor:
-        """Generate current observations for all environments."""
+    def get_observations(
+        self, values: dict[str, float | torch.Tensor] | None = None
+    ) -> torch.Tensor:
+        """
+        Generate current observations for all environments.
+
+        When you deploy to a real robot, you can provide the observations directly as a dictionary of values,
+        and this method will return the formatted & scaled tensor that you can pass to the policy.
+
+        Args:
+            values: (optional) If provided, use these values instead of fetching observations from the config functions.
+                    It's expected that this dict contains a key for every observation configuration.
+                    These values will be scaled, based on the configuration, but not receive any noise.
+                    This is useful for providing observations for deployment.
+
+        Returns:
+            The observations for all environments.
+        """
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
 
         buffer = self._history.pop()
-        self._perform_observation(buffer)
+        self._perform_observation(buffer, values)
         self._history.insert(0, buffer)
 
         # Concatenate the history buffers into the pre-allocated output buffer
@@ -249,7 +265,11 @@ class ObservationManager(BaseManager):
                 raise e
         return size
 
-    def _perform_observation(self, output: torch.Tensor) -> torch.Tensor:
+    def _perform_observation(
+        self,
+        output: torch.Tensor,
+        override_values: dict[str, float | torch.Tensor] | None = None,
+    ) -> torch.Tensor:
         """
         Perform a round of observations.
 
@@ -257,22 +277,31 @@ class ObservationManager(BaseManager):
             output: The output tensor to fill with the observations.
         """
         offset = 0
+        has_overrides = override_values is not None
         for name, cfg in self.cfg.items():
             try:
                 # Get values
                 params = cfg.params
-                value = cfg.fn(env=self.env, **params)
+                if override_values is not None:
+                    if name not in override_values:
+                        raise ValueError(f"Value '{name}' not found in override values")
+                    value = override_values[name]
+                    if not isinstance(value, torch.Tensor):
+                        value = torch.tensor(value, device=gs.device)
+                else:
+                    value = cfg.fn(env=self.env, **params)
 
                 # Apply scale
                 scale = cfg.scale
                 if scale is not None and scale != 1.0:
                     value *= scale
 
-                # Add noise
-                noise = cfg.noise or self.noise
-                if noise is not None and noise != 0.0:
-                    noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
-                    value += noise_value
+                # Add noise, if the value is not an override
+                if not has_overrides:
+                    noise = cfg.noise or self.noise
+                    if noise is not None and noise != 0.0:
+                        noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
+                        value += noise_value
 
                 # Copy directly into output buffer
                 value_size = value.shape[-1]

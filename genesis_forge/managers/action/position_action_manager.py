@@ -175,31 +175,16 @@ class PositionActionManager(BaseActionManager):
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
 
-    def step(self, actions: torch.Tensor) -> torch.Tensor:
+    def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Take the incoming actions for this step and handle them.
-
-        Args:
-            actions: The incoming step actions to handle.
-        """
-        if not self.enabled:
-            return
-        actions = super().step(actions)
-        self._actions = self.handle_actions(actions)
-        return self._actions
-
-    def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
-        """
-        Converts the actions to position commands, and send them to the DOF actuators.
-        Override this function if you want to change the action handling logic.
+        Convert the actions to position commands, and clamp them to the limits.
 
         Args:
             actions: The incoming step actions to handle.
 
         Returns:
-            The processed and handled actions.
+            The actions as position commands.
         """
-
         # Validate actions
         if not self._quiet_action_errors:
             if torch.isnan(actions).any():
@@ -214,11 +199,14 @@ class PositionActionManager(BaseActionManager):
             min=self._clip_values[:, 0],
             max=self._clip_values[:, 1],
         )
-
-        # Set target positions
-        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
-
         return actions
+
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+        """
+        Sends the actions as position commands to the actuators in the simulation.
+        """
+        actions = self.get_actions()
+        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
 
     """
     Internal methods

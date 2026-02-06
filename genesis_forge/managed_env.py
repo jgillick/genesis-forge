@@ -295,7 +295,8 @@ class ManagedEnvironment(GenesisEnv):
             self.managers["action"]
         ):
             (start, end) = self._action_ranges[i]
-            action_manager.step(actions[:, start:end])
+            processed_actions = action_manager.step(actions[:, start:end])
+            action_manager.send_actions_to_simulation(processed_actions)
         self.scene.step()
 
         # Update entity managers

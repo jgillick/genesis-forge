@@ -100,6 +100,14 @@ class GenesisEnv:
         return self
 
     @property
+    def step_dt(self) -> float:
+        """
+        The time step of the environment.
+        This is an alias of the :attr:`dt` property.
+        """
+        return self.dt
+
+    @property
     def max_episode_length_sec(self) -> int | None:
         """The max episode length, in seconds, for each environment."""
         return self._max_episode_length_sec

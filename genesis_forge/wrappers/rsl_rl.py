@@ -18,14 +18,19 @@ class RslRlWrapper(Wrapper):
      - Combines the terminated and truncated tensors into a single tensor (i.e. `terminated | truncated`).
      - Add the truncated tensor to the extras dictionary as "time_outs".
      - Returns observations and extras from the `get_observations` method.
+
+    Args:
+        env: The environment to wrap.
+        cfg: The configuration for the wrapper that will be passed to the neptune or wandb logger
     """
 
     can_be_wrapped = False
 
-    def __init__(self, env: GenesisEnv):
+    def __init__(self, env: GenesisEnv, cfg: dict | object = {}):
         super().__init__(env)
 
         self.rsl3 = False
+        self.cfg = cfg
         try:
             major_version = int(metadata.version("rsl-rl-lib").split(".")[0])
             if major_version >= 3:

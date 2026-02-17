@@ -235,7 +235,7 @@ class BaseActionManager(BaseManager):
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Process the actions and convert them to actuator commands.
+        Convert input actions values to actuator commands.
         Override this function if you want to change the action processing logic.
 
         Args:

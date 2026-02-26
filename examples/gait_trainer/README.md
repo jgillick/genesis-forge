@@ -90,11 +90,9 @@ python ./eval.py
 
 ## Gamepad playing
 
-If you have a logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) or [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) you can try out trained model like a video game. This way you can see how the model handles different controls.
+You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech F310/F710, etc.) to try out the trained model like a video game. This way you can see how the model handles different controls.
 
-First, follow the [gamepad installation instructions](https://genesis-forge.readthedocs.io/en/latest/guide/gamepad.html#installation).
-
-Then, connect your gamepad, and run the following command:
+The gamepad dependencies are automatically installed with genesis-forge. Simply connect your gamepad and run:
 
 ```python
 python ./gamepad.py

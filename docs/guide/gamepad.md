@@ -2,56 +2,29 @@
 
 <video autoplay="" muted="" loop="" playsinline="" controls="" src="../_static/gamepad.webm"></video>
 
-Don't you want to use a video game controller to control your trained policy? Genesis Forge currently integrates with the Logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) and [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) controllers.
+Genesis Forge integrates with game controllers through SDL2, supporting a wide range of controllers including Xbox, PlayStation, Nintendo Switch Pro, and many others.
 
 ```{figure} _images/f710.webp
-:alt: F10 controller
+:alt: Game controller
 :width: 350
 :align: center
 :class: dark-light
-The Logitech F710 gamepad controller
+Game controllers (like the Logitech F710) work seamlessly with Genesis Forge
 ```
 
 # Installation
 
-To use these controllers, you need to install [HIDAPI](https://github.com/libusb/hidapi) on your computer:
+Genesis Forge uses SDL2 for gamepad support. The required dependencies (`pysdl2` and `pysdl2-dll`) are automatically installed with genesis-forge. No additional system-level installation is required in most cases.
 
-## Mac
+## Linux (Optional)
 
-With [Homebrew](https://brew.sh/)
-
-```shell
-brew install hidapi
-```
-
-## Windows
-
-Download the windows files from [here](https://github.com/libusb/hidapi/releases) and then place them in `Windows/System32`.
-
-## Linux
-
-Use your package manager to install `libhidapi-dev`, for example:
-
-```shell
-sudo apt install libhidapi-dev
-```
-
-You'll likely also need to add udev rules for the controllers. Create the file: `/etc/udev/rules.d/100-hidapi.rules`
-
-```{code-block}
-:caption: /etc/udev/rules.d/100-hidapi.rules
-SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c216", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="logitech_f310%n"
-KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c216", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"
-SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c219", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="logitech_f710%n"
-KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c219", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"
-```
-
-Then
+On Linux, you may want to ensure your user has permission to access gamepad devices. Most modern distributions handle this automatically, but if you encounter issues, you may need to add udev rules:
 
 ```bash
-sudo chmod 644 /etc/udev/rules.d/00-hidapi.rules
-sudo udevadm control --reload-rules
+sudo usermod -a -G input $USER
 ```
+
+Then log out and back in for the changes to take effect.
 
 ## Usage
 
@@ -77,6 +50,8 @@ Now let's create an eval script that uses the gamepad controller to set these va
 
 ```{code-block} python
 :caption: eval.py
+
+from genesis_forge.gamepads import Gamepad
 
 # This is where the trained policy was saved
 EXPERIMENT_DIR = "./logs/experiment"
@@ -111,3 +86,14 @@ with torch.no_grad():
 ```
 
 This maps joystick axis 0 and 1 (left joystick) to the robot's Y and X movements, and axis 2 and 3 (right joystick) to rotation and height.
+
+## Supported Controllers
+
+SDL2 provides built-in support for a wide variety of game controllers:
+- Xbox controllers (360, One, Series X/S)
+- PlayStation controllers (DualShock 3, 4, DualSense)
+- Nintendo Switch Pro Controller
+- Logitech gamepads (F310, F710, etc.)
+- Many other USB and Bluetooth controllers
+
+Controllers are automatically detected and mapped when connected.

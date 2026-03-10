@@ -228,7 +228,7 @@ class BaseActionManager(BaseManager):
         """
         return {
             name: value.item()
-            for name, value in zip[tuple[str, Tensor]](
+            for name, value in zip(
                 self.dofs.keys(), self._actions[env_idx, :]
             )
         }

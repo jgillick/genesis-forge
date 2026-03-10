@@ -282,6 +282,113 @@ def action_rate_l2(env: GenesisEnv) -> torch.Tensor:
     return torch.sum(torch.square(last_actions - actions), dim=1)
 
 
+class action_acceleration_l2(MdpFnClass):
+    """
+    Penalize the second-order finite difference of actions (discrete acceleration) using the L2
+    squared kernel.This targets jittery oscillation rather than smooth consistent movement,
+    where a smooth ramp has zero acceleration even at high velocity.
+
+    A smooth action ramp looks like this: 0.5 → 0.6 → 0.7 → 0.8
+     * Velocities: 0.1, 0.1, 0.1
+     * Accelerations: 0.0, 0.0 (zero -- perfectly smooth)
+     * Penalty: zero
+
+    A jittery action ramp looks like this: 0.5 → 0.8 → 0.5 → 0.8
+     * Velocities: 0.3, -0.3, 0.3
+     * Accelerations: -0.6, 0.6 (large -- direction keeps reversing)
+     * Penalty: very large
+
+    The acceleration is computed as:
+
+    .. math::
+
+        \\text{acc}_t = a_t - 2 \\cdot a_{t-1} + a_{t-2}
+
+    and the penalty is :math:`\\sum \\text{acc}_t^2` across all action dimensions.
+
+    Args:
+        env: The Genesis environment containing the robot
+        action_manager: Optional action manager to source actions from.
+                        If not provided, actions are read from ``env.actions``.
+    """
+
+    def __init__(
+        self,
+        env: GenesisEnv,
+        action_manager: PositionActionManager = None,
+    ):
+        super().__init__(env)
+        self.env = env
+        self._prev_action: torch.Tensor | None = None
+        self._prev_prev_action: torch.Tensor | None = None
+        self._action_log_count: torch.Tensor | None = None
+
+    def _init_buffers(self, actions: torch.Tensor):
+        self._prev_action = torch.zeros_like(actions)
+        self._prev_prev_action = torch.zeros_like(actions)
+        self._action_log_count = torch.zeros((self.env.num_envs, ), dtype=torch.long, device=gs.device)
+
+    def reset(self, envs_idx):
+        """
+        Clear the action history for the specified environments.
+        """
+        if self._prev_action is None:
+            return
+        self._prev_action[envs_idx] = 0.0
+        self._prev_prev_action[envs_idx] = 0.0
+        self._action_log_count[envs_idx] = 0
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        action_manager: PositionActionManager = None,
+    ) -> torch.Tensor:
+        # Get the current actions for this step
+        actions = env.actions
+        if action_manager is not None:
+            actions = action_manager.get_actions()
+
+        # Initialize the buffers, if necessary
+        if self._prev_action is None:
+            self._init_buffers(actions)
+
+        # Calculate the acceleration
+        acceleration = actions - 2.0 * self._prev_action + self._prev_prev_action
+        penalty = torch.sum(torch.square(acceleration), dim=1)
+
+        # Mask out envs that don't yet have two steps of valid history
+        penalty = penalty * (self._action_log_count >= 2)
+
+        # Shift the actions to the next step
+        self._prev_prev_action = self._prev_action
+        self._prev_action = actions.clone()
+        self._action_log_count.add_(1).clamp_(max=2)
+
+        return penalty
+
+
+def dof_torque_l2(
+    env: GenesisEnv,
+    actuator_manager: ActuatorManager,
+) -> torch.Tensor:
+    """
+    Penalize joint torque effort using the L2 squared kernel.
+
+    Discourages the policy from applying unnecessary force, particularly when the
+    robot is near equilibrium. This helps reduce actuator oscillation when the robot
+    is stationary or moving slowly.
+
+    Args:
+        env: The Genesis environment containing the robot
+        actuator_manager: The actuator manager to retrieve DOF forces from.
+
+    Returns:
+        torch.Tensor: Penalty for joint torque effort, shape (num_envs,)
+    """
+    torque = actuator_manager.get_dofs_control_force()
+    return torch.sum(torch.square(torque), dim=1)
+
+
 """
 Velocity Command Rewards
 """
@@ -488,6 +595,37 @@ def feet_air_time(
     if vel_cmd_manager is not None:
         reward *= torch.norm(vel_cmd_manager.command[:, :2], dim=1) > 0.1
     return reward
+
+
+def feet_ground_time(
+    env: GenesisEnv,
+    contact_manager: ContactManager,
+    time_threshold: float,
+) -> torch.Tensor:
+    """Penalize brief ground contacts (foot tapping) using a linear kernel.
+
+    Fires at the moment a foot lifts off. The penalty is proportional to how
+    much the stance duration fell below time_threshold. A proper stance phase
+    (contact_time >= time_threshold) produces zero penalty.
+
+    Intended to be paired with feet_air_time (positive reward) to fully shape
+    gait timing: feet_air_time rewards long swings while this penalizes taps.
+    Use a negative weight in the RewardManager.
+
+    Args:
+        env: The Genesis Forge environment
+        contact_manager: The contact manager to check for contact
+        time_threshold: Contacts shorter than this (in seconds) are penalized.
+                        Set independently from the feet_air_time threshold based
+                        on the expected stance duration of your target gait.
+
+    Returns:
+        The penalty for brief ground contacts, shape (num_envs,)
+    """
+    just_lifted = contact_manager.has_broken_contact(env.dt)
+    last_contact_time = contact_manager.last_contact_time
+    short_contact = (time_threshold - last_contact_time).clamp(min=0.0) * just_lifted
+    return torch.sum(short_contact, dim=1)
 
 
 def feet_slide(

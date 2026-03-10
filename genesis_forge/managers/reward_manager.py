@@ -199,6 +199,11 @@ class RewardManager(BaseManager):
         if envs_idx is None:
             envs_idx = torch.arange(self.env.num_envs, device=gs.device)
 
+        # Reset function classes
+        for cfg in self.cfg.values():
+            cfg.reset(envs_idx)
+
+        # Log the reward data
         if self.enabled and self.logging_enabled:
             logging_dict = self.env.extras[self.env.extras_logging_key]
 

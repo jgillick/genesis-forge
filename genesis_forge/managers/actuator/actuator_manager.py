@@ -261,6 +261,34 @@ class ActuatorManager(BaseManager):
             [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
             force = force.clamp(lower, upper)
         return force
+    
+    def get_dofs_control_force(
+        self,
+        noise: float = 0.0,
+        clip_to_max_force: bool = False,
+        dofs_idx: list[int] | None = None,
+    ) -> torch.Tensor:
+        """
+        Return the force output by the configured DOFs.
+        This is a wrapper for `RigidEntity.get_dofs_control_force`.
+
+        Args:
+            noise: The maximum amount of random noise to add to the force values returned.
+            clip_to_max_force: Clip the force returned to the maximum force of the actuators.
+            dofs_idx: The indices of the DOFs to get the force for. If None, all the DOFs of this actuator manager are used.
+
+        Returns:
+            force: torch.Tensor, shape (n_envs, n_dofs)
+            The force experienced by the enabled DOFs.
+        """
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        force = self._robot.get_dofs_control_force(dofs_idx)
+        if noise > 0.0:
+            force = self._add_random_noise(force, noise)
+        if clip_to_max_force:
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            force = force.clamp(lower, upper)
+        return force
 
     def get_dofs_limits(
         self, dofs_idx: list[int] | None = None

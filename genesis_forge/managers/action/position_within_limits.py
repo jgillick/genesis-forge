@@ -119,7 +119,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             The actions as position commands.
         """
         # Convert the action from -1 to 1, to absolute position within the actuator limits
-        actions.clamp_(-1.0, 1.0)
+        actions = actions.clamp(-1.0, 1.0)
         actions = actions * self._scale + self._offset
         return actions
 

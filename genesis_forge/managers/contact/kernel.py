@@ -1,5 +1,5 @@
-import gstaichi as ti
-from genesis.utils.geom import ti_inv_transform_by_quat
+import quadrants as ti
+from genesis.utils.geom import qd_inv_transform_by_quat
 
 
 @ti.kernel
@@ -73,9 +73,9 @@ def kernel_get_contact_forces(
 
                 # Transform force to local frame of target link
                 if is_target_b:
-                    force_vec = ti_inv_transform_by_quat(force_vec, quat_b)
+                    force_vec = qd_inv_transform_by_quat(force_vec, quat_b)
                 else:
-                    force_vec = ti_inv_transform_by_quat(-force_vec, quat_a)
+                    force_vec = qd_inv_transform_by_quat(-force_vec, quat_a)
 
                 # Accumulate force and position
                 for j in ti.static(range(3)):

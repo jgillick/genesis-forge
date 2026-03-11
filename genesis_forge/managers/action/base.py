@@ -35,6 +35,16 @@ class BaseActionManager(BaseManager):
                     This is an easy way to emulate the latency in the system.
     """
 
+    deploy_type: str = "base"
+    """
+    A unique string that identifies this action manager type for deployment.
+
+    Subclasses must override this with a stable, unique identifier (e.g. ``"position"``
+    or ``"my_velocity_controller"``).  This string is written into the deployment config
+    JSON and used by :class:`~genesis_forge.deploy.ActionDecoder` to look up the
+    matching decoder function in the registry.
+    """
+
     def __init__(
         self,
         env: GenesisEnv,
@@ -221,6 +231,29 @@ class BaseActionManager(BaseManager):
         if self._actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._actions
+
+    def export(self) -> dict:
+        """
+        Return the deployment configuration for this action manager as plain Python
+        types (no tensors, no Genesis objects).
+
+        The returned dict is stored verbatim in the deployment config JSON under
+        ``action_managers[i].params``.  The matching decoder function registered
+        with :func:`~genesis_forge.deploy.register_action_decoder` receives this
+        same dict at inference time.
+
+        Subclasses should call ``super().export()`` and update the returned dict
+        with their own type-specific fields (scale, offset, limits, etc.).
+
+        Must be called *after* :meth:`build`.
+
+        Returns:
+            A JSON-serializable dict describing the action transform.
+        """
+        return {
+            "joint_names": list(self.dofs.keys()),
+            "num_actions": self.num_actions,
+        }
 
     def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
         """

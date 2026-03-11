@@ -6,6 +6,7 @@ from typing import TypedDict, Callable, Any
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.managers.config import ObservationConfigItem
+from genesis_forge.rolling_buffer import RollingBuffer
 
 
 class ObservationConfig(TypedDict):
@@ -150,6 +151,10 @@ class ObservationManager(BaseManager):
         self._history_len = history_len if history_len is not None else 1
         self._history = []
 
+        # Per-observation slot dimensions; populated during build().
+        # Each entry is (observation_name, dim) in the same order as self.cfg.
+        self._observation_dims: list[tuple[str, int]] = []
+
         # Wrap config items
         self.cfg: dict[str, ObservationConfigItem] = {}
         for name, cfg in cfg.items():
@@ -202,10 +207,8 @@ class ObservationManager(BaseManager):
         )
 
         # Fill history buffer
-        shape = (self.env.num_envs, single_obs_size)
-        self._history = [
-            torch.zeros(shape, device=gs.device) for _ in range(self._history_len)
-        ]
+        init_frame = torch.zeros((self.env.num_envs, single_obs_size), device=gs.device)
+        self._history = RollingBuffer(self._history_len, init_frame)
         self._history_output = torch.zeros(
             (self.env.num_envs, self._observation_size),
             device=gs.device,
@@ -232,17 +235,10 @@ class ObservationManager(BaseManager):
         if not self.enabled:
             return torch.zeros((self.env.num_envs, self._observation_size))
 
-        buffer = self._history.pop()
+        buffer = self._history.rotate()
         self._perform_observation(buffer, values)
-        self._history.insert(0, buffer)
-
-        # Concatenate the history buffers into the pre-allocated output buffer
-        # This is more performant than torch.cat()
-        offset = 0
-        for obs in self._history:
-            size = obs.shape[1]
-            self._history_output[:, offset : offset + size] = obs
-            offset += size
+        self._history.push(buffer)
+        self._history.output(self._history_output)
         return self._history_output.clone()
 
     """
@@ -252,6 +248,7 @@ class ObservationManager(BaseManager):
     def _setup_observation_functions(self) -> int:
         """Build all the observation function classes, and determine the observation space."""
         size = 0
+        self._observation_dims = []
         for name, cfg in self.cfg.items():
             try:
                 cfg.build()
@@ -260,6 +257,7 @@ class ObservationManager(BaseManager):
                 value_size = value.shape[-1]
                 if value_size > 0:
                     size += value_size
+                    self._observation_dims.append((name, value_size))
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
                 raise e

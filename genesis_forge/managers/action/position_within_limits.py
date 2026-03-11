@@ -5,8 +5,10 @@ from genesis import gs
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.values import ensure_dof_pattern
+from .base import BaseActionManager
 from .position_action_manager import PositionActionManager
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.managers.action.transformers import position_within_limits_decode
 
 
 class PositionWithinLimitsActionManager(PositionActionManager):
@@ -70,6 +72,8 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
     """
 
+    deploy_type: str = "position_within_limits"
+
     def __init__(
         self,
         env: GenesisEnv,
@@ -91,6 +95,40 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         )
         self._limit_cfg = ensure_dof_pattern(limit)
         self._soft_limit_scale_factor = soft_limit_scale_factor
+
+    """
+    Deployment
+    """
+
+    def export(self) -> dict:
+        """
+        Return the deployment configuration for this action manager.
+
+        Captures the resolved scale and offset tensors (derived from the joint
+        position limits) so they can be serialized to JSON and later used by the
+        ``"position_within_limits"`` decoder in
+        :class:`~genesis_forge.deploy.ActionDecoder`.
+
+        Intentionally calls :meth:`BaseActionManager.export` directly to skip
+        :class:`PositionActionManager`'s version, since this class uses a
+        different transform (clamp-then-affine rather than affine-then-clamp).
+
+        Must be called after :meth:`build`.
+        """
+        # Call BaseActionManager directly -- the PositionActionManager version
+        # exports scale/offset/clip fields for a different transform and would
+        # produce incorrect config for this class.
+        config = BaseActionManager.export(self)
+
+        # self._scale and self._offset are (num_envs, n_actions); take row 0
+        # since all envs share the same base limits.
+        config.update(
+            {
+                "scale": self._scale[0].tolist(),
+                "offset": self._offset[0].tolist(),
+            }
+        )
+        return config
 
     """
     Lifecycle Operations
@@ -118,10 +156,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         Returns:
             The actions as position commands.
         """
-        # Convert the action from -1 to 1, to absolute position within the actuator limits
-        actions.clamp_(-1.0, 1.0)
-        actions = actions * self._scale + self._offset
-        return actions
+        return position_within_limits_decode(actions, self._scale, self._offset)
 
     """
     Internal methods

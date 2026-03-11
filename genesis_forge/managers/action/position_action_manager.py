@@ -7,6 +7,7 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.values import ensure_dof_pattern
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.managers.action.transformers import position_decode
 
 
 T = TypeVar("T")
@@ -102,6 +103,8 @@ class PositionActionManager(BaseActionManager):
 
     """
 
+    deploy_type: str = "position"
+
     def __init__(
         self,
         env: GenesisEnv,
@@ -145,6 +148,39 @@ class PositionActionManager(BaseActionManager):
         Return the default DOF positions.
         """
         return self.actuator_manager.default_dofs_pos[:, self.actuator_dof_filter]
+
+    """
+    Deployment
+    """
+
+    def export(self) -> dict:
+        """
+        Return the deployment configuration for this action manager.
+
+        Captures the resolved scale, offset, and clip tensors that were computed
+        during :meth:`build` so they can be serialized to JSON and later used by
+        the ``"position"`` decoder in :class:`~genesis_forge.deploy.ActionDecoder`.
+
+        Must be called after :meth:`build`.
+        """
+        config = super().export()
+
+        # Offset may be (num_envs, n_actions) when use_default_offset=True, or
+        # (n_actions,) when an explicit offset was provided.  All envs share the
+        # same base value, so take the first row when batched.
+        offset = self._offset_values
+        if offset.ndim == 2:
+            offset = offset[0]
+
+        config.update(
+            {
+                "scale": self._scale_values.tolist(),
+                "offset": offset.tolist(),
+                "clip_low": self._clip_values[:, 0].tolist(),
+                "clip_high": self._clip_values[:, 1].tolist(),
+            }
+        )
+        return config
 
     """
     Lifecycle Operations
@@ -192,14 +228,19 @@ class PositionActionManager(BaseActionManager):
             if torch.isinf(actions).any():
                 print(f"ERROR: Infinite actions received! Actions: {actions}")
 
-        # Process actions
-        actions = actions * self._scale_values + self._offset_values
-        actions = torch.clamp(
+        # Offset may be (num_envs, n_actions) when use_default_offset=True;
+        # all envs share the same base values so take the first row.
+        offset = self._offset_values
+        if offset.ndim == 2:
+            offset = offset[0]
+
+        return position_decode(
             actions,
-            min=self._clip_values[:, 0],
-            max=self._clip_values[:, 1],
+            self._scale_values,
+            offset,
+            self._clip_values[:, 0],
+            self._clip_values[:, 1],
         )
-        return actions
 
     def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
         """

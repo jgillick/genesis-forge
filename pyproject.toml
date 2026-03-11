@@ -1,6 +1,6 @@
 [build-system]
-requires = ["uv_build>=0.10.9,<0.11.0"]
-build-backend = "uv_build"
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
 
 [project]
 name = "genesis-forge"
@@ -15,7 +15,7 @@ dependencies = [
   "deprecated",
   "hidapi",
   "skrl[torch]",
-  "torch",
+  "torch>=2.10.0",
   "tensordict",
 ]
 classifiers = [
@@ -29,7 +29,5 @@ license-files = ["LICENSE"]
 Homepage = "https://github.com/jgillick/genesis-forge"
 Issues = "https://github.com/jgillick/genesis-forge/issues"
 
-[tool.uv.build-backend]
-module-name = "genesis_forge"
-module-root = ""
-source-exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]
+[tool.hatch.build.targets.sdist]
+exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]

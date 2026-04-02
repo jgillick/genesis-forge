@@ -235,6 +235,11 @@ class VelocityCommandManager(CommandManager):
                 "lin_vel_y": lin_vel_y_axis,
                 "ang_vel_z": ang_vel_z_axis,
             },
+            invert_axis={
+                "lin_vel_x": True,
+                "lin_vel_y": True,
+                "ang_vel_z": True,
+            },
         )
 
     """

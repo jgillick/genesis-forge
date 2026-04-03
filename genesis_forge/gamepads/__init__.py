@@ -1,5 +1,5 @@
+from .common import Key
+from .sdl2 import ControllerEventLoop, controller_key_from_event
 from .gamepad import Gamepad
-from .logitech import LOGITECH_F710_CONFIG, LOGITECH_F310_CONFIG
-from .config import GamepadState
 
-__all__ = ["Gamepad", "GamepadState", "LOGITECH_F710_CONFIG", "LOGITECH_F310_CONFIG"]
+__all__ = ["Key", "ControllerEventLoop", "controller_key_from_event", "Gamepad"]

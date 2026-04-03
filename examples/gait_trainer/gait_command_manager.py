@@ -399,7 +399,9 @@ class GaitCommandManager(CommandManager):
         """
         Select a new gait when the A button is pressed.
         """
-        if "A" in self._gamepad.state.buttons:
+        # SDL2 button names are lowercase
+        buttons = self._gamepad.buttons()
+        if "a" in buttons:
             self._gamepad_btn_pressed = True
         elif self._gamepad_btn_pressed:
             self._gamepad_btn_pressed = False

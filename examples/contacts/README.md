@@ -66,35 +66,12 @@ python ./eval.py ./logs/go2-foot-step/
 
 ## Gamepad control
 
-If you have a logitech [F310](https://www.logitechg.com/en-us/shop/p/f310-gamepad.940-000110?sp=1&searchclick=Logitech%20G) or [F710](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad) you can control the robot in the trained policy yourself.
+You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech F310/F710, etc.) to control the robot in the trained policy yourself.
 
-First, you need to make sure that HIDAPI is installed on your machine.
-https://github.com/libusb/hidapi?tab=readme-ov-file#installing-hidapi
-
-Then, connect your gamepad, and run the following command:
+Simply connect your gamepad and run:
 
 ```python
 python ./gamepad.py
 ```
 
 You should now be able to use the joysticks to control the Go2 robot.
-
-### Troubleshooting
-
-If you have trouble connecting to the gamepad on linux, you might need to update the udev rules:
-
-Create the file: `/etc/udev/rules.d/100-hidapi.rules`
-
-```
-SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c216", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="logitech_f310%n"
-KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c216", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"
-SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c219", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl", SYMLINK+="logitech_f710%n"
-KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c219", MODE="0660", GROUP="plugdev", TAG+="uaccess", TAG+="udev-acl"
-```
-
-Then
-
-```bash
-sudo chmod 644 /etc/udev/rules.d/00-hidapi.rules
-sudo udevadm control --reload-rules
-```

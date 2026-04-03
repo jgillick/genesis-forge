@@ -269,7 +269,7 @@ class CommandManager(BaseManager):
             gamepad = Gamepad(GAMEPAD_PRODUCT)
             cmd_buffer = torch.zeros((N_ENVS, 1), device=gs.device)
             def gamepad_controller(_step):
-                a_pressed = "A" in gamepad.state.buttons
+                a_pressed = "a" in gamepad.state.buttons
                 cmd_buffer[:, 0] = MAX_HEIGHT if a_pressed else MIN_HEIGHT
                 return cmd_buffer
 
@@ -284,13 +284,15 @@ class CommandManager(BaseManager):
         self,
         gamepad: Gamepad,
         range_axis: int | dict[str, int],
+        invert_axis: bool | dict[str, bool] = False,
     ):
         """
         A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
 
         Args:
-            gamepad: The gamepad to use.
+            gamepad: The gamepad wrapper to use.
             range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+            invert_axis: Whether to invert each mapped axis before converting it into the command range.
 
         Example::
 
@@ -302,14 +304,15 @@ class CommandManager(BaseManager):
                 # ...
 
             # Connect gamepad
-            gamepad = Gamepad(GAMEPAD_PRODUCT)
+            from genesis_forge.gamepads import Gamepad
+            gamepad = Gamepad()
 
             # Create environment & connect gamepad
             env = MyEnv(num_envs=1)
             env.build()
 
             # Connect joystick axis 3 to the height command
-            env.height_command.use_gamepad(gamepad_controller, range_axis=3)
+            env.height_command.use_gamepad(gamepad, range_axis=3)
 
         Example with multiple ranges::
 
@@ -327,7 +330,8 @@ class CommandManager(BaseManager):
                 # ...
 
             # Connect gamepad
-            gamepad = Gamepad(GAMEPAD_PRODUCT)
+            from genesis_forge.gamepads import Gamepad
+            gamepad = Gamepad()
 
             # Create environment & connect gamepad
             env = MyEnv(num_envs=1)
@@ -335,7 +339,7 @@ class CommandManager(BaseManager):
 
             # Connect joystick axis 2 and 3 to to the indvidual ranges
             env.height_command.use_gamepad(
-                gamepad_controller,
+                gamepad,
                 range_axis={
                     "cmd1": 2,
                     "cmd2": 3,
@@ -345,15 +349,21 @@ class CommandManager(BaseManager):
 
         # Map axis to range keys
         axis_map = []
+        axis_invert_map = []
         if isinstance(range_axis, int):
             axis_map.append(range_axis)
+            axis_invert_map.append(invert_axis)
         elif isinstance(range_axis, dict):
             for key in self._range.keys():
                 axis_map.append(range_axis[key])
+                axis_invert_map.append(
+                    invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
+                )
 
         self._gamepad_cfg = {
             "gamepad": gamepad,
             "axis_map": axis_map,
+            "axis_invert_map": axis_invert_map,
         }
         self._gamepad_axis_command_buffer = torch.zeros_like(
             self._command, device=gs.device
@@ -387,6 +397,7 @@ class CommandManager(BaseManager):
 
         gamepad = self._gamepad_cfg["gamepad"]
         axis_map = self._gamepad_cfg["axis_map"]
+        axis_invert_map = self._gamepad_cfg["axis_invert_map"]
 
         # Convert the values to the commanded full range
         def convert_to_range(value: float, min: float, max: float) -> float:
@@ -399,6 +410,9 @@ class CommandManager(BaseManager):
             ranges = list(self._range.values())
         for i, axis in enumerate(axis_map):
             if i < len(ranges):
-                cmd[:, i] = convert_to_range(gamepad.state.axis(axis), *ranges[i])
+                value = gamepad.axis(axis)
+                if axis_invert_map[i]:
+                    value = -value
+                cmd[:, i] = convert_to_range(value, *ranges[i])
 
         return cmd

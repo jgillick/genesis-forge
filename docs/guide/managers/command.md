@@ -159,8 +159,9 @@ self.target_command = CommandManager(self, range={
 :caption: train.py
 
 # Connect gamepad axis 3 to the height command value
+from genesis_forge.gamepads import Gamepad
 gamepad = Gamepad()
-env.command_manager.use_gamepad(gamepad_controller, range_axis=3)
+env.command_manager.use_gamepad(gamepad, range_axis=3)
 
 # Run policy...
 ```

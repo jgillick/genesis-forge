@@ -1,4 +1,5 @@
 import inspect
+from typing import Callable
 
 from genesis_forge.genesis_env import GenesisEnv
 
@@ -31,6 +32,13 @@ class ConfigItem:
     @property
     def fn(self):
         return self._fn
+
+    @fn.setter
+    def fn(self, fn: Callable):
+        self._fn = fn
+        self._is_class = inspect.isclass(fn)
+        if self._is_class:
+            self._rebuild()
 
     @property
     def params(self):

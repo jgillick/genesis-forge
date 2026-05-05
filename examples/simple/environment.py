@@ -5,7 +5,7 @@ Simplified Go2 Locomotion Environment using managers to handle everything.
 import torch
 import genesis as gs
 
-from genesis_forge import ManagedEnvironment
+from genesis_forge import EnvMode, ManagedEnvironment
 from genesis_forge.managers import (
     RewardManager,
     TerminationManager,
@@ -33,6 +33,7 @@ class Go2SimpleEnv(ManagedEnvironment):
         dt: float = 1 / 50,  # control frequency on real robot is 50hz
         max_episode_length_s: int | None = 20,
         headless: bool = True,
+        mode: EnvMode = "train",
     ):
         super().__init__(
             num_envs=num_envs,
@@ -40,6 +41,7 @@ class Go2SimpleEnv(ManagedEnvironment):
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
         )
+        self.mode = mode
 
         # Set the target robot direction, along the X axis
         self.target_command = torch.zeros(
@@ -150,6 +152,7 @@ class Go2SimpleEnv(ManagedEnvironment):
         RewardManager(
             self,
             logging_enabled=True,
+            enabled=self.mode == "train",
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
@@ -201,6 +204,7 @@ class Go2SimpleEnv(ManagedEnvironment):
         self.termination_manager = TerminationManager(
             self,
             logging_enabled=True,
+            enabled=self.mode == "train",
             term_cfg={
                 # The episode ended
                 "timeout": {
@@ -220,7 +224,7 @@ class Go2SimpleEnv(ManagedEnvironment):
 
         ##
         # Observations
-        ObservationManager(
+        self.observation_manager = ObservationManager(
             self,
             cfg={
                 "angle_velocity": {

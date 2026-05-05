@@ -8,7 +8,7 @@ from typing import Any, Literal, TYPE_CHECKING
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
 
-EnvMode = Literal["train", "eval", "play"]
+EnvMode = Literal["train", "eval", "play", "real"]
 
 
 class GenesisEnv:

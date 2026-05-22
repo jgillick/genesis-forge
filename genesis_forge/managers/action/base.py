@@ -46,6 +46,7 @@ class BaseActionManager(BaseManager):
         super().__init__(env, type="action")
         self._raw_actions = None
         self._actions = None
+        self._last_actions = None
         self._delay_step = delay_step
         self._action_delay_buffer = []
         self._actuator_manager = actuator_manager
@@ -142,7 +143,7 @@ class BaseActionManager(BaseManager):
     @property
     def actions(self) -> torch.Tensor:
         """
-        The actions for for the current step.
+        The processed actions for for the current step.
         """
         if self._actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
@@ -156,6 +157,15 @@ class BaseActionManager(BaseManager):
         if self._raw_actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._raw_actions
+    
+    @property
+    def last_actions(self) -> torch.Tensor:
+        """
+        The processed actions for for the previous step.
+        """
+        if self._last_actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
+        return self._last_actions
 
     """
     DOF convenience wrappers
@@ -290,6 +300,8 @@ class BaseActionManager(BaseManager):
         self._raw_actions = actions
         if self._actions is None:
             self._actions = torch.empty_like(actions, device=gs.device)
+            self._last_actions = torch.zeros_like(actions, device=gs.device)
+        self._last_actions[:] = self._actions[:]
 
         # Process the actions
         self._actions[:] = self.process_actions(self._raw_actions[:])

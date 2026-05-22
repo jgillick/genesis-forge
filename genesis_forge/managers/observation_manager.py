@@ -217,11 +217,12 @@ class ObservationManager(BaseManager):
         """
         Generate current observations for all environments.
 
-        When you deploy to a real robot, you can provide the observations directly as a dictionary of values,
-        and this method will return the formatted & scaled tensor that you can pass to the policy.
+        Optionally, you can provide the observation values directly as a dictionary of values, and 
+        this method will return the formatted/scaled (without noise) tensor for the policy.
+        This is useful for manual deployments or troubleshooting.
 
         Args:
-            values: (optional) If provided, use these values instead of fetching observations from the config functions.
+            values: (optional) If provided, these values will be used instead of fetching observations from the config functions.
                     It's expected that this dict contains a key for every observation configuration.
                     These values will be scaled, based on the configuration, but not receive any noise.
                     This is useful for providing observations for deployment.

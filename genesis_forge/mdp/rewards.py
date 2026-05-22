@@ -284,9 +284,10 @@ def action_rate_l2(env: GenesisEnv) -> torch.Tensor:
 
 class action_acceleration_l2(MdpFnClass):
     """
-    Penalize the second-order finite difference of actions (discrete acceleration) using the L2
-    squared kernel.This targets jittery oscillation rather than smooth consistent movement,
-    where a smooth ramp has zero acceleration even at high velocity.
+    Targets jittery oscillations (rather than smooth consistent movement), by penalize the second-order 
+    finite difference of actions (discrete acceleration) using the L2 squared kernel. 
+    
+    This encourages a smooth consistent movement, where a smooth ramp has zero acceleration even at high velocity.
 
     A smooth action ramp looks like this: 0.5 → 0.6 → 0.7 → 0.8
      * Velocities: 0.1, 0.1, 0.1

@@ -81,10 +81,31 @@ def entity_projected_gravity(
     entity = getattr(env, entity_attr)
     return entity_projected_gravity(entity)
 
+"""
+Sensor observations
+"""
 
 def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
     """
     Makes an IMU reading and returns the concatenated linear acceleration and angular velocity readings.
+
+    Example::
+        self.imu = gs.sensors.IMU(
+            entity_idx=self.robot.idx,
+            pos_offset=(0.24, 0.0, 0.0),
+            euler_offset=(0.0, 0.0, 0.0),
+        )
+
+        ...
+
+        ObservationManager(
+            self,
+            cfg={
+                "imu_sensor": {
+                    "fn": self.imu_observation,
+                },
+            }
+        )
 
     Returns:
         torch.Tensor: Shape (n_envs, 6): [lin_acc_xyz, ang_vel_xyz] per env.

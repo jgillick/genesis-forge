@@ -75,7 +75,7 @@ class EntityManager(BaseManager):
         self,
         env: GenesisEnv,
         entity_attr: str,
-        on_reset: dict[str, EntityResetConfig],
+        on_reset: dict[str, EntityResetConfig] = {},
     ):
         super().__init__(env, type="entity")
         if hasattr(env, "add_entity_manager"):

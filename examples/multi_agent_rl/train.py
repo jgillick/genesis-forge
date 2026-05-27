@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import pickle
 
 import genesis as gs
 import torch
@@ -99,6 +100,10 @@ def main() -> None:
             write_interval=max(1, args.timesteps // 100),
             checkpoint_interval=max(1000, args.timesteps // 10),
         ),
+    )
+    pickle.dump(
+        [cfg],
+        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
     )
 
     # SKRL memory is (rollout_steps, num_envs, …); use rollouts as the time axis (see skrl Runner).

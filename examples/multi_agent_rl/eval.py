@@ -10,6 +10,7 @@ import pickle
 import genesis as gs
 import torch
 
+from skrl.multi_agents.torch import ExperimentCfg
 from skrl.multi_agents.torch.mappo import MAPPO
 from skrl.multi_agents.torch.mappo.mappo_cfg import MAPPO_CFG
 
@@ -20,12 +21,13 @@ from models import MasqGaussianPolicy, MasqValue
 EXPERIMENT_NAME = "go2-multi-agent"
 
 parser = argparse.ArgumentParser(add_help=True)
+parser.add_argument("--checkpoint", type=str, default=None, help="Path to a MAPPO checkpoint file (*.pt)")
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def get_latest_model(log_dir: str, exp_name: str) -> str | None:
+def get_latest_model(log_dir: str) -> str | None:
     best = os.path.join(log_dir, "checkpoints", "best_agent.pt")
     if os.path.exists(best):
         return best
@@ -53,8 +55,8 @@ def main() -> None:
 
     # Load training configuration
     log_path = f"./logs/{args.exp_name}"
+    model = args.checkpoint or get_latest_model(log_path)
     [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
-    model = get_latest_model(log_path)
     print(f"Loading checkpoint: {model}")
 
     # Setup environment
@@ -79,13 +81,26 @@ def main() -> None:
         }
 
     # cfg here only needs to be compatible with the checkpoint modules; learning params won't be used.
-    cfg = MAPPO_CFG(
-        rollouts=1,
-        learning_epochs=1,
-        mini_batches=1,
-        random_timesteps=0,
-        learning_starts=0,
-    )
+    # def for_each_agent(v):
+    #     return {uid: v for uid in agents}
+
+    # cfg = MAPPO_CFG(
+    #     rollouts=1,
+    #     learning_epochs=1,
+    #     mini_batches=1,
+    #     random_timesteps=0,
+    #     learning_starts=0,
+    #     learning_rate_scheduler_kwargs=for_each_agent({}),
+    #     observation_preprocessor_kwargs=for_each_agent({}),
+    #     state_preprocessor_kwargs=for_each_agent({}),
+    #     value_preprocessor_kwargs=for_each_agent({}),
+    #     experiment=ExperimentCfg(
+    #         directory="./logs",
+    #         experiment_name=EXPERIMENT_NAME,
+    #         write_interval=-1,
+    #         checkpoint_interval=-1,
+    #     ),
+    # )
 
     agent = MAPPO(
         possible_agents=agents,
@@ -100,17 +115,24 @@ def main() -> None:
     agent.enable_training_mode(False, apply_to_models=True)
 
     obs, _info = wrapped.reset()
-    cumulative = torch.zeros((args.num_envs,), dtype=torch.float32, device=gs.device)
+    cumulative = torch.zeros((1,), dtype=torch.float32, device=gs.device)
 
-    for t in range(args.steps):
-        states = wrapped.state()
-        actions, _ = agent.act(obs, states, timestep=t, timesteps=args.steps)
-        obs, rewards, terminated, truncated, info = wrapped.step(actions)
-        # team reward is duplicated per agent; take first agent's reward
-        r0 = rewards[agents[0]].view(-1)
-        cumulative += r0
-
-    print(f"Mean return over {args.steps} steps: {cumulative.mean().item():.4f}")
+    try:
+        steps = 1000
+        for t in range(steps):
+            states = wrapped.state()
+            actions, _ = agent.act(obs, states, timestep=t, timesteps=steps)
+            obs, rewards, terminated, truncated, info = wrapped.step(actions)
+            # team reward is duplicated per agent; take first agent's reward
+            r0 = rewards[agents[0]].view(-1)
+            cumulative += r0
+    except KeyboardInterrupt:
+        pass
+    except gs.GenesisException as e:
+        if str(e) != "Viewer closed.":
+            raise e
+    except Exception as e:
+        raise e
     wrapped.close()
 
 

@@ -160,6 +160,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             link_names=[".*_calf"],
             track_air_time=True,
             air_time_contact_threshold=5.0,
+            debug_visualizer=True,
         )
 
         ##

@@ -3,14 +3,19 @@ Gait Command Manager for implementing the periodic reward composition method
 from "Sim-to-Real Learning of All Common Bipedal Gaits via Periodic Reward Composition"
 """
 
+from __future__ import annotations
+
 import torch
 import genesis as gs
-from typing import TypedDict, Literal
-from genesis.engine.entities import RigidEntity
-from genesis_forge.managers.command.command_manager import CommandManager, CommandRange
+from typing import TYPE_CHECKING, TypedDict, Literal
+from genesis_forge.managers.command.command_manager import CommandManager
+
 from genesis_forge.managers import ContactManager
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.gamepads import Gamepad
+
+if TYPE_CHECKING:
+    from genesis.engine.entities import RigidEntity
 
 GAIT_PERIOD_RANGE = [0.3, 0.6]
 FOOT_CLEARANCE_RANGE = [0.04, 0.12]

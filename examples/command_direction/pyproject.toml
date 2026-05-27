@@ -1,12 +1,12 @@
 [project]
-name = "genesis-forge-multi-agent-rl-example"
+name = "genesis-forge-command-example"
 version = "0.1.0"
-description = "Genesis Forge example demonstrating multi-agent reinforcement learning."
+description = "A Genesis Forge example environment demonstrating commanded direction."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "genesis-forge",
-    "genesis-world>=0.4.0",
+    "rsl-rl-lib~=5.0",
     "tensorboard",
 ]
 

@@ -3,24 +3,13 @@ import glob
 import torch
 import pickle
 import argparse
-from importlib import metadata
 import genesis as gs
 
 from genesis_forge.wrappers import RslRlWrapper
-from environment import Go2SimpleEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
+from environment import Go2BasicEnv
 from rsl_rl.runners import OnPolicyRunner
 
-EXPERIMENT_NAME = "go2-simple"
+EXPERIMENT_NAME = "go2-basic"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
@@ -60,7 +49,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2SimpleEnv(num_envs=1, headless=False)
+    env = Go2BasicEnv(num_envs=1, headless=False)
     env = RslRlWrapper(env)
     env.build()
 
@@ -70,8 +59,8 @@ def main():
     runner.load(model)
     policy = runner.get_inference_policy(device=gs.device)
 
+    obs, _ = env.reset()
     try:
-        obs, _ = env.reset()
         with torch.no_grad():
             while True:
                 actions = policy(obs)
@@ -79,7 +68,7 @@ def main():
     except KeyboardInterrupt:
         pass
     except gs.GenesisException as e:
-        if e.message != "Viewer closed.":
+        if str(e) != "Viewer closed.":
             raise e
     except Exception as e:
         raise e

@@ -6,30 +6,36 @@ A simple locomotion training environment for the [Berkeley Humanoid Robot](https
 
 ## Training
 
-We will be training the robot with the [rsl_rl](https://github.com/leggedrobotics/rsl_rl) training library. So first, we need to install that and tensorboard:
+### With [uv](https://docs.astral.sh/uv/) (recommended)
 
-```bash
-pip install tensorboard rsl-rl-lib>=2.2.4
+Training:
+
+```shell
+uv run ./train.py
 ```
 
-Now you can run the training with:
+Evaluation:
 
-```bash
+```shell
+uv run ./eval.py
+```
+
+### Without uv:
+
+Install dependencies
+
+```shell
+pip install -e ../../ "rsl-rl-lib~=5.0" tensorboard torch
+```
+
+Train:
+
+```shell
 python ./train.py
 ```
 
-You can view the training progress with:
+Evaluation:
 
-```bash
-tensorboard --logdir ./logs/
-```
-
-The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/berkeley-humanoid/videos`.
-
-## Evaluation
-
-Now you can view the trained policy:
-
-```bash
-python ./eval.py ./logs/berkeley-humanoid/
+```shell
+python ./eval.py
 ```

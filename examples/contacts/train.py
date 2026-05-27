@@ -4,7 +4,6 @@ import torch
 import shutil
 import pickle
 import argparse
-from importlib import metadata
 import genesis as gs
 
 from genesis_forge.wrappers import (
@@ -12,16 +11,6 @@ from genesis_forge.wrappers import (
     RslRlWrapper,
 )
 from environment import Go2CommandDirectionEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
 EXPERIMENT_NAME = "go2-foot-step"
@@ -34,7 +23,7 @@ parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def training_cfg(exp_name: str, max_iterations: int):
+def training_cfg():
     return {
         "algorithm": {
             "class_name": "PPO",
@@ -50,32 +39,29 @@ def training_cfg(exp_name: str, max_iterations: int):
             "schedule": "adaptive",
             "use_clipped_value_loss": True,
             "value_loss_coef": 1.0,
+            "rnd_cfg": None,
+            "symmetry_cfg": None,
         },
-        "init_member_classes": {},
-        "policy": {
+        "actor": {
+            "class_name": "MLPModel",
+            "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "actor_hidden_dims": [512, 256, 128],
-            "critic_hidden_dims": [512, 256, 128],
-            "init_noise_std": 1.0,
-            "class_name": "ActorCritic",
+            "obs_normalization": False,
+            "distribution_cfg": {
+                "class_name": "GaussianDistribution",
+                "init_std": 1.0,
+            },
         },
-        "runner": {
-            "checkpoint": -1,
-            "experiment_name": exp_name,
-            "load_run": -1,
-            "log_interval": 1,
-            "max_iterations": max_iterations,
-            "record_interval": -1,
-            "resume": False,
-            "resume_path": None,
-            "run_name": "",
+        "critic": {
+            "class_name": "MLPModel",
+            "hidden_dims": [512, 256, 128],
+            "activation": "elu",
+            "obs_normalization": False,
         },
-        "runner_class_name": "OnPolicyRunner",
         "seed": 1,
         "num_steps_per_env": 24,
         "save_interval": 100,
-        "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"], "critic": ["policy"]},
+        "obs_groups": {"actor": ["policy"], "critic": ["policy"]},
     }
 
 
@@ -103,7 +89,7 @@ def train(cfg: dict, num_envs: int, log_dir: str, max_iterations: int):
     # Setup training runner and train
     print("💪 Training model...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_dir, device=gs.device)
-    runner.git_status_repos = ["."]
+    runner.add_git_repo_to_log(".")
     runner.learn(num_learning_iterations=max_iterations, init_at_random_ep_len=False)
     env.close()
 
@@ -126,7 +112,7 @@ def main():
     print(f"Logging to: {log_path}")
 
     # Load training configuration
-    cfg = training_cfg(experiment_name, args.max_iterations)
+    cfg = training_cfg()
 
     # Save config snapshot
     pickle.dump(

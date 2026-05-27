@@ -3,8 +3,9 @@ import genesis as gs
 import numpy as np
 from PIL import Image
 
-from genesis_forge import ManagedEnvironment
+from genesis_forge import ManagedEnvironment, EnvMode
 from genesis_forge.managers import (
+    ActuatorManager,
     RewardManager,
     TerminationManager,
     EntityManager,
@@ -33,6 +34,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         dt: float = 1 / 50,
         max_episode_length_s: int | None = 20,
         headless: bool = True,
+        mode: EnvMode = "train",
     ):
         super().__init__(
             num_envs=num_envs,
@@ -40,6 +42,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
         )
+        self._mode = mode
         self._curriculum_level = 0
 
         # Construct the scene
@@ -93,21 +96,37 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         ##
         # Robot manager
         # i.e. what to do with the robot when it is reset
-        self.robot_manager = EntityManager(
-            self,
-            entity_attr="robot",
-            on_reset={
-                # Randomize the robot's position on the terrain after reset
-                "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "height_offset": HEIGHT_OFFSET,
-                        "terrain_manager": self.terrain_manager,
+        if self._mode == "train":
+            self.robot_manager = EntityManager(
+                self,
+                entity_attr="robot",
+                on_reset={
+                    # Randomize the robot's position on the terrain after reset
+                    "position": {
+                        "fn": reset.randomize_terrain_position,
+                        "params": {
+                            "height_offset": HEIGHT_OFFSET,
+                            "terrain_manager": self.terrain_manager,
+                        },
                     },
                 },
-            },
-        )
-
+            )
+        else:
+            self.robot_manager = EntityManager(
+                self,
+                entity_attr="robot",
+                on_reset={
+                    "position": {
+                        "fn": reset.position,
+                        "params": {
+                            "position": INITIAL_BODY_POSITION,
+                            "quat": INITIAL_QUAT,
+                            "zero_velocity": True,
+                        },
+                    },
+                },
+            )
+            
         ##
         # Joint Actions
         self.actuator_manager = ActuatorManager(

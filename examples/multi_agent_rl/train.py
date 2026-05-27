@@ -31,7 +31,7 @@ parser.add_argument(
     "-t",
     "--timesteps",
     type=int,
-    default=30_000,
+    default=20_000,
     help="Trainer timesteps",
 )
 parser.add_argument("-d", "--device", type=str, default="gpu", choices=("gpu", "cpu"))

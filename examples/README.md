@@ -11,5 +11,5 @@ This directory contains a series of examples demonstrating how to use Genesis Fo
 
 Advanced examples:
 
-- [Multi-Agent RL](./multi_agent_rl) — per-leg cooperative MAPPO via SKRL
+- [Multi-Agent RL (MASQ)](./multi_agent_rl) — use multiple agents (one agent per leg) to train a robot to walk.
 - [Humanoid locomotion](./berkeley_humanoid/) — Berkeley humanoid robot

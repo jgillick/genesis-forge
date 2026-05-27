@@ -59,7 +59,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
+                camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
@@ -107,6 +107,10 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                 links_to_keep=list(["FL_foot", "FR_foot", "RL_foot", "RR_foot"]),
             ),
         )
+
+        # Update the main viewer to follow the robot
+        if self.scene.viewer is not None:
+            self.scene.viewer.follow_entity(self.robot)
 
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
@@ -163,12 +167,12 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             self,
             entity_attr="robot",
             on_reset={
+                # Randomize the robot's position on the terrain after reset
                 "position": {
-                    "fn": reset.position,
+                    "fn": reset.randomize_terrain_position,
                     "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
+                        "height_offset": HEIGHT_OFFSET,
+                        "terrain_manager": self.terrain_manager,
                     },
                 },
             },
@@ -264,15 +268,15 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                         ],
                     },
                 },
-                "foot_air_time": {
-                    "weight": 1.0,
-                    "fn": rewards.feet_air_time,
-                    "params": {
-                        "time_threshold": 1.0,
-                        "contact_manager": self.foot_contact_manager,
-                        "vel_cmd_manager": self.velocity_command,
-                    },
-                },
+                # "foot_air_time": {
+                #     "weight": 1.0,
+                #     "fn": rewards.feet_air_time,
+                #     "params": {
+                #         "time_threshold": 1.0,
+                #         "contact_manager": self.foot_contact_manager,
+                #         "vel_cmd_manager": self.velocity_command,
+                #     },
+                # },
             },
         )
 

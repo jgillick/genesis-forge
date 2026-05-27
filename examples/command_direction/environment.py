@@ -43,7 +43,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
+                camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
@@ -70,6 +70,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 quat=INITIAL_QUAT,
             ),
         )
+
+        # Update the main viewer to follow the robot
+        if self.scene.viewer is not None:
+            self.scene.viewer.follow_entity(self.robot)
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(

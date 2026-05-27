@@ -51,7 +51,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
+                camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
@@ -77,6 +77,10 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             ),
         )
 
+        # Update the main viewer to follow the robot
+        if self.scene.viewer is not None:
+            self.scene.viewer.follow_entity(self.robot)
+
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
@@ -96,36 +100,20 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         ##
         # Robot manager
         # i.e. what to do with the robot when it is reset
-        if self._mode == "train":
-            self.robot_manager = EntityManager(
-                self,
-                entity_attr="robot",
-                on_reset={
-                    # Randomize the robot's position on the terrain after reset
-                    "position": {
-                        "fn": reset.randomize_terrain_position,
-                        "params": {
-                            "height_offset": HEIGHT_OFFSET,
-                            "terrain_manager": self.terrain_manager,
-                        },
+        self.robot_manager = EntityManager(
+            self,
+            entity_attr="robot",
+            on_reset={
+                # Randomize the robot's position on the terrain after reset
+                "position": {
+                    "fn": reset.randomize_terrain_position,
+                    "params": {
+                        "height_offset": HEIGHT_OFFSET,
+                        "terrain_manager": self.terrain_manager,
                     },
                 },
-            )
-        else:
-            self.robot_manager = EntityManager(
-                self,
-                entity_attr="robot",
-                on_reset={
-                    "position": {
-                        "fn": reset.position,
-                        "params": {
-                            "position": INITIAL_BODY_POSITION,
-                            "quat": INITIAL_QUAT,
-                            "zero_velocity": True,
-                        },
-                    },
-                },
-            )
+            },
+        )
             
         ##
         # Joint Actions

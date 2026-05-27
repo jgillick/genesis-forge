@@ -1,16 +1,3 @@
-"""
-Go2 velocity-tracking environment for MASQ-style MAPPO (per-leg agents).
-
-This module is **self-contained** (no imports from ``examples/command_direction``):
-scene, rewards, commands, and observations mirror the usual Go2 command-direction
-pattern while exposing named observation groups plus four leg-local
-:class:`~genesis_forge.managers.ActuatorManager` stacks for Forge-native action routing.
-
-:class:`~skrl_masq_wrapper.SkrlMasqWrapper` merges named tensors from
-``extras["observations"]`` for decentralized critics/actors rather than slicing a single
-blob by opaque indices.
-"""
-
 from __future__ import annotations
 
 import os
@@ -45,23 +32,7 @@ _LEG_THIGH_DEFAULT = {"FL": 0.8, "FR": 0.8, "RL": 1.0, "RR": 1.0}
 
 class Go2MasqLocomotionEnv(ManagedEnvironment):
     """
-    Go2 plane + velocity-command locomotion with per-leg actuator/action pipelines.
-
-    Observation groups:
-
-    - ``shared`` (:attr:`OBS_SHARED_KEY`) — velocity command, base angular /
-      linear velocity, projected gravity (**12-D** registered under that name).
-
-    - One named group per leg in :attr:`POSSIBLE_AGENTS` — dof position / scaled
-      dof velocity / previous actions (**9-D**) from that leg’s
-      :class:`~genesis_forge.managers.PositionActionManager` only.
-
-    With no ``"policy"`` observation manager, :class:`~genesis_forge.ManagedEnvironment`
-    fuses ``shared || FL || FR || RL || RR`` into **48-D** and fills
-    ``extras["observations"]`` for wrappers.
-
-    Call :meth:`build` before :meth:`step` / :meth:`reset` or reading
-    :attr:`observation_spaces` / :attr:`action_spaces` / :attr:`state_spaces`.
+    Go2 multi-agent locomotion training with one-agent per leg.
     """
 
     AGENTS = ("FL", "FR", "RL", "RR")

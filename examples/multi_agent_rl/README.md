@@ -50,7 +50,7 @@ ObservationManager(
     },
 )
 
-# Observations for each leg
+# Observation group for each leg
 for agent in self.AGENTS:
     action_manager = self.leg_action_managers[agent]
     ObservationManager(
@@ -58,7 +58,7 @@ for agent in self.AGENTS:
         name=agent,
         cfg={
             "dof_position": {
-                "fn": lambda env: action_manager.get_dofs_position(),
+                "fn": lambda env, mgr=action_manager: mgr.get_dofs_position(),
             },
             ...
         },
@@ -102,3 +102,19 @@ Evaluation:
 ```shell
 python ./eval.py
 ```
+
+
+## Monitor training status
+
+You can view the training progress with:
+
+```shell
+tensorboard --logdir ./logs/
+
+# Or with uv
+uv run tensorboard --logdir ./logs/
+```
+
+## Training videos
+
+The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/go2-multi-agent/videos`.

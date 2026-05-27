@@ -94,30 +94,43 @@ def base_height(
 
 def dof_similar_to_default(
     env: GenesisEnv,
-    actuator_manager: ActuatorManager = None,
-    action_manager: PositionActionManager = None,
-):
+    actuator_manager: ActuatorManager | list[ActuatorManager] | None = None,
+    action_manager: PositionActionManager | None = None,
+) -> torch.Tensor:
     """
-    Penalize joint poses far away from default pose
+    Penalize joint poses far away from default pose(s).
+
+    Pass ``actuator_manager`` as one manager or a non-empty list/tuple (e.g. per-limb
+    stacks); penalties are summed per environment across all included DOFs.
 
     Args:
-        env: The Genesis environment containing the robot
-        actuator_manager: The actuator manager for the robot/entity.
-        action_manager: The DOF action manager
+        env: The Genesis environment containing the robot (unused today; accepted for MDP signature consistency).
+        actuator_manager: One or more actuator managers.
+        action_manager: (deprecated) One or more position-action managers. Use
+            ``actuator_manager`` instead.
 
     Returns:
-        torch.Tensor: Penalty for joint poses far away from default pose
+        torch.Tensor: Penalty summed over included DOFs, shape ``(num_envs,)``.
     """
-    assert (
-        actuator_manager is not None or action_manager is not None
-    ), "Either actuator_manager or action_manager must be provided to dof_similar_to_default"
     if actuator_manager is not None:
-        dof_pos = actuator_manager.get_dofs_position()
-        default_pos = actuator_manager.default_dofs_pos
+        if isinstance(actuator_manager, list):
+            total = None
+            for mgr in actuator_manager:
+                dof_pos = mgr.get_dofs_position()
+                part = torch.sum(torch.abs(dof_pos - mgr.default_dofs_pos), dim=1)
+                total = part if total is None else total + part
+            return total
+        else:
+            dof_pos = actuator_manager.get_dofs_position()
+            default_pos = actuator_manager.default_dofs_pos
+            return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
     elif action_manager is not None:
         dof_pos = action_manager.get_dofs_position()
         default_pos = action_manager.default_dofs_pos
-    return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
+        return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
+
+    raise ValueError("dof_similar_to_default: Either actuator_manager or action_manager must be provided")
+
 
 
 def lin_vel_z_l2(

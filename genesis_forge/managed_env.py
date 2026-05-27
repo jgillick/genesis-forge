@@ -177,15 +177,16 @@ class ManagedEnvironment(GenesisEnv):
     @property
     def observation_space(self) -> spaces.Space:
         """
-        The observation space for the "policy" observation manager, if it exists.
+        Observation space after :meth:`build`.
+
+        If a manager is named ``"policy"``, that manager's space is used. Otherwise
+        all observation managers are concatenated in registration order (same as
+        :meth:`get_observations`).
         """
-        if len(self.managers["observation"]) > 0:
-            for obs in self.managers["observation"]:
-                if obs.name == "policy":
-                    return obs.observation_space
-            return self.managers["observation"][0].observation_space
         if self._observation_space is not None:
             return self._observation_space
+        if len(self.managers["observation"]) == 1:
+            return self.managers["observation"][0].observation_space
         return None
 
     @observation_space.setter
@@ -273,8 +274,7 @@ class ManagedEnvironment(GenesisEnv):
             command_manager.build()
         for entity_manager in self.managers["entity"]:
             entity_manager.build()
-        for obs in self.managers["observation"]:
-            obs.build()
+        self._build_observation_managers()
 
     def step(
         self, actions: torch.Tensor
@@ -383,23 +383,31 @@ class ManagedEnvironment(GenesisEnv):
     def get_observations(self) -> torch.Tensor:
         """
         Returns the current observations for this step.
-        If you use the ObservationManager, this will be handled automatically.
-        Otherwise, override this method to return the observations.
+
+        Named observations are stored in `extras["observations"]`. 
+        If a manager named `"policy"` exists, only its tensor is returned; 
+        otherwise all managers are concatenated in registration order.
         """
         self.extras["observations"] = TensorDict({}, device=gs.device)
 
-        # Get observations
-        if len(self.managers["observation"]) > 0:
-            policy_obs = None
-            for obs_manager in self.managers["observation"]:
-                obs = obs_manager.get_observations()
-                self.extras["observations"][obs_manager.name] = obs
-                if obs_manager.name == "policy":
-                    policy_obs = obs
-            return policy_obs
+        if len(self.managers["observation"]) == 0:
+            return super().get_observations()
 
-        # Otherwise, call super
-        return super().get_observations()
+        # Make observations
+        parts: list[torch.Tensor] = []
+        policy_obs = None
+        for obs_manager in self.managers["observation"]:
+            obs = obs_manager.get_observations()
+            self.extras["observations"][obs_manager.name] = obs
+            parts.append(obs)
+            if obs_manager.name == "policy":
+                policy_obs = obs
+
+        # If there is a "policy" observation manager, this is the one returned to the policy
+        if policy_obs is not None:
+            return policy_obs
+        # Otherwise, concatenate the observation manager spaces
+        return torch.cat(parts, dim=-1)
 
     """
     Internal methods
@@ -428,6 +436,47 @@ class ManagedEnvironment(GenesisEnv):
             high.append(action_manager.action_space.high)
 
         self._action_space = spaces.Box(
+            low=np.concatenate(low),
+            high=np.concatenate(high),
+            shape=(size,),
+            dtype=np.float32,
+        )
+
+    def _build_observation_managers(self) -> None:
+        """
+        Build observation managers and set :attr:`observation_space`.
+
+        If any manager is named ``"policy"``, use that manager's space only. Otherwise
+        concatenate all managers in registration order (same layout as
+        :meth:`get_observations`).
+        """
+        obs_managers = self.managers["observation"]
+        if len(obs_managers) == 0:
+            self._observation_space = None
+            return
+
+        # Build observation managers
+        policy_obs_mgr = None
+        for obs_manager in obs_managers:
+            obs_manager.build()
+            if obs_manager.name == "policy":
+                policy_obs_mgr = obs_manager
+
+        # If ther is an observation manager named "policy", that is the primary observation
+        # manager and what will be returned to the main policy
+        if policy_obs_mgr is not None:
+            self._observation_space = obs_manager.observation_space
+            return
+
+        # Merge the observation manager spaces
+        low = []
+        high = []
+        size = 0
+        for obs_manager in obs_managers:
+            size += obs_manager.observation_space.shape[0]
+            low.append(obs_manager.observation_space.low)
+            high.append(obs_manager.observation_space.high)
+        self._observation_space = spaces.Box(
             low=np.concatenate(low),
             high=np.concatenate(high),
             shape=(size,),

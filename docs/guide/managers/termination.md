@@ -61,12 +61,46 @@ Genesis Forge provides common termination conditions in [`genesis_forge.mdp.term
 
 ```python
 term_cfg={
-    "timeout": {
+    "too_low": {
         "fn": terminations.base_height_below_minimum,
         "params": {
             "minimum_height": 0.05,
         }
     },
+}
+```
+
+### Actuator limits
+
+Terminate when commanded torque or joint speed exceed safe limits:
+
+```python
+term_cfg={
+  # Uses max_force from the actuator manager when threshold is omitted
+  "dof_overforce": {
+    "fn": terminations.dof_control_force_limit,
+      "params": {
+        "actuator_manager": self.actuator_manager,
+      },
+  },
+  # Or pass an explicit limit below the actuator clip
+  "dof_overforce_strict": {
+      "fn": terminations.dof_control_force_limit,
+      "params": {
+          "actuator_manager": self.actuator_manager,
+          "threshold": 18.0,
+      },
+  },
+
+  # Actuator is moving too fast
+  "dof_overspeed": {
+      "fn": terminations.dof_velocity_limit,
+      "params": {
+          "actuator_manager": self.actuator_manager,
+          "threshold": 300.0,
+          "unit": "rpm",
+      },
+  },
 }
 ```
 

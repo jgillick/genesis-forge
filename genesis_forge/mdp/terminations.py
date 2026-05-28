@@ -4,10 +4,17 @@ Each of these should return a boolean tensor indicating which environments shoul
 """
 
 import math
+from typing import Literal
+
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import entity_projected_gravity
-from genesis_forge.managers import ContactManager, EntityManager, TerrainManager
+from genesis_forge.managers import (
+    ActuatorManager,
+    ContactManager,
+    EntityManager,
+    TerrainManager,
+)
 
 
 def timeout(env: GenesisEnv) -> torch.Tensor:
@@ -65,6 +72,37 @@ def bad_orientation(
 
     # Terminate if tilt angle exceeds the limit
     return (~in_grace_period) & (tilt_angle > math.radians(limit_angle))
+
+
+def is_upsidedown(
+    env: GenesisEnv,
+    threshold: float = 0.5,
+    entity_attr: str = "robot",
+    entity_manager: EntityManager = None,
+    grace_steps: int = 0,
+) -> torch.Tensor:
+    """
+    Terminate when the robot is belly-up (inverted).
+
+    Uses projected gravity in the body frame: upright is approximately [0, 0, -1],
+    belly-up is approximately [0, 0, +1]. Side-lying poses keep z below threshold.
+
+    Args:
+        env: The Genesis environment
+        threshold: Terminate when projected_gravity[:, 2] exceeds this value
+        entity_manager: The entity manager for the robot
+        entity_attr: Entity attribute if entity_manager is not provided
+        grace_steps: Steps at episode start to ignore this check
+    """
+    in_grace_period = env.episode_length <= grace_steps
+
+    if entity_manager is not None:
+        projected_gravity = entity_manager.get_projected_gravity()
+    else:
+        entity = getattr(env, entity_attr)
+        projected_gravity = entity_projected_gravity(entity)
+
+    return (~in_grace_period) & (projected_gravity[:, 2] > threshold)
 
 
 def base_height_below_minimum(
@@ -200,3 +238,57 @@ def contact_force_with_grace_period(
 
     # Only terminate if past grace period AND contact exceeded
     return (~in_grace_period) & contact_exceeded.detach()
+
+
+def dof_control_force_limit(
+    _env: GenesisEnv,
+    actuator_manager: ActuatorManager,
+    threshold: float | None = None,
+) -> torch.Tensor:
+    """
+    Terminate if any joint's commanded actuator force exceeds a limit (+/-).
+
+    Uses control/output force (what the actuator commands), not measured joint load.
+    Suitable for teaching policies to stay within rated motor torque.
+
+    Args:
+        env: The Genesis environment
+        actuator_manager: Actuator manager for the controlled joints
+        threshold: Force/torque limit (in simulator units). 
+                   If None, uses `max_force` value from actuator_manager.
+
+    Returns:
+        Boolean tensor indicating which environments should terminate
+    """
+    force = actuator_manager.get_dofs_control_force()
+    if threshold is None:
+        threshold = actuator_manager.get_dofs_max_force()
+    return torch.any(torch.abs(force) > threshold, dim=-1)
+
+
+def dof_velocity_limit(
+    _env: GenesisEnv,
+    actuator_manager: ActuatorManager,
+    threshold: float,
+    unit: Literal["rpm", "rad"] = "rad",
+) -> torch.Tensor:
+    """
+    Terminate if any of the actuator_manager's joints moves faster than a speed limit.
+
+    Args:
+        env: The Genesis environment
+        actuator_manager: Actuator manager for the controlled joints
+        threshold: Speed limit in the units given by `unit`
+        unit: The speed units
+              - `"rad"` for radians per second (default)
+              - `"rpm"` for revolutions per minute
+
+    Returns:
+        Boolean tensor indicating which environments should terminate
+    """
+    assert unit in ["rad", "rpm"], f"Unknown velocity unit '{unit}'. Use 'rad' or 'rpm'."
+
+    if unit == "rpm":
+        threshold = threshold * (2 * math.pi / 60)
+    vel = actuator_manager.get_dofs_velocity()
+    return torch.any(torch.abs(vel) > threshold, dim=-1)

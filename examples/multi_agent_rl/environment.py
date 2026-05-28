@@ -9,7 +9,6 @@ from gymnasium import spaces
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    ContactManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
@@ -214,13 +213,6 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             debug_visualizer_cfg={"envs_idx": [0]},
         )
 
-        self.foot_contact_manager = ContactManager(
-            self,
-            link_names=[".*_foot"],
-            track_air_time=True,
-            air_time_contact_threshold=1.0,
-        )
-
         RewardManager(
             self,
             logging_enabled=True,
@@ -268,15 +260,6 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                         ],
                     },
                 },
-                # "foot_air_time": {
-                #     "weight": 1.0,
-                #     "fn": rewards.feet_air_time,
-                #     "params": {
-                #         "time_threshold": 1.0,
-                #         "contact_manager": self.foot_contact_manager,
-                #         "vel_cmd_manager": self.velocity_command,
-                #     },
-                # },
             },
         )
 

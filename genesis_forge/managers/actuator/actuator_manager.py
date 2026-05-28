@@ -290,6 +290,27 @@ class ActuatorManager(BaseManager):
             force = force.clamp(lower, upper)
         return force
 
+    def get_dofs_max_force(self) -> torch.Tensor:
+        """
+        Get the positive force/torque limit per configured DOF from ``max_force`` config.
+
+        Returns:
+            limits: torch.Tensor, shape (n_envs, n_dofs) or (n_dofs,)
+                Upper force limit per DOF (symmetric limits use the same magnitude).
+
+        Raises:
+            ValueError: If ``max_force`` was not configured on this actuator manager.
+        """
+        if self._max_force_cfg is None or self._values.get("force_max") is None:
+            raise ValueError(
+                "ActuatorManager max_force is not configured. "
+                "Set max_force on the actuator manager or pass an explicit threshold."
+            )
+        limits = torch.abs(self._get_value_buffer("force_max"))
+        if limits.ndim == 1:
+            limits = limits.unsqueeze(0).expand(self.env.num_envs, -1)
+        return limits
+
     def get_dofs_limits(
         self, dofs_idx: list[int] | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:

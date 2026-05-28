@@ -158,6 +158,10 @@ def lin_vel_z_l2(
         linear_vel = entity_lin_vel(robot)
     return torch.square(linear_vel[:, 2])
 
+def lin_vel_xy_l2(env: GenesisEnv, entity_manager) -> torch.Tensor:
+    """Penalize horizontal base linear velocity."""
+    lin_vel = entity_manager.get_linear_velocity()
+    return torch.sum(torch.square(lin_vel[:, :2]), dim=1)
 
 def ang_vel_xy_l2(
     env: GenesisEnv,
@@ -401,6 +405,11 @@ def dof_torque_l2(
     """
     torque = actuator_manager.get_dofs_control_force()
     return torch.sum(torch.square(torque), dim=1)
+
+def dof_velocity_l2(env: GenesisEnv, action_manager: PositionActionManager) -> torch.Tensor:
+    """Penalize joint angular velocities to encourage slow, deliberate motion."""
+    dof_vel = action_manager.get_dofs_velocity()
+    return torch.sum(torch.square(dof_vel), dim=1)
 
 
 """

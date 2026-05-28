@@ -5,12 +5,10 @@ import math
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
-from typing import Tuple, Any, Callable, Literal, TYPE_CHECKING
+from typing import Tuple, Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.vis.camera import Camera
-
-RecordingType = Literal["active", "background"]
 
 
 def capped_cubic_episode_trigger(episode_id: int) -> bool:
@@ -100,8 +98,7 @@ class VideoWrapper(Wrapper):
         out_dir: str = "./videos",
         fps: int = 60,
         env_idx: int = 0,
-        filename: str = None,
-        record_final_episode: bool = True,
+        filename: str | None = None,
         logging: bool = True,
     ):
         super().__init__(env)
@@ -111,20 +108,13 @@ class VideoWrapper(Wrapper):
         self._current_episode: int = 0
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
-        self._record_final_episode = record_final_episode
-        self._has_recording_buffer = False
-
-        # active: a triggered recording that will save to file
-        # background: a recording that will only be saved if the environment is closed.
-        #             This is so you get a video of the final episode, even if it was not triggered.
-        self._recording_type: RecordingType = "background"
 
         self._cam: Camera = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
         self._video_length_steps = math.ceil(video_length_sec / self.dt)
-        self._steps_per_frame = round(1.0 / fps / self.dt)
+        self._steps_per_frame = max(1, round(1.0 / fps / self.dt)) # max prevents division by zero
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
 
@@ -167,22 +157,17 @@ class VideoWrapper(Wrapper):
         ) = super().step(actions)
 
         self._check_recording_trigger()
-        if self._current_step % self._steps_per_frame == 0:
-            self._cam.render()
+        if self._is_recording:
+            if self._current_step % self._steps_per_frame == 0:
+                self._cam.render()
 
-        # Stop recording if the recording stop step is reached
-        if self._is_recording and self._recording_stop_step <= self._current_step:
-            self.finish_recording()
+            # Stop recording if the recording stop step is reached
+            if self._recording_stop_step <= self._current_step:
+                self.finish_recording()
 
-        # Increment episode count
-        terminated = False if terminateds is None else terminateds[self._env_idx]
-        truncated = False if truncateds is None else truncateds[self._env_idx]
-        if torch.any(terminated or truncated):
+        # Increment episode count if the watched environment has terminated or truncated
+        if self._is_done(terminateds) or self._is_done(truncateds):
             self._current_episode += 1
-            # If we're not recording, start a background recording at the beginning of the episode
-            # The last one of these will be saved when the environment is closed as the final training episode
-            if not self._is_recording and self._record_final_episode:
-                self.start_recording("background")
         self._current_step += 1
 
         return (
@@ -195,49 +180,38 @@ class VideoWrapper(Wrapper):
 
     def close(self):
         """Finish recording on close"""
-        if self._is_recording or self._has_recording_buffer:
+        if self._is_recording:
             self.finish_recording()
         super().close()
 
-    def start_recording(self, type: RecordingType = "active"):
+    def start_recording(self):
         """Start recording a video."""
-        # Clear any existing frames
-        self._cam._recorded_imgs.clear()
-
         self._is_recording = True
-        self._has_recording_buffer = False
-        self._recording_type = type
         self._recording_start_step = self._current_step
         self._recording_stop_step = self._current_step + self._video_length_steps
         self._cam.start_recording()
 
     def finish_recording(self):
         """
-        Stop recording and save the video, if the recording type is 'active'.
+        Stop recording and save the video.
         """
-        if not self._is_recording and self._cam is not None:
+        if not self._is_recording or self._cam is None:
             return
 
         # Save recording
-        if self._recording_type == "active":
-            filename = self._filename or f"{self._recording_start_step}.mp4"
-            filepath = os.path.join(self._out_dir, filename)
-            if self._logging:
-                print(f"Saving recording to {filepath}")
-            self._cam.stop_recording(filepath, fps=self._actual_fps)
-            self._has_recording_buffer = False
-        else:
-            self._cam.pause_recording()
-            self._has_recording_buffer = True
+        filename = self._filename or f"{self._recording_start_step}.mp4"
+        filepath = os.path.join(self._out_dir, filename)
+        if self._logging:
+            print(f"Saving recording to {filepath}")
+        self._cam.stop_recording(filepath, fps=self._actual_fps)
 
         # Reset recording state
         self._is_recording = False
-        self._recording_type = None
         self._recording_stop_step = 0
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
-        if self._is_recording and self._recording_type == "active":
+        if self._is_recording:
             record = False
         elif self.episode_trigger is not None:
             record = self.episode_trigger(self._current_episode)
@@ -247,3 +221,19 @@ class VideoWrapper(Wrapper):
         if record:
             self.start_recording()
         return record
+
+    def _is_done(self, term_buffer: torch.Tensor | None) -> bool:
+        """
+        Check if the watched environment has terminated or truncated.
+
+        Args:
+            term_buffer: The termination buffer to check.
+
+        Returns:
+            True if the watched environment has terminated or truncated, False otherwise.
+        """
+        if term_buffer is None:
+            return False
+        value = term_buffer[self._env_idx]
+        return bool(value.item()) if isinstance(value, torch.Tensor) else bool(value)
+        

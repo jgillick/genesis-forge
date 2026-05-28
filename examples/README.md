@@ -13,3 +13,4 @@ Advanced examples:
 
 - [Multi-Agent RL (MASQ)](./multi_agent_rl) — use multiple agents (one agent per leg) to train a robot to walk.
 - [Humanoid locomotion](./berkeley_humanoid/) — Berkeley humanoid robot
+- [Stand up](./stand_up/) - Go2 learns to stand up from the ground

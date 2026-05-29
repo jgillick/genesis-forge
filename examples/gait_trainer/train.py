@@ -4,7 +4,6 @@ import torch
 import shutil
 import pickle
 import argparse
-from importlib import metadata
 import genesis as gs
 
 from genesis_forge.wrappers import (
@@ -24,7 +23,7 @@ parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def training_cfg(exp_name: str, max_iterations: int, num_envs: int):
+def training_cfg(num_envs: int):
     return {
         "algorithm": {
             "class_name": "PPO",
@@ -40,34 +39,31 @@ def training_cfg(exp_name: str, max_iterations: int, num_envs: int):
             "schedule": "adaptive",
             "use_clipped_value_loss": True,
             "value_loss_coef": 1.0,
+            "rnd_cfg": None,
+            "symmetry_cfg": None,
         },
-        "init_member_classes": {},
-        "policy": {
+        "actor": {
+            "class_name": "MLPModel",
+            "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "actor_hidden_dims": [512, 256, 128],
-            "critic_hidden_dims": [512, 256, 128],
-            "init_noise_std": 1.0,
-            "class_name": "ActorCritic",
+            "obs_normalization": False,
+            "distribution_cfg": {
+                "class_name": "GaussianDistribution",
+                "init_std": 1.0,
+            },
         },
-        "runner": {
-            "checkpoint": -1,
-            "experiment_name": exp_name,
-            "load_run": -1,
-            "log_interval": 1,
-            "max_iterations": max_iterations,
-            "record_interval": -1,
-            "resume": False,
-            "resume_path": None,
-            "run_name": "",
+        "critic": {
+            "class_name": "MLPModel",
+            "hidden_dims": [512, 256, 128],
+            "activation": "elu",
+            "obs_normalization": False,
         },
-        "runner_class_name": "OnPolicyRunner",
         "seed": 1,
         "num_steps_per_env": round(
             98_304 / num_envs
         ),  # https://ar5iv.labs.arxiv.org/html/2109.11978
         "save_interval": 100,
-        "empirical_normalization": None,
-        "obs_groups": {"policy": ["policy"], "critic": ["policy", "critic"]},
+        "obs_groups": {"actor": ["policy"], "critic": ["policy", "critic"]},
     }
 
 
@@ -90,7 +86,7 @@ def main():
     print(f"Logging to: {log_path}")
 
     # Load training configuration and save snapshot of training configs
-    cfg = training_cfg(experiment_name, args.max_iterations, args.num_envs)
+    cfg = training_cfg(args.num_envs)
     pickle.dump(
         [cfg],
         open(os.path.join(log_path, "cfgs.pkl"), "wb"),
@@ -115,7 +111,7 @@ def main():
     # Train
     print("💪 Training model...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_path, device=gs.device)
-    runner.git_status_repos = ["."]
+    runner.add_git_repo_to_log(".")
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=False
     )

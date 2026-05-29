@@ -153,7 +153,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
-                "arrow_offset": 0.12,
+                "arrow_offset": 0.4,
             },
         )
 

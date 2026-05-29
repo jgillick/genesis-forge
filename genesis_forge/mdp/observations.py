@@ -1,4 +1,5 @@
 from __future__ import annotations
+from genesis import gs
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
@@ -80,6 +81,37 @@ def entity_projected_gravity(
     entity = getattr(env, entity_attr)
     return entity_projected_gravity(entity)
 
+"""
+Sensor observations
+"""
+
+def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
+    """
+    Makes an IMU reading and returns the concatenated linear acceleration and angular velocity readings.
+
+    Example::
+        self.imu = gs.sensors.IMU(
+            entity_idx=self.robot.idx,
+            pos_offset=(0.24, 0.0, 0.0),
+            euler_offset=(0.0, 0.0, 0.0),
+        )
+
+        ...
+
+        ObservationManager(
+            self,
+            cfg={
+                "imu_sensor": {
+                    "fn": self.imu_observation,
+                },
+            }
+        )
+
+    Returns:
+        torch.Tensor: Shape (n_envs, 6): [lin_acc_xyz, ang_vel_xyz] per env.
+    """
+    value = imu.read()
+    return torch.cat([value.lin_acc, value.ang_vel], dim=-1)
 
 """
 DOF/Join observations
@@ -196,7 +228,7 @@ Contacts
 
 def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Tensor:
     """
-    Returns the normalized contact force at each contact point.
+    Returns the vector norm contact force at each contact point.
 
     Args:
         env: The Genesis Forge environment
@@ -205,3 +237,20 @@ def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Ten
     Returns: tensor of shape (num_envs, num_contacts)
     """
     return torch.norm(contact_manager.contacts[:, :, :], dim=-1)
+
+def has_contact(
+    env: GenesisEnv, contact_manager: ContactManager, threshold=1.0
+) -> torch.Tensor:
+    """
+    Return boolean (1/0) for each link in the contact manager that meets the contact threshold.
+
+    Args:
+        env: The Genesis Forge environment
+        contact_manager: The contact manager to check for contact
+        threshold: The minimum force necessary for contact detection (default: 1.0)
+
+    Returns:
+        1 for each link meeting the contact threshold
+    """
+    has_contact = contact_manager.contacts.norm(dim=-1) > threshold
+    return has_contact.float()

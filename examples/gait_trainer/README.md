@@ -58,44 +58,67 @@ In this case, we concatenate the policy observations with the critic observation
 
 ## Training
 
-We will be training the robot with the [rsl_rl](https://github.com/leggedrobotics/rsl_rl) training library. So first, we need to install that and tensorboard:
+### With [uv](https://docs.astral.sh/uv/) (recommended)
 
-```bash
-pip install tensorboard rsl-rl-lib>=2.2.4
+Training:
+
+```shell
+uv run ./train.py
 ```
 
-**ALSO:** Be sure you've installed the latest _source_ version of the [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis). There are some post v0.3.3 bug fixes that this example relies on. 
+Evaluation:
 
-Now you can run the training with:
+```shell
+uv run ./eval.py
+```
 
-```bash
+### Without uv:
+
+Install dependencies
+
+```shell
+pip install -e ../../ "rsl-rl-lib~=5.0" tensorboard
+```
+
+Train:
+
+```shell
 python ./train.py
 ```
 
-You can view the training progress with:
+Evaluation:
 
-```bash
-tensorboard --logdir ./logs/
-```
-
-The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/go2-gait/videos`.
-
-## Evaluation
-
-Now you can view the trained policy:
-
-```bash
+```shell
 python ./eval.py
 ```
 
-## Gamepad playing
+## Monitor training status
 
-You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech F310/F710, etc.) to try out the trained model like a video game. This way you can see how the model handles different controls.
+You can view the training progress with:
 
-The gamepad dependencies are automatically installed with genesis-forge. Simply connect your gamepad and run:
+```shell
+tensorboard --logdir ./logs/
+```
 
-```python
+## Training videos
+
+The Genesis Forge training environment will also save videos while training that can be viewed in `./logs/go2-gait/videos`.
+
+## Gamepad control
+
+You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech F310/F710, etc.) to control the robot in the trained policy yourself.
+
+Simply connect your gamepad and run:
+
+****
+
+```shell
+# With uv
+uv run ./gamepad.py
+
+# Without uv
 python ./gamepad.py
 ```
 
 You should now be able to use the joysticks to control the Go2 robot.
+

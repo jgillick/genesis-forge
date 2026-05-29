@@ -22,7 +22,7 @@ INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
 TARGET_X_VELOCITY = 0.5
 
 
-class Go2SimpleEnv(ManagedEnvironment):
+class Go2BasicEnv(ManagedEnvironment):
     """
     Example training environment for the Go2 robot.
     """

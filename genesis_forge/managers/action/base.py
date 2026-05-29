@@ -1,4 +1,5 @@
 import re
+from torch._tensor import Tensor
 import torch
 import numpy as np
 from gymnasium import spaces
@@ -45,6 +46,7 @@ class BaseActionManager(BaseManager):
         super().__init__(env, type="action")
         self._raw_actions = None
         self._actions = None
+        self._last_actions = None
         self._delay_step = delay_step
         self._action_delay_buffer = []
         self._actuator_manager = actuator_manager
@@ -141,7 +143,7 @@ class BaseActionManager(BaseManager):
     @property
     def actions(self) -> torch.Tensor:
         """
-        The actions for for the current step.
+        The processed actions for for the current step.
         """
         if self._actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
@@ -150,11 +152,20 @@ class BaseActionManager(BaseManager):
     @property
     def raw_actions(self) -> torch.Tensor:
         """
-        The actions received from the policy, before being converted.
+        The actions received from the policy, before being processed.
         """
         if self._raw_actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._raw_actions
+    
+    @property
+    def last_actions(self) -> torch.Tensor:
+        """
+        The processed actions for for the previous step.
+        """
+        if self._last_actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
+        return self._last_actions
 
     """
     DOF convenience wrappers
@@ -213,6 +224,47 @@ class BaseActionManager(BaseManager):
             clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
         )
 
+    def get_actions(self) -> torch.Tensor:
+        """
+        Get the current actions for the environments.
+        """
+        if self._actions is None:
+            return torch.zeros((self.env.num_envs, self.num_actions))
+        return self._actions
+
+    def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
+        """
+        Get the latest actions for an environment as a dictionary of DOF names and values.
+        """
+        return {
+            name: value.item()
+            for name, value in zip(
+                self.dofs.keys(), self._actions[env_idx, :]
+            )
+        }
+
+    def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
+        """
+        Process the actions and convert them to actuator commands.
+        Override this function if you want to change the action processing logic.
+
+        Args:
+            actions: The incoming step actions to handle.
+
+        Returns:
+            The processed and converted actions.
+        """
+        return actions
+
+    def send_actions_to_simulation(self) -> torch.Tensor:
+        """
+        Send the latest processed actions to the actuators in the simulation.
+        Override this function to define how the actions are sent to the simulation.
+        """
+        raise NotImplementedError(
+            "handle_actions is not implemented for this action manager."
+        )
+
     """
     Lifecycle Operations
     """
@@ -237,7 +289,7 @@ class BaseActionManager(BaseManager):
 
     def step(self, actions: torch.Tensor) -> None:
         """
-        Handle the received actions.
+        Handle actions received in this step.
         """
         # Action delay buffer
         if self._delay_step > 0:
@@ -248,7 +300,12 @@ class BaseActionManager(BaseManager):
         self._raw_actions = actions
         if self._actions is None:
             self._actions = torch.empty_like(actions, device=gs.device)
-        self._actions[:] = self._raw_actions[:]
+            self._last_actions = torch.zeros_like(actions, device=gs.device)
+        self._last_actions[:] = self._actions[:]
+
+        # Process the actions
+        self._actions[:] = self.process_actions(self._raw_actions[:])
+
         return self._actions
 
     def reset(self, envs_idx: list[int] | None):
@@ -262,11 +319,3 @@ class BaseActionManager(BaseManager):
                 self._action_delay_buffer.append(
                     torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
                 )
-
-    def get_actions(self) -> torch.Tensor:
-        """
-        Get the current actions for the environments.
-        """
-        if self._actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
-        return self._actions

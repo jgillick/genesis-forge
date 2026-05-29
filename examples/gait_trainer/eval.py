@@ -3,21 +3,10 @@ import glob
 import torch
 import pickle
 import argparse
-from importlib import metadata
 import genesis as gs
 
 from genesis_forge.wrappers import RslRlWrapper
 from environment import Go2GaitTrainingEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
 EXPERIMENT_NAME = "go2-gait"
@@ -38,8 +27,12 @@ def get_latest_model(log_dir: str) -> str:
             f"Warning: No model files found at '{log_dir}' (you might need to train more)."
         )
         exit(1)
-    model_checkpoints.sort()
-    return model_checkpoints[-1]
+    # Sort by the file with the highest number
+    sorted_models = sorted(
+        model_checkpoints,
+        key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
+    )
+    return sorted_models[-1]
 
 
 def main():
@@ -75,7 +68,7 @@ def main():
     except KeyboardInterrupt:
         pass
     except gs.GenesisException as e:
-        if e.message != "Viewer closed.":
+        if str(e) != "Viewer closed.":
             raise e
     except Exception as e:
         raise e

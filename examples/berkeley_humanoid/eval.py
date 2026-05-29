@@ -8,16 +8,6 @@ import genesis as gs
 
 from genesis_forge.wrappers import RslRlWrapper
 from environment import BerkeleyHumanoidEnv
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib").startswith("1."):
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install install 'rsl-rl-lib>=2.2.4'.") from e
 from rsl_rl.runners import OnPolicyRunner
 
 EXPERIMENT_NAME = "berkeley-humanoid"
@@ -79,7 +69,7 @@ def main():
     except KeyboardInterrupt:
         pass
     except gs.GenesisException as e:
-        if e.message != "Viewer closed.":
+        if str(e) != "Viewer closed.":
             raise e
     except Exception as e:
         raise e

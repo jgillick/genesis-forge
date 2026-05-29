@@ -55,6 +55,15 @@ class ConfigItem:
             return
         self._init_fn_class()
 
+    def reset(self, envs_idx: list[int]):
+        """
+        Reset the function class for the given environments.
+        No-op if the function is not a class instance.
+        """
+        if not self._is_class:
+            return
+        self._fn.reset(envs_idx)
+
     def execute(self, envs_idx: list[int]):
         """
         Call the function for the given environment ids.

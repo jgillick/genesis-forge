@@ -261,6 +261,55 @@ class ActuatorManager(BaseManager):
             [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
             force = force.clamp(lower, upper)
         return force
+    
+    def get_dofs_control_force(
+        self,
+        noise: float = 0.0,
+        clip_to_max_force: bool = False,
+        dofs_idx: list[int] | None = None,
+    ) -> torch.Tensor:
+        """
+        Return the force output by the configured DOFs.
+        This is a wrapper for `RigidEntity.get_dofs_control_force`.
+
+        Args:
+            noise: The maximum amount of random noise to add to the force values returned.
+            clip_to_max_force: Clip the force returned to the maximum force of the actuators.
+            dofs_idx: The indices of the DOFs to get the force for. If None, all the DOFs of this actuator manager are used.
+
+        Returns:
+            force: torch.Tensor, shape (n_envs, n_dofs)
+            The force experienced by the enabled DOFs.
+        """
+        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        force = self._robot.get_dofs_control_force(dofs_idx)
+        if noise > 0.0:
+            force = self._add_random_noise(force, noise)
+        if clip_to_max_force:
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            force = force.clamp(lower, upper)
+        return force
+
+    def get_dofs_max_force(self) -> torch.Tensor:
+        """
+        Get the positive force/torque limit per configured DOF from ``max_force`` config.
+
+        Returns:
+            limits: torch.Tensor, shape (n_envs, n_dofs) or (n_dofs,)
+                Upper force limit per DOF (symmetric limits use the same magnitude).
+
+        Raises:
+            ValueError: If ``max_force`` was not configured on this actuator manager.
+        """
+        if self._max_force_cfg is None or self._values.get("force_max") is None:
+            raise ValueError(
+                "ActuatorManager max_force is not configured. "
+                "Set max_force on the actuator manager or pass an explicit threshold."
+            )
+        limits = torch.abs(self._get_value_buffer("force_max"))
+        if limits.ndim == 1:
+            limits = limits.unsqueeze(0).expand(self.env.num_envs, -1)
+        return limits
 
     def get_dofs_limits(
         self, dofs_idx: list[int] | None = None

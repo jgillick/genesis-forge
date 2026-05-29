@@ -84,7 +84,7 @@ class Wrapper:
     def unwrapped(self) -> GenesisEnv:
         """Returns the base environment of the wrapper.
 
-        This will be the bare :class:`GenesisEnv` environment, underneath all layers of wrappers.
+        This will be the bare :class:`ManagedEnvironment` or :class:`GenesisEnv` environment, underneath all layers of wrappers.
         """
         return self.env.unwrapped
 

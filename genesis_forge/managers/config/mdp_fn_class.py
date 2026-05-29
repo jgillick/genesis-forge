@@ -22,6 +22,10 @@ class MdpFnClass:
         """Called during the environment build phase and when MDP params are changed."""
         pass
 
+    def reset(self, envs_idx):
+        """Called when environments are reset. Override to clear per-env state."""
+        pass
+
     def __call__(
         self,
         env: GenesisEnv,

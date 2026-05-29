@@ -31,6 +31,9 @@ class PositionActionManager(BaseActionManager):
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
         clip: Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.
+        soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint 
+                                 of each joint's limits to establish a safety region within the limits. 
+                                 Defaults to 1.0.
         quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
@@ -110,6 +113,7 @@ class PositionActionManager(BaseActionManager):
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
         clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
+        soft_limit_scale_factor: float = 1.0,
         use_default_offset: bool = True,
         action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
@@ -126,6 +130,7 @@ class PositionActionManager(BaseActionManager):
         self._offset_cfg = ensure_dof_pattern(offset)
         self._scale_cfg = ensure_dof_pattern(scale)
         self._clip_cfg = ensure_dof_pattern(clip)
+        self._soft_limit_scale_factor = soft_limit_scale_factor
         self._quiet_action_errors = quiet_action_errors
         self._enabled_dof = None
         self._use_default_offset = use_default_offset
@@ -161,6 +166,11 @@ class PositionActionManager(BaseActionManager):
         self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._clip_cfg is not None:
             self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
+        if self._soft_limit_scale_factor != 1.0:
+            midpoint = (self._clip_values[:, 0] + self._clip_values[:, 1]) * 0.5
+            half_range = (self._clip_values[:, 1] - self._clip_values[:, 0]) * 0.5 * self._soft_limit_scale_factor
+            self._clip_values[:, 0] = midpoint - half_range
+            self._clip_values[:, 1] = midpoint + half_range
 
         # Scale
         self._scale_values = None
@@ -175,31 +185,16 @@ class PositionActionManager(BaseActionManager):
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
 
-    def step(self, actions: torch.Tensor) -> torch.Tensor:
+    def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Take the incoming actions for this step and handle them.
-
-        Args:
-            actions: The incoming step actions to handle.
-        """
-        if not self.enabled:
-            return
-        actions = super().step(actions)
-        self._actions = self.handle_actions(actions)
-        return self._actions
-
-    def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
-        """
-        Converts the actions to position commands, and send them to the DOF actuators.
-        Override this function if you want to change the action handling logic.
+        Convert the actions to position commands, and clamp them to the limits.
 
         Args:
             actions: The incoming step actions to handle.
 
         Returns:
-            The processed and handled actions.
+            The actions as position commands.
         """
-
         # Validate actions
         if not self._quiet_action_errors:
             if torch.isnan(actions).any():
@@ -214,11 +209,14 @@ class PositionActionManager(BaseActionManager):
             min=self._clip_values[:, 0],
             max=self._clip_values[:, 1],
         )
-
-        # Set target positions
-        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
-
         return actions
+
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+        """
+        Sends the actions as position commands to the actuators in the simulation.
+        """
+        actions = self.get_actions()
+        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
 
     """
     Internal methods

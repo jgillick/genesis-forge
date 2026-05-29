@@ -18,8 +18,9 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         actuator_joints: Which joints of the actuator manager that this action manager will control.
                          These can be full names or regular expressions.
-        limit: (optional) A dictionary of DOF name patterns and their position limits.
+        limit: A dictionary of DOF name patterns and their position limits.
                If omitted, the limits will be set to the limits of the actuators defined in the model.
+        soft_limit_scale_factor: Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0.
         quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
@@ -76,6 +77,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_joints: list[str] | str = ".*",
         quiet_action_errors: bool = False,
         limit: tuple[float, float] | dict[str, tuple[float, float]] = {},
+        soft_limit_scale_factor: float = 1.0,
         delay_step: int = 0,
         **kwargs,
     ):
@@ -88,6 +90,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             **kwargs,
         )
         self._limit_cfg = ensure_dof_pattern(limit)
+        self._soft_limit_scale_factor = soft_limit_scale_factor
 
     """
     Lifecycle Operations
@@ -103,26 +106,21 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         lower = lower.unsqueeze(0).expand(self.env.num_envs, -1)
         upper = upper.unsqueeze(0).expand(self.env.num_envs, -1)
         self._offset = (upper + lower) * 0.5
-        self._scale = (upper - lower) * 0.5
+        self._scale = (upper - lower) * 0.5 * self._soft_limit_scale_factor
 
-    def handle_actions(self, actions: torch.Tensor) -> torch.Tensor:
+    def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Converts the actions to position commands, and send them to the DOF actuators.
-        Override this function if you want to change the action handling logic.
+        Convert the actions to position commands within the limits.
 
         Args:
             actions: The incoming step actions to handle.
 
         Returns:
-            The processed and handled actions.
+            The actions as position commands.
         """
         # Convert the action from -1 to 1, to absolute position within the actuator limits
-        actions.clamp_(-1.0, 1.0)
+        actions = actions.clamp(-1.0, 1.0)
         actions = actions * self._scale + self._offset
-
-        # Set target positions
-        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
-
         return actions
 
     """

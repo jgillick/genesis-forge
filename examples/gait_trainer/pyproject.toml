@@ -1,0 +1,15 @@
+[project]
+name = "genesis-forge-gait-trainer-example"
+version = "0.1.0"
+description = "Genesis Forge example demonstrating custom gait training."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "genesis-forge",
+    "genesis-world>=0.4.0",
+    "rsl-rl-lib~=5.0",
+    "tensorboard",
+]
+
+[tool.uv.sources]
+genesis-forge = { path = "../../" }

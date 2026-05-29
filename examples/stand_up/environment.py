@@ -1,8 +1,9 @@
 """
-Simplified Go2 Locomotion Environment using managers to handle everything.
+Go2 stand-up environment: learn to rise from random collapsed ground poses.
 """
 
-import torch
+from __future__ import annotations
+
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
@@ -13,26 +14,20 @@ from genesis_forge.managers import (
     ObservationManager,
     ActuatorManager,
     PositionActionManager,
-    PositionWithinLimitsActionManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import rewards, terminations
 
+from reset import random_ground_pose
+from rewards import stand_and_balance_reward
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
-TARGET_X_VELOCITY = 0.5
-
-
-class Go2SimpleEnv(ManagedEnvironment):
-    """
-    Example training environment for the Go2 robot.
-    """
+class Go2StandUpEnv(ManagedEnvironment):
+    """Train the Go2 to stand up from random ground poses."""
 
     def __init__(
         self,
         num_envs: int = 1,
-        dt: float = 1 / 50,  # control frequency on real robot is 50hz
-        max_episode_length_s: int | None = 20,
+        dt: float = 1 / 50,
+        max_episode_length_s: int | None = 3,
         headless: bool = True,
     ):
         super().__init__(
@@ -42,15 +37,6 @@ class Go2SimpleEnv(ManagedEnvironment):
             max_episode_random_scaling=0.1,
         )
 
-        # Set the target robot direction, along the X axis
-        self.target_command = torch.zeros(
-            (self.num_envs, 3), device=gs.device, dtype=gs.tc_float
-        )
-        self.target_command[:, 0] = (
-            TARGET_X_VELOCITY  # Linear velocity along the X axis
-        )
-
-        # Construct the scene
         self.scene = gs.Scene(
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
@@ -60,7 +46,7 @@ class Go2SimpleEnv(ManagedEnvironment):
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
-            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
+            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(min(num_envs, 1)))),
             rigid_options=gs.options.RigidOptions(
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
@@ -70,19 +56,16 @@ class Go2SimpleEnv(ManagedEnvironment):
             ),
         )
 
-        # Create terrain
-        self.terrain = self.scene.add_entity(gs.morphs.Plane())
+        self.scene.add_entity(gs.morphs.Plane())
 
-        # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
                 file="urdf/go2/urdf/go2.urdf",
-                pos=INITIAL_BODY_POSITION,
-                quat=INITIAL_QUAT,
+                pos=[0.0, 0.0, 0.4],
+                quat=[1.0, 0.0, 0.0, 0.0],
             ),
         )
 
-        # Camera, for headless video recording
         self.camera = self.scene.add_camera(
             pos=(-2.5, -1.5, 1.0),
             lookat=(0.0, 0.0, 0.0),
@@ -91,32 +74,9 @@ class Go2SimpleEnv(ManagedEnvironment):
             env_idx=0,
             debug=True,
         )
+        self.camera.follow_entity(self.robot)
 
     def config(self):
-        """
-        Configure the environment managers
-        """
-        ##
-        # Robot manager
-        # i.e. what to do with the robot when it is reset
-        self.robot_manager = EntityManager(
-            self,
-            entity_attr="robot",
-            on_reset={
-                # Reset the robot's initial position
-                "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
-                },
-            },
-        )
-
-        ##
-        # Joint Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -135,102 +95,117 @@ class Go2SimpleEnv(ManagedEnvironment):
             },
             kp=20,
             kv=0.5,
+            max_force=20.0,
         )
-        self.hip_action_manager = PositionWithinLimitsActionManager(
+        self.action_manager = PositionActionManager(
             self,
-            actuator_manager=self.actuator_manager,
-            actuator_joints=[".*_hip_joint"],
-            limit=(-0.6, 0.6),
-        )
-        self.leg_action_manager = PositionActionManager(
-            self,
-            actuator_manager=self.actuator_manager,
-            actuator_joints=[
-                ".*_thigh_joint",
-                ".*_calf_joint",
-            ],
-            scale=0.25,
-            clip=(-100.0, 100.0),
+            scale=0.1,
             use_default_offset=True,
+            actuator_manager=self.actuator_manager,
         )
 
-        ##
-        # Rewards
+        self.robot_manager = EntityManager(
+            self,
+            entity_attr="robot",
+            on_reset={
+                "random_ground_pose": {
+                    "fn": random_ground_pose,
+                },
+            },
+        )
+
         RewardManager(
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                "base_height": {
                     "weight": -50.0,
                     "fn": rewards.base_height,
                     "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                    },
-                },
-                "tracking_lin_vel": {
-                    "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "command": self.target_command[:, :2],
+                        "target_height": 0.25,
                         "entity_manager": self.robot_manager,
                     },
                 },
-                "tracking_ang_vel": {
-                    "weight": 0.2,
-                    "fn": rewards.command_tracking_ang_vel,
+                "stand_and_balance": {
+                    "weight": 2.0,
+                    "fn": stand_and_balance_reward,
                     "params": {
-                        "commanded_ang_vel": self.target_command[:, 2],
                         "entity_manager": self.robot_manager,
+                        "target_height": 0.28,
+                        "max_tilt_deg": 20.0,
                     },
+                },
+                "flat_orientation": {
+                    "weight": -0.5,
+                    "fn": rewards.flat_orientation_l2,
+                    "params": {"entity_manager": self.robot_manager},
+                },
+                "lin_vel_xy": {
+                    "weight": -0.2,
+                    "fn": rewards.lin_vel_xy_l2,
+                    "params": {"entity_manager": self.robot_manager},
                 },
                 "lin_vel_z": {
-                    "weight": -1.0,
+                    "weight": -3.0,
                     "fn": rewards.lin_vel_z_l2,
+                    "params": {"entity_manager": self.robot_manager},
+                },
+                "dof_vel": {
+                    "weight": -0.02,
+                    "fn": rewards.dof_velocity_l2,
+                    "params": {"action_manager": self.action_manager},
+                },
+                "action_rate": {
+                    "weight": -0.1,
+                    "fn": rewards.action_rate_l2,
+                },
+                "action_accel": {
+                    "weight": -0.02,
+                    "fn": rewards.action_acceleration_l2,
+                    "params": {"action_manager": self.action_manager},
+                },
+                "torque_l2": {
+                    "weight": -0.0003,
+                    "fn": rewards.dof_torque_l2,
+                    "params": {
+                        "actuator_manager": self.actuator_manager,
+                    },
+                },
+                "body_acceleration": {
+                    "weight": -0.2,
+                    "fn": rewards.body_acceleration_exp,
                     "params": {
                         "entity_manager": self.robot_manager,
                     },
                 },
-                "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
-                },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.leg_action_manager,
-                    },
+                "is_alive": {
+                    "weight": 0.05,
+                    "fn": rewards.is_alive,
                 },
             },
         )
 
-        ##
-        # Termination conditions
         self.termination_manager = TerminationManager(
             self,
             logging_enabled=True,
             term_cfg={
-                # The episode ended
                 "timeout": {
                     "fn": terminations.timeout,
                     "time_out": True,
                 },
-                # Terminate if the robot's pitch and yaw angles are too large
-                "fall_over": {
-                    "fn": terminations.bad_orientation,
+                "is_upsidedown": {
+                    "fn": terminations.is_upsidedown,
                     "params": {
-                        "limit_angle": 10.0,
                         "entity_manager": self.robot_manager,
+                        "threshold": 0.5,
                     },
                 },
             },
         )
 
-        ##
-        # Observations
         ObservationManager(
             self,
+            history_len=4,
             cfg={
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
@@ -244,21 +219,19 @@ class Go2SimpleEnv(ManagedEnvironment):
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
                 },
                 "dof_position": {
-                    "fn": lambda env: self.actuator_manager.get_dofs_position(),
+                    "fn": lambda env: self.action_manager.get_dofs_position(),
                 },
                 "dof_velocity": {
-                    "fn": lambda env: self.actuator_manager.get_dofs_velocity(),
+                    "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.05,
                 },
-                "hip_actions": {
-                    "fn": lambda env: self.hip_action_manager.get_actions(),
+                "dof_torque": {
+                    "fn": lambda env: self.actuator_manager.get_dofs_force(),
+                    "scale": 0.05,
                 },
-                "leg_actions": {
-                    "fn": lambda env: self.leg_action_manager.get_actions(),
+                "actions": {
+                    "fn": lambda env: self.action_manager.get_actions(),
                 },
             },
         )
 
-    def build(self):
-        super().build()
-        self.camera.follow_entity(self.robot)

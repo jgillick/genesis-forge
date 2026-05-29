@@ -3,8 +3,9 @@ import genesis as gs
 import numpy as np
 from PIL import Image
 
-from genesis_forge import ManagedEnvironment
+from genesis_forge import ManagedEnvironment, EnvMode
 from genesis_forge.managers import (
+    ActuatorManager,
     RewardManager,
     TerminationManager,
     EntityManager,
@@ -33,6 +34,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         dt: float = 1 / 50,
         max_episode_length_s: int | None = 20,
         headless: bool = True,
+        mode: EnvMode = "train",
     ):
         super().__init__(
             num_envs=num_envs,
@@ -40,6 +42,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             max_episode_length_sec=max_episode_length_s,
             max_episode_random_scaling=0.1,
         )
+        self._mode = mode
         self._curriculum_level = 0
 
         # Construct the scene
@@ -48,7 +51,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
+                camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
@@ -73,6 +76,10 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 quat=INITIAL_QUAT,
             ),
         )
+
+        # Update the main viewer to follow the robot
+        if self.scene.viewer is not None:
+            self.scene.viewer.follow_entity(self.robot)
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
@@ -107,7 +114,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 },
             },
         )
-
+            
         ##
         # Joint Actions
         self.actuator_manager = ActuatorManager(

@@ -1,0 +1,15 @@
+[project]
+name = "genesis-forge-berkeley-humanoid"
+version = "0.1.0"
+description = "A simple locomotion training environment for the Berkeley Humanoid Robot"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "genesis-forge",
+    "genesis-world>=0.4.0",
+    "rsl-rl-lib~=5.0",
+    "tensorboard",
+]
+
+[tool.uv.sources]
+genesis-forge = { path = "../../" }

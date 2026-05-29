@@ -74,7 +74,7 @@ def main():
     except KeyboardInterrupt:
         pass
     except gs.GenesisException as e:
-        if e.message != "Viewer closed.":
+        if str(e) != "Viewer closed.":
             raise e
     except Exception as e:
         raise e

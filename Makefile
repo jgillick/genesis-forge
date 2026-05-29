@@ -9,4 +9,4 @@ build: clean
 	uv build
 
 deploy: build
-	twine upload dist/*
+	uv run twine upload dist/*

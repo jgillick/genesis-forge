@@ -1,3 +1,4 @@
+from __future__ import annotations
 import torch
 from tensordict import TensorDict
 from typing import Any, Union, Optional

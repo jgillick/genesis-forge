@@ -1,3 +1,4 @@
+from __future__ import annotations
 from genesis_forge.genesis_env import GenesisEnv
 from typing import Literal
 

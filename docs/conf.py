@@ -17,6 +17,8 @@ autodoc_mock_imports = [
     "numpy",
     "gymnasium",
     "pygame",
+    "sdl2",
+    "quadrants",
     "skrl",
     "rsl_rl",
     "gstaichi",

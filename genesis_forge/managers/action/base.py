@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 from torch._tensor import Tensor
 import torch

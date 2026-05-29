@@ -1,3 +1,4 @@
+from __future__ import annotations
 import torch
 import genesis as gs
 from typing import Iterator, TypedDict, Callable, Any

@@ -81,15 +81,18 @@ def entity_projected_gravity(
     entity = getattr(env, entity_attr)
     return entity_projected_gravity(entity)
 
+
 """
 Sensor observations
 """
+
 
 def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
     """
     Makes an IMU reading and returns the concatenated linear acceleration and angular velocity readings.
 
     Example::
+
         self.imu = gs.sensors.IMU(
             entity_idx=self.robot.idx,
             pos_offset=(0.24, 0.0, 0.0),
@@ -108,10 +111,11 @@ def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
         )
 
     Returns:
-        torch.Tensor: Shape (n_envs, 6): [lin_acc_xyz, ang_vel_xyz] per env.
+        torch.Tensor: Shape `(n_envs, 6)` — `[lin_acc_xyz, ang_vel_xyz]` per env.
     """
     value = imu.read()
     return torch.cat([value.lin_acc, value.ang_vel], dim=-1)
+
 
 """
 DOF/Join observations
@@ -234,9 +238,11 @@ def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Ten
         env: The Genesis Forge environment
         contact_manager: The contact manager to check for contact
 
-    Returns: tensor of shape (num_envs, num_contacts)
+    Returns:
+        torch.Tensor: Shape `(num_envs, num_contacts)`.
     """
     return torch.norm(contact_manager.contacts[:, :, :], dim=-1)
+
 
 def has_contact(
     env: GenesisEnv, contact_manager: ContactManager, threshold=1.0

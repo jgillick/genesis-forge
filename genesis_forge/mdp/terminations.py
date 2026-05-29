@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Termination functions for the Genesis environment.
 Each of these should return a boolean tensor indicating which environments should terminate, in the tensor shape (num_envs,).

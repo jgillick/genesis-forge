@@ -2,9 +2,9 @@ import inspect
 
 from genesis_forge.genesis_env import GenesisEnv
 
-from genesis_forge.managers.config.params_dict import ParamsDict
-from genesis_forge.managers.config.mdp_fn_class import MdpFnClass
-
+from .dict_with_change import DictWithChangeHandler
+from .mdp_fn_class import MdpFnClass
+from .config_item_dict import ConfigItemDict
 
 class ConfigItem:
     """
@@ -13,7 +13,7 @@ class ConfigItem:
     when the config item parameters are changed.
     """
 
-    def __init__(self, cfg: dict, env: GenesisEnv):
+    def __init__(self, cfg: ConfigItemDict, env: GenesisEnv):
         self._env = env
         self._entity = None
         self._kwargs = {}
@@ -21,7 +21,7 @@ class ConfigItem:
         self._cfg = cfg
         self._fn = cfg["fn"]
         params = cfg.get("params", {}) or {}
-        self._params = ParamsDict(params, self._rebuild)
+        self._params = DictWithChangeHandler(params, self._rebuild)
 
         self._initialized = True
         self._is_class = inspect.isclass(cfg["fn"])
@@ -39,7 +39,7 @@ class ConfigItem:
     @params.setter
     def params(self, params: dict):
         """Overwrite the params dictionary"""
-        self._params = ParamsDict(params.copy(), self._rebuild)
+        self._params = DictWithChangeHandler(params.copy(), self._rebuild)
         if self._is_class:
             self._rebuild()
 

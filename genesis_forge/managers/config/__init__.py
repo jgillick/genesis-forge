@@ -1,6 +1,6 @@
-from .params_dict import ParamsDict
 from .config_item import (
     ConfigItem,
+    ConfigItemDict,
     RewardConfigItem,
     TerminationConfigItem,
     ObservationConfigItem,
@@ -9,8 +9,8 @@ from .mdp_fn_class import MdpFnClass, ResetMdpFnClass
 
 __all__ = [
     "ConfigItem",
+    "ConfigItemDict",
     "MdpFnClass",
-    "ParamsDict",
     "ResetMdpFnClass",
     "RewardConfigItem",
     "TerminationConfigItem",

@@ -173,7 +173,7 @@ def out_of_bounds(
 
 
 def has_contact(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
+    env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
 ) -> torch.Tensor:
     """
     One or more links in the contact manager are in contact with something.
@@ -192,7 +192,7 @@ def has_contact(
 
 
 def contact_force(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
 ) -> torch.Tensor:
     """
     Terminate if any link in the contact manager is in contact with something with a force greater than the threshold.
@@ -242,7 +242,7 @@ def contact_force_with_grace_period(
 
 
 def dof_control_force_limit(
-    _env: GenesisEnv,
+    env: GenesisEnv,
     actuator_manager: ActuatorManager,
     threshold: float | None = None,
 ) -> torch.Tensor:
@@ -268,7 +268,7 @@ def dof_control_force_limit(
 
 
 def dof_velocity_limit(
-    _env: GenesisEnv,
+    env: GenesisEnv,
     actuator_manager: ActuatorManager,
     threshold: float,
     unit: Literal["rpm", "rad"] = "rad",

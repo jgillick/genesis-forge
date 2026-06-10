@@ -256,7 +256,7 @@ class body_acceleration_exp(MdpFnClass):
             curr_lin_vel = entity_manager.get_linear_velocity()
             curr_ang_vel = entity_manager.get_angular_velocity()
         else:
-            robot = getattr(env, self._entity_attr)
+            robot = getattr(env, entity_attr)
             curr_lin_vel = entity_lin_vel(robot)
             curr_ang_vel = entity_ang_vel(robot)
 
@@ -542,7 +542,7 @@ Contacts
 
 
 def has_contact(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
+    env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
 ) -> torch.Tensor:
     """
     One or more links in the contact manager are in contact with something.
@@ -562,7 +562,7 @@ def has_contact(
 
 
 def contact_force(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
 ) -> torch.Tensor:
     """
     Reward for the total contact force acting on all the target links in the contact manager over the threshold.

@@ -1,7 +1,6 @@
 import math
-from typing import Tuple, TypedDict
+from typing import NotRequired, Tuple, TypedDict
 
-import os
 import torch
 import genesis as gs
 
@@ -21,25 +20,25 @@ class VelocityCommandRange(TypedDict):
 class VelocityDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
-    envs_idx: list[int]
+    envs_idx: NotRequired[list[int]]
     """The indices of the environments to visualize. If None, all environments will be visualized."""
 
-    arrow_offset: float
+    arrow_offset: NotRequired[float]
     """The vertical offset of the debug arrows from the top of the robot"""
 
-    arrow_radius: float
+    arrow_radius: NotRequired[float]
     """The radius of the shaft of the debug arrows"""
 
-    arrow_max_length: float
+    arrow_max_length: NotRequired[float]
     """The maximum length of the debug arrows"""
 
-    commanded_color: Tuple[float, float, float, float]
+    commanded_color: NotRequired[Tuple[float, float, float, float]]
     """The color of the commanded velocity arrow"""
 
-    actual_color: Tuple[float, float, float, float]
+    actual_color: NotRequired[Tuple[float, float, float, float]]
     """The color of the actual robot velocity arrow"""
 
-    fps: int
+    fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
 

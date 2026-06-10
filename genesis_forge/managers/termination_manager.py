@@ -1,21 +1,17 @@
+
 import torch
-from typing import TypedDict, Callable, Any
 import genesis as gs
+from typing import NotRequired
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import TerminationConfigItem
+from genesis_forge.managers.config import TerminationConfigItem, ConfigItemDict
 
 
-class TerminationConfig(TypedDict):
+class TerminationConfig(ConfigItemDict):
     """Defines a termination condition."""
 
-    fn: Callable[[GenesisEnv, ...], torch.Tensor]
-    """Function that will be called to calculate a termination signal for the environment."""
-
-    params: dict[str, Any]
-    """Additional parameters to pass to the function."""
-
-    time_out: bool
+    time_out: NotRequired[bool]
     """Set to True if a positive result is a time out and not a termination."""
 
 

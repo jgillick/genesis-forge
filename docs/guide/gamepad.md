@@ -1,16 +1,13 @@
 # 🎮 Gamepad Controllers
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../_static/gamepad.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/gamepad.webm"></video>
 
 Genesis Forge integrates with game controllers through SDL2, supporting a wide range of controllers including Xbox, PlayStation, Nintendo Switch Pro, and many others.
 
-```{figure} _images/f710.webp
-:alt: Game controller
-:width: 350
-:align: center
-:class: dark-light
-Game controllers (like the Logitech F710) work seamlessly with Genesis Forge
-```
+<figure markdown="span">
+  ![Logitech F710 game controller](../../_static/f710.webp){ width="350" }
+  <figcaption>Game controllers (like the Logitech F710) work seamlessly with Genesis Forge</figcaption>
+</figure>
 
 # Installation
 
@@ -28,12 +25,11 @@ Then log out and back in for the changes to take effect.
 
 ## Usage
 
-If you have one or more [command managers](./managers//command) defined in your environment, you can easily connect the gamepad to them in your eval program.
+If you have one or more [command managers](managers/command.md) defined in your environment, you can easily connect the gamepad to them in your eval program.
 
 For example, let's say you have both a velocity command and a target height command defined in your environment:
 
-```{code-block} python
-:caption: environment.py
+```python title="environment.py"
 
 self.velocity_command = VelocityCommandManager(
     self,
@@ -48,8 +44,7 @@ self.height_command = CommandManager(self, range=(0.2, 0.4))
 
 Now let's create an eval script that uses the gamepad controller to set these values:
 
-```{code-block} python
-:caption: eval.py
+```python title="eval.py"
 
 from genesis_forge.gamepads import Gamepad
 

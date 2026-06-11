@@ -1,5 +1,3 @@
 # GenesisEnv
 
-```{eval-rst}
-.. autoclass:: genesis_forge.GenesisEnv
-```
+::: genesis_forge.GenesisEnv

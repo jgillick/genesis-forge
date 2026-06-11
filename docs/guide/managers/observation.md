@@ -2,7 +2,7 @@
 
 The Observation Manager defines what your RL agent observes from the environment. It handles observation space creation, data collection, scaling, and noise injection for training robustness.
 
-You can see a full example using the observation manager in [examples/simple](https://github.com/jgillick/genesis-forge/tree/main/examples/simple).
+You can see a full example using the observation manager in [examples/basic](https://github.com/jgillick/genesis-forge/tree/main/examples/basic).
 
 ## Basic Usage
 
@@ -28,7 +28,7 @@ class MyEnv(ManagedEnvironment):
                     "fn": observations.entity_dofs_velocity,
                     "params": {
                         "action_manager": self.action_manager
-                    }
+                    },
                     "scale": 0.05,  # Scale down velocities
                 },
             },
@@ -56,7 +56,7 @@ ObservationManager(
         "contact_forces": {
             "fn": observations.entity_dofs_force,
             "params": {   # Pass parameters to entity_dofs_force
-                "action_manager": self.action_manager
+                "action_manager": self.action_manager,
                 "clip_to_max_force": True
             },
         },
@@ -114,7 +114,7 @@ ObservationManager(
             "params": {
                 "action_manager": self.action_manager
             },
-            "scale": 1.0 # supersedes the default setting
+            "noise": 0.1,  # supersedes the default setting
         },
         "joint_velocities": {
             "fn": observations.entity_dofs_velocity,
@@ -184,9 +184,8 @@ By giving the critic privileged information (like ground truth contact forces or
 
 To do this, just define the component name on the observation manager.
 
-:::{important}
-You must at least define a nameless, or "policy", observation set. This represents the observations that will be available to your policy during deployment (e.g., real sensor data).
-:::
+!!! tip "Important"
+    You must at least define a nameless, or "policy", observation set. This represents the observations that will be available to your policy during deployment (e.g., real sensor data).
 
 ```python
 # Policy observations - what the robot can actually sense during deployment

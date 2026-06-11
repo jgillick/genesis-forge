@@ -1,12 +1,5 @@
-# Markov Decision Process functions
+# MDP Function Overview 
 
-These are a collection of simple functions used to generate rewards, terminations, or observations.
+MDP stands for [Markov Decision Process](https://en.wikipedia.org/wiki/Markov_decision_process), and is the process at the heart of reinforcement learning.
 
-```{toctree}
-:maxdepth: 1
-
-observations
-reset
-rewards
-terminations
-```
+This is a collection of simple functions used to generate rewards, terminations, observations, or handle robot resets.

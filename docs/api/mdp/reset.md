@@ -1,7 +1,5 @@
 # Resets
 
-These are simple helper functions that can be used in the [EntityManager](project:/api/managers/entity.md) `on_reset` configuration.
+These are simple helper functions that can be used in the [EntityManager](../managers/entity.md) `on_reset` configuration.
 
-```{eval-rst}
-.. automodule:: genesis_forge.mdp.reset
-```
+::: genesis_forge.mdp.reset

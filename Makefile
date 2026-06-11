@@ -1,4 +1,4 @@
-.PHONY: all clean build deploy
+.PHONY: all clean build deploy docs serve llms
 
 all: build
 
@@ -10,3 +10,14 @@ build: clean
 
 deploy: build
 	uv run twine upload dist/*
+
+docs:
+	uv pip install -r ./docs/requirements.txt
+	mkdocs build
+	cp dist/docs/llms.txt llms.txt
+	cp dist/docs/llms-full.txt llms-full.txt
+
+serve:
+	uv pip install -r ./docs/requirements.txt
+	mkdocs serve
+

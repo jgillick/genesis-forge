@@ -1,5 +1,3 @@
-# Noisy Value
+# NoisyValue
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.actuator.NoisyValue
-```
+::: genesis_forge.managers.actuator.NoisyValue

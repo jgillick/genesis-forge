@@ -1,5 +1,3 @@
-# Rsl_RL
+# RSL-RL
 
-```{eval-rst}
-.. autoclass:: genesis_forge.wrappers.RslRlWrapper
-```
+::: genesis_forge.wrappers.RslRlWrapper

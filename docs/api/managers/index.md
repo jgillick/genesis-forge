@@ -1,16 +1,3 @@
-# Managers
+# Manager Overview
 
 These modular classes are used to handle dedicated parts of your environment.
-
-```{toctree}
-:maxdepth: 2
-actuator
-action/index
-command/index
-contact
-entity
-observation
-reward
-termination
-terrain
-```

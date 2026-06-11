@@ -1,10 +1,6 @@
 # Genesis Forge
 
-```{image} ../media/logo_text.png
-:alt: Genesis logo
-:class: align-center dark-light
-:width: 300px
-```
+<img src="media/logo_text.png" alt="Genesis Forge" width="300px" style="display:block;margin:0 auto">
 
 <br />
 
@@ -21,13 +17,6 @@ Today, modern robots learn to balance, walk, manipulate objects, and more, using
 - 🎬 Automatically record video snippets during training
 - 🕹️ Connect a game controller for hands-on policy evaluation and play-mode.
 - 🤖 Seamless integration with popular RL libraries: [RSL-RL](https://github.com/leggedrobotics/rsl_rl/tree/main) and [SKRL](https://skrl.readthedocs.io/en/latest/)
-
-```{toctree}
-:maxdepth: 1
-
-guide/index
-api/index
-```
 
 <video autoplay="" muted="" loop="" playsinline="" controls="" src="_static/cmd_locomotion.webm"></video>
 

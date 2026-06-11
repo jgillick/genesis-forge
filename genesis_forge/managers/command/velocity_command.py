@@ -63,8 +63,7 @@ class VelocityCommandManager(CommandManager):
     - Y-axis: Left/right relative to robot's current orientation
     - Z-axis: Yaw rotation around robot's vertical axis
 
-    :::{admonition} Debug Visualization
-
+    !!! note "Debug Visualization"
         If you set `debug_visualizer` to True, arrows will be rendered above your robot
         showing the commanded velocity vs the actual velocity.
 

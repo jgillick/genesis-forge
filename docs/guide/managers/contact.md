@@ -1,8 +1,7 @@
 # Contact Manager
 
-:::{important}
-The contact manager requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+.
-:::
+!!! tip "Important"
+    The contact manager requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+.
 
 The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.
 
@@ -98,7 +97,7 @@ class MyEnv(ManagedEnvironment):
 
 ## Contact Visualization
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/contacts_debug.webm" width="100%"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../../_static/contacts_debug.webm" width="100%"></video>
 
 <p align="center">
 <em>Foot contacts are marked in red</em>
@@ -119,8 +118,7 @@ self.contact_manager = ContactManager(
 )
 ```
 
-:::{caution}
-This can slow down the simulation since the debug spheres need to be calculated and rendered for each environment on every step.
+!!! warning "Caution"
+    This can slow down the simulation since the debug spheres need to be calculated and rendered for each environment on every step.
 
-It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
-:::
+    It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.

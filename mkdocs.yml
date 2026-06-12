@@ -30,6 +30,9 @@ theme:
     - content.action.edit
     - content.code.copy
 
+extra_css:
+  - stylesheets/extra.css
+
 markdown_extensions:
   - admonition
   - pymdownx.details

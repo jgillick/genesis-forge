@@ -90,7 +90,7 @@ class VideoWrapper(Wrapper):
 
     def __init__(
         self,
-        env: GenesisEnv,
+        env: GenesisEnv | Wrapper,
         camera_attr: str = "camera",
         video_length_sec: int = 8,
         episode_trigger: Callable[[int], bool] | None = None,

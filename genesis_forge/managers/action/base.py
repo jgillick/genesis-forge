@@ -172,17 +172,17 @@ class BaseActionManager(BaseManager):
     DOF convenience wrappers
     """
 
-    def get_dofs_position(self):
+    def get_dofs_position(self) ->  torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
 
         Returns:
-            position: tuple[torch.Tensor, torch.Tensor]
+            position: torch.Tensor, shape (n_envs, n_dofs)
                       The position of the DOFs managed by this action manager.
         """
         return self.actuator_manager.get_dofs_position(dofs_idx=self.dofs_idx)
 
-    def get_dofs_limits(self):
+    def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
         A wrapper for `RigidEntity.get_dofs_limit` that returns the limits of the controlled DOFs.
 
@@ -194,7 +194,7 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] = None):
+    def get_dofs_velocity(self, clip: tuple[float, float] = None) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -209,7 +209,7 @@ class BaseActionManager(BaseManager):
             clip=clip, dofs_idx=self.dofs_idx
         )
 
-    def get_dofs_force(self, clip_to_max_force: bool = False):
+    def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_force` that returns the force experienced by the controlled DOFs.
 

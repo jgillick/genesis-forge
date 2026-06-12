@@ -26,10 +26,11 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     def reset(self) -> Tuple[torch.Tensor, Any]:
         """Reset the environment
 
-        :raises NotImplementedError: Not implemented
+        Raises:
+            NotImplementedError: Not implemented
 
-        :return: Observation, info
-        :rtype: torch.Tensor and any other info
+        Returns: 
+            tuple: Observation (tensor), info (dict)
         """
         return self._env.reset()
 
@@ -38,11 +39,12 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
         """Perform a step in the environment
 
-        :param actions: The actions to perform
-        :type actions: torch.Tensor
+        Args:
+            actions: The actions to perform
 
-        :return: Observation, reward, terminated, truncated, info
-        :rtype: tuple of torch.Tensor and any other info
+        Returns:
+            tuple of tensors and a dict: 
+                Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict)
         """
         obs, rewards, terminations, timeouts, extras = self._env.step(actions)
 
@@ -56,8 +58,8 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     def state(self) -> torch.Tensor:
         """Get the environment state
 
-        :return: State
-        :rtype: torch.Tensor
+        Returns: 
+            State (torch.Tensor)
         """
         return self.env.state()
 

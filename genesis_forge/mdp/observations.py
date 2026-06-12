@@ -245,7 +245,7 @@ def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Ten
 
 
 def has_contact(
-    env: GenesisEnv, contact_manager: ContactManager, threshold=1.0
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0
 ) -> torch.Tensor:
     """
     Return boolean (1/0) for each link in the contact manager that meets the contact threshold.

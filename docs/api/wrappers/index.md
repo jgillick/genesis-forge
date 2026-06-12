@@ -1,4 +1,4 @@
-# Wrappers
+# Wrapper Overview
 
 Environment wrappers are used to wrap your environment class to add functionality for training. This is similar to how wrappers work in Gymnasium and StableBaselines3.
 
@@ -27,12 +27,4 @@ For example, you might want to use the rsl_rl training framework and regularly c
     runner = OnPolicyRunner(env, training_cfg, log_dir, device=gs.device)
     runner.learn(num_learning_iterations=max_iterations)
     env.close()
-```
-
-```{toctree}
-:maxdepth: 1
-
-rsl_rl
-skrl
-video
 ```

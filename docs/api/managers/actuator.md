@@ -1,5 +1,3 @@
 # Actuator
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.actuator.ActuatorManager
-```
+::: genesis_forge.managers.actuator.ActuatorManager

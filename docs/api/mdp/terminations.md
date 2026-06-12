@@ -1,5 +1,3 @@
 # Terminations
 
-```{eval-rst}
-.. automodule:: genesis_forge.mdp.terminations
-```
+::: genesis_forge.mdp.terminations

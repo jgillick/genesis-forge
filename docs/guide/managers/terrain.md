@@ -2,9 +2,9 @@
 
 The Terrain Manager loads a terrain and provides helpful function, like calculating your robot's hight above a varied terrain, or placing it at random places around a specific subterrain.
 
-You can see a full example using the reward manager in [examples/rough_terrain](https://github.com/jgillick/genesis-forge/tree/main/examples/rough_terrain).
+You can see a full example using the terrain manager in [examples/rough_terrain](https://github.com/jgillick/genesis-forge/tree/main/examples/rough_terrain).
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/terrain.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/terrain.webm"></video>
 
 ## Basic Usage
 
@@ -18,7 +18,7 @@ class MyEnv(ManagedEnvironment):
         self.scene = gs.Scene()
 
         # Define your terrain, like usual
-        self.terrain = scene.add_entity(
+        self.terrain = self.scene.add_entity(
             morph=gs.morphs.Terrain(
                 n_subterrains=(1, 2),
                 subterrain_size=(15, 15),

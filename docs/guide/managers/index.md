@@ -1,4 +1,4 @@
-# Managers
+# Manager Overview
 
 Each manager handles a specific aspect of your RL environment, making your code more modular and maintainable.
 
@@ -42,17 +42,3 @@ All managers follow a consistent lifecycle:
 4. **Reset**: Called when environments reset
 
 Explore the managers to learn more.
-
-```{toctree}
-:maxdepth: 1
-
-actuator
-action
-command
-contact
-entity
-observation
-reward
-termination
-terrain
-```

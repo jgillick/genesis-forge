@@ -1,5 +1,3 @@
 # Contact
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.ContactManager
-```
+::: genesis_forge.managers.ContactManager

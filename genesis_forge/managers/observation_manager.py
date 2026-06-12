@@ -138,7 +138,7 @@ class ObservationManager(BaseManager):
         cfg: dict[str, ObservationConfig],
         name: str = "policy",
         history_len: int | None = None,
-        noise: tuple[float, float] | None = None,
+        noise: float | None = None,
     ):
         super().__init__(env, "observation")
         self._name = name

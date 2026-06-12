@@ -24,8 +24,7 @@ This framework is built around the [Genesis Simulator](https://genesis-world.rea
 
 Let's create a simple locomotion environment where a quadruped robot learns to walk forward. Here's a complete environment:
 
-```{code-block} python
-:caption: environment.py
+```python title="environment.py"
 
 """ A simple Go2 robot locomotion environment"""
 
@@ -195,8 +194,7 @@ class MyFirstEnv(ManagedEnvironment):
 
 Now let's train a policy using RSL-RL:
 
-```{code-block} python
-:caption: train.py
+```python title="train.py"
 
 import genesis as gs
 from genesis_forge.wrappers import RslRlWrapper, VideoWrapper
@@ -297,8 +295,8 @@ with torch.no_grad():
 
 Explore the complete examples in the repository:
 
-- **[Simple Locomotion](https://github.com/jgillick/genesis-forge/tree/main/examples/simple)**: Basic forward walking
-- **[Command Following](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction)**: Follow velocity commands
+- **[Simple Locomotion](https://github.com/jgillick/genesis-forge/tree/main/examples/basic)**: Basic forward walking
+- **[Commanded direction](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction)**: Follow velocity commands
 - **[Rough Terrain](https://github.com/jgillick/genesis-forge/tree/main/examples/rough_terrain)**: Navigate challenging terrain
 
 ## Troubleshooting
@@ -320,7 +318,7 @@ env = MyFirstEnv(num_envs=1024)  # Instead of 4096
 
 ## Next Steps
 
-- Learn about the [Gamepad controller integration](./gamepad) for detailed reference
+- Learn about the [Gamepad controller integration](gamepad.md) for detailed reference
 - Browse the [API Documentation](../api/index.md) for detailed reference
 - Join our [Discord community](https://discord.gg/genesis-forge) for help and discussions
 

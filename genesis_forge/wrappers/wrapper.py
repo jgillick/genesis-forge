@@ -16,7 +16,7 @@ class Wrapper:
     env: GenesisEnv = None
     can_be_wrapped: bool = True
 
-    def __init__(self, env: GenesisEnv):
+    def __init__(self, env: "GenesisEnv | Wrapper"):
         """Initialize the logging wrapper with the function to use for data logging."""
         assert (
             env.can_be_wrapped

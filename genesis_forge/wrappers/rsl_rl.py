@@ -4,16 +4,18 @@ from tensordict import TensorDict
 from typing import Any, Union, Optional
 import genesis as gs
 from importlib import metadata
+from rsl_rl.env import VecEnv
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
 
 
-class RslRlWrapper(Wrapper):
+class RslRlWrapper(Wrapper, VecEnv):
     """
     A wrapper that makes your genesis forge environment compatible with the rsl_rl training framework.
 
-    IMPORTANT: This should be the last wrapper, as the change in the step and get_observations methods might break other wrappers.
+    !!! warning
+        This should be the last wrapper, as the change in the step and get_observations methods might break other wrappers.
 
     What it does:
      - Combines the terminated and truncated tensors into a single tensor (i.e. `terminated | truncated`).
@@ -22,12 +24,12 @@ class RslRlWrapper(Wrapper):
 
     Args:
         env: The environment to wrap.
-        cfg: The configuration for the wrapper that will be passed to the neptune or wandb logger
+        cfg: The logger configuration that RSL-RL will pass to the external logging service (neptune, wandb, etc)
     """
 
     can_be_wrapped = False
 
-    def __init__(self, env: GenesisEnv, cfg: dict | object = {}):
+    def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object = {}):
         super().__init__(env)
 
         self.rsl3 = False
@@ -42,6 +44,14 @@ class RslRlWrapper(Wrapper):
     @property
     def device(self) -> str:
         return gs.device
+
+    @property
+    def max_episode_length(self) -> torch.Tensor:
+        return self.unwrapped.max_episode_length
+
+    @property
+    def episode_length_buf(self) -> torch.Tensor:
+        return self.unwrapped.episode_length
 
     def step(
         self, actions: torch.Tensor

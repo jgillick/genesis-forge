@@ -18,7 +18,7 @@ Today, modern robots learn to balance, walk, manipulate objects, and more, using
 - 🕹️ Connect a game controller for hands-on policy evaluation and play-mode.
 - 🤖 Seamless integration with popular RL libraries: [RSL-RL](https://github.com/leggedrobotics/rsl_rl/tree/main) and [SKRL](https://skrl.readthedocs.io/en/latest/)
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="_static/cmd_locomotion.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="media/cmd_locomotion.webm"></video>
 
 ## Citation
 

@@ -189,7 +189,7 @@ class MyEnv(ManagedEnvironment):
 By default, individual termination averages are logged to the `episode` item in the extras/infos dict. For many RL frameworks, like rsl_rl and skrl, items there will automatically be logged to tensorboard, or simular system. Terminations will be placed under the "Terminations" section.
 
 <figure markdown="span">
-  ![Example tensorboard termination logging](../../_static/termination_tensorboard.png)
+  ![Example tensorboard termination logging](../../media/termination_tensorboard.png)
   <figcaption>Example tensorboard termination logging</figcaption>
 </figure>
 

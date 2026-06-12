@@ -2,7 +2,7 @@
 
 The Reward Manager handles computing, combining, and logging reward components in your RL environment. It provides a clean way to define multi-objective rewards with automatic tracking and tensorboard logging.
 
-You can see a full example using the reward manager in [examples/simple](https://github.com/jgillick/genesis-forge/tree/main/examples/simple).
+You can see a full example using the reward manager in [examples/basic](https://github.com/jgillick/genesis-forge/tree/main/examples/basic).
 
 ## Overview
 
@@ -65,7 +65,7 @@ RewardManager(
 
 ## Built-in Reward Functions
 
-Genesis Forge provides many common reward functions in [`genesis_forge.mdp.rewards`](../../api/mdp/rewards):
+Genesis Forge provides many common reward functions in [`genesis_forge.mdp.rewards`](../../api/mdp/rewards.md):
 
 ## Custom Reward Functions
 
@@ -95,7 +95,7 @@ RewardManager(
 ```python
 def target_height_reward(env, target_height: float):
     """Reward for reaching a target height."""
-    base_pos = robot.get_pos()
+    base_pos = env.robot.get_pos()
     return torch.square(base_pos[:, 2] - target_height)
 
 RewardManager(
@@ -153,17 +153,17 @@ class MyEnv(ManagedEnvironment):
             },
         })
 
-    def step(self):
+    def step(self, actions):
         self.update_curriculum()
         return super().step(actions)
 
     def update_curriculum(self):
         """Called periodically during training."""
-        if self.step_count === 200:
+        if self.step_count == 200:
             # Mid training: increase speed focus
             self.reward_manager.cfg["upright"].weight = -2.0
             self.reward_manager.cfg["forward_vel"].weight = 2.0
-        elif self.step_count === 500:
+        elif self.step_count == 500:
             # Late training: add efficiency
             self.reward_manager.cfg["upright"].weight = -1.0
             self.reward_manager.cfg["forward_vel"].weight = 3.0
@@ -174,9 +174,9 @@ class MyEnv(ManagedEnvironment):
 
 By default, individual reward components are logged to the `episode` item in the extras/infos dict. For many RL frameworks, like rsl_rl and skrl, items there will automatically be logged to tensorboard, or simular system. Rewards will be placed under the "Rewards" section.
 
-```{figure} _images/reward_tensorboard.png
-:alt: tensor board
-Example tensorboard reward logging
-```
+<figure markdown="span">
+  ![Example tensorboard reward logging](../../media/reward_tensorboard.png)
+  <figcaption>Example tensorboard reward logging</figcaption>
+</figure>
 
 To disable logging, set `logging_enabled` to `False`. To change the extras dict key that reward items are logged to, set the `extras_logging_key` param on the [environment](../../api/environments/genesis.md).

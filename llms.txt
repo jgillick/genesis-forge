@@ -1,0 +1,59 @@
+# Genesis Forge
+
+> A modular robotics RL training framework built on the Genesis physics simulator.
+
+Genesis Forge is a modular robotics reinforcement learning framework built on the
+Genesis physics simulator. It provides a manager-based architecture for constructing
+Gymnasium-compatible parallel RL environments.
+
+Install: pip install genesis-forge
+Source: https://github.com/jgillick/genesis-forge
+
+
+## Project
+
+- [Genesis Forge](https://genesis-forge.readthedocs.io/en/latest/index.md)
+
+## Environments
+
+- [Environments Overview](https://genesis-forge.readthedocs.io/en/latest/api/environments/index.md)
+- [GenesisEnv](https://genesis-forge.readthedocs.io/en/latest/api/environments/genesis.md)
+- [ManagedEnvironment](https://genesis-forge.readthedocs.io/en/latest/api/environments/managed.md)
+
+## Managers
+
+- [Manager Overview](https://genesis-forge.readthedocs.io/en/latest/api/managers/index.md)
+- [ActuatorManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/actuator.md)
+- [ContactManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/contact.md)
+- [EntityManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/entity.md)
+- [NoisyValue](https://genesis-forge.readthedocs.io/en/latest/api/managers/noisy_value.md)
+- [ObservationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/observation.md)
+- [RewardManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/reward.md)
+- [TerminationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/termination.md)
+- [TerrainManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/terrain.md)
+- [Action](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/index.md)
+- [PositionActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position.md)
+- [PositionWithinLimitsActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position_w_limits.md)
+- [Command](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/index.md)
+- [CommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/command.md)
+- [VelocityCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/velocity.md)
+
+## MDP Functions
+
+- [MDP Function Overview](https://genesis-forge.readthedocs.io/en/latest/api/mdp/index.md)
+- [Observations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/observations.md)
+- [Reset](https://genesis-forge.readthedocs.io/en/latest/api/mdp/reset.md)
+- [Rewards](https://genesis-forge.readthedocs.io/en/latest/api/mdp/rewards.md)
+- [Terminations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/terminations.md)
+
+## Wrappers
+
+- [Wrapper Overview](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/index.md)
+- [RSL-RL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/rsl_rl.md)
+- [SKRL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/skrl.md)
+- [Video](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/video.md)
+
+## Other
+
+- [Gamepad](https://genesis-forge.readthedocs.io/en/latest/api/other/gamepad.md)
+

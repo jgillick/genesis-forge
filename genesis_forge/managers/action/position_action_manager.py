@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 import torch
 import genesis as gs
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.values import ensure_dof_pattern
@@ -115,7 +115,6 @@ class PositionActionManager(BaseActionManager):
         clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
         soft_limit_scale_factor: float = 1.0,
         use_default_offset: bool = True,
-        action_handler: Callable[[torch.Tensor], None] = None,
         quiet_action_errors: bool = False,
         delay_step: int = 0,
         **kwargs,

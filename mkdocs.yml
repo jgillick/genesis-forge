@@ -1,0 +1,144 @@
+site_name: Genesis Forge
+site_url: https://genesis-forge.readthedocs.io/en/latest/
+site_description: A modular robotics RL training framework built on the Genesis physics simulator.
+repo_url: https://github.com/jgillick/genesis-forge
+repo_name: jgillick/genesis-forge
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: dist/docs
+use_directory_urls: false
+
+theme:
+  name: material
+  logo: media/logo.png
+  favicon: media/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      primary: blue grey
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.path
+    - content.action.edit
+    - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |
+        Genesis Forge is a modular robotics reinforcement learning framework built on the
+        Genesis physics simulator. It provides a manager-based architecture for constructing
+        Gymnasium-compatible parallel RL environments.
+
+        Install: pip install genesis-forge
+        Source: https://github.com/jgillick/genesis-forge
+      sections:
+        Project:
+          - index.md
+        Environments:
+          - api/environments/*.md
+        Managers:
+          - api/managers/*.md
+          - api/managers/action/*.md
+          - api/managers/command/*.md
+        MDP Functions:
+          - api/mdp/*.md
+        Wrappers:
+          - api/wrappers/*.md
+        Other:
+          - api/other/*.md
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            inherited_members: true
+            show_bases: true
+            show_if_no_docstring: true
+            merge_init_into_class: true
+            members_order: alphabetical
+            filters:
+              - "!^_"
+              - "!__weakref__"
+
+nav:
+  - Home:
+    - Genesis Forge: index.md
+    - 💡 Overview: guide/index.md
+    - ⚙️ Installation: guide/installation.md
+    - 👋 Quick Start: guide/quick_start.md
+    - 🎮 Gamepad: guide/gamepad.md
+    - Managers:
+      - guide/managers/index.md
+      - Actuator: guide/managers/actuator.md
+      - Action: guide/managers/action.md
+      - Command: guide/managers/command.md
+      - Contact: guide/managers/contact.md
+      - Entity: guide/managers/entity.md
+      - Observation: guide/managers/observation.md
+      - Reward: guide/managers/reward.md
+      - Termination: guide/managers/termination.md
+      - Terrain: guide/managers/terrain.md
+  - API Reference:
+    - api/index.md
+    - Environments:
+      - api/environments/index.md
+      - GenesisEnv: api/environments/genesis.md
+      - ManagedEnvironment: api/environments/managed.md
+    - Managers:
+      - api/managers/index.md
+      - ActuatorManager: api/managers/actuator.md
+      - NoisyValue: api/managers/noisy_value.md
+      - ContactManager: api/managers/contact.md
+      - EntityManager: api/managers/entity.md
+      - ObservationManager: api/managers/observation.md
+      - RewardManager: api/managers/reward.md
+      - TerrainManager: api/managers/terrain.md
+      - TerminationManager: api/managers/termination.md
+      - Action Managers:
+        - api/managers/action/index.md
+        - PositionActionManager: api/managers/action/position.md
+        - PositionWithinLimitsActionManager: api/managers/action/position_w_limits.md
+      - Command Managers:
+        - api/managers/command/index.md
+        - CommandManager: api/managers/command/command.md
+        - VelocityCommandManager: api/managers/command/velocity.md
+    - MDP:
+      - api/mdp/index.md
+      - Observations: api/mdp/observations.md
+      - Reset: api/mdp/reset.md
+      - Rewards: api/mdp/rewards.md
+      - Terminations: api/mdp/terminations.md
+    - Wrappers:
+      - api/wrappers/index.md
+      - RSL-RL: api/wrappers/rsl_rl.md
+      - SKRL: api/wrappers/skrl.md
+      - Video: api/wrappers/video.md
+    - Other:
+      - Gamepad: api/other/gamepad.md

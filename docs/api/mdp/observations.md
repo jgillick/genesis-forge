@@ -1,6 +1,3 @@
 # Observations
 
-```{eval-rst}
-.. automodule:: genesis_forge.mdp.observations
-   :members:
-```
+::: genesis_forge.mdp.observations

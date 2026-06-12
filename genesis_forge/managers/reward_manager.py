@@ -1,21 +1,15 @@
 from __future__ import annotations
 import torch
 import genesis as gs
-from typing import Iterator, TypedDict, Callable, Any
+from typing import Iterator
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import RewardConfigItem
+from genesis_forge.managers.config import RewardConfigItem, ConfigItemDict
 
 
-class RewardConfig(TypedDict):
+class RewardConfig(ConfigItemDict):
     """Defines a reward item."""
-
-    fn: Callable[[GenesisEnv, ...], torch.Tensor]
-    """Function that will be called to calculate a reward for the environments."""
-
-    params: dict[str, Any]
-    """Additional parameters to pass to the function."""
 
     weight: float
     """The weight of the reward item."""
@@ -30,7 +24,7 @@ class RewardManager(BaseManager):
 
     Args:
         env: The environment to manage the rewards for.
-        reward_cfg: A dictionary of reward conditions.
+        cfg: A dictionary of reward conditions.
         logging_enabled: Whether to log the rewards to tensorboard.
         logging_tag: The section name used to log the rewards to tensorboard.
 

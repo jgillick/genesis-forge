@@ -167,7 +167,7 @@ def ang_vel_xy_l2(
     env: GenesisEnv,
     entity_attr: str = "robot",
     entity_manager: EntityManager = None,
-):
+) -> torch.Tensor:
     """
     Penalize xy-axis base angular velocity using L2 squared kernel.
 
@@ -256,7 +256,7 @@ class body_acceleration_exp(MdpFnClass):
             curr_lin_vel = entity_manager.get_linear_velocity()
             curr_ang_vel = entity_manager.get_angular_velocity()
         else:
-            robot = getattr(env, self._entity_attr)
+            robot = getattr(env, entity_attr)
             curr_lin_vel = entity_lin_vel(robot)
             curr_ang_vel = entity_ang_vel(robot)
 
@@ -500,7 +500,7 @@ def command_tracking_ang_vel(
 
 
 def stand_still_joint_deviation_l1(
-    env,
+    env: GenesisEnv,
     vel_cmd_manager: VelocityCommandManager,
     actuator_manager: ActuatorManager = None,
     command_threshold: float = 0.06,
@@ -542,7 +542,7 @@ Contacts
 
 
 def has_contact(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0, min_contacts: int=1
 ) -> torch.Tensor:
     """
     One or more links in the contact manager are in contact with something.
@@ -562,7 +562,7 @@ def has_contact(
 
 
 def contact_force(
-    _env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float = 1.0
 ) -> torch.Tensor:
     """
     Reward for the total contact force acting on all the target links in the contact manager over the threshold.
@@ -652,7 +652,7 @@ def feet_ground_time(
 
 
 def feet_slide(
-    env,
+    env: GenesisEnv,
     contact_manager: ContactManager,
     entity_attr: str = "robot",
 ) -> torch.Tensor:

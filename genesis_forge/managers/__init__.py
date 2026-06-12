@@ -1,3 +1,23 @@
+"""
+Manager classes for Genesis Forge environments.
+
+Each manager owns one aspect of the RL loop and self-registers with the
+environment on construction (via ``super().__init__(env, type="...")``).
+Managers are created inside :meth:`ManagedEnvironment.config` and their
+``build()``, ``step()``, and ``reset(envs_idx)`` hooks are called
+automatically by the environment.
+
+Available managers:
+- :class:`RewardManager` — weighted reward components
+- :class:`TerminationManager` — episode termination/truncation conditions
+- :class:`ObservationManager` — observation space definition
+- :class:`PositionActionManager` / :class:`PositionWithinLimitsActionManager` — joint position actions
+- :class:`ActuatorManager` — PD controller gains and default joint positions
+- :class:`EntityManager` — entity spawning and per-episode resets
+- :class:`ContactManager` — per-link contact force tracking
+- :class:`TerrainManager` — terrain height queries and bounds
+- :class:`CommandManager` / :class:`VelocityCommandManager` — sampled command signals
+"""
 from .base import BaseManager
 from .reward_manager import RewardManager
 from .termination_manager import TerminationManager

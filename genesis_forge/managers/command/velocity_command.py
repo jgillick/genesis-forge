@@ -1,7 +1,6 @@
 import math
-from typing import Tuple, TypedDict
+from typing import NotRequired, Tuple, TypedDict
 
-import os
 import torch
 import genesis as gs
 
@@ -21,25 +20,25 @@ class VelocityCommandRange(TypedDict):
 class VelocityDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
-    envs_idx: list[int]
+    envs_idx: NotRequired[list[int]]
     """The indices of the environments to visualize. If None, all environments will be visualized."""
 
-    arrow_offset: float
+    arrow_offset: NotRequired[float]
     """The vertical offset of the debug arrows from the top of the robot"""
 
-    arrow_radius: float
+    arrow_radius: NotRequired[float]
     """The radius of the shaft of the debug arrows"""
 
-    arrow_max_length: float
+    arrow_max_length: NotRequired[float]
     """The maximum length of the debug arrows"""
 
-    commanded_color: Tuple[float, float, float, float]
+    commanded_color: NotRequired[Tuple[float, float, float, float]]
     """The color of the commanded velocity arrow"""
 
-    actual_color: Tuple[float, float, float, float]
+    actual_color: NotRequired[Tuple[float, float, float, float]]
     """The color of the actual robot velocity arrow"""
 
-    fps: int
+    fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
 
@@ -64,8 +63,7 @@ class VelocityCommandManager(CommandManager):
     - Y-axis: Left/right relative to robot's current orientation
     - Z-axis: Yaw rotation around robot's vertical axis
 
-    :::{admonition} Debug Visualization
-
+    !!! note "Debug Visualization"
         If you set `debug_visualizer` to True, arrows will be rendered above your robot
         showing the commanded velocity vs the actual velocity.
 
@@ -149,6 +147,19 @@ class VelocityCommandManager(CommandManager):
         self._is_standing_env = torch.zeros(
             env.num_envs, dtype=torch.bool, device=gs.device
         )
+    
+    """
+    Properties
+    """
+    @property
+    def range(self) -> VelocityCommandRange:
+        """The velocity range dict."""
+        return self._range
+    
+    @range.setter
+    def range(self, range: VelocityCommandRange):
+        """Update the velocity ranges."""
+        super().range = range
 
     """
     Lifecycle Operations

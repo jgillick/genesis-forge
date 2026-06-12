@@ -1,7 +1,5 @@
 # Entity
 
-Sends regular commands, such as a velocity direction, to your robot
+Tracks entity state (position, velocity, quaternion) and manages per-episode reset operations such as randomizing spawn positions and orientations.
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.EntityManager
-```
+::: genesis_forge.managers.EntityManager

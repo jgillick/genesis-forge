@@ -1,6 +1,7 @@
 # ManagedEnvironment
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managed_env.ManagedEnvironment
-    :exclude-members: can_be_wrapped
-```
+::: genesis_forge.managed_env.ManagedEnvironment
+    options:
+      filters:
+        - "!can_be_wrapped"
+        - "!__weakref__"

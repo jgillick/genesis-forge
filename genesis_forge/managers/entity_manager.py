@@ -8,20 +8,34 @@ from genesis.utils.geom import (
     transform_by_quat,
     inv_quat,
 )
-from genesis_forge.managers.config import ConfigItem, ResetMdpFnClass
+from genesis_forge.managers.config import ConfigItem, ResetMdpFnClass, ConfigItemDict
 
-from typing import TypedDict, Callable, Any, TYPE_CHECKING
+from typing import NotRequired, Any, TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
 
-    ResetConfigFn = Callable[[GenesisEnv, RigidEntity, list[int], ...], None]
+
+class ResetConfigFn(Protocol):
+    """
+    Simple function called during the reset of the entity.
+
+    Args:
+        env: the environemnt
+        entity: The robot entity that is being reset
+        envs_idx: The environment ids for which the entity is to be reset.
+        **params: Other args that are provided by the dict "params" value
+
+    Return:
+        result: torch.Tensor, shape (n_envs, 1)
+    """
+    def __call__(self, env: GenesisEnv, entity: "RigidEntity", env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
 
 
-class EntityResetConfig(TypedDict):
+class EntityResetConfig(ConfigItemDict):
     """Defines an entity reset item."""
 
-    fn: ResetConfigFn | ResetMdpFnClass
+    fn: ResetConfigFn | type[ResetMdpFnClass]
     """
     Function, or class function, that will be called on reset.
 
@@ -31,12 +45,6 @@ class EntityResetConfig(TypedDict):
         envs_idx: The environment ids for which the entity is to be reset.
         **params: Additional parameters to pass to the function from the params dictionary.
     """
-
-    params: dict[str, Any]
-    """Additional parameters to pass to the function."""
-
-    weight: float
-    """The weight of the reward item."""
 
 
 class EntityManager(BaseManager):

@@ -1,5 +1,3 @@
 # Reward
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.RewardManager
-```
+::: genesis_forge.managers.RewardManager

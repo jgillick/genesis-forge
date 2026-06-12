@@ -10,7 +10,7 @@ description = "A robotics RL training framework for Genesis inspired by Isaac La
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "genesis-world~=1.0.0",
+  "genesis-world>=1.0.0",
   "gymnasium",
   "deprecated",
   "pysdl2",

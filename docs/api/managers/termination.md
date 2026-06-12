@@ -1,5 +1,3 @@
 # Termination
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.TerminationManager
-```
+::: genesis_forge.managers.TerminationManager

@@ -9,9 +9,7 @@ The Command Manager generates high-level commands for goal-conditioned RL tasks.
 
 You can see a full example using the command manager in [examples/command_direction](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction).
 
-```{eval-rst}
-.. video:: _images/command_manager.mp4
-```
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/command_manager.mp4"></video>
 
 ## Velocity Command Manager
 
@@ -58,11 +56,10 @@ When `debug_visualizer` is `True`, arrows will be displayed above your robot sho
 - **Green Arrow**: Commanded velocity (robot-relative, shown in world frame)
 - **Blue Arrow**: Actual robot velocity (world frame)
 
-:::{caution}
-The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
+!!! warning "Caution"
+    The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
 
-It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
-:::
+    It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
 
 ### Standing Probability
 
@@ -119,8 +116,7 @@ ObservationManager(
 
 After your policy is trained, you can control the commanded values with a physical game controller:
 
-```{code-block} python
-:caption: train.py
+```python title="train.py"
 
 from genesis_forge.gamepads import Gamepad
 
@@ -149,14 +145,13 @@ self.height_command = CommandManager(self, range=(0.1, 0.2))
 ```python
 # Arbitrary number of ranges to support your command
 self.target_command = CommandManager(self, range={
-  "target_x": range=(-1.0, 1.0),
-  "target_y": range=(-1.0, 1.0),
-  "gait": range=(0.0, 5.0),
+  "target_x": (-1.0, 1.0),
+  "target_y": (-1.0, 1.0),
+  "gait": (0.0, 5.0),
 })
 ```
 
-```{code-block} python
-:caption: train.py
+```python title="train.py"
 
 # Connect gamepad axis 3 to the height command value
 from genesis_forge.gamepads import Gamepad

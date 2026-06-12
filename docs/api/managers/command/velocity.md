@@ -1,5 +1,3 @@
 # VelocityCommandManager
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.command.VelocityCommandManager
-```
+::: genesis_forge.managers.command.VelocityCommandManager

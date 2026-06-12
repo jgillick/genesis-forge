@@ -137,9 +137,9 @@ class ContactManager(BaseManager):
         self,
         env: GenesisEnv,
         link_names: list[str],
-        entity_attr: RigidEntity = "robot",
-        with_entity_attr: RigidEntity = None,
-        with_links_names: list[int] = None,
+        entity_attr: str = "robot",
+        with_entity_attr: str = None,
+        with_links_names: list[str] = None,
         track_air_time: bool = False,
         air_time_contact_threshold: float = 1.0,
         debug_visualizer: bool = False,
@@ -364,16 +364,16 @@ class ContactManager(BaseManager):
 
     def _get_links_idx(
         self, entity_attr: str, names: list[str] = None
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Find the link indices for the given link names or regular expressions.
 
         Args:
-            entity: The entity to find the links in.
+            entity_attr: The attribute name of the robot entity to find the links in.
             names: The names, or name regex patterns, of the links to find.
-            include_local_idx: Include a tensor of the local link indices, as well
 
-        Returns: Tuple of global and local link index tensors.
+        Returns: 
+            Tuple of global and local link index tensors.
         """
         entity = self.env.__getattribute__(entity_attr)
 
@@ -404,7 +404,7 @@ class ContactManager(BaseManager):
             torch.tensor(local_ids, device=gs.device),
         )
 
-    def _calculate_contact_forces(self):
+    def _calculate_contact_forces(self) -> torch.Tensor:
         """
         Calculate contact forces using on the target links.
 

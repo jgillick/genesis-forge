@@ -1,7 +1,7 @@
 from typing import Callable
 
 
-class ParamsDict(dict):
+class DictWithChangeHandler(dict):
     """
     A dictionary with an on-change callback handler.
     We use this to rebuild a reset class when a parameter is changed.

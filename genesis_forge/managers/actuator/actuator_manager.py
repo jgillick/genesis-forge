@@ -505,8 +505,8 @@ class ActuatorManager(BaseManager):
         the DOF pattern.
 
         Args:
-            name: The name of the value buffer to fill
-            values: The DOF value to convert (for example: `{".*": 50}`).
+            value_name: The name of the value buffer to fill
+            config: The DOF value to convert (for example: `{".*": 50}`).
 
         """
         num_dofs = len(self._dofs)

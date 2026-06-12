@@ -216,7 +216,7 @@ class GenesisEnv:
 
     def reset(
         self,
-        envs_idx: list[int] = None,
+        env_ids: list[int] = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
         Reset one or more environments.
@@ -228,8 +228,8 @@ class GenesisEnv:
         Returns:
             A batch of observations and info from the vectorized environment.
         """
-        if envs_idx is None:
-            envs_idx = torch.arange(self.num_envs, device=gs.device)
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=gs.device)
 
         # Initial reset, set buffers
         if self.step_count == 0 and self.action_space is not None:
@@ -241,17 +241,17 @@ class GenesisEnv:
             self._last_actions = torch.zeros_like(self._actions, device=gs.device)
 
         # Actions
-        if envs_idx.numel() > 0:
+        if env_ids.numel() > 0:
             if self.actions is not None:
-                self.actions[envs_idx] = 0.0
-                self._last_actions[envs_idx] = 0.0
+                self.actions[env_ids] = 0.0
+                self._last_actions[env_ids] = 0.0
 
             # Episode length
-            self.episode_length[envs_idx] = 0
+            self.episode_length[env_ids] = 0
 
         # Randomize max episode length for env_ids
         if (
-            len(envs_idx) > 0
+            len(env_ids) > 0
             and self._max_episode_random_scaling > 0.0
             and self._base_max_episode_length is not None
         ):
@@ -259,10 +259,10 @@ class GenesisEnv:
                 self._base_max_episode_length * self._max_episode_random_scaling
             )
             randomization = (
-                torch.empty((envs_idx.numel(),)).uniform_(-1.0, 1.0)
+                torch.empty((env_ids.numel(),)).uniform_(-1.0, 1.0)
                 * max_random_scaling
             )
-            self.max_episode_length[envs_idx] = torch.round(
+            self.max_episode_length[env_ids] = torch.round(
                 self._base_max_episode_length + randomization
             ).to(gs.tc_int)
 

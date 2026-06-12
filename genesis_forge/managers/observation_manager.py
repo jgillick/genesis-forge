@@ -4,25 +4,25 @@ import torch
 import numpy as np
 from gymnasium import spaces
 import genesis as gs
-from typing import TypedDict, Callable, Any
+from typing import NotRequired, Protocol, Any
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import ObservationConfigItem
+from genesis_forge.managers.config import ObservationConfigItem, ConfigItemDict
+
+class ObservationFn(Protocol):
+    def __call__(self, env: GenesisEnv, *params: Any, **kwargs: Any) -> torch.Tensor: ...
 
 
-class ObservationConfig(TypedDict):
+class ObservationConfig(ConfigItemDict):
     """Defines an observation item."""
 
-    fn: Callable[[GenesisEnv, ...], torch.Tensor]
+    fn: ObservationFn
     """Function that will be called to generate an observation, returning a value for each environment."""
 
-    params: dict[str, Any]
-    """Additional parameters to pass to the function."""
-
-    scale: float | None
+    scale: NotRequired[float | None]
     """The scale to apply to the observation. If None, no scale will be applied."""
 
-    noise: float | None
+    noise: NotRequired[float | None]
     """The noise scale to add to the observation. If None, no noise will be added.
     This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
 
@@ -138,7 +138,7 @@ class ObservationManager(BaseManager):
         cfg: dict[str, ObservationConfig],
         name: str = "policy",
         history_len: int | None = None,
-        noise: tuple[float, float] | None = None,
+        noise: float | None = None,
     ):
         super().__init__(env, "observation")
         self._name = name

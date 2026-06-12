@@ -1,5 +1,3 @@
 # Terrain
 
-```{eval-rst}
-.. autoclass:: genesis_forge.managers.TerrainManager
-```
+::: genesis_forge.managers.TerrainManager

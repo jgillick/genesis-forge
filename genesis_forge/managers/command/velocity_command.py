@@ -147,6 +147,19 @@ class VelocityCommandManager(CommandManager):
         self._is_standing_env = torch.zeros(
             env.num_envs, dtype=torch.bool, device=gs.device
         )
+    
+    """
+    Properties
+    """
+    @property
+    def range(self) -> VelocityCommandRange:
+        """The velocity range dict."""
+        return self._range
+    
+    @range.setter
+    def range(self, range: VelocityCommandRange):
+        """Update the velocity ranges."""
+        super().range = range
 
     """
     Lifecycle Operations

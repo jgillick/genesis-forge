@@ -6,6 +6,7 @@ repo_name: jgillick/genesis-forge
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: dist/docs
+use_directory_urls: false
 
 theme:
   name: material
@@ -67,26 +68,26 @@ plugins:
         Wrappers:
           - api/wrappers/*.md
         Other:
-          - api/Other/*.md
+          - api/other/*.md
   - mkdocstrings:
       default_handler: python
       handlers:
         python:
           options:
             docstring_style: google
-            members: true
             inherited_members: true
             show_bases: true
             show_if_no_docstring: true
             merge_init_into_class: true
             members_order: alphabetical
             filters:
+              - "!^_"
               - "!__weakref__"
 
 nav:
-  - Home: index.md
-  - Guide:
-    - guide/index.md
+  - Home:
+    - Genesis Forge: index.md
+    - 💡 Overview: guide/index.md
     - ⚙️ Installation: guide/installation.md
     - 👋 Quick Start: guide/quick_start.md
     - 🎮 Gamepad: guide/gamepad.md
@@ -137,4 +138,4 @@ nav:
       - SKRL: api/wrappers/skrl.md
       - Video: api/wrappers/video.md
     - Other:
-      - Gamepad: api/controllers/gamepad.md
+      - Gamepad: api/other/gamepad.md

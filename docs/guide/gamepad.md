@@ -1,11 +1,11 @@
 # 🎮 Gamepad Controllers
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/gamepad.webm"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../_static/gamepad.webm"></video>
 
 Genesis Forge integrates with game controllers through SDL2, supporting a wide range of controllers including Xbox, PlayStation, Nintendo Switch Pro, and many others.
 
 <figure markdown="span">
-  ![Logitech F710 game controller](../../_static/f710.webp){ width="350" }
+  ![Logitech F710 game controller](../_static/f710.webp){ width="350" }
   <figcaption>Game controllers (like the Logitech F710) work seamlessly with Genesis Forge</figcaption>
 </figure>
 

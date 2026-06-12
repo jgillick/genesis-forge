@@ -97,7 +97,7 @@ class MyEnv(ManagedEnvironment):
 
 ## Contact Visualization
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../../_static/contacts_debug.webm" width="100%"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/contacts_debug.webm" width="100%"></video>
 
 <p align="center">
 <em>Foot contacts are marked in red</em>

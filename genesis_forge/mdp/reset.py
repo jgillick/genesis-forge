@@ -150,6 +150,7 @@ class randomize_terrain_position(ResetMdpFnClass):
         self,
         env: GenesisEnv,
         entity: RigidEntity,
+        envs_idx: list[int],
         terrain_manager: TerrainManager,
         height_offset: float = 0.1e-3,
         subterrain: str | Callable[[], str] | None = None,
@@ -247,12 +248,12 @@ class randomize_link_mass_shift(ResetMdpFnClass):
 
     def __init__(
         self,
-        _env: GenesisEnv,
+        env: GenesisEnv,
         entity: RigidEntity,
         link_name: str,
         mass_range: tuple[float, float],
     ):
-        self.env = _env
+        self.env = env
         self._entity = entity
         self._link_name = link_name
         self._links_idx_local = []

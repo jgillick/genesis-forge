@@ -173,7 +173,7 @@ def out_of_bounds(
 
 
 def has_contact(
-    env: GenesisEnv, contact_manager: ContactManager, threshold=1.0, min_contacts=1
+    env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0, min_contacts: int=1
 ) -> torch.Tensor:
     """
     One or more links in the contact manager are in contact with something.

@@ -65,7 +65,7 @@ def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidL
 
     Args:
         entity: The entity to find the links in.
-        name_re: The name regex patterns of the links to find.
+        name_pattern: The name regex patterns of the links to find.
 
     Returns:
         List of RigidLink objects.

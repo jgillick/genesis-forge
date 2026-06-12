@@ -9,7 +9,7 @@ The Command Manager generates high-level commands for goal-conditioned RL tasks.
 
 You can see a full example using the command manager in [examples/command_direction](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction).
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../../_static/command_manager.mp4"></video>
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../_static/command_manager.mp4"></video>
 
 ## Velocity Command Manager
 

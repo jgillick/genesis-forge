@@ -12,48 +12,48 @@ Source: https://github.com/jgillick/genesis-forge
 
 ## Project
 
-- [Home](https://genesis-forge.readthedocs.io/en/latest/index.md)
+- [Genesis Forge](https://genesis-forge.readthedocs.io/en/latest/index.md)
 
 ## Environments
 
 - [Environments Overview](https://genesis-forge.readthedocs.io/en/latest/api/environments/index.md)
-- [GenesisEnv](https://genesis-forge.readthedocs.io/en/latest/api/environments/genesis/index.md)
-- [ManagedEnvironment](https://genesis-forge.readthedocs.io/en/latest/api/environments/managed/index.md)
+- [GenesisEnv](https://genesis-forge.readthedocs.io/en/latest/api/environments/genesis.md)
+- [ManagedEnvironment](https://genesis-forge.readthedocs.io/en/latest/api/environments/managed.md)
 
 ## Managers
 
 - [Manager Overview](https://genesis-forge.readthedocs.io/en/latest/api/managers/index.md)
-- [ActuatorManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/actuator/index.md)
-- [ContactManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/contact/index.md)
-- [EntityManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/entity/index.md)
-- [NoisyValue](https://genesis-forge.readthedocs.io/en/latest/api/managers/noisy_value/index.md)
-- [ObservationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/observation/index.md)
-- [RewardManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/reward/index.md)
-- [TerminationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/termination/index.md)
-- [TerrainManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/terrain/index.md)
+- [ActuatorManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/actuator.md)
+- [ContactManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/contact.md)
+- [EntityManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/entity.md)
+- [NoisyValue](https://genesis-forge.readthedocs.io/en/latest/api/managers/noisy_value.md)
+- [ObservationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/observation.md)
+- [RewardManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/reward.md)
+- [TerminationManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/termination.md)
+- [TerrainManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/terrain.md)
 - [Action](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/index.md)
-- [PositionActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position/index.md)
-- [PositionWithinLimitsActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position_w_limits/index.md)
+- [PositionActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position.md)
+- [PositionWithinLimitsActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position_w_limits.md)
 - [Command](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/index.md)
-- [CommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/command/index.md)
-- [VelocityCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/velocity/index.md)
+- [CommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/command.md)
+- [VelocityCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/velocity.md)
 
 ## MDP Functions
 
 - [MDP Function Overview](https://genesis-forge.readthedocs.io/en/latest/api/mdp/index.md)
-- [Observations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/observations/index.md)
-- [Reset](https://genesis-forge.readthedocs.io/en/latest/api/mdp/reset/index.md)
-- [Rewards](https://genesis-forge.readthedocs.io/en/latest/api/mdp/rewards/index.md)
-- [Terminations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/terminations/index.md)
+- [Observations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/observations.md)
+- [Reset](https://genesis-forge.readthedocs.io/en/latest/api/mdp/reset.md)
+- [Rewards](https://genesis-forge.readthedocs.io/en/latest/api/mdp/rewards.md)
+- [Terminations](https://genesis-forge.readthedocs.io/en/latest/api/mdp/terminations.md)
 
 ## Wrappers
 
 - [Wrapper Overview](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/index.md)
-- [RSL-RL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/rsl_rl/index.md)
-- [SKRL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/skrl/index.md)
-- [Video](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/video/index.md)
+- [RSL-RL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/rsl_rl.md)
+- [SKRL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/skrl.md)
+- [Video](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/video.md)
 
 ## Other
 
-- [Gamepad](https://genesis-forge.readthedocs.io/en/latest/api/Other/gamepad/index.md)
+- [Gamepad](https://genesis-forge.readthedocs.io/en/latest/api/other/gamepad.md)
 

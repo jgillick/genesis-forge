@@ -135,7 +135,6 @@ class randomize_terrain_position(ResetMdpFnClass):
     Args:
         env: The environment
         entity: The entity to set the position of.
-        envs_idx: The environment ids to set the position for.
         terrain_manager: The terrain manager to use to generate the random position.
         height_offset: The height offset to add to the random position.
         subterrain: The subterrain to generate the random position on.
@@ -150,7 +149,6 @@ class randomize_terrain_position(ResetMdpFnClass):
         self,
         env: GenesisEnv,
         entity: RigidEntity,
-        envs_idx: list[int],
         terrain_manager: TerrainManager,
         height_offset: float = 0.1e-3,
         subterrain: str | Callable[[], str] | None = None,

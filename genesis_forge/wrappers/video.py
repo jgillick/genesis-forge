@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import math
+import inspect
 import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
@@ -109,7 +110,9 @@ class VideoWrapper(Wrapper):
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
 
-        self._cam: Camera = None
+        self._cam: Camera | None = None
+        self._start_recording_has_args: bool = False
+        self._current_filepath: str | None = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
@@ -144,6 +147,10 @@ class VideoWrapper(Wrapper):
             self._cam is not None
         ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
 
+        # Genesis >= 1.3 moved the filename/fps args from stop_recording to start_recording
+        start_recording_params = inspect.signature(self._cam.start_recording).parameters
+        self._start_recording_has_args = "save_to_filename" in start_recording_params
+
     def step(
         self, actions: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
@@ -158,7 +165,7 @@ class VideoWrapper(Wrapper):
 
         self._check_recording_trigger()
         if self._is_recording:
-            if self._current_step % self._steps_per_frame == 0:
+            if self._current_step % self._steps_per_frame == 0 and self._cam:
                 self._cam.render()
 
             # Stop recording if the recording stop step is reached
@@ -186,10 +193,23 @@ class VideoWrapper(Wrapper):
 
     def start_recording(self):
         """Start recording a video."""
+        if self._cam is None:
+            return
+        
         self._is_recording = True
         self._recording_start_step = self._current_step
         self._recording_stop_step = self._current_step + self._video_length_steps
-        self._cam.start_recording()
+
+        filename = self._filename or f"{self._recording_start_step}.mp4"
+        self._current_filepath = os.path.join(self._out_dir, filename)
+
+        # Genesis >= 1.3: filename/fps are passed to start_recording
+        if self._start_recording_has_args:
+            self._cam.start_recording(  
+                save_to_filename=self._current_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
+            )
+        else:
+            self._cam.start_recording()
 
     def finish_recording(self):
         """
@@ -199,11 +219,12 @@ class VideoWrapper(Wrapper):
             return
 
         # Save recording
-        filename = self._filename or f"{self._recording_start_step}.mp4"
-        filepath = os.path.join(self._out_dir, filename)
         if self._logging:
-            print(f"Saving recording to {filepath}")
-        self._cam.stop_recording(filepath, fps=self._actual_fps)
+            print(f"Saving recording to {self._current_filepath}")
+        if self._start_recording_has_args:
+            self._cam.stop_recording()
+        else:
+            self._cam.stop_recording(self._current_filepath, fps=self._actual_fps)
 
         # Reset recording state
         self._is_recording = False
@@ -211,12 +232,12 @@ class VideoWrapper(Wrapper):
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
-        if self._is_recording:
-            record = False
-        elif self.episode_trigger is not None:
-            record = self.episode_trigger(self._current_episode)
-        elif self.step_trigger is not None:
-            record = self.step_trigger(self._current_step)
+        record = False
+        if not self._is_recording: 
+            if self.episode_trigger is not None:
+                record = self.episode_trigger(self._current_episode)
+            if self.step_trigger is not None:
+                record = self.step_trigger(self._current_step)
 
         if record:
             self.start_recording()

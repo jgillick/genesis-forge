@@ -117,14 +117,12 @@ class PositionActionManager(BaseActionManager):
         use_default_offset: bool = True,
         quiet_action_errors: bool = False,
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(
             env,
             delay_step=delay_step,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
-            **kwargs,
         )
         self._offset_cfg = ensure_dof_pattern(offset)
         self._scale_cfg = ensure_dof_pattern(scale)

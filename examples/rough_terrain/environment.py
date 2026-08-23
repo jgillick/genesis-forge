@@ -215,7 +215,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 "similar_to_default": {
                     "weight": -0.1,
                     "fn": rewards.dof_similar_to_default(
-                        action_manager=self.action_manager,
+                        actuator_manager=self.actuator_manager,
                     ),
                 },
                 "flat_orientation": {

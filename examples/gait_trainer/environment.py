@@ -317,7 +317,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
                 "dof_force": {
                     "fn": observations.entity_dofs_force(
-                        action_manager=self.action_manager,
+                        actuator_manager=self.actuator_manager,
                     ),
                     "scale": 0.1,
                 },

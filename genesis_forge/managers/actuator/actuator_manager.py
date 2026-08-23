@@ -65,7 +65,6 @@ class ActuatorManager(BaseManager):
         frictionloss: The frictionloss values.
         armature: The armature values.
         entity_attr: The attribute of the environment to get the robot from.
-        default_noise_scale: (deprecated) This noise scale will be applied to all actuator values. Use `NoisyValue` instead.
 
     Example::
 
@@ -105,7 +104,6 @@ class ActuatorManager(BaseManager):
         stiffness: float | NoisyValue | dict = None,
         frictionloss: float | NoisyValue | dict = None,
         armature: float | NoisyValue | dict = None,
-        default_noise_scale: float = 0.0,
         entity_attr: str = "robot",
     ):
         super().__init__(env, type="actuator")
@@ -119,7 +117,6 @@ class ActuatorManager(BaseManager):
         self._stiffness_cfg = ensure_dof_pattern(stiffness)
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
         self._armature_cfg = ensure_dof_pattern(armature)
-        self._default_noise_scale = default_noise_scale
 
         self._batch_dofs_enabled = (
             env.scene.rigid_options.batch_dofs_info
@@ -520,9 +517,7 @@ class ActuatorManager(BaseManager):
 
         # Initialize the buffers
         value_buffer = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
-        noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float).fill_(
-            self._default_noise_scale
-        )
+        noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
         noise_buffer = torch.zeros_like(value_buffer, device=gs.device)
         output_buffer = torch.zeros_like(value_buffer, device=gs.device)
 

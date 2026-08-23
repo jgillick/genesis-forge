@@ -79,7 +79,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         limit: tuple[float, float] | dict[str, tuple[float, float]] = {},
         soft_limit_scale_factor: float = 1.0,
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(
             env,
@@ -87,7 +86,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             actuator_joints=actuator_joints,
             quiet_action_errors=quiet_action_errors,
             delay_step=delay_step,
-            **kwargs,
         )
         self._limit_cfg = ensure_dof_pattern(limit)
         self._soft_limit_scale_factor = soft_limit_scale_factor

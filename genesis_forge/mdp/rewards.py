@@ -111,37 +111,29 @@ class dof_similar_to_default(MdpFn):
 
     Args:
         actuator_manager: One or more actuator managers.
-        action_manager: (deprecated) One or more position-action managers. Use
-            ``actuator_manager`` instead.
 
     Returns:
         torch.Tensor: Penalty summed over included DOFs, shape ``(num_envs,)``.
     """
 
     actuator_manager: ActuatorManager | list[ActuatorManager] | None = None
-    action_manager: PositionActionManager | None = None
 
     def build(self):
-        if self.actuator_manager is None and self.action_manager is None:
+        if self.actuator_manager is None:
             raise ValueError(
-                "dof_similar_to_default: Either actuator_manager or action_manager must be provided"
+                "dof_similar_to_default: actuator_manager must be provided"
             )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if self.actuator_manager is not None:
-            if isinstance(self.actuator_manager, list):
-                total = None
-                for mgr in self.actuator_manager:
-                    dof_pos = mgr.get_dofs_position()
-                    part = torch.sum(torch.abs(dof_pos - mgr.default_dofs_pos), dim=1)
-                    total = part if total is None else total + part
-                return total
-            dof_pos = self.actuator_manager.get_dofs_position()
-            default_pos = self.actuator_manager.default_dofs_pos
-            return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
-
-        dof_pos = self.action_manager.get_dofs_position()
-        default_pos = self.action_manager.default_dofs_pos
+        if isinstance(self.actuator_manager, list):
+            total = None
+            for mgr in self.actuator_manager:
+                dof_pos = mgr.get_dofs_position()
+                part = torch.sum(torch.abs(dof_pos - mgr.default_dofs_pos), dim=1)
+                total = part if total is None else total + part
+            return total
+        dof_pos = self.actuator_manager.get_dofs_position()
+        default_pos = self.actuator_manager.default_dofs_pos
         return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
 
 

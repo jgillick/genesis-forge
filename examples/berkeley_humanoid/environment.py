@@ -203,7 +203,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 "similar_to_default": {
                     "weight": -0.05,
                     "fn": rewards.dof_similar_to_default(
-                        action_manager=self.action_manager,
+                        actuator_manager=self.actuator_manager,
                     ),
                 },
                 "feet_air_time": {

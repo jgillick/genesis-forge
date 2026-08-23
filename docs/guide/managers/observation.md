@@ -20,7 +20,7 @@ class MyEnv(ManagedEnvironment):
                 },
                 "joint_positions": {
                     "fn": observations.entity_dofs_position(
-                        action_manager=self.action_manager
+                        actuator_manager=self.actuator_manager
                     ),
                 },
                 "joint_velocities": {
@@ -52,7 +52,7 @@ ObservationManager(
         },
         "contact_forces": {
             "fn": observations.entity_dofs_force(
-                action_manager=self.action_manager,
+                actuator_manager=self.actuator_manager,
                 clip_to_max_force=True,
             ),
         },
@@ -107,7 +107,7 @@ ObservationManager(
         },
         "joint_positions": {
             "fn": observations.entity_dofs_position(
-                action_manager=self.action_manager
+                actuator_manager=self.actuator_manager
             ),
             "noise": 0.1,  # supersedes the default setting
         },

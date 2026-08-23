@@ -163,3 +163,75 @@ should still work the same as before:
 def my_custom_reward(env: GenesisEnv, target: float):
     # ... do reward calculations here ...
 ```
+
+### Deprecated APIs removed
+
+A few APIs deprecated in earlier 0.x releases are gone. Each has a direct
+replacement that already worked before this version.
+
+**Legacy actuator kwargs on action managers.** `PositionActionManager` (and other
+`BaseActionManager` subclasses) no longer accept actuator settings directly
+(`joint_names`, `default_pos`, `pd_kp`, `pd_kv`, `max_force`, `damping`, `stiffness`,
+`frictionloss`, `noise_scale`). Define an `ActuatorManager` and pass it in instead:
+
+**Before:**
+
+```python
+self.action_manager = PositionActionManager(
+    self,
+    joint_names=".*",
+    default_pos={".*": 0.0},
+    pd_kp=50,
+    pd_kv=0.5,
+)
+```
+
+**After:**
+
+```python
+self.actuator_manager = ActuatorManager(
+    self,
+    joint_names=".*",
+    default_pos={".*": 0.0},
+    kp=50,
+    kv=0.5,
+)
+self.action_manager = PositionActionManager(
+    self,
+    actuator_manager=self.actuator_manager,
+)
+```
+
+**`.actuators` property removed.** Use `.actuator_manager` on any action manager instead.
+
+**`action_manager` param removed from a few MDP functions.**
+`rewards.dof_similar_to_default`, `observations.entity_dofs_position`, and
+`observations.entity_dofs_force` no longer accept `action_manager` -- pass
+`actuator_manager` instead:
+
+**Before:**
+
+```python
+"fn": rewards.dof_similar_to_default(action_manager=self.action_manager),
+```
+
+**After:**
+
+```python
+"fn": rewards.dof_similar_to_default(actuator_manager=self.actuator_manager),
+```
+
+**`default_noise_scale` removed from `ActuatorManager`.** Use `NoisyValue` on individual
+values instead of a single global noise scale:
+
+**Before:**
+
+```python
+self.actuator_manager = ActuatorManager(self, kp=50, default_noise_scale=0.02)
+```
+
+**After:**
+
+```python
+self.actuator_manager = ActuatorManager(self, kp=NoisyValue(50, 0.02))
+```

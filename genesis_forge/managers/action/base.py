@@ -5,22 +5,9 @@ import torch
 import numpy as np
 from gymnasium import spaces
 import genesis as gs
-from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
-
-deprecated_arg_names = [
-    "joint_names",
-    "default_pos",
-    "pd_kp",
-    "pd_kv",
-    "max_force",
-    "damping",
-    "stiffness",
-    "frictionloss",
-    "noise_scale",
-]
 
 
 class BaseActionManager(BaseManager):
@@ -42,7 +29,6 @@ class BaseActionManager(BaseManager):
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(env, type="action")
         self._raw_actions = None
@@ -57,31 +43,6 @@ class BaseActionManager(BaseManager):
         self._dofs: dict[int, str] = {}
         self._actuator_dof_filter: torch.Tensor = None
 
-        # Deprecated actuator parameters
-        deprecated_actuator_args = {
-            key: kwargs[key] for key in deprecated_arg_names if key in kwargs
-        }
-        if len(deprecated_actuator_args) > 0:
-            dep_list = ", ".join(deprecated_actuator_args.keys())
-            if self._actuator_manager is not None:
-                raise ValueError(
-                    f"Cannot set both actuator_manager and deprecated actuator parameters: {dep_list}"
-                )
-            print(
-                f"Actuator arguments are deprecated in the action manager, instead define an ActuatorManager ({dep_list})"
-            )
-            self._actuator_manager = ActuatorManager(
-                env,
-                joint_names=kwargs.get("joint_names", ".*"),
-                default_pos=kwargs.get("default_pos", {".*": 0.0}),
-                kp=kwargs.get("pd_kp", None),
-                kv=kwargs.get("pd_kv", None),
-                max_force=kwargs.get("max_force", None),
-                damping=kwargs.get("damping", None),
-                stiffness=kwargs.get("stiffness", None),
-                frictionloss=kwargs.get("frictionloss", None),
-                default_noise_scale=kwargs.get("noise_scale", 0.0),
-            )
         if self._actuator_manager is None:
             raise ValueError("No ActuatorManager provided.")
 
@@ -94,11 +55,6 @@ class BaseActionManager(BaseManager):
         """
         Get the actuator manager.
         """
-        return self._actuator_manager
-
-    @property
-    @deprecated(version="0.4.0", reason="Use `actuator_manager` instead")
-    def actuators(self) -> ActuatorManager:
         return self._actuator_manager
 
     @property

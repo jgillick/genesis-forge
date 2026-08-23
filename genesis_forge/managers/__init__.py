@@ -30,8 +30,8 @@ from .entity_manager import EntityManager
 from .observation_manager import ObservationManager
 from .actuator import ActuatorManager
 from .config import (
-    MdpFnClass,
-    ResetMdpFnClass,
+    MdpFn,
+    ResetMdpFn,
 )
 
 __all__ = [
@@ -46,7 +46,7 @@ __all__ = [
     "TerrainManager",
     "EntityManager",
     "ObservationManager",
-    "MdpFnClass",
-    "ResetMdpFnClass",
+    "MdpFn",
+    "ResetMdpFn",
     "ActuatorManager",
 ]

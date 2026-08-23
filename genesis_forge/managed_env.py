@@ -239,11 +239,10 @@ class ManagedEnvironment(GenesisEnv):
                     entity_attr="robot",
                     on_reset={
                         "position": {
-                            "fn": reset.position,
-                            "params": {
-                                "position": INITIAL_BODY_POSITION,
-                                "quat": INITIAL_QUAT,
-                            },
+                            "fn": reset.position(
+                                position=INITIAL_BODY_POSITION,
+                                quat=INITIAL_QUAT,
+                            ),
                         },
                     },
                 )

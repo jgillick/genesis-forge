@@ -92,12 +92,11 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
             },
         )
@@ -177,54 +176,44 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             cfg={
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -2.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "ang_vel_xy_l2": {
                     "weight": -0.05,
-                    "fn": rewards.ang_vel_xy_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "similar_to_default": {
                     "weight": -0.05,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        action_manager=self.action_manager,
+                    ),
                 },
                 "feet_air_time": {
                     "weight": 2.0,
-                    "fn": rewards.feet_air_time,
-                    "params": {
-                        "time_threshold": 0.2,
-                        "time_threshold_max": 0.5,
-                        "contact_manager": self.feet_contact_manager,
-                        "vel_cmd_manager": self.velocity_command,
-                    },
+                    "fn": rewards.feet_air_time(
+                        time_threshold=0.2,
+                        time_threshold_max=0.5,
+                        contact_manager=self.feet_contact_manager,
+                        vel_cmd_manager=self.velocity_command,
+                    ),
                 },
             },
         )
@@ -237,15 +226,14 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "torso_contact": {
-                    "fn": terminations.contact_force,
-                    "params": {
-                        "contact_manager": self.torso_contact_manager,
-                    },
+                    "fn": terminations.contact_force(
+                        contact_manager=self.torso_contact_manager,
+                    ),
                 },
             },
         )

@@ -8,7 +8,7 @@ from genesis.utils.geom import (
     transform_by_quat,
     inv_quat,
 )
-from genesis_forge.managers.config import ConfigItem, ResetMdpFnClass, ConfigItemDict
+from genesis_forge.managers.config import ConfigItem, ResetMdpFn, ConfigItemDict
 
 from typing import NotRequired, Any, TYPE_CHECKING, Protocol
 
@@ -35,7 +35,7 @@ class ResetConfigFn(Protocol):
 class EntityResetConfig(ConfigItemDict):
     """Defines an entity reset item."""
 
-    fn: ResetConfigFn | type[ResetMdpFnClass]
+    fn: ResetConfigFn | ResetMdpFn
     """
     Function, or class function, that will be called on reset.
 
@@ -68,12 +68,11 @@ class EntityManager(BaseManager):
                     entity_attr="robot",
                     on_reset={
                         "position": {
-                            "fn": reset.randomize_terrain_position,
-                            "params": {
-                                "terrain_manager": self.terrain_manager,
-                                "subterrain": self._target_terrain,
-                                "height_offset": 0.15,
-                            },
+                            "fn": reset.randomize_terrain_position(
+                                terrain_manager=self.terrain_manager,
+                                subterrain=self._target_terrain,
+                                height_offset=0.15,
+                            ),
                         },
                     },
                 )

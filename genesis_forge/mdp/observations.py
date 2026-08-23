@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass
 from genesis import gs
 import torch
 from genesis_forge.genesis_env import GenesisEnv
@@ -7,8 +8,13 @@ from genesis_forge.managers import (
     PositionActionManager,
     EntityManager,
     ContactManager,
+    MdpFn,
 )
-from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
+from genesis_forge.utils import (
+    entity_lin_vel,
+    entity_ang_vel,
+    entity_projected_gravity as get_entity_projected_gravity,
+)
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,14 +25,12 @@ Entity Observations
 """
 
 
-def entity_linear_velocity(
-    env: GenesisEnv, entity_manager: EntityManager = None, entity_attr: str = "robot"
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_linear_velocity(MdpFn):
     """
     The linear velocity of the entity's base link, in the entity's local frame.
 
     Args:
-        env: The Genesis environment containing the entity
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
                         This is slightly more performant than using the `entity_attr` parameter.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
@@ -34,20 +38,23 @@ def entity_linear_velocity(
     Returns:
         torch.Tensor: The linear velocity of the entity's base link, in the entity's local frame.
     """
-    if entity_manager is not None:
-        return entity_manager.get_linear_velocity()
-    entity = getattr(env, entity_attr)
-    return entity_lin_vel(entity)
+
+    entity_manager: EntityManager = None
+    entity_attr: str = "robot"
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.entity_manager is not None:
+            return self.entity_manager.get_linear_velocity()
+        entity = getattr(env, self.entity_attr)
+        return entity_lin_vel(entity)
 
 
-def entity_angular_velocity(
-    env: GenesisEnv, entity_manager: EntityManager = None, entity_attr: str = "robot"
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_angular_velocity(MdpFn):
     """
     The angular velocity of the entity's base link, in the entity's local frame.
 
     Args:
-        env: The Genesis environment containing the entity
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
                         This is slightly more performant than using the `entity_attr` parameter.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
@@ -55,20 +62,23 @@ def entity_angular_velocity(
     Returns:
         torch.Tensor: The angular velocity of the entity's base link, in the entity's local frame.
     """
-    if entity_manager is not None:
-        return entity_manager.get_angular_velocity()
-    entity = getattr(env, entity_attr)
-    return entity_ang_vel(entity)
+
+    entity_manager: EntityManager = None
+    entity_attr: str = "robot"
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.entity_manager is not None:
+            return self.entity_manager.get_angular_velocity()
+        entity = getattr(env, self.entity_attr)
+        return entity_ang_vel(entity)
 
 
-def entity_projected_gravity(
-    env: GenesisEnv, entity_manager: EntityManager = None, entity_attr: str = "robot"
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_projected_gravity(MdpFn):
     """
     The projected gravity of the entity's base link, in the entity's local frame.
 
     Args:
-        env: The Genesis environment containing the entity
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
                         This is slightly more performant than using the `entity_attr` parameter.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
@@ -76,10 +86,15 @@ def entity_projected_gravity(
     Returns:
         torch.Tensor: The projected gravity of the entity's base link, in the entity's local frame.
     """
-    if entity_manager is not None:
-        return entity_manager.get_projected_gravity()
-    entity = getattr(env, entity_attr)
-    return entity_projected_gravity(entity)
+
+    entity_manager: EntityManager = None
+    entity_attr: str = "robot"
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.entity_manager is not None:
+            return self.entity_manager.get_projected_gravity()
+        entity = getattr(env, self.entity_attr)
+        return get_entity_projected_gravity(entity)
 
 
 """
@@ -87,9 +102,13 @@ Sensor observations
 """
 
 
-def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class read_imu(MdpFn):
     """
     Makes an IMU reading and returns the concatenated linear acceleration and angular velocity readings.
+
+    Args:
+        imu: The IMU sensor to read from.
 
     Example::
 
@@ -105,7 +124,7 @@ def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
             self,
             cfg={
                 "imu_sensor": {
-                    "fn": self.imu_observation,
+                    "fn": observations.read_imu(imu=self.imu),
                 },
             }
         )
@@ -113,8 +132,12 @@ def read_imu(env: GenesisEnv, imu: gs.sensors.IMU) -> torch.Tensor:
     Returns:
         torch.Tensor: Shape `(n_envs, 6)` — `[lin_acc_xyz, ang_vel_xyz]` per env.
     """
-    value = imu.read()
-    return torch.cat([value.lin_acc, value.ang_vel], dim=-1)
+
+    imu: "gs.sensors.IMU" = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        value = self.imu.read()
+        return torch.cat([value.lin_acc, value.ang_vel], dim=-1)
 
 
 """
@@ -122,18 +145,12 @@ DOF/Join observations
 """
 
 
-def entity_dofs_position(
-    env: GenesisEnv,
-    actuator_manager: ActuatorManager = None,
-    entity_attr: str = "robot",
-    dofs_idx: list[int] = None,
-    action_manager: PositionActionManager = None,
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_dofs_position(MdpFn):
     """
     The position of the entity's DOFs.
 
     Args:
-        env: The Genesis environment containing the entity
         actuator_manager: The actuator manager for the robot/entity.
                           This bypasses the need for dofs_idx and entity_attr parameters.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
@@ -144,25 +161,27 @@ def entity_dofs_position(
     Returns:
         torch.Tensor: The position of the entity's DOFs.
     """
-    if actuator_manager is not None:
-        return actuator_manager.get_dofs_position()
-    if action_manager is not None:
-        return action_manager.get_dofs_position()
-    entity: RigidEntity = getattr(env, entity_attr)
-    return entity.get_dofs_position(dofs_idx)
+
+    actuator_manager: ActuatorManager = None
+    entity_attr: str = "robot"
+    dofs_idx: list[int] = None
+    action_manager: PositionActionManager = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.actuator_manager is not None:
+            return self.actuator_manager.get_dofs_position()
+        if self.action_manager is not None:
+            return self.action_manager.get_dofs_position()
+        entity: RigidEntity = getattr(env, self.entity_attr)
+        return entity.get_dofs_position(self.dofs_idx)
 
 
-def entity_dofs_velocity(
-    env: GenesisEnv,
-    action_manager: PositionActionManager = None,
-    entity_attr: str = "robot",
-    dofs_idx: list[int] = None,
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_dofs_velocity(MdpFn):
     """
     The velocity of the entity's DOFs.
 
     Args:
-        env: The Genesis environment containing the entity
         action_manager: The action manager for the robot/entity.
                         This is slightly more performant than using the `entity_attr` parameter.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
@@ -171,25 +190,24 @@ def entity_dofs_velocity(
     Returns:
         torch.Tensor: The velocity of the entity's DOFs.
     """
-    if action_manager is not None:
-        return action_manager.get_dofs_velocity()
-    entity: RigidEntity = getattr(env, entity_attr)
-    return entity.get_dofs_velocity(dofs_idx)
+
+    action_manager: PositionActionManager = None
+    entity_attr: str = "robot"
+    dofs_idx: list[int] = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.action_manager is not None:
+            return self.action_manager.get_dofs_velocity()
+        entity: RigidEntity = getattr(env, self.entity_attr)
+        return entity.get_dofs_velocity(self.dofs_idx)
 
 
-def entity_dofs_force(
-    env: GenesisEnv,
-    actuator_manager: ActuatorManager = None,
-    entity_attr: str = "robot",
-    dofs_idx: list[int] = None,
-    clip_to_max_force: bool = False,
-    action_manager: PositionActionManager = None,
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class entity_dofs_force(MdpFn):
     """
     The DOF's force being experienced.
 
     Args:
-        env: The Genesis environment containing the entity
         actuator_manager: The actuator manager for the robot/entity.
                           This bypasses the need for dofs_idx and entity_attr parameters.
         entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
@@ -200,12 +218,24 @@ def entity_dofs_force(
     Returns:
         torch.Tensor: The force of the entity's DOFs.
     """
-    if actuator_manager is not None:
-        return actuator_manager.get_dofs_force(clip_to_max_force=clip_to_max_force)
-    elif action_manager is not None:
-        return action_manager.get_dofs_force(clip_to_max_force=clip_to_max_force)
-    entity: RigidEntity = getattr(env, entity_attr)
-    return entity.get_dofs_force(dofs_idx)
+
+    actuator_manager: ActuatorManager = None
+    entity_attr: str = "robot"
+    dofs_idx: list[int] = None
+    clip_to_max_force: bool = False
+    action_manager: PositionActionManager = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.actuator_manager is not None:
+            return self.actuator_manager.get_dofs_force(
+                clip_to_max_force=self.clip_to_max_force
+            )
+        elif self.action_manager is not None:
+            return self.action_manager.get_dofs_force(
+                clip_to_max_force=self.clip_to_max_force
+            )
+        entity: RigidEntity = getattr(env, self.entity_attr)
+        return entity.get_dofs_force(self.dofs_idx)
 
 
 """
@@ -213,16 +243,22 @@ Actions
 """
 
 
-def current_actions(
-    env: GenesisEnv,
-    action_manager: PositionActionManager = None,
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class current_actions(MdpFn):
     """
     The most current step actions.
+
+    Args:
+        action_manager: The action manager to source actions from. If not provided,
+                        actions are read from `env.actions`.
     """
-    if action_manager is not None:
-        return action_manager.get_actions()
-    return env.actions
+
+    action_manager: PositionActionManager = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.action_manager is not None:
+            return self.action_manager.get_actions()
+        return env.actions
 
 
 """
@@ -230,33 +266,40 @@ Contacts
 """
 
 
-def contact_force(env: GenesisEnv, contact_manager: ContactManager) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class contact_force(MdpFn):
     """
     Returns the vector norm contact force at each contact point.
 
     Args:
-        env: The Genesis Forge environment
         contact_manager: The contact manager to check for contact
 
     Returns:
         torch.Tensor: Shape `(num_envs, num_contacts)`.
     """
-    return torch.norm(contact_manager.contacts[:, :, :], dim=-1)
+
+    contact_manager: ContactManager = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.norm(self.contact_manager.contacts[:, :, :], dim=-1)
 
 
-def has_contact(
-    env: GenesisEnv, contact_manager: ContactManager, threshold: float=1.0
-) -> torch.Tensor:
+@dataclass(kw_only=True, eq=False)
+class has_contact(MdpFn):
     """
-    Return boolean (1/0) for each link in the contact manager that meets the contact threshold.
+    Return 1 (true) or 0 (false) for each link in the contact manager that meets the contact threshold.
 
     Args:
-        env: The Genesis Forge environment
         contact_manager: The contact manager to check for contact
         threshold: The minimum force necessary for contact detection (default: 1.0)
 
     Returns:
         1 for each link meeting the contact threshold
     """
-    has_contact = contact_manager.contacts.norm(dim=-1) > threshold
-    return has_contact.float()
+
+    contact_manager: ContactManager = None
+    threshold: float = 1.0
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        in_contact = self.contact_manager.contacts.norm(dim=-1) > self.threshold
+        return in_contact.float()

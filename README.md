@@ -70,11 +70,10 @@ class Go2CEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": [0.0, 0.0, 0.35],
-                        "quat": [1.0, 0.0, 0.0, 0.0],
-                    },
+                    "fn": reset.position(
+                        position=[0.0, 0.0, 0.35],
+                        quat=[1.0, 0.0, 0.0, 0.0],
+                    ),
                 },
             },
         )
@@ -114,28 +113,23 @@ class Go2CEnv(ManagedEnvironment):
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                    },
+                    "fn": rewards.base_height(target_height=0.3),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
+                    "fn": rewards.lin_vel_z_l2(),
                 },
             },
         )
@@ -147,15 +141,12 @@ class Go2CEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 10, # degrees
-                    },
+                    "fn": terminations.bad_orientation(limit_angle=10),  # degrees
                 },
             },
         )

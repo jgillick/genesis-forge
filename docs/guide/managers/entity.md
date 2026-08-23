@@ -24,11 +24,11 @@ class MyEnv(ManagedEnvironment):
             entity_attr="robot", # references self.robot
             on_reset={
                 "position": {
-                    "fn": reset.position, # resets the robot to the same position and rotation at each reset
-                    "params": {
-                        "position": [0.0, 0.0, 0.4],  # X, Y, Z
-                        "quat": [1.0, 0.0, 0.0, 0.0], # W, X, Y, Z quaternion
-                    },
+                    # resets the robot to the same position and rotation at each reset
+                    "fn": reset.position(
+                        position=[0.0, 0.0, 0.4],  # X, Y, Z
+                        quat=[1.0, 0.0, 0.0, 0.0],  # W, X, Y, Z quaternion
+                    ),
                 },
             },
         )
@@ -38,8 +38,7 @@ class MyEnv(ManagedEnvironment):
 
 Each reset config item has the following possible values:
 
-- **fn**: A function that handles the reset
-- **params** (optional): Additional parameters which will be passed to the function
+- **fn**: A function that handles the reset, constructed with its params
 
 ```python
 EntityManager(
@@ -47,11 +46,11 @@ EntityManager(
     entity_attr="robot", # references self.robot
     on_reset={
         "position": {
-            "fn": reset.position, # resets the robot to the same position and rotation at each reset
-            "params": {
-                "position": [0.0, 0.0, 0.4],  # X, Y, Z
-                "quat": [1.0, 0.0, 0.0, 0.0], # W, X, Y, Z quaternion
-            },
+            # resets the robot to the same position and rotation at each reset
+            "fn": reset.position(
+                position=[0.0, 0.0, 0.4],  # X, Y, Z
+                quat=[1.0, 0.0, 0.0, 0.0],  # W, X, Y, Z quaternion
+            ),
         },
     },
 )
@@ -63,26 +62,28 @@ Genesis Forge provides many common reset functions in [`genesis_forge.mdp.reset`
 
 ## Custom Reset Functions
 
-It's easy to define your own reset function. The first three params of any reset function are: the environment, the entity, and the environment ids being reset. Additionally, any params defined for that reset item in RewardManager will be passed by name.
+A custom reset function is defined as a simple dataclass with a `__call__` method that
+performs the reset. `__call__` always receives the environment, the entity, and the
+environment ids being reset; any other fields you declare become the function's params.
 
-For example, let's create a simple reset function that will randomly add mass to the entity's links:
+For example, let's create a simple reset function that will randomly add mass to one of the entity's links:
 
 ```python
-def add_mass_on_reset(
-    env: GenesisEnv,
-    entity: RigidEntity,
-    envs_idx: list[int],
-    link_name: string,
-    mass_range: tuple[float, float]
-):
-    """
-    Randomly add/subtract mass to links of the robot
-    """
-    link = entity.get_link(link_name)
-    mass_shift = torch.tensor((env.num_envs, len(links_ids)), device=gs.device).uniform_(*mass_range)
-    entity.set_mass_shift(
-            mass_shift
-            links_idx_local=[link.idx],
+@dataclass(kw_only=True, eq=False)
+class add_mass_on_reset(ResetMdpFn):
+    """Randomly add/subtract mass to a link of the robot."""
+
+    link_name: str = None
+    mass_range: tuple[float, float] = (-0.5, 1.0)
+
+    def build(self):
+        self._link = self.entity.get_link(self.link_name)
+
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+        mass_shift = torch.empty(len(envs_idx), device=gs.device).uniform_(*self.mass_range)
+        entity.set_mass_shift(
+            mass_shift,
+            links_idx_local=[self._link.idx_local],
             envs_idx=envs_idx,
         )
 
@@ -95,14 +96,10 @@ class MyEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "random_mass": {
-                    "fn": add_mass_on_reset,
-                    "params": {
-                        "link_name": "body",
-                        "mass_range": [-0.5, 1.0],
-                    },
+                    "fn": add_mass_on_reset(link_name="body"),
                 },
             },
         )
 ```
 
-You can see a more advanced, class-based, version of this reset method, by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.mdp.reset.randomize_link_mass_shift):
+You can see a more advanced version of this reset function by looking at the source to [randomize_link_mass_shift](project:/api/mdp/reset.md#genesis_forge.mdp.reset.randomize_link_mass_shift):

@@ -109,7 +109,7 @@ class Go2StandUpEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "random_ground_pose": {
-                    "fn": random_ground_pose,
+                    "fn": random_ground_pose(),
                 },
             },
         )
@@ -120,11 +120,10 @@ class Go2StandUpEnv(ManagedEnvironment):
             cfg={
                 "base_height": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.25,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.25,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "stand_and_balance": {
                     "weight": 2.0,
@@ -137,50 +136,45 @@ class Go2StandUpEnv(ManagedEnvironment):
                 },
                 "flat_orientation": {
                     "weight": -0.5,
-                    "fn": rewards.flat_orientation_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                    "fn": rewards.flat_orientation_l2(
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_xy": {
                     "weight": -0.2,
-                    "fn": rewards.lin_vel_xy_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                    "fn": rewards.lin_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "lin_vel_z": {
                     "weight": -3.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "dof_vel": {
                     "weight": -0.02,
-                    "fn": rewards.dof_velocity_l2,
-                    "params": {"action_manager": self.action_manager},
+                    "fn": rewards.dof_velocity_l2(action_manager=self.action_manager),
                 },
                 "action_rate": {
                     "weight": -0.1,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "action_accel": {
                     "weight": -0.02,
-                    "fn": rewards.action_acceleration_l2,
-                    "params": {"action_manager": self.action_manager},
+                    "fn": rewards.action_acceleration_l2(
+                        action_manager=self.action_manager
+                    ),
                 },
                 "torque_l2": {
                     "weight": -0.0003,
-                    "fn": rewards.dof_torque_l2,
-                    "params": {
-                        "actuator_manager": self.actuator_manager,
-                    },
+                    "fn": rewards.dof_torque_l2(actuator_manager=self.actuator_manager),
                 },
                 "body_acceleration": {
                     "weight": -0.2,
-                    "fn": rewards.body_acceleration_exp,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.body_acceleration_exp(
+                        entity_manager=self.robot_manager
+                    ),
                 },
                 "is_alive": {
                     "weight": 0.05,
-                    "fn": rewards.is_alive,
+                    "fn": rewards.is_alive(),
                 },
             },
         )
@@ -190,15 +184,14 @@ class Go2StandUpEnv(ManagedEnvironment):
             logging_enabled=True,
             term_cfg={
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 "is_upsidedown": {
-                    "fn": terminations.is_upsidedown,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                        "threshold": 0.5,
-                    },
+                    "fn": terminations.is_upsidedown(
+                        entity_manager=self.robot_manager,
+                        threshold=0.5,
+                    ),
                 },
             },
         )

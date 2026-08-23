@@ -83,11 +83,10 @@ class MyFirstEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": [0.0, 0.0, 0.4],
-                        "quat": [1.0, 0.0, 0.0, 0.0],
-                    },
+                    "fn": reset.position(
+                        position=[0.0, 0.0, 0.4],
+                        quat=[1.0, 0.0, 0.0, 0.0],
+                    ),
                 },
             },
         )
@@ -121,24 +120,24 @@ class MyFirstEnv(ManagedEnvironment):
                 # Maintain target height
                 "base_height": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": { "target_height": 0.3 },
+                    "fn": rewards.base_height(target_height=0.3),
                 },
                 # Track forward velocity
                 "velocity_tracking": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": { "command": self.target_vel[:, :2] },
+                    "fn": rewards.command_tracking_lin_vel(
+                        command=self.target_vel[:, :2],
+                    ),
                 },
                 # Minimize vertical motion
                 "vertical_velocity": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
+                    "fn": rewards.lin_vel_z_l2(),
                 },
                 # Encourage smooth actions
                 "action_smoothness": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
             },
         )
@@ -150,13 +149,12 @@ class MyFirstEnv(ManagedEnvironment):
             term_cfg={
                 # Episode should end (timeout) when it hits the max episode length
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot is falling over
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {"limit_angle": 10}, # degrees
+                    "fn": terminations.bad_orientation(limit_angle=10),  # degrees
                 },
             },
         )

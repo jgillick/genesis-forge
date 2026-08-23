@@ -213,6 +213,18 @@ class ObservationManager(BaseManager):
             device=gs.device,
         )
 
+    def reset(self, envs_idx: list[int] | None = None):
+        """
+        Reset any stateful observation functions for the given environments.
+
+        Args:
+            envs_idx: The environment ids being reset. All environments, if None.
+        """
+        if envs_idx is None:
+            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        for cfg in self.cfg.values():
+            cfg.reset(envs_idx)
+
     def get_observations(
         self, values: dict[str, float | torch.Tensor] | None = None
     ) -> torch.Tensor:

@@ -106,11 +106,10 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             on_reset={
                 # Randomize the robot's position on the terrain after reset
                 "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "height_offset": HEIGHT_OFFSET,
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": reset.randomize_terrain_position(
+                        height_offset=HEIGHT_OFFSET,
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
             },
         )
@@ -182,60 +181,50 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             cfg={
                 "tracking_lin_vel": {
                     "weight": 1.5,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.75,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -2.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "ang_vel_xy": {
                     "weight": -0.05,
-                    "fn": rewards.ang_vel_xy_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "undesired_contacts": {
                     "weight": -1.0,
-                    "fn": rewards.has_contact,
-                    "params": {
-                        "contact_manager": self.undesired_contacts,
-                        "threshold": 5.0,
-                    },
+                    "fn": rewards.has_contact(
+                        contact_manager=self.undesired_contacts,
+                        threshold=5.0,
+                    ),
                 },
                 "action_rate": {
                     "weight": -0.01,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "similar_to_default": {
                     "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        action_manager=self.action_manager,
+                    ),
                 },
                 "flat_orientation": {
                     "weight": -1.5,
-                    "fn": rewards.flat_orientation_l2,
+                    "fn": rewards.flat_orientation_l2(),
                 },
                 "terminated": {
                     "weight": -100.0,
-                    "fn": rewards.terminated,
+                    "fn": rewards.terminated(),
                 },
             },
         )
@@ -248,23 +237,21 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 "out_of_bounds": {
-                    "fn": terminations.out_of_bounds,
-                    "params": {
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": terminations.out_of_bounds(
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "bad_orientation": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 30.0,
-                        "entity_manager": self.robot_manager,
-                        "grace_steps": 20,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=30.0,
+                        entity_manager=self.robot_manager,
+                        grace_steps=20,
+                    ),
                 },
             },
         )

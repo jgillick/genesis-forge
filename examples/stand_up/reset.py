@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 import genesis as gs
 import torch
 from typing import TYPE_CHECKING
 
-from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers import ResetMdpFnClass
+from genesis_forge.managers import ResetMdpFn
 from ground_positions import RANDOM_GROUND_POSES
 
 if TYPE_CHECKING:
@@ -22,69 +22,48 @@ JOINT_PATTERNS = [
     "RR_.*_joint",
 ]
 
-class random_ground_pose(ResetMdpFnClass):
+
+@dataclass(kw_only=True, eq=False)
+class random_ground_pose(ResetMdpFn):
     """
     Reset the robot to a random collapsed pose from a pre-generated pose list.
-
-    Args:
-        env: The environment
-        entity: The robot entity (provided at build time)
-        poses: List of dicts with pos, quat, joints; defaults to ground_positions.RANDOM_GROUND_POSES
     """
 
-    def __init__(
-        self,
-        env: GenesisEnv,
-        entity: RigidEntity,
-    ):
-        super().__init__(env, entity)
-        self._entity = entity
-        self._poses = RANDOM_GROUND_POSES
-        self._dof_names: list[str] = []
-        self._dofs_idx: list[int] = []
-        self._pos: torch.Tensor | None = None
-        self._quat: torch.Tensor | None = None
-        self._dof_pos: torch.Tensor | None = None
-
-    def build(self, entity: RigidEntity | None = None):
-        if len(self._poses) == 0:
+    def build(self):
+        poses = RANDOM_GROUND_POSES
+        if len(poses) == 0:
             raise RuntimeError(
                 "No poses found. Generate them with the script: generate_random_ground_pos.py"
             )
 
         # Collect joints
-        self._dof_names: list[str] = []
-        self._dofs_idx: list[int] = []
-        for joint in self._entity.joints:
+        dof_names: list[str] = []
+        dofs_idx: list[int] = []
+        for joint in self.entity.joints:
             if joint.type != gs.JOINT_TYPE.REVOLUTE:
                 continue
             for pattern in JOINT_PATTERNS:
                 if pattern == joint.name or re.match(f"^{pattern}$", joint.name):
-                    self._dof_names.append(joint.name)
-                    self._dofs_idx.append(joint.dof_start)
+                    dof_names.append(joint.name)
+                    dofs_idx.append(joint.dof_start)
                     break
-        
+        self._dofs_idx = dofs_idx
+
         # Organize poses
-        pos_list = []
-        quat_list = []
-        dof_list = []
-        for pose in self._poses:
-            pos_list.append(pose["pos"])
-            quat_list.append(pose["quat"])
-            dof_list.append([pose["joints"][name] for name in self._dof_names])
+        pos_list = [pose["pos"] for pose in poses]
+        quat_list = [pose["quat"] for pose in poses]
+        dof_list = [[pose["joints"][name] for name in dof_names] for pose in poses]
 
         # Setup buffers
         self._pos = torch.tensor(pos_list, device=gs.device, dtype=gs.tc_float)
         self._quat = torch.tensor(quat_list, device=gs.device, dtype=gs.tc_float)
         self._dof_pos = torch.tensor(dof_list, device=gs.device, dtype=gs.tc_float)
 
-
     def __call__(
         self,
-        env: GenesisEnv,
+        env,
         entity: RigidEntity,
         envs_idx: list[int],
-        poses: list[dict] | None = None,
     ):
         n = len(envs_idx)
         idx = torch.randint(0, self._pos.shape[0], (n,), device=gs.device)

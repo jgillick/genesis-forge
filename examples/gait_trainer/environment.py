@@ -102,12 +102,11 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
             },
         )
@@ -202,52 +201,41 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
                 "base_height_target": {
                     "weight": -25.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.35,
-                        "entity_attr": "robot",
-                    },
+                    "fn": rewards.base_height(target_height=0.35, entity_attr="robot"),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "body_acceleration": {
                     "weight": -0.1,
-                    "fn": rewards.body_acceleration_exp,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.body_acceleration_exp(
+                        entity_manager=self.robot_manager
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -0.1,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.01,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "bad_contact": {
                     "weight": -1.0,
-                    "fn": rewards.contact_force,
-                    "params": {
-                        "contact_manager": self.bad_contact_manager,
-                    },
+                    "fn": rewards.contact_force(
+                        contact_manager=self.bad_contact_manager,
+                    ),
                 },
             },
         )
@@ -260,24 +248,22 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 20.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=20.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 # Terminate if the body falls over
                 "body_contact": {
-                    "fn": terminations.contact_force,
-                    "params": {
-                        "contact_manager": self.body_contact_manager,
-                        "threshold": 1.0,
-                    },
+                    "fn": terminations.contact_force(
+                        contact_manager=self.body_contact_manager,
+                        threshold=1.0,
+                    ),
                 },
             },
         )
@@ -325,16 +311,14 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             history_len=5,
             cfg={
                 "foot_contact_force": {
-                    "fn": observations.contact_force,
-                    "params": {
-                        "contact_manager": self.foot_contact_manager,
-                    },
+                    "fn": observations.contact_force(
+                        contact_manager=self.foot_contact_manager,
+                    ),
                 },
                 "dof_force": {
-                    "fn": observations.entity_dofs_force,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": observations.entity_dofs_force(
+                        action_manager=self.action_manager,
+                    ),
                     "scale": 0.1,
                 },
             },

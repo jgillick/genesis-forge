@@ -41,12 +41,11 @@ class MyEnv(ManagedEnvironment):
             entity_attr="robot",
             on_reset={
                 "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "terrain_manager": self.terrain_manager,
-                        "subterrain": "flat_terrain", # Select this subterrain for placement
-                        "height_offset": 0.3, # place the robot this high above the terrain
-                    },
+                    "fn": reset.randomize_terrain_position(
+                        terrain_manager=self.terrain_manager,
+                        subterrain="flat_terrain",  # Select this subterrain for placement
+                        height_offset=0.3,  # place the robot this high above the terrain
+                    ),
                 },
             },
         )
@@ -58,11 +57,10 @@ class MyEnv(ManagedEnvironment):
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
             }
         )

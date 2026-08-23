@@ -32,19 +32,17 @@ def config(self):
         cfg={
             "tracking_lin_vel": {
                 "weight": 1.0,
-                "fn": rewards.command_tracking_lin_vel,
-                "params": {
-                    "vel_cmd_manager": self.velocity_command,
-                    "entity_manager": self.robot_manager,
-                },
+                "fn": rewards.command_tracking_lin_vel(
+                    vel_cmd_manager=self.velocity_command,
+                    entity_manager=self.robot_manager,
+                ),
             },
             "tracking_ang_vel": {
                 "weight": 0.2,
-                "fn": rewards.command_tracking_ang_vel,
-                "params": {
-                    "vel_cmd_manager": self.velocity_command,
-                    "entity_manager": self.robot_manager,
-                },
+                "fn": rewards.command_tracking_ang_vel(
+                    vel_cmd_manager=self.velocity_command,
+                    entity_manager=self.robot_manager,
+                ),
             },
             # ... other rewards ...
         },

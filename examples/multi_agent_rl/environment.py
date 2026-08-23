@@ -168,11 +168,10 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             on_reset={
                 # Randomize the robot's position on the terrain after reset
                 "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "height_offset": HEIGHT_OFFSET,
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": reset.randomize_terrain_position(
+                        height_offset=HEIGHT_OFFSET,
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
             },
         )
@@ -219,46 +218,39 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             cfg={
                 "base_height_target": {
                     "weight": -30.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                        entity_attr="robot",
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "similar_to_default": {
                     "weight": -0.05,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "actuator_manager": [
-                            self.leg_actuator_managers[a] for a in self.AGENTS
-                        ],
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        actuator_manager=[ self.leg_actuator_managers[a] for a in self.AGENTS ],
+                    ),
                 },
             },
         )
@@ -268,16 +260,15 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             logging_enabled=True,
             term_cfg={
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 30.0,
-                        "entity_manager": self.robot_manager,
-                        "grace_steps": 10,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=30.0,
+                        entity_manager=self.robot_manager,
+                        grace_steps=10,
+                    ),
                 },
             },
         )

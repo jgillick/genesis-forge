@@ -18,11 +18,10 @@ Here are the relevant snippets:
         entity_attr="robot",
         on_reset={
             "mass": {
-                "fn": reset.randomize_link_mass_shift,
-                "params": {
-                    "link_name": "base",
-                    "add_mass_range": [-100.0, 100.0],
-                },
+                "fn": reset.randomize_link_mass_shift(
+                    link_name="base",
+                    mass_range=[-100.0, 100.0],
+                ),
             },
         },
     )

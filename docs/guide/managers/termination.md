@@ -17,12 +17,12 @@ class MyEnv(ManagedEnvironment):
             logging_enabled=True,
             term_cfg={
                 "timeout": {
-                    "fn": terminations.timeout, # Ends the episode when it reaches the maximum steps (env.max_episode_length)
+                    "fn": terminations.timeout(), # Ends the episode when it reaches the maximum steps (env.max_episode_length)
                     "time_out": True,  # This is a timeout, not failure
                 },
                 "fall_over": {
-                    "fn": terminations.bad_orientation, # Terminate if the robot is falling over
-                    "params": {"limit_angle": 28.0},  # degrees
+                    # Terminate if the robot is falling over
+                    "fn": terminations.bad_orientation(limit_angle=28.0),  # degrees
                 },
             },
         )
@@ -32,8 +32,7 @@ class MyEnv(ManagedEnvironment):
 
 Each termination condition has:
 
-- **fn**: Function that returns boolean tensor indicating termination
-- **params**: Optional parameters for the function
+- **fn**: Function that returns boolean tensor indicating termination, constructed with its params
 - **time_out**: Whether this is a timeout (`True`) or failure (`False`, default)
 
 ```python
@@ -41,12 +40,11 @@ TerminationManager(
     self,
     term_cfg={
         "max_episode_length": {
-            "fn": terminations.timeout,
+            "fn": terminations.timeout(),
             "time_out": True,  # Normal episode end
         },
         "robot_fell": {
-            "fn": terminations.bad_orientation,
-            "params": {"limit_angle": 0.3},
+            "fn": terminations.bad_orientation(limit_angle=0.3),
         },
         "out_of_bounds": {
             "fn": lambda env: torch.norm(env.robot.get_pos()[:, :2], dim=1) > 5.0,
@@ -62,10 +60,7 @@ Genesis Forge provides common termination conditions in [`genesis_forge.mdp.term
 ```python
 term_cfg={
     "too_low": {
-        "fn": terminations.base_height_below_minimum,
-        "params": {
-            "minimum_height": 0.05,
-        }
+        "fn": terminations.base_height_below_minimum(minimum_height=0.05),
     },
 }
 ```
@@ -78,59 +73,61 @@ Terminate when commanded torque or joint speed exceed safe limits:
 term_cfg={
   # Uses max_force from the actuator manager when threshold is omitted
   "dof_overforce": {
-    "fn": terminations.dof_control_force_limit,
-      "params": {
-        "actuator_manager": self.actuator_manager,
-      },
+    "fn": terminations.dof_control_force_limit(
+        actuator_manager=self.actuator_manager,
+    ),
   },
   # Or pass an explicit limit below the actuator clip
   "dof_overforce_strict": {
-      "fn": terminations.dof_control_force_limit,
-      "params": {
-          "actuator_manager": self.actuator_manager,
-          "threshold": 18.0,
-      },
+      "fn": terminations.dof_control_force_limit(
+          actuator_manager=self.actuator_manager,
+          threshold=18.0,
+      ),
   },
 
   # Actuator is moving too fast
   "dof_overspeed": {
-      "fn": terminations.dof_velocity_limit,
-      "params": {
-          "actuator_manager": self.actuator_manager,
-          "threshold": 300.0,
-          "unit": "rpm",
-      },
+      "fn": terminations.dof_velocity_limit(
+          actuator_manager=self.actuator_manager,
+          threshold=300.0,
+          unit="rpm",
+      ),
   },
 }
 ```
 
 ## Custom Termination Functions
 
-A custom termination function takes in the environment as the first parameter, as well as any other parameter which will be defined in the `params` dict at the TerminationManager. The returned value should be a tensor (shape: `(num_envs,)`) with a `bool` value for each environment.
+A custom termination function is defined as a simple dataclass with a `__call__` method that executes the check. The returned value should be a tensor (shape: `(num_envs,)`) with a `bool` value for each environment.
 
 ```python
-def velocity_limit(env, max_velocity=10.0):
+@dataclass(kw_only=True, eq=False)
+class velocity_limit(MdpFn):
     """Terminate if robot moves too fast."""
-    velocity = torch.norm(env.robot.get_vel(), dim=1)
-    return velocity > max_velocity
+
+    max_velocity: float = 10.0
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        velocity = torch.norm(env.robot.get_vel(), dim=1)
+        return velocity > self.max_velocity
 
 TerminationManager(
     self,
     term_cfg={
         "too_fast": {
-            "fn": velocity_limit,
-            "params": {"max_velocity": 8.0},
+            "fn": velocity_limit(max_velocity=8.0),
         },
     },
 )
 ```
+
+A termination with no params can stay a plain function or lambda, as shown in the `out_of_bounds` example above.
 
 ## Timeout vs Termination
 
 Understanding the distinction is important for RL algorithms:
 
 - **Timeout** (`time_out=True`): Natural episode end, not a failure
-
   - Episode reached max length
   - Task successfully completed
   - Training scenario ended
@@ -149,18 +146,14 @@ class MyEnv(ManagedEnvironment):
     def config(self):
         self.termination_manager = TerminationManager(self, term_cfg={
             "timeout": {
-                "fn": terminations.timeout,
+                "fn": terminations.timeout(),
                 "time_out": True,
             },
             "bad_orientation": {
-                "fn": terminations.bad_orientation,
-                "params": {"limit_angle": 25},
+                "fn": terminations.bad_orientation(limit_angle=25),
             },
             "too_low": {
-                "fn": terminations.base_height_below_minimum,
-                "params": {
-                    "minimum_height": 0.05
-                }
+                "fn": terminations.base_height_below_minimum(minimum_height=0.05),
             }
         })
 
@@ -180,8 +173,8 @@ class MyEnv(ManagedEnvironment):
             height_threshold = 0.15
 
         # Update termination parameters
-        self.termination_manager.term_cfg["bad_orientation"].params["limit_angle"] = limit_angle
-        self.termination_manager.term_cfg["too_low"].params["minimum_height"] = height_threshold
+        self.termination_manager.term_cfg["bad_orientation"].fn.limit_angle = limit_angle
+        self.termination_manager.term_cfg["too_low"].fn.minimum_height = height_threshold
 ```
 
 ## Logging and Analysis

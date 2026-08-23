@@ -144,6 +144,18 @@ class TerminationManager(BaseManager):
         for cfg in self.term_cfg.values():
             cfg.build()
 
+    def reset(self, envs_idx: list[int] | None = None):
+        """
+        Reset any stateful termination functions for the given environments.
+
+        Args:
+            envs_idx: The environment ids being reset. All environments, if None.
+        """
+        if envs_idx is None:
+            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        for cfg in self.term_cfg.values():
+            cfg.reset(envs_idx)
+
     def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Calculate the termination/truncation signals for this step

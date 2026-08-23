@@ -84,13 +84,15 @@ RewardManager(
     self,
     cfg={
         "track_lin_vel": {
-            "fn": rewards.command_tracking_lin_vel,
-            "params": {"vel_cmd_manager": self.velocity_command},
+            "fn": rewards.command_tracking_lin_vel(
+                vel_cmd_manager=self.velocity_command,
+            ),
             "weight": 2.0,
         },
         "track_ang_vel": {
-            "fn": rewards.command_tracking_ang_vel,
-            "params": {"vel_cmd_manager": self.velocity_command},
+            "fn": rewards.command_tracking_ang_vel(
+                vel_cmd_manager=self.velocity_command,
+            ),
             "weight": 1.0,
         },
     },

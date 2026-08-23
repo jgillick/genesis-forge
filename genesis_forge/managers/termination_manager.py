@@ -173,8 +173,7 @@ class TerminationManager(BaseManager):
         for name, term_item in self.term_cfg.items():
             try:
                 # Get termination value
-                params = term_item.params
-                value = term_item.fn(self.env, **params)
+                value = term_item.execute()
 
                 # Add to the correct buffer using in-place operations
                 if term_item.time_out:

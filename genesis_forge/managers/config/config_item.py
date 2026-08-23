@@ -115,14 +115,18 @@ class ConfigItem:
         if self._built and self._is_mdp_class_fn:
             self._fn.reset(envs_idx)
 
-    def execute(self, envs_idx: list[int]):
+    def execute(self, **kwargs):
         """
-        Call the function for the given environment ids.
+        Call the function, passing along the build-time context and params.
 
         Args:
-            envs_idx: The environment ids to call the function for.
+            **kwargs: Additional per-call arguments. For example, the entity manager
+                      passes ``envs_idx`` here for a reset function.
+
+        Returns:
+            Whatever the function returns.
         """
-        self._fn(self._env, **self._kwargs, envs_idx=envs_idx, **self._params)
+        return self._fn(self._env, **self._kwargs, **kwargs, **self._params)
 
 
 class TerminationConfigItem(ConfigItem):

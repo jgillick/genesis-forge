@@ -188,7 +188,7 @@ class EntityManager(BaseManager):
 
         for name, cfg in self.on_reset.items():
             try:
-                cfg.execute(envs_idx)
+                cfg.execute(envs_idx=envs_idx)
             except Exception as e:
                 print(f"Error resetting entity with config: '{name}'")
                 raise e

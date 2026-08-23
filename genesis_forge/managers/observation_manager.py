@@ -271,7 +271,7 @@ class ObservationManager(BaseManager):
             try:
                 cfg.build()
                 assert callable(cfg.fn), f"Observation function {name} is not callable"
-                value = cfg.fn(env=self.env, **cfg.params)
+                value = cfg.execute()
                 value_size = value.shape[-1]
                 if value_size > 0:
                     size += value_size
@@ -296,7 +296,6 @@ class ObservationManager(BaseManager):
         for name, cfg in self.cfg.items():
             try:
                 # Get values
-                params = cfg.params
                 if override_values is not None:
                     if name not in override_values:
                         raise ValueError(f"Value '{name}' not found in override values")
@@ -304,7 +303,7 @@ class ObservationManager(BaseManager):
                     if not isinstance(value, torch.Tensor):
                         value = torch.tensor(value, device=gs.device)
                 else:
-                    value = cfg.fn(env=self.env, **params)
+                    value = cfg.execute()
 
                 # Apply scale
                 scale = cfg.scale

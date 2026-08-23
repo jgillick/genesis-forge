@@ -178,7 +178,7 @@ class RewardManager(BaseManager):
 
             # Get reward value from function
             weight = cfg.weight * dt
-            value = cfg.fn(self.env, **cfg.params) * weight
+            value = cfg.execute() * weight
 
             # Add to reward buffer
             self._reward_buf += value

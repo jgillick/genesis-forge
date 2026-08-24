@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import genesis as gs
 import torch
-from typing import TYPE_CHECKING
+from ground_positions import RANDOM_GROUND_POSES
 
 from genesis_forge.managers import ResetMdpFn
-from ground_positions import RANDOM_GROUND_POSES
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity

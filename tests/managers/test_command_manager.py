@@ -83,7 +83,7 @@ def test_get_command_returns_the_value_for_a_key(env):
 
 def test_get_command_requires_a_dict_range(env):
     mgr = CommandManager(env, range=(0.0, 1.0))
-    with pytest.raises(ValueError, match="not a dict"):
+    with pytest.raises(TypeError, match="not a dict"):
         mgr.get_command("a")
 
 
@@ -131,7 +131,7 @@ def test_increment_range_respects_the_limit_in_each_direction(env):
 
 def test_increment_range_requires_a_dict_range(env):
     mgr = CommandManager(env, range=(0.0, 1.0))
-    with pytest.raises(ValueError, match="non-dict"):
+    with pytest.raises(TypeError, match="non-dict"):
         mgr.increment_range("height", 0.5)
 
 

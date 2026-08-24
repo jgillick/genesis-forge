@@ -5,14 +5,15 @@ from "Sim-to-Real Learning of All Common Bipedal Gaits via Periodic Reward Compo
 
 from __future__ import annotations
 
-import torch
-import genesis as gs
-from typing import TYPE_CHECKING, TypedDict, Literal
-from genesis_forge.managers.command.command_manager import CommandManager
+from typing import TYPE_CHECKING, Literal, TypedDict
 
-from genesis_forge.managers import ContactManager
-from genesis_forge.genesis_env import GenesisEnv
+import genesis as gs
+import torch
+
 from genesis_forge.gamepads import Gamepad
+from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.managers import ContactManager
+from genesis_forge.managers.command.command_manager import CommandManager
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -274,7 +275,7 @@ class GaitCommandManager(CommandManager):
         self._gamepad = gamepad
         self._num_gaits = len(GAIT_OFFSETS)
         self._gamepad_gait_idx = 0
-        self._gamepad_select_gait(list(GAIT_OFFSETS.keys())[0])
+        self._gamepad_select_gait(next(iter(GAIT_OFFSETS.keys())))
 
     """
     Rewards

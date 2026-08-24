@@ -5,22 +5,24 @@ Each of these should return a float tensor with the reward value for each enviro
 
 from __future__ import annotations
 
-import torch
-import genesis as gs
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import genesis as gs
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
     CommandManager,
-    VelocityCommandManager,
-    PositionActionManager,
     ContactManager,
-    TerrainManager,
     EntityManager,
+    MdpFn,
+    PositionActionManager,
+    TerrainManager,
+    VelocityCommandManager,
 )
-from genesis_forge.utils import entity_lin_vel, entity_ang_vel, entity_projected_gravity
-from genesis_forge.managers import MdpFn
-from typing import Union, TYPE_CHECKING
+from genesis_forge.utils import entity_ang_vel, entity_lin_vel, entity_projected_gravity
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -76,7 +78,7 @@ class base_height(MdpFn):
         torch.Tensor: Penalty for base height away from target
     """
 
-    target_height: Union[float, torch.Tensor] = None
+    target_height: float | torch.Tensor = None
     height_command: CommandManager = None
     terrain_manager: TerrainManager = None
     entity_attr: str = "robot"

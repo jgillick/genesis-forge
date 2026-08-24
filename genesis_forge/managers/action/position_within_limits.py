@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import re
+
 import torch
-from genesis import gs
 
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.values import ensure_dof_pattern
-from .position_action_manager import PositionActionManager
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.values import ensure_dof_pattern
+
+from .position_action_manager import PositionActionManager
 
 
 class PositionWithinLimitsActionManager(PositionActionManager):
@@ -76,7 +78,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
         quiet_action_errors: bool = False,
-        limit: tuple[float, float] | dict[str, tuple[float, float]] = {},
+        limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         delay_step: int = 0,
     ):
@@ -87,7 +89,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             quiet_action_errors=quiet_action_errors,
             delay_step=delay_step,
         )
-        self._limit_cfg = ensure_dof_pattern(limit)
+        self._limit_cfg = ensure_dof_pattern(limit if limit is not None else {})
         self._soft_limit_scale_factor = soft_limit_scale_factor
 
     """

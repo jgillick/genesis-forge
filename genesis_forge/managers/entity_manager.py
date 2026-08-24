@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import torch
+from typing import TYPE_CHECKING, Any, Protocol
+
 import genesis as gs
+import torch
+from genesis.utils.geom import (
+    inv_quat,
+    transform_by_quat,
+)
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis.utils.geom import (
-    transform_by_quat,
-    inv_quat,
-)
-from genesis_forge.managers.config import ConfigItem, ResetMdpFn, ConfigItemDict
-
-from typing import NotRequired, Any, TYPE_CHECKING, Protocol
+from genesis_forge.managers.config import ConfigItem, ConfigItemDict, ResetMdpFn
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -29,7 +30,7 @@ class ResetConfigFn(Protocol):
     Return:
         result: torch.Tensor, shape (n_envs, 1)
     """
-    def __call__(self, env: GenesisEnv, entity: "RigidEntity", env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
 
 
 class EntityResetConfig(ConfigItemDict):
@@ -82,17 +83,17 @@ class EntityManager(BaseManager):
         self,
         env: GenesisEnv,
         entity_attr: str,
-        on_reset: dict[str, EntityResetConfig] = {},
+        on_reset: dict[str, EntityResetConfig] | None = None,
     ):
         super().__init__(env, type="entity")
         if hasattr(env, "add_entity_manager"):
             env.add_entity_manager(self)
 
         self.entity: RigidEntity | None = None
-        self.on_reset = on_reset
         self._entity_attr = entity_attr
 
         # Wrap config items
+        on_reset = on_reset if on_reset is not None else {}
         self.on_reset: dict[str, ConfigItem] = {}
         for name, cfg in on_reset.items():
             self.on_reset[name] = ConfigItem(cfg, env)
@@ -191,7 +192,7 @@ class EntityManager(BaseManager):
                 cfg.execute(envs_idx=envs_idx)
             except Exception as e:
                 print(f"Error resetting entity with config: '{name}'")
-                raise e
+                raise e # noqa
 
     """
     Implementation

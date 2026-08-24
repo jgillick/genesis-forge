@@ -1,6 +1,8 @@
 from __future__ import annotations
-from genesis_forge.genesis_env import GenesisEnv
+
 from typing import Literal
+
+from genesis_forge.genesis_env import GenesisEnv
 
 ManagerType = Literal[
     "action",
@@ -34,12 +36,9 @@ class BaseManager:
 
     def build(self):
         """Called when the scene is built"""
-        pass
 
     def step(self):
         """Called when the environment is stepped"""
-        pass
 
     def reset(self, envs_idx: list[int] | None = None):
         """One or more environments have been reset"""
-        pass

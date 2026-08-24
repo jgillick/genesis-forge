@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import re
-import torch
-import genesis as gs
 from typing import Any, TypeVar
+
+import genesis as gs
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
-from genesis_forge.values import ensure_dof_pattern
 from genesis_forge.managers.actuator import ActuatorManager
-
+from genesis_forge.values import ensure_dof_pattern
 
 T = TypeVar("T")
 
@@ -31,8 +33,8 @@ class PositionActionManager(BaseActionManager):
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
         clip: Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.
-        soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint 
-                                 of each joint's limits to establish a safety region within the limits. 
+        soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint
+                                 of each joint's limits to establish a safety region within the limits.
                                  Defaults to 1.0.
         quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
@@ -112,7 +114,7 @@ class PositionActionManager(BaseActionManager):
         actuator_joints: list[str] | str = ".*",
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
-        clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
+        clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         use_default_offset: bool = True,
         quiet_action_errors: bool = False,

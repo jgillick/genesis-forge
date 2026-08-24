@@ -62,7 +62,7 @@ def test_assignment_before_context_does_not_build(env):
 def test_env_access_before_context_raises():
     fn = Counting()
     with pytest.raises(RuntimeError, match="not bound"):
-        fn.env
+        fn.env # noqa: B018
 
 
 """
@@ -371,4 +371,4 @@ def test_reset_fn_entity_access_before_context_raises():
             return None
 
     with pytest.raises(RuntimeError, match="not bound"):
-        Placer().entity
+        Placer().entity # noqa: B018

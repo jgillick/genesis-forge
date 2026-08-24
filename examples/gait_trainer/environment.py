@@ -1,21 +1,19 @@
-import torch
 import genesis as gs
+import torch
+from gait_command_manager import GaitCommandManager
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
-    ContactManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations, observations
-
-from gait_command_manager import GaitCommandManager
-
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]

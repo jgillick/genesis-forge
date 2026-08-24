@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Any, ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     import torch
     from genesis.engine.entities import RigidEntity
+
     from genesis_forge.genesis_env import GenesisEnv
 
 
@@ -93,7 +94,6 @@ class MdpFn:
         any param is changed. Must be idempotent -- it is safe to call any number of
         times, and re-deriving from scratch is the expected implementation.
         """
-        pass
 
     def reset(self, envs_idx: list[int]) -> None:
         """
@@ -102,7 +102,6 @@ class MdpFn:
         Args:
             envs_idx: The environment ids being reset.
         """
-        pass
 
     """
     Runtime param changes

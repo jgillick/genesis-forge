@@ -8,7 +8,6 @@ function exists in the library yet; these tests keep the gap closed before one d
 
 from dataclasses import dataclass
 
-import pytest
 import torch
 
 from genesis_forge.managers import ObservationManager, TerminationManager

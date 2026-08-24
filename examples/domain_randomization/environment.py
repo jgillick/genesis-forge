@@ -1,19 +1,17 @@
-import torch
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
 )
 from genesis_forge.managers.actuator import NoisyValue
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]

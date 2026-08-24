@@ -11,7 +11,10 @@ per-DOF buffers) rather than have the two coincide by accident.
 import pytest
 import torch
 
-from genesis_forge.managers import PositionActionManager, PositionWithinLimitsActionManager
+from genesis_forge.managers import (
+    PositionActionManager,
+    PositionWithinLimitsActionManager,
+)
 from genesis_forge.managers.action.base import BaseActionManager
 
 

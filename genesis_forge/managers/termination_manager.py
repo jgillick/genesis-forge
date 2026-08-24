@@ -1,11 +1,12 @@
 
-import torch
-import genesis as gs
 from typing import NotRequired
+
+import genesis as gs
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import TerminationConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, TerminationConfigItem
 
 
 class TerminationConfig(ConfigItemDict):
@@ -190,7 +191,7 @@ class TerminationManager(BaseManager):
 
             except Exception as e:
                 print(f"Error calculating termination for '{name}'")
-                raise e
+                raise e # noqa TRY201
 
         self.env.extras["terminations"] = self._terminated_buf
         self.env.extras["time_outs"] = self._truncated_buf

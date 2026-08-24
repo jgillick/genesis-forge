@@ -5,20 +5,20 @@ Go2 stand-up environment: learn to rise from random collapsed ground poses.
 from __future__ import annotations
 
 import genesis as gs
+from reset import random_ground_pose
+from rewards import stand_and_balance_reward
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
 )
 from genesis_forge.mdp import rewards, terminations
 
-from reset import random_ground_pose
-from rewards import stand_and_balance_reward
 
 class Go2StandUpEnv(ManagedEnvironment):
     """Train the Go2 to stand up from random ground poses."""

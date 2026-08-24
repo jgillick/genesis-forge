@@ -1,5 +1,6 @@
-import torch
 from typing import Any, NotRequired, Protocol, TypedDict
+
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.config.mdp_fn import MdpFn

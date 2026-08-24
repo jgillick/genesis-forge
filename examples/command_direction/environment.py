@@ -3,15 +3,14 @@ import genesis as gs
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
@@ -42,7 +41,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
+                refresh_rate=0.5 / self.dt,
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,

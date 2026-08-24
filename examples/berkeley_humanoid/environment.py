@@ -2,17 +2,16 @@ import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
-    ContactManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.515]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]

@@ -1,11 +1,15 @@
 from __future__ import annotations
+
 import re
-import torch
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
+
 import genesis as gs
-from typing import Literal, TypedDict, TYPE_CHECKING, Any
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.values import ensure_dof_pattern
+
 from .noisy_value import NoisyValue
 
 if TYPE_CHECKING:
@@ -96,7 +100,7 @@ class ActuatorManager(BaseManager):
         self,
         env: GenesisEnv,
         joint_names: list[str] | str = ".*",
-        default_pos: float | NoisyValue | dict = {".*": 0.0},
+        default_pos: float | NoisyValue | dict | None = None,
         kp: float | NoisyValue | dict = None,
         kv: float | NoisyValue | dict = None,
         max_force: float | NoisyValue | tuple[Any, Any] | dict = None,
@@ -107,9 +111,11 @@ class ActuatorManager(BaseManager):
         entity_attr: str = "robot",
     ):
         super().__init__(env, type="actuator")
+        default_pos_val = default_pos if default_pos is not None else {".*": 0.0}
+
         self._dofs: dict[str, int] = {}
         self._robot: RigidEntity = getattr(env, entity_attr)
-        self._default_pos_cfg = ensure_dof_pattern(default_pos)
+        self._default_pos_cfg = ensure_dof_pattern(default_pos_val)
         self._kp_cfg = ensure_dof_pattern(kp)
         self._kv_cfg = ensure_dof_pattern(kv)
         self._max_force_cfg = ensure_dof_pattern(max_force)
@@ -207,7 +213,7 @@ class ActuatorManager(BaseManager):
     def get_dofs_velocity(
         self,
         noise: float = 0.0,
-        clip: tuple[float, float] = None,
+        clip: tuple[float, float] | None = None,
         dofs_idx: list[int] | None = None,
     ) -> torch.Tensor:
         """
@@ -258,7 +264,7 @@ class ActuatorManager(BaseManager):
             [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
             force = force.clamp(lower, upper)
         return force
-    
+
     def get_dofs_control_force(
         self,
         noise: float = 0.0,
@@ -423,7 +429,7 @@ class ActuatorManager(BaseManager):
 
     def reset(
         self,
-        envs_idx: list[int] = None,
+        envs_idx: list[int] | None = None,
     ):
         """Reset the DOF positions."""
         if not self.enabled:
@@ -488,7 +494,7 @@ class ActuatorManager(BaseManager):
         cfg = self._values[value_name]
         if cfg is None:
             return False
-        if cfg["has_been_set"] and not cfg["has_noise"]:
+        if cfg["has_been_set"] and not cfg["has_noise"]: # noqa SIM103
             return False
         return True
 

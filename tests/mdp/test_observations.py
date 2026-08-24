@@ -3,7 +3,6 @@
 import torch
 
 from genesis_forge.mdp import observations
-import genesis_forge.mdp.observations as observations_module
 
 
 class FakeEntityManager:

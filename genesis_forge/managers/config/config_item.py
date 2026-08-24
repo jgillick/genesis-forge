@@ -3,8 +3,8 @@ from types import MappingProxyType
 
 from genesis_forge.genesis_env import GenesisEnv
 
-from .mdp_fn import MdpFn
 from .config_item_dict import ConfigItemDict
+from .mdp_fn import MdpFn
 
 _NO_PARAMS = MappingProxyType({})
 """Read-only stand-in for the params of an MdpFn, whose params live on the instance."""
@@ -148,7 +148,7 @@ class RewardConfigItem(ConfigItem):
         super().__init__(cfg, env)
         self.weight = cfg.get("weight", 0.0)
 
-    def increment_weight(self, increment: float, limit: float = None):
+    def increment_weight(self, increment: float, limit: float | None = None):
         """
         Increment the weight value by the given amount.
 
@@ -159,7 +159,7 @@ class RewardConfigItem(ConfigItem):
         self.weight = directional_clamp(self.weight + increment, increment, limit)
         return self.weight
 
-    def increment_param(self, param: str, increment: float, limit: float = None):
+    def increment_param(self, param: str, increment: float, limit: float | None = None):
         """
         Increment a float parameter value by the given amount.
 
@@ -202,7 +202,7 @@ class ObservationConfigItem(ConfigItem):
         self.noise = cfg.get("noise", None)
 
 
-def directional_clamp(value: float, increment: float, limit: float = None) -> float:
+def directional_clamp(value: float, increment: float, limit: float | None = None) -> float:
     """Clamp an incremented value to `limit`, in whichever direction it moved."""
     if limit is None:
         return value

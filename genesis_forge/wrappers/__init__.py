@@ -1,9 +1,9 @@
-from .video import VideoWrapper
 from .rsl_rl import RslRlWrapper
 from .skrl import SkrlEnvWapper
+from .video import VideoWrapper
 
 __all__ = [
-    "VideoWrapper",
     "RslRlWrapper",
     "SkrlEnvWapper",
+    "VideoWrapper",
 ]

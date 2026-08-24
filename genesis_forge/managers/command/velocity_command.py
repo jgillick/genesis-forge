@@ -1,12 +1,12 @@
 import math
-from typing import NotRequired, Tuple, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
-import torch
 import genesis as gs
+import torch
 
+from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.utils import transform_by_quat
-from genesis_forge.gamepads import Gamepad
 
 from .command_manager import CommandManager, CommandRangeValue
 
@@ -32,13 +32,13 @@ class VelocityDebugVisualizerConfig(TypedDict):
     arrow_max_length: NotRequired[float]
     """The maximum length of the debug arrows"""
 
-    commanded_color: NotRequired[Tuple[float, float, float, float]]
+    commanded_color: NotRequired[tuple[float, float, float, float]]
     """The color of the commanded velocity arrow"""
 
-    actual_color: NotRequired[Tuple[float, float, float, float]]
+    actual_color: NotRequired[tuple[float, float, float, float]]
     """The color of the actual robot velocity arrow"""
 
-    standing_color: NotRequired[Tuple[float, float, float, float]]
+    standing_color: NotRequired[tuple[float, float, float, float]]
     """The color of the standing target indicator ball"""
 
     standing_ball_radius: NotRequired[float]
@@ -144,24 +144,24 @@ class VelocityCommandManager(CommandManager):
         resample_time_sec: float = 5.0,
         standing_probability: float = 0.0,
         debug_visualizer: bool = False,
-        debug_visualizer_cfg: VelocityDebugVisualizerConfig = {},
+        debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
     ):
         super().__init__(
-            env, 
-            range=range, 
+            env,
+            range=range,
             resample_time_sec=resample_time_sec,
         )
-                
+
         self._arrow_nodes: list = []
         self.standing_probability = standing_probability
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx: list | None = None
-        self.visualizer_cfg = debug_visualizer_cfg
+        self.visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
 
         self._is_standing_env = torch.zeros(
             env.num_envs, dtype=torch.bool, device=gs.device
         )
-    
+
     """
     Properties
     """
@@ -248,7 +248,7 @@ class VelocityCommandManager(CommandManager):
         super().step()
         self._render_arrows()
 
-    def use_gamepad( 
+    def use_gamepad(
         self,
         gamepad: Gamepad,
         lin_vel_y_axis: int = 0,
@@ -292,7 +292,7 @@ class VelocityCommandManager(CommandManager):
         """
         # Is the debug visualizer enabled?
         if not self.debug_visualizer or self.debug_envs_idx is None or len(self.debug_envs_idx) == 0:
-            return 
+            return
 
         # Don't update for every step
         if self.env.step_count % self._steps_per_debug_render != 0:
@@ -374,7 +374,7 @@ class VelocityCommandManager(CommandManager):
         self,
         pos: torch.Tensor,
         vec: torch.Tensor,
-        color: Tuple[float, float, float, float],
+        color: tuple[float, float, float, float],
     ):
         # If velocity is zero, don't draw the arrow
         if not torch.any(vec != 0.0):
@@ -388,13 +388,13 @@ class VelocityCommandManager(CommandManager):
             )
             if node:
                 self._arrow_nodes.append(node)
-        except Exception as e:
+        except Exception as e: # noqa
             print(f"Error adding debug visualizing in VelocityCommandManager: {e}")
 
     def _draw_target_ball(
         self,
         pos: torch.Tensor,
-        color: Tuple[float, float, float, float],
+        color: tuple[float, float, float, float],
     ):
         try:
             node = self.env.scene.draw_debug_sphere(
@@ -404,5 +404,5 @@ class VelocityCommandManager(CommandManager):
             )
             if node:
                 self._arrow_nodes.append(node)
-        except Exception as e:
+        except Exception as e: # noqa
             print(f"Error adding debug visualizing in VelocityCommandManager: {e}")

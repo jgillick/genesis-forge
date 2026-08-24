@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import os
-import math
 import inspect
+import math
+import os
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
 import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
-from typing import Tuple, Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.vis.camera import Camera
@@ -24,7 +27,7 @@ def capped_cubic_episode_trigger(episode_id: int) -> bool:
         If to apply a video schedule number
     """
     if episode_id < 1000:
-        return int(round(episode_id ** (1.0 / 3))) ** 3 == episode_id
+        return round(episode_id ** (1.0 / 3)) ** 3 == episode_id
     else:
         return episode_id % 1000 == 0
 
@@ -154,7 +157,7 @@ class VideoWrapper(Wrapper):
 
     def step(
         self, actions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """Record a video image at each step."""
         (
             observations,

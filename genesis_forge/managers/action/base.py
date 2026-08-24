@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import re
-from torch._tensor import Tensor
-import torch
-import numpy as np
-from gymnasium import spaces
+
 import genesis as gs
+import numpy as np
+import torch
+from gymnasium import spaces
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
@@ -114,7 +116,7 @@ class BaseActionManager(BaseManager):
         if self._raw_actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._raw_actions
-    
+
     @property
     def last_actions(self) -> torch.Tensor:
         """
@@ -150,7 +152,7 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] = None) -> torch.Tensor:
+    def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 

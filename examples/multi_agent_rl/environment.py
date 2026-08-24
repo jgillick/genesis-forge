@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
-from PIL import Image
-import numpy as np
+
 import genesis as gs
+import numpy as np
 from gymnasium import spaces
+from PIL import Image
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
@@ -103,7 +104,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                 file="urdf/go2/urdf/go2.urdf",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
-                links_to_keep=list(["FL_foot", "FR_foot", "RL_foot", "RR_foot"]),
+                links_to_keep=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
             ),
         )
 

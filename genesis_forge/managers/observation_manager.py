@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import torch
-import numpy as np
-from gymnasium import spaces
+from typing import Any, NotRequired, Protocol
+
 import genesis as gs
-from typing import NotRequired, Protocol, Any
+import numpy as np
+import torch
+from gymnasium import spaces
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import ObservationConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, ObservationConfigItem
+
 
 class ObservationFn(Protocol):
     def __call__(self, env: GenesisEnv, *params: Any, **kwargs: Any) -> torch.Tensor: ...
@@ -154,8 +157,8 @@ class ObservationManager(BaseManager):
 
         # Wrap config items
         self.cfg: dict[str, ObservationConfigItem] = {}
-        for name, cfg in cfg.items():
-            self.cfg[name] = ObservationConfigItem(cfg, env)
+        for cfg_name, item in cfg.items():
+            self.cfg[cfg_name] = ObservationConfigItem(item, env)
 
     """
     Properties
@@ -231,7 +234,7 @@ class ObservationManager(BaseManager):
         """
         Generate current observations for all environments.
 
-        Optionally, you can provide the observation values directly as a dictionary of values, and 
+        Optionally, you can provide the observation values directly as a dictionary of values, and
         this method will return the formatted/scaled (without noise) tensor for the policy.
         This is useful for manual deployments or troubleshooting.
 
@@ -277,7 +280,7 @@ class ObservationManager(BaseManager):
                     size += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e
+                raise e # noqa
         return size
 
     def _perform_observation(
@@ -326,5 +329,5 @@ class ObservationManager(BaseManager):
                     offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e
+                raise e # noqa
         return output

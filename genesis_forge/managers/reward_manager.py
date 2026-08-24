@@ -1,11 +1,13 @@
 from __future__ import annotations
-import torch
+
+from collections.abc import Iterator
+
 import genesis as gs
-from typing import Iterator
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import RewardConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, RewardConfigItem
 
 
 class RewardConfig(ConfigItemDict):
@@ -95,8 +97,8 @@ class RewardManager(BaseManager):
 
         # Wrap config items
         self.cfg: dict[str, RewardConfigItem] = {}
-        for name, cfg in cfg.items():
-            self.cfg[name] = RewardConfigItem(cfg, env)
+        for name, item in cfg.items():
+            self.cfg[name] = RewardConfigItem(item, env)
 
         # Initialize buffers
         self._reward_buf = torch.zeros(
@@ -105,9 +107,9 @@ class RewardManager(BaseManager):
         self._episode_seconds = torch.zeros(
             (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
-        self._episode_mean: dict[str, torch.Tensor] = dict()
-        self._episode_data: dict[str, torch.Tensor] = dict()
-        for name in self.cfg.keys():
+        self._episode_mean: dict[str, torch.Tensor] = {}
+        self._episode_data: dict[str, torch.Tensor] = {}
+        for name in self.cfg:
             self._episode_data[name] = torch.zeros(
                 (env.num_envs,), device=gs.device, dtype=gs.tc_float
             )

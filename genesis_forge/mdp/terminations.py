@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 Termination functions for the Genesis environment.
 Each of these should return a boolean tensor indicating which environments should terminate, in the tensor shape (num_envs,).
@@ -9,15 +10,16 @@ from dataclasses import dataclass
 from typing import Literal
 
 import torch
+
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.utils import entity_projected_gravity
 from genesis_forge.managers import (
     ActuatorManager,
     ContactManager,
     EntityManager,
-    TerrainManager,
     MdpFn,
+    TerrainManager,
 )
+from genesis_forge.utils import entity_projected_gravity
 
 
 @dataclass(kw_only=True, eq=False)

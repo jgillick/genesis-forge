@@ -2,20 +2,19 @@
 Simplified Go2 Locomotion Environment using managers to handle everything.
 """
 
-import torch
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]

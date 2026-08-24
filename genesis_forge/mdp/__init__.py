@@ -11,9 +11,6 @@ Submodules:
 - :mod:`observations` — observation functions (e.g. ``entity_linear_velocity``)
 - :mod:`reset` — entity reset functions (e.g. ``randomize_terrain_position``)
 """
-from . import reset
-from . import rewards
-from . import terminations
-from . import observations
+from . import observations, reset, rewards, terminations
 
-__all__ = ["rewards", "terminations", "observations", "reset"]
+__all__ = ["observations", "reset", "rewards", "terminations"]

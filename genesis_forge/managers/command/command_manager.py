@@ -1,16 +1,17 @@
 from __future__ import annotations
-from typing import Tuple, Callable, TypedDict
 
 import os
-import torch
-import genesis as gs
+from collections.abc import Callable, Mapping
 
+import genesis as gs
+import torch
+
+from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.gamepads import Gamepad
 
-CommandRangeValue = Tuple[float, float]
-CommandRange = CommandRangeValue | dict[str, CommandRangeValue] | TypedDict
+CommandRangeValue = tuple[float, float]
+CommandRange = CommandRangeValue | Mapping[str, CommandRangeValue]
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -112,11 +113,10 @@ class CommandManager(BaseManager):
                 f"Cannot change the base type of the CommandManager range. Expected type: {type(self._range)}, got {type(range)}"
             )
         # Validate that the dict keys match the current range dict keys
-        if isinstance(range, dict):
-            if set(range.keys()) != set(self._range.keys()):
-                raise ValueError(
-                    f"Cannot change the dict keys of the CommandManager range. Expected keys: {set(self._range.keys())}, got {set(range.keys())}"
-                )
+        if isinstance(range, dict) and set(range.keys()) != set(self._range.keys()):
+            raise ValueError(
+                f"Cannot change the dict keys of the CommandManager range. Expected keys: {set(self._range.keys())}, got {set(range.keys())}"
+            )
         self._range = range
 
     @property
@@ -139,7 +139,7 @@ class CommandManager(BaseManager):
         If the range is a dict, get the command values for the given key.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         return self._command[:, self._range_idx[range_key]]
 
     def set_command(
@@ -152,7 +152,7 @@ class CommandManager(BaseManager):
         Update a command value for selected environments.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         if envs_idx is None:
             self._command[:, self._range_idx[range_key]] = value
         else:
@@ -162,7 +162,7 @@ class CommandManager(BaseManager):
         self,
         range_key: str,
         increment: float | tuple[float, float],
-        limit: float | tuple[float, float] = None,
+        limit: float | tuple[float, float] | None = None,
     ):
         """
         Increment a command range target values by the given amount, with an optional limit.
@@ -191,7 +191,7 @@ class CommandManager(BaseManager):
         """
         # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
         if not isinstance(self.range, dict):
-            raise ValueError("Cannot increment a non-dict range item")
+            raise TypeError("Cannot increment a non-dict range item")
         range_item = self._range.get(range_key, None)
         if range_item is None:
             raise ValueError(f"Range item {range_key} not found")
@@ -219,7 +219,7 @@ class CommandManager(BaseManager):
         If the range is a dict, get the command index for the given key.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         return self._range_idx[key]
 
     def step(self):
@@ -355,7 +355,7 @@ class CommandManager(BaseManager):
             axis_map.append(range_axis)
             axis_invert_map.append(invert_axis)
         elif isinstance(range_axis, dict):
-            for key in self._range.keys():
+            for key in self._range:
                 axis_map.append(range_axis[key])
                 axis_invert_map.append(
                     invert_axis[key] if isinstance(invert_axis, dict) else invert_axis

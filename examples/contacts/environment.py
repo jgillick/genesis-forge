@@ -6,17 +6,16 @@ import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
-    ContactManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.35]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
@@ -167,7 +166,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         RewardManager(
             self,
             logging_enabled=True,
-            cfg={
+            item={
                 "foot_air_time": {
                     "weight": 2.5,
                     "fn": rewards.feet_air_time(

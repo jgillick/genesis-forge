@@ -5,7 +5,13 @@ all: build
 clean:
 	rm -rf dist/ build/ *.egg-info/
 
-build: clean
+lint:
+	uv run ruff check genesis_forge examples tests
+
+test:
+	uv run pytest -v --disable-warnings --maxfail=1
+
+build: clean lint test
 	uv build
 
 deploy: build

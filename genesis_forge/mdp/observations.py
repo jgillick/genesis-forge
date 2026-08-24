@@ -1,21 +1,26 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from genesis import gs
+from typing import TYPE_CHECKING
+
 import torch
+from genesis import gs
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
-    PositionActionManager,
-    EntityManager,
     ContactManager,
+    EntityManager,
     MdpFn,
+    PositionActionManager,
 )
 from genesis_forge.utils import (
-    entity_lin_vel,
     entity_ang_vel,
+    entity_lin_vel,
+)
+from genesis_forge.utils import (
     entity_projected_gravity as get_entity_projected_gravity,
 )
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -133,7 +138,7 @@ class read_imu(MdpFn):
         torch.Tensor: Shape `(n_envs, 6)` — `[lin_acc_xyz, ang_vel_xyz]` per env.
     """
 
-    imu: "gs.sensors.IMU"
+    imu: gs.sensors.IMU
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         value = self.imu.read()

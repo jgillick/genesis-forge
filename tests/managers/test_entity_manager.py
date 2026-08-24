@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 import torch
-from genesis.utils.geom import transform_by_quat, inv_quat
+from genesis.utils.geom import inv_quat, transform_by_quat
 
 from genesis_forge.managers import EntityManager
 from genesis_forge.managers.config import ResetMdpFn

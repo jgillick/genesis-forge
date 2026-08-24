@@ -412,7 +412,7 @@ def test_step_returns_the_reward_and_termination_manager_outputs():
     env.build()
     env.reset()
 
-    obs, rewards, terminated, truncated, extras = env.step(torch.zeros((4, 0)))
+    _obs, rewards, terminated, _truncated, _extras = env.step(torch.zeros((4, 0)))
 
     assert torch.equal(rewards, torch.full((4,), 3.0))
     assert terminated.tolist() == [True, False, False, False]
@@ -423,7 +423,7 @@ def test_step_without_a_reward_or_termination_manager_uses_the_zeroed_defaults()
     env.build()
     env.reset()
 
-    obs, rewards, terminated, truncated, extras = env.step(torch.zeros((4, 0)))
+    _obs, rewards, terminated, truncated, _extras = env.step(torch.zeros((4, 0)))
 
     assert torch.equal(rewards, torch.zeros(4))
     assert torch.equal(terminated, torch.zeros(4, dtype=torch.bool))
@@ -482,7 +482,7 @@ def test_reset_with_specific_env_ids_does_not_return_real_observations():
     env.build()
     env.reset()  # full reset first, to establish buffers
 
-    obs, extras = env.reset([0])
+    obs, _extras = env.reset([0])
 
     assert obs is None
 
@@ -496,7 +496,7 @@ def test_reset_with_no_env_ids_returns_real_observations():
     env = ConfigurableEnv(configure=configure, num_envs=4)
     env.build()
 
-    obs, extras = env.reset()
+    obs, _extras = env.reset()
 
     assert obs.shape == (4, 2)
     assert torch.all(obs == 5.0)

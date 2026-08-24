@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-import torch
 import math
-import genesis as gs
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Literal
+
+import genesis as gs
+import torch
 from genesis.utils.geom import (
     xyz_to_quat,
 )
+
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.managers import ResetMdpFn
 from genesis_forge.managers.terrain_manager import TerrainManager
 from genesis_forge.utils import links_by_name_pattern
-from genesis_forge.managers import ResetMdpFn
-from typing import Literal, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -149,9 +152,9 @@ class randomize_terrain_position(ResetMdpFn):
         """
         Set the rotation quaternion for the given environment ids.
         """
-        x = rotation["x"] if "x" in rotation else 0
-        y = rotation["y"] if "y" in rotation else 0
-        z = rotation["z"] if "z" in rotation else 0
+        x = rotation.get("x", 0)
+        y = rotation.get("y", 0)
+        z = rotation.get("z", 0)
         n_envs = len(envs_idx)
 
         if isinstance(x, tuple):

@@ -6,9 +6,9 @@ function lifecycle) and never build a Genesis scene, so the environment is faked
 
 from dataclasses import dataclass, field
 
+import genesis as gs
 import pytest
 import torch
-import genesis as gs
 
 
 @dataclass

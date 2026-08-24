@@ -1,22 +1,22 @@
 import os
+
 import genesis as gs
 import numpy as np
 from PIL import Image
 
-from genesis_forge import ManagedEnvironment, EnvMode
+from genesis_forge import EnvMode, ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
-    VelocityCommandManager,
+    RewardManager,
+    TerminationManager,
     TerrainManager,
-    ContactManager,
+    VelocityCommandManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
-
 
 HEIGHT_OFFSET = 0.4  # How high above the terrain the robot should be placed
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]

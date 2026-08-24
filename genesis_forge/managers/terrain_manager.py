@@ -1,11 +1,13 @@
 from __future__ import annotations
-import torch
-import torch.nn.functional as F
-import genesis as gs
-from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers import BaseManager
 
 from typing import TYPE_CHECKING
+
+import genesis as gs
+import torch
+import torch.nn.functional as F
+
+from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.managers import BaseManager
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity

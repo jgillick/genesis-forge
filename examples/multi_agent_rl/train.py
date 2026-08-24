@@ -4,22 +4,21 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import pickle
+import shutil
 
 import genesis as gs
 import torch
-
-from genesis_forge.wrappers import VideoWrapper
+from env_wrapper import SkrlMasqWrapper
+from environment import Go2MasqLocomotionEnv
+from models import MasqGaussianPolicy, MasqValue
 from skrl.memories.torch import RandomMemory
 from skrl.multi_agents.torch import ExperimentCfg
 from skrl.multi_agents.torch.mappo import MAPPO
 from skrl.multi_agents.torch.mappo.mappo_cfg import MAPPO_CFG
 from skrl.trainers.torch import SequentialTrainer
 
-from env_wrapper import SkrlMasqWrapper
-from environment import Go2MasqLocomotionEnv
-from models import MasqGaussianPolicy, MasqValue
+from genesis_forge.wrappers import VideoWrapper
 
 EXPERIMENT_NAME = "go2-multi-agent"
 
@@ -101,10 +100,8 @@ def main() -> None:
             checkpoint_interval=max(1000, args.timesteps // 10),
         ),
     )
-    pickle.dump(
-        [cfg],
-        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
-    )
+    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
+        pickle.dump([cfg], f)
 
     # SKRL memory is (rollout_steps, num_envs, …); use rollouts as the time axis (see skrl Runner).
     memories = {

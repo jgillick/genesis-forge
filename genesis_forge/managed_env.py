@@ -1,23 +1,26 @@
 from __future__ import annotations
-import torch
-import numpy as np
+
 from typing import Any, TypedDict
-from gymnasium import spaces
+
 import genesis as gs
+import numpy as np
+import torch
+from gymnasium import spaces
 from tensordict import TensorDict
+
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers.base import BaseManager, ManagerType
 from genesis_forge.managers import (
+    ActuatorManager,
+    CommandManager,
     ContactManager,
     EntityManager,
-    CommandManager,
-    TerrainManager,
-    PositionActionManager,
     ObservationManager,
+    PositionActionManager,
     RewardManager,
     TerminationManager,
-    ActuatorManager,
+    TerrainManager,
 )
+from genesis_forge.managers.base import BaseManager, ManagerType
 
 
 class ManagersDict(TypedDict):
@@ -247,7 +250,6 @@ class ManagedEnvironment(GenesisEnv):
                     },
                 )
         """
-        pass
 
     def build(self):
         """

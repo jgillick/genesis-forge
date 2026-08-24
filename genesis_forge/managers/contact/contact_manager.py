@@ -2,21 +2,17 @@ from __future__ import annotations
 
 import math
 import re
-import torch
+
 import genesis as gs
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.managers.contact.config import (
-    ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
+    ContactDebugVisualizerConfig,
 )
 from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from genesis.engine.entities import RigidEntity
 
 
 class ContactManager(BaseManager):
@@ -138,8 +134,8 @@ class ContactManager(BaseManager):
         env: GenesisEnv,
         link_names: list[str],
         entity_attr: str = "robot",
-        with_entity_attr: str = None,
-        with_links_names: list[str] = None,
+        with_entity_attr: str | None = None,
+        with_links_names: list[str] | None = None,
         track_air_time: bool = False,
         air_time_contact_threshold: float = 1.0,
         debug_visualizer: bool = False,
@@ -363,7 +359,7 @@ class ContactManager(BaseManager):
     """
 
     def _get_links_idx(
-        self, entity_attr: str, names: list[str] = None
+        self, entity_attr: str, names: list[str] | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Find the link indices for the given link names or regular expressions.
@@ -372,7 +368,7 @@ class ContactManager(BaseManager):
             entity_attr: The attribute name of the robot entity to find the links in.
             names: The names, or name regex patterns, of the links to find.
 
-        Returns: 
+        Returns:
             Tuple of global and local link index tensors.
         """
         entity = self.env.__getattribute__(entity_attr)

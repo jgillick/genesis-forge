@@ -12,7 +12,6 @@ requires-python = ">=3.10"
 dependencies = [
   "genesis-world>=1.0.0",
   "gymnasium",
-  "deprecated",
   "pysdl2",
   "pysdl2-dll",
   "skrl[torch]",
@@ -37,4 +36,11 @@ exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Raised by the `genesis` package's own imports, not by genesis-forge code.
+    "ignore:`torch.jit.script` is deprecated.*:DeprecationWarning",
+    "ignore:Using SDL2 binaries from pysdl2-dll.*:UserWarning",
 ]

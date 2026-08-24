@@ -5,13 +5,14 @@ the section for the version you're upgrading to.
 
 ## Upgrading to version 1.0
 
-`MdpFnClass` / `ResetMdpFnClass` have been removed, and MDP function params are now
-typed dataclass fields instead of a `params` dict. See the release notes for why.
+- `MdpFnClass` / `ResetMdpFnClass` have been removed, and MDP function params are now
+  typed dataclass fields instead of a `params` dict. See the release notes for why.
+- Deprecated parameters have now been removed
 
 ### Built-inMDP function params
 
-Every built-in MDP function (rewards, terminations, observations, etc) that takes params
-is now **constructed** with them, instead of referenced with a separate `"params"` dict.
+Every built-in MDP function (rewards, terminations, observations, etc) are now **constructed** with params,
+instead of referenced with a separate `"params"` dict.
 
 **Before:**
 
@@ -26,8 +27,8 @@ is now **constructed** with them, instead of referenced with a separate `"params
 "fn": rewards.base_height(target_height=0.3),
 ```
 
-This applies to every built-in in `genesis_forge.mdp` (`rewards`, `terminations`,
-`observations`, `reset`) mdp function.
+This applies to every built-in `genesis_forge.mdp` function (`rewards`, `terminations`,
+`observations`, `reset`).
 
 ### Changing mdp function params during training
 
@@ -46,20 +47,20 @@ self.reward_manager.cfg["base_height"].fn.target_height = 0.3
 ```
 
 Changing several params at once should go through `update()` so the function rebuilds
-once instead of once per assignment:
+internal state once instead of once per assignment:
 
 ```python
-self.reward_manager.cfg["smooth"].fn.update(sensitivity=0.3, entity_attr="robot")
+self.reward_manager.cfg["has_contact"].fn.update(min_contacts=2, threshold=1.0)
 ```
 
-`increment_param()` and `increment_weight()` need no code changes.
+`increment_param()` and `increment_weight()` need no changes.
 
 ---
 
 ### Custom MdpFnClass / ResetMdpFnClass subclasses
 
-If you wrote your own stateful reward, termination, observation, or reset function as
-a class, convert it to `MdpFn` / `ResetMdpFn`:
+If you wrote your own reward, termination, observation, or reset functions as
+a `MdpFnClass` or `ResetMdpFnClass` subclass, convert them to `MdpFn` / `ResetMdpFn`:
 
 **Before:**
 
@@ -145,7 +146,7 @@ class randomize_link_mass_shift(ResetMdpFn):
 ### Custom plain MDP functions
 
 Any custom mdp function you defined as a plain function (not class-based function),
-should still work the same as before:
+should still work the same as before (though, note, the params dict will likely be deprecated in the future):
 
 ```python
  RewardManager(
@@ -164,15 +165,12 @@ def my_custom_reward(env: GenesisEnv, target: float):
     # ... do reward calculations here ...
 ```
 
-### Deprecated APIs removed
+### Legacy actuator kwargs on action managers.
 
-A few APIs deprecated in earlier 0.x releases are gone. Each has a direct
-replacement that already worked before this version.
-
-**Legacy actuator kwargs on action managers.** `PositionActionManager` (and other
+`PositionActionManager` (and other
 `BaseActionManager` subclasses) no longer accept actuator settings directly
 (`joint_names`, `default_pos`, `pd_kp`, `pd_kv`, `max_force`, `damping`, `stiffness`,
-`frictionloss`, `noise_scale`). Define an `ActuatorManager` and pass it in instead:
+`frictionloss`, `noise_scale`). Define these on an `ActuatorManager` instead:
 
 **Before:**
 
@@ -202,9 +200,22 @@ self.action_manager = PositionActionManager(
 )
 ```
 
-**`.actuators` property removed.** Use `.actuator_manager` on any action manager instead.
+### Action manager: actuators property renamed to actuator_manager.
 
-**`action_manager` param removed from a few MDP functions.**
+**Before:**
+
+```python
+self.action_manager.actuators
+```
+
+**After:**
+
+```python
+self.action_manager.actuator_manager
+```
+
+### Action manager param removed from some MDP functions
+
 `rewards.dof_similar_to_default`, `observations.entity_dofs_position`, and
 `observations.entity_dofs_force` no longer accept `action_manager` -- pass
 `actuator_manager` instead:
@@ -221,8 +232,9 @@ self.action_manager = PositionActionManager(
 "fn": rewards.dof_similar_to_default(actuator_manager=self.actuator_manager),
 ```
 
-**`default_noise_scale` removed from `ActuatorManager`.** Use `NoisyValue` on individual
-values instead of a single global noise scale:
+### `default_noise_scale` removed from `ActuatorManager`.
+
+Use `NoisyValue` on individual values instead of a single global noise scale:
 
 **Before:**
 

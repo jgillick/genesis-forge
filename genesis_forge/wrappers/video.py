@@ -112,7 +112,6 @@ class VideoWrapper(Wrapper):
 
         self._cam: Camera | None = None
         self._start_recording_has_args: bool = False
-        self._current_filepath: str | None = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
@@ -120,6 +119,8 @@ class VideoWrapper(Wrapper):
         self._steps_per_frame = max(1, round(1.0 / fps / self.dt)) # max prevents division by zero
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
+
+        self._recording_filepath = os.path.join(self._out_dir, ".recording.mp4")
 
         if episode_trigger is None and step_trigger is None:
             episode_trigger = capped_cubic_episode_trigger
@@ -195,18 +196,15 @@ class VideoWrapper(Wrapper):
         """Start recording a video."""
         if self._cam is None:
             return
-        
+
         self._is_recording = True
         self._recording_start_step = self._current_step
         self._recording_stop_step = self._current_step + self._video_length_steps
 
-        filename = self._filename or f"{self._recording_start_step}.mp4"
-        self._current_filepath = os.path.join(self._out_dir, filename)
-
         # Genesis >= 1.3: filename/fps are passed to start_recording
         if self._start_recording_has_args:
-            self._cam.start_recording(  
-                save_to_filename=self._current_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
+            self._cam.start_recording(
+                save_to_filename=self._recording_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
             )
         else:
             self._cam.start_recording()
@@ -218,13 +216,17 @@ class VideoWrapper(Wrapper):
         if not self._is_recording or self._cam is None:
             return
 
+        filename = self._filename or f"{self._recording_start_step}.mp4"
+        filepath = os.path.join(self._out_dir, filename)
+
         # Save recording
         if self._logging:
-            print(f"Saving recording to {self._current_filepath}")
+            print(f"Saving recording to {filepath}")
         if self._start_recording_has_args:
             self._cam.stop_recording()
+            os.rename(self._recording_filepath, filepath)
         else:
-            self._cam.stop_recording(self._current_filepath, fps=self._actual_fps)
+            self._cam.stop_recording(filepath, fps=self._actual_fps)
 
         # Reset recording state
         self._is_recording = False
@@ -233,7 +235,7 @@ class VideoWrapper(Wrapper):
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
         record = False
-        if not self._is_recording: 
+        if not self._is_recording:
             if self.episode_trigger is not None:
                 record = self.episode_trigger(self._current_episode)
             if self.step_trigger is not None:
@@ -257,4 +259,3 @@ class VideoWrapper(Wrapper):
             return False
         value = term_buffer[self._env_idx]
         return bool(value.item()) if isinstance(value, torch.Tensor) else bool(value)
-        

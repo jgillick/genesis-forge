@@ -354,6 +354,12 @@ class ManagedEnvironment(GenesisEnv):
         Returns:
             A batch of observations (if env_ids is None) and an info dictionary from the vectorized environment.
         """
+        reset_all = env_ids is None
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=gs.device)
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
+
         (obs, _) = super().reset(env_ids)
 
         for actuator_manager in self.managers["actuator"]:
@@ -375,7 +381,7 @@ class ManagedEnvironment(GenesisEnv):
 
         # Only get observations when env_ids is None because this will be the initial reset called before the first step
         # Otherwise, the observations are ignored
-        if env_ids is None:
+        if reset_all:
             obs = self.get_observations()
 
         return obs, self.extras
@@ -465,7 +471,7 @@ class ManagedEnvironment(GenesisEnv):
         # If ther is an observation manager named "policy", that is the primary observation
         # manager and what will be returned to the main policy
         if policy_obs_mgr is not None:
-            self._observation_space = obs_manager.observation_space
+            self._observation_space = policy_obs_mgr.observation_space
             return
 
         # Merge the observation manager spaces

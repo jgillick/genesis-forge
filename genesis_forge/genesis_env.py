@@ -230,6 +230,8 @@ class GenesisEnv:
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=gs.device)
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
         # Initial reset, set buffers
         if self.step_count == 0 and self.action_space is not None:

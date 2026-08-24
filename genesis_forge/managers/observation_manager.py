@@ -302,6 +302,8 @@ class ObservationManager(BaseManager):
                     value = override_values[name]
                     if not isinstance(value, torch.Tensor):
                         value = torch.tensor(value, device=gs.device)
+                    if value.dim() == 0:
+                        value = value.expand(self.env.num_envs, 1).clone()
                 else:
                     value = cfg.execute()
 

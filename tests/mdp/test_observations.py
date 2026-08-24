@@ -76,11 +76,11 @@ def test_entity_angular_velocity_uses_entity_manager(env):
 
 """
 entity_dofs_position / velocity / force -- actuator_manager (or action_manager, for
-velocity) takes priority over the raw entity_attr path
+velocity) takes priority over the raw entity path
 """
 
 
-def test_dofs_position_prefers_actuator_manager_over_entity_attr(env):
+def test_dofs_position_prefers_actuator_manager_over_entity(env):
     actuator = FakeActuatorManager(pos=torch.tensor([[1.0, 2.0]]))
 
     class FakeEntityWithDofs:
@@ -102,7 +102,7 @@ def test_dofs_force_clip_to_max_force_is_passed_through(env):
     assert torch.equal(fn(env), torch.tensor([[5.0, 5.0]]))
 
 
-def test_dofs_velocity_prefers_action_manager_over_entity_attr(env):
+def test_dofs_velocity_prefers_action_manager_over_entity(env):
     class FakeActionManager:
         def get_dofs_velocity(self):
             return torch.tensor([[1.0, 2.0]])
@@ -113,7 +113,7 @@ def test_dofs_velocity_prefers_action_manager_over_entity_attr(env):
     assert torch.equal(fn(env), torch.tensor([[1.0, 2.0]]))
 
 
-def test_dofs_velocity_falls_back_to_entity_attr(env):
+def test_dofs_velocity_falls_back_to_entity(env):
     class FakeEntityWithDofs:
         def get_dofs_velocity(self, dofs_idx):
             assert dofs_idx == [0, 1]
@@ -121,6 +121,22 @@ def test_dofs_velocity_falls_back_to_entity_attr(env):
 
     env.robot = FakeEntityWithDofs()
     fn = observations.entity_dofs_velocity(dofs_idx=[0, 1])
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[3.0, 4.0]]))
+
+
+def test_dofs_velocity_prefers_explicit_entity_over_env_robot(env):
+    class FakeEntityWithDofs:
+        def __init__(self, value):
+            self._value = value
+
+        def get_dofs_velocity(self, dofs_idx):
+            return self._value
+
+    env.robot = FakeEntityWithDofs(torch.tensor([[9.0, 9.0]]))
+    other_entity = FakeEntityWithDofs(torch.tensor([[3.0, 4.0]]))
+    fn = observations.entity_dofs_velocity(entity=other_entity)
     fn.context(env)
     fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[3.0, 4.0]]))

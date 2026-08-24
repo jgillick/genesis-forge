@@ -37,20 +37,20 @@ class entity_linear_velocity(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the observation for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: The linear velocity of the entity's base link, in the entity's local frame.
     """
 
     entity_manager: EntityManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             return self.entity_manager.get_linear_velocity()
-        entity = getattr(env, self.entity_attr)
+        entity = self.entity if self.entity is not None else env.robot
         return entity_lin_vel(entity)
 
 
@@ -61,20 +61,20 @@ class entity_angular_velocity(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the observation for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: The angular velocity of the entity's base link, in the entity's local frame.
     """
 
     entity_manager: EntityManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             return self.entity_manager.get_angular_velocity()
-        entity = getattr(env, self.entity_attr)
+        entity = self.entity if self.entity is not None else env.robot
         return entity_ang_vel(entity)
 
 
@@ -85,20 +85,20 @@ class entity_projected_gravity(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the observation is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the observation for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: The projected gravity of the entity's base link, in the entity's local frame.
     """
 
     entity_manager: EntityManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             return self.entity_manager.get_projected_gravity()
-        entity = getattr(env, self.entity_attr)
+        entity = self.entity if self.entity is not None else env.robot
         return get_entity_projected_gravity(entity)
 
 
@@ -157,8 +157,8 @@ class entity_dofs_position(MdpFn):
 
     Args:
         actuator_manager: The actuator manager for the robot/entity.
-                          This bypasses the need for dofs_idx and entity_attr parameters.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `actuator_manager` is provided.
+                          This bypasses the need for dofs_idx and entity parameters.
+        entity: The entity to read DOFs from. Defaults to `env.robot`. This isn't necessary if `actuator_manager` is provided.
         dofs_idx: The indices of the DOFs to get the position of. This isn't necessary if `actuator_manager` is provided.
 
     Returns:
@@ -166,13 +166,13 @@ class entity_dofs_position(MdpFn):
     """
 
     actuator_manager: ActuatorManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     dofs_idx: list[int] = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:
             return self.actuator_manager.get_dofs_position()
-        entity: RigidEntity = getattr(env, self.entity_attr)
+        entity: RigidEntity = self.entity if self.entity is not None else env.robot
         return entity.get_dofs_position(self.dofs_idx)
 
 
@@ -183,8 +183,8 @@ class entity_dofs_velocity(MdpFn):
 
     Args:
         action_manager: The action manager for the robot/entity.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `action_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to read DOFs from. Defaults to `env.robot`. This isn't necessary if `action_manager` is provided.
         dofs_idx: The indices of the DOFs to get the velocity of. This isn't necessary if `action_manager` is provided.
 
     Returns:
@@ -192,13 +192,13 @@ class entity_dofs_velocity(MdpFn):
     """
 
     action_manager: PositionActionManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     dofs_idx: list[int] = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.action_manager is not None:
             return self.action_manager.get_dofs_velocity()
-        entity: RigidEntity = getattr(env, self.entity_attr)
+        entity: RigidEntity = self.entity if self.entity is not None else env.robot
         return entity.get_dofs_velocity(self.dofs_idx)
 
 
@@ -209,8 +209,8 @@ class entity_dofs_force(MdpFn):
 
     Args:
         actuator_manager: The actuator manager for the robot/entity.
-                          This bypasses the need for dofs_idx and entity_attr parameters.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `actuator_manager` is provided.
+                          This bypasses the need for dofs_idx and entity parameters.
+        entity: The entity to read DOFs from. Defaults to `env.robot`. This isn't necessary if `actuator_manager` is provided.
         dofs_idx: The indices of the DOFs to get the force of. This isn't necessary if `actuator_manager` is provided.
         clip_to_max_force: Clip the force to the maximum force defined in the `actuator_manager`.
 
@@ -219,7 +219,7 @@ class entity_dofs_force(MdpFn):
     """
 
     actuator_manager: ActuatorManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     dofs_idx: list[int] = None
     clip_to_max_force: bool = False
 
@@ -228,7 +228,7 @@ class entity_dofs_force(MdpFn):
             return self.actuator_manager.get_dofs_force(
                 clip_to_max_force=self.clip_to_max_force
             )
-        entity: RigidEntity = getattr(env, self.entity_attr)
+        entity: RigidEntity = self.entity if self.entity is not None else env.robot
         return entity.get_dofs_force(self.dofs_idx)
 
 

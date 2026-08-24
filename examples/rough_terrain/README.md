@@ -17,13 +17,13 @@ def __init__(self):
 
 def config(self):
     # Terrain manager helps the EntityManager safetly place the robot above the terrain on reset
-    self.terrain_manager = TerrainManager(self, terrain_attr="terrain")
+    self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
     # Robot manager
     # Randomize the robot's position on the terrain after reset
     self.robot_manager = EntityManager(
         self,
-        entity_attr="robot",
+        entity=self.robot,
         on_reset={
             "position": {
                 "fn": reset.randomize_terrain_position(

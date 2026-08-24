@@ -32,13 +32,13 @@ class MyEnv(ManagedEnvironment):
         # Load your terrain into the manager
         self.terrain_manager = TerrainManager(
             self,
-            terrain_attr="terrain",
+            terrain=self.terrain,
         )
 
         # Place the robot in random places around the flat_terrain subterrain
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "position": {
                     "fn": reset.randomize_terrain_position(

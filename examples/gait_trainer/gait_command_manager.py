@@ -90,11 +90,11 @@ class GaitCommandManager(CommandManager):
         env: GenesisEnv,
         foot_names: FootNames,
         resample_time_sec: float = 5.0,
-        robot_entity_attr: str = "robot",
+        robot_entity: RigidEntity = None,
     ):
         super().__init__(env, range={}, resample_time_sec=resample_time_sec)
 
-        self._robot_entity_attr = robot_entity_attr
+        self._robot_entity = robot_entity if robot_entity is not None else env.robot
         self._foot_names = foot_names
         self.foot_links = []
         self._gamepad: Gamepad | None = None
@@ -222,7 +222,7 @@ class GaitCommandManager(CommandManager):
         Get foot link indices
         """
         super().build()
-        robot: RigidEntity = getattr(self.env, self._robot_entity_attr)
+        robot: RigidEntity = self._robot_entity
         for i, key in enumerate(("FL", "FR", "RL", "RR")):
             foot_link_name = self._foot_names[key]
             self.foot_links.insert(i, robot.get_link(foot_link_name))

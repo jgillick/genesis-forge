@@ -7,7 +7,7 @@ Each of these should return a boolean tensor indicating which environments shoul
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import torch
 
@@ -20,6 +20,9 @@ from genesis_forge.managers import (
     TerrainManager,
 )
 from genesis_forge.utils import entity_projected_gravity
+
+if TYPE_CHECKING:
+    from genesis.engine.entities import RigidEntity
 
 
 @dataclass(kw_only=True, eq=False)
@@ -47,7 +50,7 @@ class bad_orientation(MdpFn):
     Args:
         limit_angle: Maximum allowed tilt angle in degrees (default: 40 degrees)
         entity_manager: The entity manager for the entity.
-        entity_attr: The attribute name of the entity in the environment.
+        entity: The entity to check. Defaults to `env.robot`.
                         This isn't necessary if `entity_manager` is provided.
         grace_steps: Number of steps at episode start to ignore tilt detection (default: 0)
                      This gives the robot a chance to stabilize before tilt detection is active.
@@ -57,7 +60,7 @@ class bad_orientation(MdpFn):
     """
 
     limit_angle: float = 40.0
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
     grace_steps: int = 0
 
@@ -68,7 +71,7 @@ class bad_orientation(MdpFn):
         if self.entity_manager is not None:
             projected_gravity = self.entity_manager.get_projected_gravity()
         else:
-            entity = getattr(env, self.entity_attr)
+            entity = self.entity if self.entity is not None else env.robot
             projected_gravity = entity_projected_gravity(entity)
 
         # Calculate the magnitude of tilt (distance from perfectly upright)
@@ -93,12 +96,12 @@ class is_upsidedown(MdpFn):
     Args:
         threshold: Terminate when projected_gravity[:, 2] exceeds this value
         entity_manager: The entity manager for the robot
-        entity_attr: Entity attribute if entity_manager is not provided
+        entity: The entity to check. Defaults to `env.robot`. Not necessary if entity_manager is provided
         grace_steps: Steps at episode start to ignore this check
     """
 
     threshold: float = 0.5
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
     grace_steps: int = 0
 
@@ -108,7 +111,7 @@ class is_upsidedown(MdpFn):
         if self.entity_manager is not None:
             projected_gravity = self.entity_manager.get_projected_gravity()
         else:
-            entity = getattr(env, self.entity_attr)
+            entity = self.entity if self.entity is not None else env.robot
             projected_gravity = entity_projected_gravity(entity)
 
         return (~in_grace_period) & (projected_gravity[:, 2] > self.threshold)
@@ -122,7 +125,7 @@ class base_height_below_minimum(MdpFn):
     Args:
         minimum_height: Minimum allowed base height in meters
         entity_manager: The entity manager for the entity.
-        entity_attr: The attribute name of the entity in the environment.
+        entity: The entity to check. Defaults to `env.robot`.
                         This isn't necessary if `entity_manager` is provided.
 
     Returns:
@@ -130,14 +133,14 @@ class base_height_below_minimum(MdpFn):
     """
 
     minimum_height: float = 0.05
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             base_pos = self.entity_manager.base_pos
         else:
-            entity = getattr(env, self.entity_attr)
+            entity = self.entity if self.entity is not None else env.robot
             base_pos = entity.get_pos()
         return base_pos[:, 2] < self.minimum_height
 
@@ -152,18 +155,17 @@ class out_of_bounds(MdpFn):
         subterrain: The subterrain to keep the robot inside of
         border_margin: The margin (in meters) to add to the terrain bounds
                        This terminates the episode before the robot falls off the terrain.
-        entity_attr: The attribute name of the entity in the environment.
-                        This isn't necessary if `entity_manager` is provided.
+        entity: The entity to check. Defaults to `env.robot`.
     """
 
     terrain_manager: TerrainManager
     subterrain: str | None = None
     border_margin: float = 0.5
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the entity's base position
-        entity = getattr(env, self.entity_attr)
+        entity = self.entity if self.entity is not None else env.robot
         position = entity.get_pos()
 
         # Get terrain bounds

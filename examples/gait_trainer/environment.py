@@ -96,7 +96,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
@@ -199,7 +199,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
                 "base_height_target": {
                     "weight": -25.0,
-                    "fn": rewards.base_height(target_height=0.35, entity_attr="robot"),
+                    "fn": rewards.base_height(target_height=0.35, entity=self.robot),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,

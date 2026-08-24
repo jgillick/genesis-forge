@@ -220,7 +220,6 @@ Source code in `genesis_forge/genesis_env.py`
 ```
 def close(self):
     """Close the environment."""
-    pass
 ```
 
 ## `get_observations()`
@@ -282,9 +281,9 @@ Reset one or more environments. Each of the registered managers will also be res
 
 Parameters:
 
-| Name      | Type        | Description                                                        | Default |
-| --------- | ----------- | ------------------------------------------------------------------ | ------- |
-| `env_ids` | `list[int]` | The environment ids to reset. If None, all environments are reset. | `None`  |
+| Name      | Type        | Description | Default                                                            |
+| --------- | ----------- | ----------- | ------------------------------------------------------------------ |
+| `env_ids` | \`list[int] | None\`      | The environment ids to reset. If None, all environments are reset. |
 
 Returns:
 
@@ -297,7 +296,7 @@ Source code in `genesis_forge/genesis_env.py`
 ```
 def reset(
     self,
-    env_ids: list[int] = None,
+    env_ids: list[int] | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Reset one or more environments.
@@ -311,6 +310,8 @@ def reset(
     """
     if env_ids is None:
         env_ids = torch.arange(self.num_envs, device=gs.device)
+    elif not isinstance(env_ids, torch.Tensor):
+        env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
     # Initial reset, set buffers
     if self.step_count == 0 and self.action_space is not None:
@@ -727,7 +728,7 @@ def _build_observation_managers(self) -> None:
     # If ther is an observation manager named "policy", that is the primary observation
     # manager and what will be returned to the main policy
     if policy_obs_mgr is not None:
-        self._observation_space = obs_manager.observation_space
+        self._observation_space = policy_obs_mgr.observation_space
         return
 
     # Merge the observation manager spaces
@@ -827,7 +828,6 @@ Source code in `genesis_forge/genesis_env.py`
 ```
 def close(self):
     """Close the environment."""
-    pass
 ```
 
 ## `config()`
@@ -840,7 +840,7 @@ Example::
 def config(self):
     EntityManager(
         self,
-        entity_attr="robot",
+        entity=self.robot,
         on_reset={
             "position": {
                 "fn": reset.position(
@@ -864,7 +864,7 @@ def config(self):
         def config(self):
             EntityManager(
                 self,
-                entity_attr="robot",
+                entity=self.robot,
                 on_reset={
                     "position": {
                         "fn": reset.position(
@@ -875,7 +875,6 @@ def config(self):
                 },
             )
     """
-    pass
 ```
 
 ## `get_observations()`
@@ -949,6 +948,12 @@ def reset(
     Returns:
         A batch of observations (if env_ids is None) and an info dictionary from the vectorized environment.
     """
+    reset_all = env_ids is None
+    if env_ids is None:
+        env_ids = torch.arange(self.num_envs, device=gs.device)
+    elif not isinstance(env_ids, torch.Tensor):
+        env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
+
     (obs, _) = super().reset(env_ids)
 
     for actuator_manager in self.managers["actuator"]:
@@ -970,7 +975,7 @@ def reset(
 
     # Only get observations when env_ids is None because this will be the initial reset called before the first step
     # Otherwise, the observations are ignored
-    if env_ids is None:
+    if reset_all:
         obs = self.get_observations()
 
     return obs, self.extras
@@ -1108,20 +1113,19 @@ Configures and manages the actuators of your robot. You can define values for al
 
 Parameters:
 
-| Name                  | Type         | Description                                                                                   | Default                    |
-| --------------------- | ------------ | --------------------------------------------------------------------------------------------- | -------------------------- |
-| `env`                 | `GenesisEnv` | The environment to manage the DOF actuators for.                                              | *required*                 |
-| `joint_names`         | \`list[str]  | str\`                                                                                         | The joint names to manage. |
-| `default_pos`         | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `kp`                  | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `kv`                  | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `max_force`           | \`float      | NoisyValue                                                                                    | tuple[Any, Any]            |
-| `damping`             | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `stiffness`           | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `frictionloss`        | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `armature`            | \`float      | NoisyValue                                                                                    | dict\`                     |
-| `entity_attr`         | `str`        | The attribute of the environment to get the robot from.                                       | `'robot'`                  |
-| `default_noise_scale` | `float`      | (deprecated) This noise scale will be applied to all actuator values. Use NoisyValue instead. | `0.0`                      |
+| Name           | Type          | Description                                        | Default                    |
+| -------------- | ------------- | -------------------------------------------------- | -------------------------- |
+| `env`          | `GenesisEnv`  | The environment to manage the DOF actuators for.   | *required*                 |
+| `joint_names`  | \`list[str]   | str\`                                              | The joint names to manage. |
+| `default_pos`  | \`float       | NoisyValue                                         | dict                       |
+| `kp`           | \`float       | NoisyValue                                         | dict\`                     |
+| `kv`           | \`float       | NoisyValue                                         | dict\`                     |
+| `max_force`    | \`float       | NoisyValue                                         | tuple[Any, Any]            |
+| `damping`      | \`float       | NoisyValue                                         | dict\`                     |
+| `stiffness`    | \`float       | NoisyValue                                         | dict\`                     |
+| `frictionloss` | \`float       | NoisyValue                                         | dict\`                     |
+| `armature`     | \`float       | NoisyValue                                         | dict\`                     |
+| `entity`       | `RigidEntity` | The robot entity to manage. Defaults to env.robot. | `None`                     |
 
 Example::
 
@@ -1156,7 +1160,7 @@ def __init__(
     self,
     env: GenesisEnv,
     joint_names: list[str] | str = ".*",
-    default_pos: float | NoisyValue | dict = {".*": 0.0},
+    default_pos: float | NoisyValue | dict | None = None,
     kp: float | NoisyValue | dict = None,
     kv: float | NoisyValue | dict = None,
     max_force: float | NoisyValue | tuple[Any, Any] | dict = None,
@@ -1164,13 +1168,14 @@ def __init__(
     stiffness: float | NoisyValue | dict = None,
     frictionloss: float | NoisyValue | dict = None,
     armature: float | NoisyValue | dict = None,
-    default_noise_scale: float = 0.0,
-    entity_attr: str = "robot",
+    entity: RigidEntity = None,
 ):
     super().__init__(env, type="actuator")
+    default_pos_val = default_pos if default_pos is not None else {".*": 0.0}
+
     self._dofs: dict[str, int] = {}
-    self._robot: RigidEntity = getattr(env, entity_attr)
-    self._default_pos_cfg = ensure_dof_pattern(default_pos)
+    self._robot: RigidEntity = entity if entity is not None else env.robot
+    self._default_pos_cfg = ensure_dof_pattern(default_pos_val)
     self._kp_cfg = ensure_dof_pattern(kp)
     self._kv_cfg = ensure_dof_pattern(kv)
     self._max_force_cfg = ensure_dof_pattern(max_force)
@@ -1178,7 +1183,6 @@ def __init__(
     self._stiffness_cfg = ensure_dof_pattern(stiffness)
     self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
     self._armature_cfg = ensure_dof_pattern(armature)
-    self._default_noise_scale = default_noise_scale
 
     self._batch_dofs_enabled = (
         env.scene.rigid_options.batch_dofs_info
@@ -1563,7 +1567,7 @@ Parameters:
 | Name       | Type                  | Description                                                                | Default                                                                                                   |
 | ---------- | --------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `noise`    | `float`               | The maximum amount of random noise to add to the velocity values returned. | `0.0`                                                                                                     |
-| `clip`     | `tuple[float, float]` | Clip the velocity returned.                                                | `None`                                                                                                    |
+| `clip`     | \`tuple[float, float] | None\`                                                                     | Clip the velocity returned.                                                                               |
 | `dofs_idx` | \`list[int]           | None\`                                                                     | The indices of the DOFs to get the velocity for. If None, all the DOFs of this actuator manager are used. |
 
 Returns:
@@ -1579,7 +1583,7 @@ Source code in `genesis_forge/managers/actuator/actuator_manager.py`
 def get_dofs_velocity(
     self,
     noise: float = 0.0,
-    clip: tuple[float, float] = None,
+    clip: tuple[float, float] | None = None,
     dofs_idx: list[int] | None = None,
 ) -> torch.Tensor:
     """
@@ -1613,7 +1617,7 @@ Source code in `genesis_forge/managers/actuator/actuator_manager.py`
 ```
 def reset(
     self,
-    envs_idx: list[int] = None,
+    envs_idx: list[int] | None = None,
 ):
     """Reset the DOF positions."""
     if not self.enabled:
@@ -1705,7 +1709,6 @@ Source code in `genesis_forge/managers/base.py`
 ```
 def step(self):
     """Called when the environment is stepped"""
-    pass
 ```
 
 # Contact
@@ -1716,17 +1719,17 @@ Tracks the contact forces between entity links in the environment.
 
 Parameters:
 
-| Name                         | Type                           | Description                                                                                                | Default                     |
-| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                                           | *required*                  |
-| `link_names`                 | `list[str]`                    | The names, or name regex patterns, of the entity links to track the contact forces for.                    | *required*                  |
-| `entity_attr`                | `str`                          | The environment attribute which contains the entity with the links we're tracking. Defaults to robot.      | `'robot'`                   |
-| `with_entity_attr`           | `str`                          | Filter the contact forces to only include contacts with the entity assigned to this environment attribute. | `None`                      |
-| `with_links_names`           | `list[str]`                    | Filter the contact forces to only include contacts with these links.                                       | `None`                      |
-| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                                 | `False`                     |
-| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered.                | `1.0`                       |
-| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points.                                                                   | `False`                     |
-| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                                        | `DEFAULT_VISUALIZER_CONFIG` |
+| Name                         | Type                           | Description                                                                                 | Default                                                              |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                            | *required*                                                           |
+| `link_names`                 | `list[str]`                    | The names, or name regex patterns, of the entity links to track the contact forces for.     | *required*                                                           |
+| `entity`                     | `RigidEntity`                  | The entity with the links we're tracking. Defaults to env.robot.                            | `None`                                                               |
+| `with_entity`                | `RigidEntity`                  | Filter the contact forces to only include contacts with this entity.                        | `None`                                                               |
+| `with_links_names`           | \`list[str]                    | None\`                                                                                      | Filter the contact forces to only include contacts with these links. |
+| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                  | `False`                                                              |
+| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered. | `1.0`                                                                |
+| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points.                                                    | `False`                                                              |
+| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                         | `DEFAULT_VISUALIZER_CONFIG`                                          |
 
 Example with ManagedEnvironment::
 
@@ -1822,9 +1825,9 @@ class MyEnv(ManagedEnvironment):
         # Track all contacts between the robot's feet and the terrain
         self.contact_manager = ContactManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             link_names=[".*_foot"],
-            with_entity_attr="terrain",
+            with_entity=self.terrain,
         )
 
         # ...other managers here...
@@ -1839,9 +1842,9 @@ def __init__(
     self,
     env: GenesisEnv,
     link_names: list[str],
-    entity_attr: str = "robot",
-    with_entity_attr: str = None,
-    with_links_names: list[str] = None,
+    entity: RigidEntity = None,
+    with_entity: RigidEntity = None,
+    with_links_names: list[str] | None = None,
     track_air_time: bool = False,
     air_time_contact_threshold: float = 1.0,
     debug_visualizer: bool = False,
@@ -1852,15 +1855,15 @@ def __init__(
     self._link_names = link_names
     self._air_time_contact_threshold = air_time_contact_threshold
     self._track_air_time = track_air_time
-    self._entity_attr = entity_attr
+    self._entity = entity if entity is not None else env.robot
     self._link_ids = None
     self._local_link_ids = None
-    self._with_entity_attr = with_entity_attr
+    self._with_entity = with_entity
     self._with_links_names = with_links_names
     self._with_link_ids = torch.empty(0, device=gs.device)
     self._with_local_link_ids = None
     self._has_with_filter = (
-        with_entity_attr is not None or with_links_names is not None
+        with_entity is not None or with_links_names is not None
     )
 
     self.debug_visualizer = debug_visualizer
@@ -1956,18 +1959,16 @@ def build(self):
 
     # Get the link indices
     (self._link_ids, self._local_link_ids) = self._get_links_idx(
-        self._entity_attr, self._link_names
+        self._entity, self._link_names
     )
     if not self._link_ids.is_contiguous():
         self._link_ids = self._link_ids.contiguous()
-    if self._with_entity_attr or self._with_links_names:
-        with_entity_attr = (
-            self._with_entity_attr
-            if self._with_entity_attr is not None
-            else "robot"
+    if self._with_entity or self._with_links_names:
+        with_entity = (
+            self._with_entity if self._with_entity is not None else self.env.robot
         )
         (self._with_link_ids, self._with_local_link_ids) = self._get_links_idx(
-            with_entity_attr, self._with_links_names
+            with_entity, self._with_links_names
         )
         if not self._with_link_ids.is_contiguous():
             self._with_link_ids = self._with_link_ids.contiguous()
@@ -2193,11 +2194,11 @@ Provides options for resetting an entity and adding noise and randomization to i
 
 Parameters:
 
-| Name          | Type                           | Description                                                         | Default    |
-| ------------- | ------------------------------ | ------------------------------------------------------------------- | ---------- |
-| `env`         | `GenesisEnv`                   | The environment instance.                                           | *required* |
-| `entity_attr` | `str`                          | The attribute name of the environment that the entity is stored in. | *required* |
-| `on_reset`    | `dict[str, EntityResetConfig]` | The reset configuration for the entity.                             | `{}`       |
+| Name       | Type                           | Description               | Default                                 |
+| ---------- | ------------------------------ | ------------------------- | --------------------------------------- |
+| `env`      | `GenesisEnv`                   | The environment instance. | *required*                              |
+| `entity`   | `RigidEntity`                  | The entity to manage.     | *required*                              |
+| `on_reset` | \`dict[str, EntityResetConfig] | None\`                    | The reset configuration for the entity. |
 
 Example::
 
@@ -2209,7 +2210,7 @@ class MyEnv(ManagedEnvironment):
     def config(self):
         self.entity_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "position": {
                     "fn": reset.randomize_terrain_position(
@@ -2228,18 +2229,17 @@ Source code in `genesis_forge/managers/entity_manager.py`
 def __init__(
     self,
     env: GenesisEnv,
-    entity_attr: str,
-    on_reset: dict[str, EntityResetConfig] = {},
+    entity: RigidEntity,
+    on_reset: dict[str, EntityResetConfig] | None = None,
 ):
     super().__init__(env, type="entity")
     if hasattr(env, "add_entity_manager"):
         env.add_entity_manager(self)
 
-    self.entity: RigidEntity | None = None
-    self.on_reset = on_reset
-    self._entity_attr = entity_attr
+    self.entity: RigidEntity = entity
 
     # Wrap config items
+    on_reset = on_reset if on_reset is not None else {}
     self.on_reset: dict[str, ConfigItem] = {}
     for name, cfg in on_reset.items():
         self.on_reset[name] = ConfigItem(cfg, env)
@@ -2267,7 +2267,7 @@ The quaternion of the entity's base link.
 
 ## `enabled = True`
 
-## `entity = None`
+## `entity = entity`
 
 ## `env = env`
 
@@ -2290,7 +2290,6 @@ def build(self):
     """
     Build the entity manager.
     """
-    self.entity = getattr(self.env, self._entity_attr)
     self._cached_calcs()
 
     # Build reset function classes
@@ -2358,10 +2357,10 @@ def reset(self, envs_idx: list[int] | None = None):
 
     for name, cfg in self.on_reset.items():
         try:
-            cfg.execute(envs_idx)
+            cfg.execute(envs_idx=envs_idx)
         except Exception as e:
             print(f"Error resetting entity with config: '{name}'")
-            raise e
+            raise e # noqa
 ```
 
 ## `step()`
@@ -2549,8 +2548,8 @@ def __init__(
 
     # Wrap config items
     self.cfg: dict[str, ObservationConfigItem] = {}
-    for name, cfg in cfg.items():
-        self.cfg[name] = ObservationConfigItem(cfg, env)
+    for cfg_name, item in cfg.items():
+        self.cfg[cfg_name] = ObservationConfigItem(item, env)
 ```
 
 ## `cfg = {}`
@@ -2640,7 +2639,7 @@ def get_observations(
     """
     Generate current observations for all environments.
 
-    Optionally, you can provide the observation values directly as a dictionary of values, and 
+    Optionally, you can provide the observation values directly as a dictionary of values, and
     this method will return the formatted/scaled (without noise) tensor for the policy.
     This is useful for manual deployments or troubleshooting.
 
@@ -2705,7 +2704,6 @@ Source code in `genesis_forge/managers/base.py`
 ```
 def step(self):
     """Called when the environment is stepped"""
-    pass
 ```
 
 # Reward
@@ -2797,8 +2795,8 @@ def __init__(
 
     # Wrap config items
     self.cfg: dict[str, RewardConfigItem] = {}
-    for name, cfg in cfg.items():
-        self.cfg[name] = RewardConfigItem(cfg, env)
+    for name, item in cfg.items():
+        self.cfg[name] = RewardConfigItem(item, env)
 
     # Initialize buffers
     self._reward_buf = torch.zeros(
@@ -2807,9 +2805,9 @@ def __init__(
     self._episode_seconds = torch.zeros(
         (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
     )
-    self._episode_mean: dict[str, torch.Tensor] = dict()
-    self._episode_data: dict[str, torch.Tensor] = dict()
-    for name in self.cfg.keys():
+    self._episode_mean: dict[str, torch.Tensor] = {}
+    self._episode_data: dict[str, torch.Tensor] = {}
+    for name in self.cfg:
         self._episode_data[name] = torch.zeros(
             (env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
@@ -2961,7 +2959,7 @@ def step(self) -> torch.Tensor:
 
         # Get reward value from function
         weight = cfg.weight * dt
-        value = cfg.fn(self.env, **cfg.params) * weight
+        value = cfg.execute() * weight
 
         # Add to reward buffer
         self._reward_buf += value
@@ -3178,8 +3176,7 @@ def step(self) -> tuple[torch.Tensor, torch.Tensor]:
     for name, term_item in self.term_cfg.items():
         try:
             # Get termination value
-            params = term_item.params
-            value = term_item.fn(self.env, **params)
+            value = term_item.execute()
 
             # Add to the correct buffer using in-place operations
             if term_item.time_out:
@@ -3196,7 +3193,7 @@ def step(self) -> tuple[torch.Tensor, torch.Tensor]:
 
         except Exception as e:
             print(f"Error calculating termination for '{name}'")
-            raise e
+            raise e # noqa TRY201
 
     self.env.extras["terminations"] = self._terminated_buf
     self.env.extras["time_outs"] = self._truncated_buf
@@ -3211,10 +3208,10 @@ Provides useful functions for the environment terrain. The manager maps out the 
 
 Parameters:
 
-| Name           | Type         | Description                                           | Default     |
-| -------------- | ------------ | ----------------------------------------------------- | ----------- |
-| `env`          | `GenesisEnv` | The environment instance.                             | *required*  |
-| `terrain_attr` | `str`        | The attribute name of the terrain in the environment. | `'terrain'` |
+| Name      | Type          | Description                                            | Default    |
+| --------- | ------------- | ------------------------------------------------------ | ---------- |
+| `env`     | `GenesisEnv`  | The environment instance.                              | *required* |
+| `terrain` | `RigidEntity` | The terrain entity to manage. Defaults to env.terrain. | `None`     |
 
 Example::
 
@@ -3240,7 +3237,7 @@ class MyEnv(ManagedEnvironment):
     def config(self):
         self.terrain_manager = TerrainManager(
             self,
-            terrain_attr="terrain",
+            terrain=self.terrain,
         )
 
      def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
@@ -3259,30 +3256,18 @@ Source code in `genesis_forge/managers/terrain_manager.py`
 def __init__(
     self,
     env: GenesisEnv,
-    terrain_attr: str = "terrain",
+    terrain: RigidEntity = None,
 ):
     super().__init__(env, type="terrain")
 
     self._origin = (0, 0, 0)
     self._bounds = (0, 0, 0, 0)  # x_min, x_max, y_min, y_max
     self._size = (0, 0)
-    self._terrain: RigidEntity = None
-    self._terrain_attr = terrain_attr
+    self._terrain: RigidEntity = terrain if terrain is not None else env.terrain
     self._subterrain_bounds = {}
     self._height_field: torch.Tensor | None = None
     self._env_pos_buffer = torch.zeros(
         (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
-    )
-
-    # Pre-allocated buffers for terrain height calculation to avoid memory allocations
-    self._norm_coords_buffer = torch.zeros(
-        (self.env.num_envs, 2), device=gs.device, dtype=gs.tc_float
-    )
-    self._grid_buffer = torch.zeros(
-        (self.env.num_envs, 1, 1, 2), device=gs.device, dtype=gs.tc_float
-    )
-    self._heights_buffer = torch.zeros(
-        self.env.num_envs, device=gs.device, dtype=gs.tc_float
     )
 ```
 
@@ -3301,7 +3286,6 @@ Source code in `genesis_forge/managers/terrain_manager.py`
 ```
 def build(self):
     """Cache the terrain height field"""
-    self._terrain = self.env.__getattribute__(self._terrain_attr)
     self._map_terrain()
 ```
 
@@ -3524,34 +3508,16 @@ def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
     # No height field, so we can assume the height is consistent
     if self._height_field is None:
-        self._heights_buffer[:n_envs] = self._origin[2]
-        return self._heights_buffer[:n_envs]
+        return torch.full(
+            (n_envs,), self._origin[2], device=gs.device, dtype=gs.tc_float
+        )
 
     # Normalize coordinates to [-1, 1] range expected by grid_sample
     (x_min, x_max, y_min, y_max) = self._bounds
+    norm_x = 2 * (x - x_min) / (x_max - x_min) - 1
+    norm_y = 2 * (y - y_min) / (y_max - y_min) - 1
 
-    # Use pre-allocated buffer and in-place operations to avoid memory allocation
-    norm_x = self._norm_coords_buffer[:n_envs, 0]
-    norm_y = self._norm_coords_buffer[:n_envs, 1]
-
-    # In-place normalization to avoid creating new tensors
-    # norm_x = 2 * (norm_x - x_min) / (x_max - x_min) - 1
-    norm_x.copy_(x)
-    norm_x.sub_(x_min)
-    norm_x.div_(x_max - x_min)
-    norm_x.mul_(2)
-    norm_x.sub_(1)
-    # norm_y = 2 * (norm_y - y_min) / (y_max - y_min) - 1
-    norm_y.copy_(y)
-    norm_y.sub_(y_min)
-    norm_y.div_(y_max - y_min)
-    norm_y.mul_(2)
-    norm_y.sub_(1)
-
-    # Use pre-allocated grid buffer
-    grid = self._grid_buffer[:n_envs]
-    grid[:, 0, 0, 0] = norm_x
-    grid[:, 0, 0, 1] = norm_y
+    grid = torch.stack([norm_x, norm_y], dim=-1).view(n_envs, 1, 1, 2)
 
     # Border padding mode isn't supported on Mac GPU (mps)
     # https://github.com/pytorch/pytorch/issues/125098
@@ -3572,10 +3538,7 @@ def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     )
 
     # Extract the height values at the specific coordinates
-    heights = self._heights_buffer[:n_envs]
-    heights.copy_(interpolated[:, 0, 0, 0])
-
-    return heights
+    return interpolated[:, 0, 0, 0]
 ```
 
 ## `reset(envs_idx=None)`
@@ -3587,7 +3550,6 @@ Source code in `genesis_forge/managers/base.py`
 ```
 def reset(self, envs_idx: list[int] | None = None):
     """One or more environments have been reset"""
-    pass
 ```
 
 ## `step()`
@@ -3599,7 +3561,6 @@ Source code in `genesis_forge/managers/base.py`
 ```
 def step(self):
     """Called when the environment is stepped"""
-    pass
 ```
 
 # Action
@@ -3628,7 +3589,7 @@ Parameters:
 | `scale`                   | \`float               | dict[str, float]\`                                                                                                                                             | How much to scale the action.                                                                                               |
 | `offset`                  | \`float               | dict[str, float]\`                                                                                                                                             | Offset factor for the action.                                                                                               |
 | `use_default_offset`      | `bool`                | Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.                                                       | `True`                                                                                                                      |
-| `clip`                    | \`tuple[float, float] | dict\[str, tuple[float, float]\]\`                                                                                                                             | Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.       |
+| `clip`                    | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                                                                               | None\`                                                                                                                      |
 | `soft_limit_scale_factor` | `float`               | Scales the clip range of all limits by this factor around the midpoint of each joint's limits to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
 | `quiet_action_errors`     | `bool`                | Whether to quiet action errors.                                                                                                                                | `False`                                                                                                                     |
 | `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.                                                        | `0`                                                                                                                         |
@@ -3711,19 +3672,17 @@ def __init__(
     actuator_joints: list[str] | str = ".*",
     scale: float | dict[str, float] = 1.0,
     offset: float | dict[str, float] = 0.0,
-    clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
+    clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
     use_default_offset: bool = True,
     quiet_action_errors: bool = False,
     delay_step: int = 0,
-    **kwargs,
 ):
     super().__init__(
         env,
         delay_step=delay_step,
         actuator_manager=actuator_manager,
         actuator_joints=actuator_joints,
-        **kwargs,
     )
     self._offset_cfg = ensure_dof_pattern(offset)
     self._scale_cfg = ensure_dof_pattern(scale)
@@ -3754,8 +3713,6 @@ An index filter for the actuator DOF buffer values.
 ## `actuator_manager`
 
 Get the actuator manager.
-
-## `actuators`
 
 ## `default_dofs_pos`
 
@@ -3954,9 +3911,9 @@ A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity 
 
 Parameters:
 
-| Name   | Type                  | Description                    | Default |
-| ------ | --------------------- | ------------------------------ | ------- |
-| `clip` | `tuple[float, float]` | Range to clip the velocity to. | `None`  |
+| Name   | Type                  | Description | Default                        |
+| ------ | --------------------- | ----------- | ------------------------------ |
+| `clip` | \`tuple[float, float] | None\`      | Range to clip the velocity to. |
 
 Returns:
 
@@ -3968,7 +3925,7 @@ Returns:
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
-def get_dofs_velocity(self, clip: tuple[float, float] = None) -> torch.Tensor:
+def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
     """
     A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -4084,7 +4041,7 @@ def step(self, actions: torch.Tensor) -> None:
     # Copy the actions into the manager buffer
     self._raw_actions = actions
     if self._actions is None:
-        self._actions = torch.empty_like(actions, device=gs.device)
+        self._actions = torch.zeros_like(actions, device=gs.device)
         self._last_actions = torch.zeros_like(actions, device=gs.device)
     self._last_actions[:] = self._actions[:]
 
@@ -4102,15 +4059,15 @@ This is similar to `PositionActionManager` but converts actions from the range -
 
 Parameters:
 
-| Name                      | Type                  | Description                                                                                                    | Default                                                                                                                                              |
-| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                               | *required*                                                                                                                                           |
-| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                                              |
-| `actuator_joints`         | \`list[str]           | str\`                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions.                          |
-| `limit`                   | \`tuple[float, float] | dict\[str, tuple[float, float]\]\`                                                                             | A dictionary of DOF name patterns and their position limits. If omitted, the limits will be set to the limits of the actuators defined in the model. |
-| `soft_limit_scale_factor` | `float`               | Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                                                |
-| `quiet_action_errors`     | `bool`                | Whether to quiet action errors.                                                                                | `False`                                                                                                                                              |
-| `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.        | `0`                                                                                                                                                  |
+| Name                      | Type                  | Description                                                                                                    | Default                                                                                                                     |
+| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                               | *required*                                                                                                                  |
+| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                     |
+| `actuator_joints`         | \`list[str]           | str\`                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
+| `limit`                   | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                               | None\`                                                                                                                      |
+| `soft_limit_scale_factor` | `float`               | Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
+| `quiet_action_errors`     | `bool`                | Whether to quiet action errors.                                                                                | `False`                                                                                                                     |
+| `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.        | `0`                                                                                                                         |
 
 Simple example using the limits defined in the model::
 
@@ -4168,10 +4125,9 @@ def __init__(
     actuator_manager: ActuatorManager | None = None,
     actuator_joints: list[str] | str = ".*",
     quiet_action_errors: bool = False,
-    limit: tuple[float, float] | dict[str, tuple[float, float]] = {},
+    limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
     delay_step: int = 0,
-    **kwargs,
 ):
     super().__init__(
         env,
@@ -4179,9 +4135,8 @@ def __init__(
         actuator_joints=actuator_joints,
         quiet_action_errors=quiet_action_errors,
         delay_step=delay_step,
-        **kwargs,
     )
-    self._limit_cfg = ensure_dof_pattern(limit)
+    self._limit_cfg = ensure_dof_pattern(limit if limit is not None else {})
     self._soft_limit_scale_factor = soft_limit_scale_factor
 ```
 
@@ -4200,8 +4155,6 @@ An index filter for the actuator DOF buffer values.
 ## `actuator_manager`
 
 Get the actuator manager.
-
-## `actuators`
 
 ## `default_dofs_pos`
 
@@ -4382,9 +4335,9 @@ A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity 
 
 Parameters:
 
-| Name   | Type                  | Description                    | Default |
-| ------ | --------------------- | ------------------------------ | ------- |
-| `clip` | `tuple[float, float]` | Range to clip the velocity to. | `None`  |
+| Name   | Type                  | Description | Default                        |
+| ------ | --------------------- | ----------- | ------------------------------ |
+| `clip` | \`tuple[float, float] | None\`      | Range to clip the velocity to. |
 
 Returns:
 
@@ -4396,7 +4349,7 @@ Returns:
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
-def get_dofs_velocity(self, clip: tuple[float, float] = None) -> torch.Tensor:
+def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
     """
     A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -4501,7 +4454,7 @@ def step(self, actions: torch.Tensor) -> None:
     # Copy the actions into the manager buffer
     self._raw_actions = actions
     if self._actions is None:
-        self._actions = torch.empty_like(actions, device=gs.device)
+        self._actions = torch.zeros_like(actions, device=gs.device)
         self._last_actions = torch.zeros_like(actions, device=gs.device)
     self._last_actions[:] = self._actions[:]
 
@@ -4614,7 +4567,6 @@ Source code in `genesis_forge/managers/base.py`
 ```
 def build(self):
     """Called when the scene is built"""
-    pass
 ```
 
 ## `get_command(range_key)`
@@ -4629,7 +4581,7 @@ def get_command(self, range_key: str) -> torch.Tensor:
     If the range is a dict, get the command values for the given key.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     return self._command[:, self._range_idx[range_key]]
 ```
 
@@ -4645,7 +4597,7 @@ def get_command_idx(self, key: str) -> int:
     If the range is a dict, get the command index for the given key.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     return self._range_idx[key]
 ```
 
@@ -4675,7 +4627,7 @@ Parameters:
 | ----------- | ------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `range_key` | `str`   | The key of the command range to increment. | *required*                                                                                                                                                                                                                  |
 | `increment` | \`float | tuple[float, float]\`                      | The amount to increment the min & max range values by (+/-). If this is a tuple, it will be: (min_increment, max_increment). If this is a single float, it will be applied to both min and max as (-increment, +increment). |
-| `limit`     | \`float | tuple[float, float]\`                      | Do not set the values beyond this limit range. This is a tuple of (min_limit, max_limit).                                                                                                                                   |
+| `limit`     | \`float | tuple[float, float]                        | None\`                                                                                                                                                                                                                      |
 
 Source code in `genesis_forge/managers/command/command_manager.py`
 
@@ -4684,7 +4636,7 @@ def increment_range(
     self,
     range_key: str,
     increment: float | tuple[float, float],
-    limit: float | tuple[float, float] = None,
+    limit: float | tuple[float, float] | None = None,
 ):
     """
     Increment a command range target values by the given amount, with an optional limit.
@@ -4713,7 +4665,7 @@ def increment_range(
     """
     # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
     if not isinstance(self.range, dict):
-        raise ValueError("Cannot increment a non-dict range item")
+        raise TypeError("Cannot increment a non-dict range item")
     range_item = self._range.get(range_key, None)
     if range_item is None:
         raise ValueError(f"Range item {range_key} not found")
@@ -4805,7 +4757,7 @@ def set_command(
     Update a command value for selected environments.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     if envs_idx is None:
         self._command[:, self._range_idx[range_key]] = value
     else:
@@ -5052,7 +5004,7 @@ def use_gamepad(
         axis_map.append(range_axis)
         axis_invert_map.append(invert_axis)
     elif isinstance(range_axis, dict):
-        for key in self._range.keys():
+        for key in self._range:
             axis_map.append(range_axis[key])
             axis_invert_map.append(
                 invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
@@ -5088,17 +5040,18 @@ Arrow meanings:
 
 - GREEN: Commanded velocity (robot-relative, transformed to world coordinates for visualization) When joystick is "forward", this arrow points in the robot's forward direction
 - BLUE: Actual robot velocity in world coordinates
+- RED BALL: Shown instead of the green arrow when the env is commanded to stand still
 
 Parameters:
 
-| Name                   | Type                            | Description                                                                                 | Default                     |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------- |
-| `env`                  | `GenesisEnv`                    | The environment to control                                                                  | *required*                  |
-| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                   | *required*                  |
-| `standing_probability` | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                       |
-| `resample_time_sec`    | `float`                         | The time interval between changing the command                                              | `5.0`                       |
-| `debug_visualizer`     | `bool`                          | Enable the debug arrow visualization                                                        | `False`                     |
-| `debug_visualizer_cfg` | `VelocityDebugVisualizerConfig` | The configuration for the debug visualizer                                                  | `DEFAULT_VISUALIZER_CONFIG` |
+| Name                   | Type                            | Description                                                                                 | Default                                    |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `env`                  | `GenesisEnv`                    | The environment to control                                                                  | *required*                                 |
+| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                   | *required*                                 |
+| `standing_probability` | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                                      |
+| `resample_time_sec`    | `float`                         | The time interval between changing the command                                              | `5.0`                                      |
+| `debug_visualizer`     | `bool`                          | Enable the debug arrow visualization                                                        | `False`                                    |
+| `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                      | The configuration for the debug visualizer |
 
 Example::
 
@@ -5158,14 +5111,19 @@ def __init__(
     resample_time_sec: float = 5.0,
     standing_probability: float = 0.0,
     debug_visualizer: bool = False,
-    debug_visualizer_cfg: VelocityDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
+    debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
 ):
-    super().__init__(env, range=range, resample_time_sec=resample_time_sec)
+    super().__init__(
+        env,
+        range=range,
+        resample_time_sec=resample_time_sec,
+    )
+
     self._arrow_nodes: list = []
     self.standing_probability = standing_probability
     self.debug_visualizer = debug_visualizer
-    self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
-    self.debug_envs_idx = None
+    self.debug_envs_idx: list | None = None
+    self.visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
 
     self._is_standing_env = torch.zeros(
         env.num_envs, dtype=torch.bool, device=gs.device
@@ -5192,11 +5150,15 @@ The velocity range dict.
 
 The time interval (in seconds) between changing the command for each environment.
 
+## `standing_envs`
+
+A tensor which has the "standing" state (1 or 0) of all the environments. If the state is 1, the command has no movement commanded, linear or angular.
+
 ## `standing_probability = standing_probability`
 
 ## `type = type`
 
-## `visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}`
+## `visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}`
 
 ## `build()`
 
@@ -5234,20 +5196,23 @@ def build_debug(self):
     # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
     self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
     if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-        self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
-    if self.debug_envs_idx is None:
-        self.debug_envs_idx = list[int](range(self.env.num_envs))
+        if self.env.scene.vis_options.rendered_envs_idx is not None:
+            self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
+        else:
+            self.debug_envs_idx = list[int](range(self.env.num_envs))
 
     # Calculate the number of steps per debug render
-    fps = self.visualizer_cfg.get("fps", 30)
+    fps = self.visualizer_cfg.get("fps", DEFAULT_VISUALIZER_CONFIG['fps'])
     self._steps_per_debug_render = math.ceil(1.0 / fps / self.env.dt)
 
     # Arrow scale factor
     # Scales the arrow size based on the maximum target velocity range
-    self._arrow_scale_factor = self.visualizer_cfg["arrow_max_length"] / max(
-        *self._range["lin_vel_x"],
-        *self._range["lin_vel_y"],
-        *self._range["ang_vel_z"],
+    velocity_range = cast(VelocityCommandRange, self.range)
+    arrow_max_length = self.visualizer_cfg.get("arrow_max_length", DEFAULT_VISUALIZER_CONFIG['arrow_max_length'])
+    self._arrow_scale_factor = arrow_max_length / max(
+        *velocity_range["lin_vel_x"],
+        *velocity_range["lin_vel_y"],
+        *velocity_range["ang_vel_z"],
     )
 ```
 
@@ -5263,7 +5228,7 @@ def get_command(self, range_key: str) -> torch.Tensor:
     If the range is a dict, get the command values for the given key.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     return self._command[:, self._range_idx[range_key]]
 ```
 
@@ -5279,7 +5244,7 @@ def get_command_idx(self, key: str) -> int:
     If the range is a dict, get the command index for the given key.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     return self._range_idx[key]
 ```
 
@@ -5309,7 +5274,7 @@ Parameters:
 | ----------- | ------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `range_key` | `str`   | The key of the command range to increment. | *required*                                                                                                                                                                                                                  |
 | `increment` | \`float | tuple[float, float]\`                      | The amount to increment the min & max range values by (+/-). If this is a tuple, it will be: (min_increment, max_increment). If this is a single float, it will be applied to both min and max as (-increment, +increment). |
-| `limit`     | \`float | tuple[float, float]\`                      | Do not set the values beyond this limit range. This is a tuple of (min_limit, max_limit).                                                                                                                                   |
+| `limit`     | \`float | tuple[float, float]                        | None\`                                                                                                                                                                                                                      |
 
 Source code in `genesis_forge/managers/command/command_manager.py`
 
@@ -5318,7 +5283,7 @@ def increment_range(
     self,
     range_key: str,
     increment: float | tuple[float, float],
-    limit: float | tuple[float, float] = None,
+    limit: float | tuple[float, float] | None = None,
 ):
     """
     Increment a command range target values by the given amount, with an optional limit.
@@ -5347,7 +5312,7 @@ def increment_range(
     """
     # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
     if not isinstance(self.range, dict):
-        raise ValueError("Cannot increment a non-dict range item")
+        raise TypeError("Cannot increment a non-dict range item")
     range_item = self._range.get(range_key, None)
     if range_item is None:
         raise ValueError(f"Range item {range_key} not found")
@@ -5438,7 +5403,7 @@ def set_command(
     Update a command value for selected environments.
     """
     if not isinstance(self._range, dict):
-        raise ValueError("The range is not a dict")
+        raise TypeError("The range is not a dict")
     if envs_idx is None:
         self._command[:, self._range_idx[range_key]] = value
     else:
@@ -5536,7 +5501,7 @@ def use_external_controller(self, controller: Callable[[int], CommandRange]):
     self._external_controller = controller
 ```
 
-## `use_gamepad(gamepad, lin_vel_y_axis=0, lin_vel_x_axis=1, ang_vel_z_axis=2)`
+## `use_gamepad(gamepad, lin_vel_y_axis=0, lin_vel_x_axis=1, ang_vel_z_axis=2, *args, **kwargs)`
 
 Use a connected gamepad to control the command.
 
@@ -5558,6 +5523,7 @@ def use_gamepad(
     lin_vel_y_axis: int = 0,
     lin_vel_x_axis: int = 1,
     ang_vel_z_axis: int = 2,
+    *args, **kwargs
 ):
     """
     Use a connected gamepad to control the command.
@@ -5592,7 +5558,7 @@ This is a collection of simple functions used to generate rewards, terminations,
 
 # Observations
 
-## `contact_force(*, contact_manager=None)`
+## `contact_force(*, contact_manager)`
 
 Bases: `MdpFn`
 
@@ -5600,9 +5566,9 @@ Returns the vector norm contact force at each contact point.
 
 Parameters:
 
-| Name              | Type             | Description                              | Default |
-| ----------------- | ---------------- | ---------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact | `None`  |
+| Name              | Type             | Description                              | Default    |
+| ----------------- | ---------------- | ---------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact | *required* |
 
 Returns:
 
@@ -5610,7 +5576,7 @@ Returns:
 | ---- | --------------------------------------------- |
 |      | torch.Tensor: Shape (num_envs, num_contacts). |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -5633,7 +5599,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -5679,7 +5644,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -5790,7 +5754,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -5836,7 +5799,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -5912,7 +5874,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_angular_velocity(*, entity_manager=None, entity_attr='robot')`
+## `entity_angular_velocity(*, entity_manager=None, entity=None)`
 
 Bases: `MdpFn`
 
@@ -5920,10 +5882,10 @@ The angular velocity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                           | Default   |
-| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                              | `'robot'` |
+| Name             | Type            | Description                                                                                                                                      | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -5931,7 +5893,7 @@ Returns:
 | ---- | ------------------------------------------------------------------------------------------ |
 |      | torch.Tensor: The angular velocity of the entity's base link, in the entity's local frame. |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -5956,7 +5918,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6002,7 +5963,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6078,7 +6038,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_dofs_force(*, actuator_manager=None, entity_attr='robot', dofs_idx=None, clip_to_max_force=False, action_manager=None)`
+## `entity_dofs_force(*, actuator_manager=None, entity=None, dofs_idx=None, clip_to_max_force=False)`
 
 Bases: `MdpFn`
 
@@ -6086,13 +6046,12 @@ The DOF's force being experienced.
 
 Parameters:
 
-| Name                | Type                    | Description                                                                                                | Default   |
-| ------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | --------- |
-| `actuator_manager`  | `ActuatorManager`       | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity_attr parameters. | `None`    |
-| `entity_attr`       | `str`                   | The attribute name of the entity in the environment. This isn't necessary if action_manager is provided.   | `'robot'` |
-| `dofs_idx`          | `list[int]`             | The indices of the DOFs to get the force of. This isn't necessary if action_manager is provided.           | `None`    |
-| `clip_to_max_force` | `bool`                  | Clip the force to the maximum force defined in the action_manager.                                         | `False`   |
-| `action_manager`    | `PositionActionManager` | (deprecated) The action manager for the robot/entity.                                                      | `None`    |
+| Name                | Type              | Description                                                                                                | Default |
+| ------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
+| `actuator_manager`  | `ActuatorManager` | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      | `None`  |
+| `entity`            | `RigidEntity`     | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. | `None`  |
+| `dofs_idx`          | `list[int]`       | The indices of the DOFs to get the force of. This isn't necessary if actuator_manager is provided.         | `None`  |
+| `clip_to_max_force` | `bool`            | Clip the force to the maximum force defined in the actuator_manager.                                       | `False` |
 
 Returns:
 
@@ -6100,15 +6059,13 @@ Returns:
 | ---- | --------------------------------------------- |
 |      | torch.Tensor: The force of the entity's DOFs. |
 
-### `action_manager = None`
-
 ### `actuator_manager = None`
 
 ### `clip_to_max_force = False`
 
 ### `dofs_idx = None`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `env`
 
@@ -6131,7 +6088,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6177,7 +6133,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6253,7 +6208,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_dofs_position(*, actuator_manager=None, entity_attr='robot', dofs_idx=None, action_manager=None)`
+## `entity_dofs_position(*, actuator_manager=None, entity=None, dofs_idx=None)`
 
 Bases: `MdpFn`
 
@@ -6261,12 +6216,11 @@ The position of the entity's DOFs.
 
 Parameters:
 
-| Name               | Type                    | Description                                                                                                           | Default   |
-| ------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------- | --------- |
-| `actuator_manager` | `ActuatorManager`       | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity_attr parameters.            | `None`    |
-| `entity_attr`      | `str`                   | The attribute name of the entity in the environment. This isn't necessary if action_manager is provided.              | `'robot'` |
-| `dofs_idx`         | `list[int]`             | The indices of the DOFs to get the position of. This isn't necessary if action_manager is provided.                   | `None`    |
-| `action_manager`   | `PositionActionManager` | (deprecated) The action manager for the robot/entity. This bypasses the need for dofs_idx and entity_attr parameters. | `None`    |
+| Name               | Type              | Description                                                                                                | Default |
+| ------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
+| `actuator_manager` | `ActuatorManager` | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      | `None`  |
+| `entity`           | `RigidEntity`     | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. | `None`  |
+| `dofs_idx`         | `list[int]`       | The indices of the DOFs to get the position of. This isn't necessary if actuator_manager is provided.      | `None`  |
 
 Returns:
 
@@ -6274,13 +6228,11 @@ Returns:
 | ---- | ------------------------------------------------ |
 |      | torch.Tensor: The position of the entity's DOFs. |
 
-### `action_manager = None`
-
 ### `actuator_manager = None`
 
 ### `dofs_idx = None`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `env`
 
@@ -6303,7 +6255,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6349,7 +6300,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6425,7 +6375,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_dofs_velocity(*, action_manager=None, entity_attr='robot', dofs_idx=None)`
+## `entity_dofs_velocity(*, action_manager=None, entity=None, dofs_idx=None)`
 
 Bases: `MdpFn`
 
@@ -6433,11 +6383,11 @@ The velocity of the entity's DOFs.
 
 Parameters:
 
-| Name             | Type                    | Description                                                                                                     | Default   |
-| ---------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------- | --------- |
-| `action_manager` | `PositionActionManager` | The action manager for the robot/entity. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`                   | The attribute name of the entity in the environment. This isn't necessary if action_manager is provided.        | `'robot'` |
-| `dofs_idx`       | `list[int]`             | The indices of the DOFs to get the velocity of. This isn't necessary if action_manager is provided.             | `None`    |
+| Name             | Type                    | Description                                                                                                | Default |
+| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
+| `action_manager` | `PositionActionManager` | The action manager for the robot/entity. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`           | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if action_manager is provided.   | `None`  |
+| `dofs_idx`       | `list[int]`             | The indices of the DOFs to get the velocity of. This isn't necessary if action_manager is provided.        | `None`  |
 
 Returns:
 
@@ -6449,7 +6399,7 @@ Returns:
 
 ### `dofs_idx = None`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `env`
 
@@ -6472,7 +6422,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6518,7 +6467,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6594,7 +6542,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_linear_velocity(*, entity_manager=None, entity_attr='robot')`
+## `entity_linear_velocity(*, entity_manager=None, entity=None)`
 
 Bases: `MdpFn`
 
@@ -6602,10 +6550,10 @@ The linear velocity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                           | Default   |
-| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                              | `'robot'` |
+| Name             | Type            | Description                                                                                                                                      | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -6613,7 +6561,7 @@ Returns:
 | ---- | ----------------------------------------------------------------------------------------- |
 |      | torch.Tensor: The linear velocity of the entity's base link, in the entity's local frame. |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -6638,7 +6586,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6684,7 +6631,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6760,7 +6706,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_projected_gravity(*, entity_manager=None, entity_attr='robot')`
+## `entity_projected_gravity(*, entity_manager=None, entity=None)`
 
 Bases: `MdpFn`
 
@@ -6768,10 +6714,10 @@ The projected gravity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                           | Default   |
-| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                              | `'robot'` |
+| Name             | Type            | Description                                                                                                                                      | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -6779,7 +6725,7 @@ Returns:
 | ---- | ------------------------------------------------------------------------------------------- |
 |      | torch.Tensor: The projected gravity of the entity's base link, in the entity's local frame. |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -6804,7 +6750,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -6850,7 +6795,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -6926,7 +6870,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `has_contact(*, contact_manager=None, threshold=1.0)`
+## `has_contact(*, contact_manager, threshold=1.0)`
 
 Bases: `MdpFn`
 
@@ -6934,10 +6878,10 @@ Return 1 (true) or 0 (false) for each link in the contact manager that meets the
 
 Parameters:
 
-| Name              | Type             | Description                                                      | Default |
-| ----------------- | ---------------- | ---------------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                         | `None`  |
-| `threshold`       | `float`          | The minimum force necessary for contact detection (default: 1.0) | `1.0`   |
+| Name              | Type             | Description                                                      | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                         | *required* |
+| `threshold`       | `float`          | The minimum force necessary for contact detection (default: 1.0) | `1.0`      |
 
 Returns:
 
@@ -6945,7 +6889,7 @@ Returns:
 | ---- | --------------------------------------------- |
 |      | 1 for each link meeting the contact threshold |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -6970,7 +6914,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -7016,7 +6959,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -7092,7 +7034,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `read_imu(*, imu=None)`
+## `read_imu(*, imu)`
 
 Bases: `MdpFn`
 
@@ -7100,9 +7042,9 @@ Makes an IMU reading and returns the concatenated linear acceleration and angula
 
 Parameters:
 
-| Name  | Type               | Description                  | Default |
-| ----- | ------------------ | ---------------------------- | ------- |
-| `imu` | `'gs.sensors.IMU'` | The IMU sensor to read from. | `None`  |
+| Name  | Type  | Description                  | Default    |
+| ----- | ----- | ---------------------------- | ---------- |
+| `imu` | `IMU` | The IMU sensor to read from. | *required* |
 
 Example::
 
@@ -7135,7 +7077,7 @@ Returns:
 
 The environment this function is bound to.
 
-### `imu = None`
+### `imu`
 
 ### `build()`
 
@@ -7154,7 +7096,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -7200,7 +7141,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -7284,7 +7224,7 @@ These are simple helper functions that can be used in the [EntityManager](https:
 
 Define the rotation around the X/Y/Z axes. The value can either be a distinct value, or a tuple of (min, max) values to randomize within.
 
-## `position(*, position=None, quat=None, zero_velocity=True)`
+## `position(*, position, quat=None, zero_velocity=True)`
 
 Bases: `ResetMdpFn`
 
@@ -7294,7 +7234,7 @@ Parameters:
 
 | Name            | Type                                | Description                                                                                                                             | Default                              |
 | --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `position`      | `tuple[float, float, float]`        | The position to set the entity to.                                                                                                      | `None`                               |
+| `position`      | `tuple[float, float, float]`        | The position to set the entity to.                                                                                                      | *required*                           |
 | `quat`          | \`tuple[float, float, float, float] | None\`                                                                                                                                  | The quaternion to set the entity to. |
 | `zero_velocity` | `bool`                              | Whether to zero the velocity of all the entity's dofs. Defaults to True. This is a safety measure after a sudden change in entity pose. | `True`                               |
 
@@ -7312,7 +7252,7 @@ Raises:
 
 The environment this function is bound to.
 
-### `position = None`
+### `position`
 
 ### `quat = None`
 
@@ -7371,7 +7311,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -7447,7 +7386,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `randomize_link_mass_shift(*, link_name=None, mass_range=None)`
+## `randomize_link_mass_shift(*, link_name, mass_range)`
 
 Bases: `ResetMdpFn`
 
@@ -7457,10 +7396,10 @@ See: https://genesis-world.readthedocs.io/en/latest/api_reference/entity/rigid_e
 
 Parameters:
 
-| Name         | Type                  | Description                                                                            | Default |
-| ------------ | --------------------- | -------------------------------------------------------------------------------------- | ------- |
-| `link_name`  | `str`                 | The name, or regex pattern, of the link(s) to set the mass for.                        | `None`  |
-| `mass_range` | `tuple[float, float]` | The range of the mass that will be added or subtracted from the link(s) on each reset. | `None`  |
+| Name         | Type                  | Description                                                                            | Default                                                                                                                                |
+| ------------ | --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `link_name`  | \`str                 | list[str]\`                                                                            | The name, or regex pattern, of the link(s) to set the mass for. Can also be a list of names/patterns to target multiple sets of links. |
+| `mass_range` | `tuple[float, float]` | The range of the mass that will be added or subtracted from the link(s) on each reset. | *required*                                                                                                                             |
 
 ### `entity`
 
@@ -7476,9 +7415,9 @@ Raises:
 
 The environment this function is bound to.
 
-### `link_name = None`
+### `link_name`
 
-### `mass_range = None`
+### `mass_range`
 
 ### `build()`
 
@@ -7487,18 +7426,16 @@ Source code in `genesis_forge/mdp/reset.py`
 ```
 def build(self):
     self._links_idx_local = []
-    self._orig_mass = None
-    if self.link_name is not None:
-        links = links_by_name_pattern(self.entity, self.link_name)
-        if len(links) > 0:
-            self._links_idx_local = [link.idx_local for link in links]
-            self._mass_shift_buffer = torch.zeros(
-                (self.env.num_envs, len(self._links_idx_local)), device=gs.device
-            )
-        else:
-            raise ValueError(
-                f"No links found with name/pattern '{self.link_name}'"
-            )
+    if self.link_name is None:
+        return
+    link_names = (
+        [self.link_name] if isinstance(self.link_name, str) else self.link_name
+    )
+    for name in link_names:
+        links = links_by_name_pattern(self.entity, name)
+        if len(links) == 0:
+            raise ValueError(f"No links found with name/pattern '{name}'")
+        self._links_idx_local.extend(link.idx_local for link in links)
 ```
 
 ### `context(env, entity=None)`
@@ -7534,7 +7471,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -7610,7 +7546,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `randomize_terrain_position(*, terrain_manager=None, height_offset=0.0001, subterrain=None, rotation=(lambda: {'z': (0, 2 * math.pi)})(), zero_velocity=True)`
+## `randomize_terrain_position(*, terrain_manager, height_offset=0.0001, subterrain=None, rotation=(lambda: {'z': (0, 2 * math.pi)})(), zero_velocity=True)`
 
 Bases: `ResetMdpFn`
 
@@ -7620,9 +7556,9 @@ Parameters:
 
 | Name              | Type             | Description                                                                                                                             | Default                                                                                                                      |
 | ----------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `terrain_manager` | `TerrainManager` | The terrain manager to use to generate the random position.                                                                             | `None`                                                                                                                       |
+| `terrain_manager` | `TerrainManager` | The terrain manager to use to generate the random position.                                                                             | *required*                                                                                                                   |
 | `height_offset`   | `float`          | The height offset to add to the random position.                                                                                        | `0.0001`                                                                                                                     |
-| `subterrain`      | \`str            | Callable\[[], str\]                                                                                                                     | None\`                                                                                                                       |
+| `subterrain`      | \`str            | Callable\[[], str                                                                                                                       | None\]                                                                                                                       |
 | `rotation`        | \`XYZRotation    | None\`                                                                                                                                  | The X/Y/Z rotation to set the entity to. Defaults to a random rotation around the z-axis. Set to None to not set a rotation. |
 | `zero_velocity`   | `bool`           | Whether to zero the velocity of all the entity's dofs. Defaults to True. This is a safety measure after a sudden change in entity pose. | `True`                                                                                                                       |
 
@@ -7646,7 +7582,7 @@ The environment this function is bound to.
 
 ### `subterrain = None`
 
-### `terrain_manager = None`
+### `terrain_manager`
 
 ### `zero_velocity = True`
 
@@ -7693,9 +7629,9 @@ def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
     """
     Set the rotation quaternion for the given environment ids.
     """
-    x = rotation["x"] if "x" in rotation else 0
-    y = rotation["y"] if "y" in rotation else 0
-    z = rotation["z"] if "z" in rotation else 0
+    x = rotation.get("x", 0)
+    y = rotation.get("y", 0)
+    z = rotation.get("z", 0)
     n_envs = len(envs_idx)
 
     if isinstance(x, tuple):
@@ -7735,7 +7671,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -7862,7 +7797,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env, entity=None)`
@@ -7898,7 +7832,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8011,7 +7944,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env, entity=None)`
@@ -8047,7 +7979,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8329,7 +8260,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -8375,7 +8305,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8451,7 +8380,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `ang_vel_xy_l2(*, entity_attr='robot', entity_manager=None)`
+## `ang_vel_xy_l2(*, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -8459,10 +8388,10 @@ Penalize xy-axis base angular velocity using L2 squared kernel.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default   |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
+| Name             | Type            | Description                                                                                                                                 | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -8470,7 +8399,7 @@ Returns:
 | ---- | ------------ |
 |      | torch.Tensor |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -8495,7 +8424,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -8541,7 +8469,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8617,7 +8544,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `base_height(*, target_height=None, height_command=None, terrain_manager=None, entity_attr='robot', entity_manager=None)`
+## `base_height(*, target_height=None, height_command=None, terrain_manager=None, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -8625,13 +8552,13 @@ Penalize base height away from target, using the L2 squared kernel.
 
 Parameters:
 
-| Name              | Type                   | Description                                                                                                 | Default   |
-| ----------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- | --------- |
-| `target_height`   | `Union[float, Tensor]` | The target height to penalize the base height away from                                                     | `None`    |
-| `height_command`  | `CommandManager`       | Get the target height from a height command manager. This expects the command to have a single range value. | `None`    |
-| `terrain_manager` | `TerrainManager`       | The terrain manager will adjust the height based on the terrain height.                                     | `None`    |
-| `entity_attr`     | `str`                  | The attribute name of the entity in the environment.                                                        | `'robot'` |
-| `entity_manager`  | `EntityManager`        | The entity manager for the entity.                                                                          | `None`    |
+| Name              | Type             | Description                                                                                                 | Default                                                 |
+| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `target_height`   | \`float          | Tensor\`                                                                                                    | The target height to penalize the base height away from |
+| `height_command`  | `CommandManager` | Get the target height from a height command manager. This expects the command to have a single range value. | `None`                                                  |
+| `terrain_manager` | `TerrainManager` | The terrain manager will adjust the height based on the terrain height.                                     | `None`                                                  |
+| `entity`          | `RigidEntity`    | The entity to compute the reward for. Defaults to env.robot. Not necessary if entity_manager is provided.   | `None`                                                  |
+| `entity_manager`  | `EntityManager`  | The entity manager for the entity.                                                                          | `None`                                                  |
 
 Returns:
 
@@ -8639,7 +8566,7 @@ Returns:
 | ---- | ------------------------------------------------------ |
 |      | torch.Tensor: Penalty for base height away from target |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -8670,7 +8597,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -8716,7 +8642,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8792,7 +8717,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `body_acceleration_exp(*, entity_attr='robot', entity_manager=None, sensitivity=0.1)`
+## `body_acceleration_exp(*, entity=None, entity_manager=None, sensitivity=0.1)`
 
 Bases: `MdpFn`
 
@@ -8800,13 +8725,13 @@ Penalize jerky body acceleration to encourage smooth locomotion.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default   |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
-| `sensitivity`    | `float`         | The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.                                         | `0.1`     |
+| Name             | Type            | Description                                                                                                                                 | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| `sensitivity`    | `float`         | The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.                                    | `0.1`   |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -8833,7 +8758,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -8879,7 +8803,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -8955,7 +8878,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `command_tracking_ang_vel(*, commanded_ang_vel=None, vel_cmd_manager=None, sensitivity=0.25, entity_attr='robot', entity_manager=None)`
+## `command_tracking_ang_vel(*, commanded_ang_vel=None, vel_cmd_manager=None, sensitivity=0.25, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -8963,13 +8886,13 @@ Reward for tracking commanded angular velocity (yaw)
 
 Parameters:
 
-| Name                | Type                     | Description                                                                                                                                      | Default   |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `commanded_ang_vel` | `Tensor`                 | The commanded angular velocity in the shape (num_envs, 1)                                                                                        | `None`    |
-| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                                                     | `None`    |
-| `sensitivity`       | `float`                  | A lower value means the reward is more sensitive to the error                                                                                    | `0.25`    |
-| `entity_manager`    | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`       | `str`                    | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
+| Name                | Type                     | Description                                                                                                                                 | Default |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `commanded_ang_vel` | `Tensor`                 | The commanded angular velocity in the shape (num_envs, 1)                                                                                   | `None`  |
+| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`  |
+| `sensitivity`       | `float`                  | A lower value means the reward is more sensitive to the error                                                                               | `0.25`  |
+| `entity_manager`    | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`            | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -8979,7 +8902,7 @@ Returns:
 
 ### `commanded_ang_vel = None`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -9045,7 +8968,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9121,7 +9043,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `command_tracking_lin_vel(*, command=None, vel_cmd_manager=None, sensitivity=0.25, entity_attr='robot', entity_manager=None)`
+## `command_tracking_lin_vel(*, command=None, vel_cmd_manager=None, sensitivity=0.25, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -9129,13 +9051,13 @@ Reward for tracking commanded linear velocity (xy axes)
 
 Parameters:
 
-| Name              | Type                     | Description                                                                                                                                      | Default   |
-| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `command`         | `Tensor`                 | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                      | `None`    |
-| `vel_cmd_manager` | `VelocityCommandManager` | The velocity command manager                                                                                                                     | `None`    |
-| `sensitivity`     | `float`                  | A lower value means the reward is more sensitive to the error                                                                                    | `0.25`    |
-| `entity_manager`  | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`     | `str`                    | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
+| Name              | Type                     | Description                                                                                                                                 | Default |
+| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `command`         | `Tensor`                 | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                 | `None`  |
+| `vel_cmd_manager` | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`  |
+| `sensitivity`     | `float`                  | A lower value means the reward is more sensitive to the error                                                                               | `0.25`  |
+| `entity_manager`  | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`          | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -9145,7 +9067,7 @@ Returns:
 
 ### `command = None`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -9211,7 +9133,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9287,7 +9208,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `contact_force(*, contact_manager=None, threshold=1.0)`
+## `contact_force(*, contact_manager, threshold=1.0)`
 
 Bases: `MdpFn`
 
@@ -9295,10 +9216,10 @@ Reward for the total contact force acting on all the target links in the contact
 
 Parameters:
 
-| Name              | Type             | Description                                                | Default |
-| ----------------- | ---------------- | ---------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                   | `None`  |
-| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0 N) | `1.0`   |
+| Name              | Type             | Description                                                | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                   | *required* |
+| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0 N) | `1.0`      |
 
 Returns:
 
@@ -9306,7 +9227,7 @@ Returns:
 | ---- | ------------------------------------------------------------ |
 |      | The total force for the contact manager for each environment |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -9331,7 +9252,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -9377,7 +9297,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9453,7 +9372,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_similar_to_default(*, actuator_manager=None, action_manager=None)`
+## `dof_similar_to_default(*, actuator_manager)`
 
 Bases: `MdpFn`
 
@@ -9463,10 +9382,9 @@ Pass `actuator_manager` as one manager or a non-empty list/tuple (e.g. per-limb 
 
 Parameters:
 
-| Name               | Type                    | Description           | Default                                                                          |
-| ------------------ | ----------------------- | --------------------- | -------------------------------------------------------------------------------- |
-| `actuator_manager` | \`ActuatorManager       | list[ActuatorManager] | None\`                                                                           |
-| `action_manager`   | \`PositionActionManager | None\`                | (deprecated) One or more position-action managers. Use actuator_manager instead. |
+| Name               | Type              | Description             | Default                        |
+| ------------------ | ----------------- | ----------------------- | ------------------------------ |
+| `actuator_manager` | \`ActuatorManager | list[ActuatorManager]\` | One or more actuator managers. |
 
 Returns:
 
@@ -9474,9 +9392,7 @@ Returns:
 | ---- | ------------------------------------------------------------------- |
 |      | torch.Tensor: Penalty summed over included DOFs, shape (num_envs,). |
 
-### `action_manager = None`
-
-### `actuator_manager = None`
+### `actuator_manager`
 
 ### `env`
 
@@ -9488,9 +9404,9 @@ Source code in `genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    if self.actuator_manager is None and self.action_manager is None:
+    if self.actuator_manager is None:
         raise ValueError(
-            "dof_similar_to_default: Either actuator_manager or action_manager must be provided"
+            "dof_similar_to_default: actuator_manager must be provided"
         )
 ```
 
@@ -9537,7 +9453,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9613,7 +9528,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_torque_l2(*, actuator_manager=None)`
+## `dof_torque_l2(*, actuator_manager)`
 
 Bases: `MdpFn`
 
@@ -9623,9 +9538,9 @@ Discourages the policy from applying unnecessary force, particularly when the ro
 
 Parameters:
 
-| Name               | Type              | Description                                       | Default |
-| ------------------ | ----------------- | ------------------------------------------------- | ------- |
-| `actuator_manager` | `ActuatorManager` | The actuator manager to retrieve DOF forces from. | `None`  |
+| Name               | Type              | Description                                       | Default    |
+| ------------------ | ----------------- | ------------------------------------------------- | ---------- |
+| `actuator_manager` | `ActuatorManager` | The actuator manager to retrieve DOF forces from. | *required* |
 
 Returns:
 
@@ -9633,7 +9548,7 @@ Returns:
 | ---- | ---------------------------------------------------------------- |
 |      | torch.Tensor: Penalty for joint torque effort, shape (num_envs,) |
 
-### `actuator_manager = None`
+### `actuator_manager`
 
 ### `env`
 
@@ -9656,7 +9571,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -9702,7 +9616,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9778,7 +9691,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_velocity_l2(*, action_manager=None)`
+## `dof_velocity_l2(*, action_manager)`
 
 Bases: `MdpFn`
 
@@ -9786,9 +9699,9 @@ Penalize joint angular velocities to encourage slow, deliberate motion.
 
 Parameters:
 
-| Name             | Type                    | Description                                         | Default |
-| ---------------- | ----------------------- | --------------------------------------------------- | ------- |
-| `action_manager` | `PositionActionManager` | The action manager to retrieve DOF velocities from. | `None`  |
+| Name             | Type                    | Description                                         | Default    |
+| ---------------- | ----------------------- | --------------------------------------------------- | ---------- |
+| `action_manager` | `PositionActionManager` | The action manager to retrieve DOF velocities from. | *required* |
 
 Returns:
 
@@ -9796,7 +9709,7 @@ Returns:
 | ---- | ------------------------------------------------------------------- |
 |      | torch.Tensor: Penalty for joint angular velocity, shape (num_envs,) |
 
-### `action_manager = None`
+### `action_manager`
 
 ### `env`
 
@@ -9819,7 +9732,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -9865,7 +9777,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -9941,7 +9852,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `feet_air_time(*, contact_manager=None, time_threshold=None, time_threshold_max=None, vel_cmd_manager=None)`
+## `feet_air_time(*, contact_manager, time_threshold, time_threshold_max=None, vel_cmd_manager=None)`
 
 Bases: `MdpFn`
 
@@ -9955,8 +9866,8 @@ Parameters:
 
 | Name                 | Type                     | Description                                                 | Default                                                                                                          |
 | -------------------- | ------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `contact_manager`    | `ContactManager`         | The contact manager to check for contact                    | `None`                                                                                                           |
-| `time_threshold`     | `float`                  | The minimum time (in seconds) the feet should be in the air | `None`                                                                                                           |
+| `contact_manager`    | `ContactManager`         | The contact manager to check for contact                    | *required*                                                                                                       |
+| `time_threshold`     | `float`                  | The minimum time (in seconds) the feet should be in the air | *required*                                                                                                       |
 | `time_threshold_max` | \`float                  | None\`                                                      | (optional) The maximum time (in seconds) the feet should be in the air. The reward will be capped at this value. |
 | `vel_cmd_manager`    | \`VelocityCommandManager | None\`                                                      | The velocity command manager                                                                                     |
 
@@ -9966,13 +9877,13 @@ Returns:
 | ---- | -------------------------------- |
 |      | The reward for the feet air time |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
 The environment this function is bound to.
 
-### `time_threshold = None`
+### `time_threshold`
 
 ### `time_threshold_max = None`
 
@@ -9995,7 +9906,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10041,7 +9951,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10117,7 +10026,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `feet_ground_time(*, contact_manager=None, time_threshold=None)`
+## `feet_ground_time(*, contact_manager, time_threshold)`
 
 Bases: `MdpFn`
 
@@ -10129,10 +10038,10 @@ Intended to be paired with feet_air_time (positive reward) to fully shape gait t
 
 Parameters:
 
-| Name              | Type             | Description                                                                                                                                                          | Default |
-| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                                                                                                                             | `None`  |
-| `time_threshold`  | `float`          | Contacts shorter than this (in seconds) are penalized. Set independently from the feet_air_time threshold based on the expected stance duration of your target gait. | `None`  |
+| Name              | Type             | Description                                                                                                                                                          | Default    |
+| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                                                                                                                             | *required* |
+| `time_threshold`  | `float`          | Contacts shorter than this (in seconds) are penalized. Set independently from the feet_air_time threshold based on the expected stance duration of your target gait. | *required* |
 
 Returns:
 
@@ -10140,13 +10049,13 @@ Returns:
 | ---- | -------------------------------------------------------- |
 |      | The penalty for brief ground contacts, shape (num_envs,) |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
 The environment this function is bound to.
 
-### `time_threshold = None`
+### `time_threshold`
 
 ### `build()`
 
@@ -10165,7 +10074,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10211,7 +10119,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10287,7 +10194,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `feet_slide(*, contact_manager=None, entity_attr='robot')`
+## `feet_slide(*, contact_manager, entity=None)`
 
 Bases: `MdpFn`
 
@@ -10299,10 +10206,10 @@ This penalty is less effective at longer foot-contact links (for example, long l
 
 Parameters:
 
-| Name              | Type             | Description                                                           | Default   |
-| ----------------- | ---------------- | --------------------------------------------------------------------- | --------- |
-| `contact_manager` | `ContactManager` | The contact manager for the feet                                      | `None`    |
-| `entity_attr`     | `str`            | The attribute name of the robot entity that the feet are attached to. | `'robot'` |
+| Name              | Type             | Description                                                            | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager for the feet                                       | *required* |
+| `entity`          | `RigidEntity`    | The robot entity that the feet are attached to. Defaults to env.robot. | `None`     |
 
 Returns:
 
@@ -10310,9 +10217,9 @@ Returns:
 | ---- | ------------------------------ |
 |      | The penalty for the feet slide |
 
-### `contact_manager = None`
+### `contact_manager`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `env`
 
@@ -10335,7 +10242,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10381,7 +10287,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10457,7 +10362,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `flat_orientation_l2(*, entity_attr='robot', entity_manager=None)`
+## `flat_orientation_l2(*, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -10465,10 +10370,10 @@ Penalize non-flat base orientation using L2 squared kernel. This is computed by 
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default   |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
+| Name             | Type            | Description                                                                                                                                 | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -10476,7 +10381,7 @@ Returns:
 | ---- | --------------------------------------------------- |
 |      | torch.Tensor: Penalty for non-flat base orientation |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -10501,7 +10406,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10547,7 +10451,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10623,7 +10526,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `has_contact(*, contact_manager=None, threshold=1.0, min_contacts=1)`
+## `has_contact(*, contact_manager, threshold=1.0, min_contacts=1)`
 
 Bases: `MdpFn`
 
@@ -10631,11 +10534,11 @@ One or more links in the contact manager are in contact with something.
 
 Parameters:
 
-| Name              | Type             | Description                                              | Default |
-| ----------------- | ---------------- | -------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                 | `None`  |
-| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0) | `1.0`   |
-| `min_contacts`    | `int`            | The minimum number of contacts required. (default: 1)    | `1`     |
+| Name              | Type             | Description                                              | Default    |
+| ----------------- | ---------------- | -------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                 | *required* |
+| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0) | `1.0`      |
+| `min_contacts`    | `int`            | The minimum number of contacts required. (default: 1)    | `1`        |
 
 Returns:
 
@@ -10643,7 +10546,7 @@ Returns:
 | ---- | ---------------------------------------- |
 |      | 1 for each contact meeting the threshold |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -10670,7 +10573,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10716,7 +10618,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10819,7 +10720,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -10865,7 +10765,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -10941,7 +10840,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `lin_vel_xy_l2(*, entity_attr='robot', entity_manager=None)`
+## `lin_vel_xy_l2(*, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -10949,10 +10848,10 @@ Penalize horizontal base linear velocity.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                              | Default   |
-| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------- | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for.                                | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided. | `'robot'` |
+| Name             | Type            | Description                                                                                                      | Default |
+| ---------------- | --------------- | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for.                                        | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided. | `None`  |
 
 Returns:
 
@@ -10960,7 +10859,7 @@ Returns:
 | ---- | ------------------------------------------------------ |
 |      | torch.Tensor: Penalty for xy axis base linear velocity |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -10985,7 +10884,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -11031,7 +10929,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11107,7 +11004,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `lin_vel_z_l2(*, entity_attr='robot', entity_manager=None)`
+## `lin_vel_z_l2(*, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -11115,10 +11012,10 @@ Penalize z axis base linear velocity
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default   |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity_attr parameter. | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                         | `'robot'` |
+| Name             | Type            | Description                                                                                                                                 | Default |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
+| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
 
 Returns:
 
@@ -11126,7 +11023,7 @@ Returns:
 | ---- | ----------------------------------------------------- |
 |      | torch.Tensor: Penalty for z axis base linear velocity |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -11151,7 +11048,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -11197,7 +11093,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11273,7 +11168,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `stand_still_joint_deviation_l1(*, vel_cmd_manager=None, actuator_manager=None, command_threshold=0.06, action_manager=None)`
+## `stand_still_joint_deviation_l1(*, vel_cmd_manager, actuator_manager=None, command_threshold=0.06, action_manager=None)`
 
 Bases: `MdpFn`
 
@@ -11281,12 +11176,12 @@ Penalize offsets from the default joint positions when the command is very small
 
 Parameters:
 
-| Name                | Type                     | Description                                                              | Default |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------ | ------- |
-| `command_threshold` | `float`                  | The threshold for the command to be considered small                     | `0.06`  |
-| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                             | `None`  |
-| `actuator_manager`  | `ActuatorManager`        | The actuator manager to get the joint positions and recent actions from. | `None`  |
-| `action_manager`    | `PositionActionManager`  | The action manager to get the joint positions and recent actions from.   | `None`  |
+| Name                | Type                     | Description                                                              | Default    |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------ | ---------- |
+| `command_threshold` | `float`                  | The threshold for the command to be considered small                     | `0.06`     |
+| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                             | *required* |
+| `actuator_manager`  | `ActuatorManager`        | The actuator manager to get the joint positions and recent actions from. | `None`     |
+| `action_manager`    | `PositionActionManager`  | The action manager to get the joint positions and recent actions from.   | `None`     |
 
 Returns:
 
@@ -11304,7 +11199,7 @@ Returns:
 
 The environment this function is bound to.
 
-### `vel_cmd_manager = None`
+### `vel_cmd_manager`
 
 ### `build()`
 
@@ -11360,7 +11255,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11463,7 +11357,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -11509,7 +11402,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11587,7 +11479,7 @@ def update(self, **params: Any) -> None:
 
 # Terminations
 
-## `bad_orientation(*, limit_angle=40.0, entity_attr='robot', entity_manager=None, grace_steps=0)`
+## `bad_orientation(*, limit_angle=40.0, entity=None, entity_manager=None, grace_steps=0)`
 
 Bases: `MdpFn`
 
@@ -11597,12 +11489,12 @@ This function uses projected gravity to detect when the robot has tilted beyond 
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                        | Default   |
-| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `limit_angle`    | `float`         | Maximum allowed tilt angle in degrees (default: 40 degrees)                                                                                        | `40.0`    |
-| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                                                                                 | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                                           | `'robot'` |
-| `grace_steps`    | `int`           | Number of steps at episode start to ignore tilt detection (default: 0) This gives the robot a chance to stabilize before tilt detection is active. | `0`       |
+| Name             | Type            | Description                                                                                                                                        | Default |
+| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `limit_angle`    | `float`         | Maximum allowed tilt angle in degrees (default: 40 degrees)                                                                                        | `40.0`  |
+| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                                                                                 | `None`  |
+| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided.                                                    | `None`  |
+| `grace_steps`    | `int`           | Number of steps at episode start to ignore tilt detection (default: 0) This gives the robot a chance to stabilize before tilt detection is active. | `0`     |
 
 Returns:
 
@@ -11610,7 +11502,7 @@ Returns:
 | ---- | --------------------------------------------------------------------------- |
 |      | torch.Tensor: Boolean tensor indicating which environments should terminate |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -11639,7 +11531,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -11685,7 +11576,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11761,7 +11651,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `base_height_below_minimum(*, minimum_height=0.05, entity_attr='robot', entity_manager=None)`
+## `base_height_below_minimum(*, minimum_height=0.05, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -11769,11 +11659,11 @@ Terminate the environment if the robot's base height falls below a minimum thres
 
 Parameters:
 
-| Name             | Type            | Description                                                                                              | Default   |
-| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------- | --------- |
-| `minimum_height` | `float`         | Minimum allowed base height in meters                                                                    | `0.05`    |
-| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                                       | `None`    |
-| `entity_attr`    | `str`           | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided. | `'robot'` |
+| Name             | Type            | Description                                                                                     | Default |
+| ---------------- | --------------- | ----------------------------------------------------------------------------------------------- | ------- |
+| `minimum_height` | `float`         | Minimum allowed base height in meters                                                           | `0.05`  |
+| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                              | `None`  |
+| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided. | `None`  |
 
 Returns:
 
@@ -11781,7 +11671,7 @@ Returns:
 | ---- | --------------------------------------------------------------------------- |
 |      | torch.Tensor: Boolean tensor indicating which environments should terminate |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -11808,7 +11698,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -11854,7 +11743,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -11930,7 +11818,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `contact_force(*, contact_manager=None, threshold=1.0)`
+## `contact_force(*, contact_manager, threshold=1.0)`
 
 Bases: `MdpFn`
 
@@ -11938,10 +11826,10 @@ Terminate if any link in the contact manager is in contact with something with a
 
 Parameters:
 
-| Name              | Type             | Description                                                | Default |
-| ----------------- | ---------------- | ---------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                   | `None`  |
-| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0 N) | `1.0`   |
+| Name              | Type             | Description                                                | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                   | *required* |
+| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0 N) | `1.0`      |
 
 Returns:
 
@@ -11949,7 +11837,7 @@ Returns:
 | ---- | ------------------------------------------------------------ |
 |      | The total force for the contact manager for each environment |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -11974,7 +11862,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -12020,7 +11907,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12096,7 +11982,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `contact_force_with_grace_period(*, contact_manager=None, threshold=100.0, grace_steps=10)`
+## `contact_force_with_grace_period(*, contact_manager, threshold=100.0, grace_steps=10)`
 
 Bases: `MdpFn`
 
@@ -12106,11 +11992,11 @@ This is useful for quadrupeds that may start in slightly unstable positions and 
 
 Parameters:
 
-| Name              | Type             | Description                                                       | Default |
-| ----------------- | ---------------- | ----------------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                          | `None`  |
-| `threshold`       | `float`          | The force threshold for contact detection (default: 100.0 N)      | `100.0` |
-| `grace_steps`     | `int`            | Number of steps at episode start to ignore contacts (default: 10) | `10`    |
+| Name              | Type             | Description                                                       | Default    |
+| ----------------- | ---------------- | ----------------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                          | *required* |
+| `threshold`       | `float`          | The force threshold for contact detection (default: 100.0 N)      | `100.0`    |
+| `grace_steps`     | `int`            | Number of steps at episode start to ignore contacts (default: 10) | `10`       |
 
 Returns:
 
@@ -12118,7 +12004,7 @@ Returns:
 | ---- | ------------------------------------------------------------- |
 |      | Boolean tensor indicating which environments should terminate |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -12145,7 +12031,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -12191,7 +12076,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12267,7 +12151,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_control_force_limit(*, actuator_manager=None, threshold=None)`
+## `dof_control_force_limit(*, actuator_manager, threshold=None)`
 
 Bases: `MdpFn`
 
@@ -12279,7 +12163,7 @@ Parameters:
 
 | Name               | Type              | Description                                | Default                                                                                       |
 | ------------------ | ----------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `actuator_manager` | `ActuatorManager` | Actuator manager for the controlled joints | `None`                                                                                        |
+| `actuator_manager` | `ActuatorManager` | Actuator manager for the controlled joints | *required*                                                                                    |
 | `threshold`        | \`float           | None\`                                     | Force/torque limit (in simulator units). If None, uses max_force value from actuator_manager. |
 
 Returns:
@@ -12288,7 +12172,7 @@ Returns:
 | ---- | ------------------------------------------------------------- |
 |      | Boolean tensor indicating which environments should terminate |
 
-### `actuator_manager = None`
+### `actuator_manager`
 
 ### `env`
 
@@ -12313,7 +12197,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -12359,7 +12242,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12435,7 +12317,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_velocity_limit(*, actuator_manager=None, threshold=None, unit='rad')`
+## `dof_velocity_limit(*, actuator_manager, threshold, unit='rad')`
 
 Bases: `MdpFn`
 
@@ -12443,11 +12325,11 @@ Terminate if any of the actuator_manager's joints moves faster than a speed limi
 
 Parameters:
 
-| Name               | Type                    | Description                                                                                 | Default |
-| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------- | ------- |
-| `actuator_manager` | `ActuatorManager`       | Actuator manager for the controlled joints                                                  | `None`  |
-| `threshold`        | `float`                 | Speed limit in the units given by unit                                                      | `None`  |
-| `unit`             | `Literal['rpm', 'rad']` | The speed units - "rad" for radians per second (default) - "rpm" for revolutions per minute | `'rad'` |
+| Name               | Type                    | Description                                                                                 | Default    |
+| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------- | ---------- |
+| `actuator_manager` | `ActuatorManager`       | Actuator manager for the controlled joints                                                  | *required* |
+| `threshold`        | `float`                 | Speed limit in the units given by unit                                                      | *required* |
+| `unit`             | `Literal['rpm', 'rad']` | The speed units - "rad" for radians per second (default) - "rpm" for revolutions per minute | `'rad'`    |
 
 Returns:
 
@@ -12455,13 +12337,13 @@ Returns:
 | ---- | ------------------------------------------------------------- |
 |      | Boolean tensor indicating which environments should terminate |
 
-### `actuator_manager = None`
+### `actuator_manager`
 
 ### `env`
 
 The environment this function is bound to.
 
-### `threshold = None`
+### `threshold`
 
 ### `unit = 'rad'`
 
@@ -12520,7 +12402,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12596,7 +12477,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `has_contact(*, contact_manager=None, threshold=1.0, min_contacts=1)`
+## `has_contact(*, contact_manager, threshold=1.0, min_contacts=1)`
 
 Bases: `MdpFn`
 
@@ -12604,11 +12485,11 @@ One or more links in the contact manager are in contact with something.
 
 Parameters:
 
-| Name              | Type             | Description                                                            | Default |
-| ----------------- | ---------------- | ---------------------------------------------------------------------- | ------- |
-| `contact_manager` | `ContactManager` | The contact manager to check for contact                               | `None`  |
-| `threshold`       | `float`          | The force threshold, per contact, for contact detection (default: 1.0) | `1.0`   |
-| `min_contacts`    | `int`            | The minimum number of contacts required to terminate (default: 1)      | `1`     |
+| Name              | Type             | Description                                                            | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                               | *required* |
+| `threshold`       | `float`          | The force threshold, per contact, for contact detection (default: 1.0) | `1.0`      |
+| `min_contacts`    | `int`            | The minimum number of contacts required to terminate (default: 1)      | `1`        |
 
 Returns:
 
@@ -12616,7 +12497,7 @@ Returns:
 | ---- | ------------------------------------------ |
 |      | True for each environment that has contact |
 
-### `contact_manager = None`
+### `contact_manager`
 
 ### `env`
 
@@ -12643,7 +12524,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -12689,7 +12569,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12765,7 +12644,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `is_upsidedown(*, threshold=0.5, entity_attr='robot', entity_manager=None, grace_steps=0)`
+## `is_upsidedown(*, threshold=0.5, entity=None, entity_manager=None, grace_steps=0)`
 
 Bases: `MdpFn`
 
@@ -12775,14 +12654,14 @@ Uses projected gravity in the body frame: upright is approximately [0, 0, -1], b
 
 Parameters:
 
-| Name             | Type            | Description                                               | Default   |
-| ---------------- | --------------- | --------------------------------------------------------- | --------- |
-| `threshold`      | `float`         | Terminate when projected_gravity[:, 2] exceeds this value | `0.5`     |
-| `entity_manager` | `EntityManager` | The entity manager for the robot                          | `None`    |
-| `entity_attr`    | `str`           | Entity attribute if entity_manager is not provided        | `'robot'` |
-| `grace_steps`    | `int`           | Steps at episode start to ignore this check               | `0`       |
+| Name             | Type            | Description                                                                             | Default |
+| ---------------- | --------------- | --------------------------------------------------------------------------------------- | ------- |
+| `threshold`      | `float`         | Terminate when projected_gravity[:, 2] exceeds this value                               | `0.5`   |
+| `entity_manager` | `EntityManager` | The entity manager for the robot                                                        | `None`  |
+| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. Not necessary if entity_manager is provided | `None`  |
+| `grace_steps`    | `int`           | Steps at episode start to ignore this check                                             | `0`     |
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `entity_manager = None`
 
@@ -12811,7 +12690,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -12857,7 +12735,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -12933,7 +12810,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `out_of_bounds(*, terrain_manager=None, subterrain=None, border_margin=0.5, entity_attr='robot')`
+## `out_of_bounds(*, terrain_manager, subterrain=None, border_margin=0.5, entity=None)`
 
 Bases: `MdpFn`
 
@@ -12943,14 +12820,14 @@ Parameters:
 
 | Name              | Type             | Description                                                                                                             | Default                                    |
 | ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `terrain_manager` | `TerrainManager` | The terrain manager to check for out of bounds                                                                          | `None`                                     |
+| `terrain_manager` | `TerrainManager` | The terrain manager to check for out of bounds                                                                          | *required*                                 |
 | `subterrain`      | \`str            | None\`                                                                                                                  | The subterrain to keep the robot inside of |
 | `border_margin`   | `float`          | The margin (in meters) to add to the terrain bounds This terminates the episode before the robot falls off the terrain. | `0.5`                                      |
-| `entity_attr`     | `str`            | The attribute name of the entity in the environment. This isn't necessary if entity_manager is provided.                | `'robot'`                                  |
+| `entity`          | `RigidEntity`    | The entity to check. Defaults to env.robot.                                                                             | `None`                                     |
 
 ### `border_margin = 0.5`
 
-### `entity_attr = 'robot'`
+### `entity = None`
 
 ### `env`
 
@@ -12958,7 +12835,7 @@ The environment this function is bound to.
 
 ### `subterrain = None`
 
-### `terrain_manager = None`
+### `terrain_manager`
 
 ### `build()`
 
@@ -12977,7 +12854,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -13023,7 +12899,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -13126,7 +13001,6 @@ def build(self) -> None:
     any param is changed. Must be idempotent -- it is safe to call any number of
     times, and re-deriving from scratch is the expected implementation.
     """
-    pass
 ```
 
 ### `context(env)`
@@ -13172,7 +13046,6 @@ def reset(self, envs_idx: list[int]) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
-    pass
 ```
 
 ### `safe_build()`
@@ -13298,24 +13171,24 @@ What it does
 
 Parameters:
 
-| Name  | Type         | Description | Default                                                                                              |
-| ----- | ------------ | ----------- | ---------------------------------------------------------------------------------------------------- |
-| `env` | \`GenesisEnv | Wrapper\`   | The environment to wrap.                                                                             |
-| `cfg` | \`dict       | object\`    | The logger configuration that RSL-RL will pass to the external logging service (neptune, wandb, etc) |
+| Name  | Type         | Description | Default                  |
+| ----- | ------------ | ----------- | ------------------------ |
+| `env` | \`GenesisEnv | Wrapper\`   | The environment to wrap. |
+| `cfg` | \`dict       | object      | None\`                   |
 
 Source code in `genesis_forge/wrappers/rsl_rl.py`
 
 ```
-def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object = {}):
+def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object | None = None):
     super().__init__(env)
 
     self.rsl3 = False
-    self.cfg = cfg
+    self.cfg = cfg if cfg is not None else {}
     try:
         major_version = int(metadata.version("rsl-rl-lib").split(".")[0])
         if major_version >= 3:
             self.rsl3 = True
-    except:
+    except: # noqa
         pass
 ```
 
@@ -13325,7 +13198,7 @@ The action space of the environment.
 
 ## `can_be_wrapped = False`
 
-## `cfg = cfg`
+## `cfg = cfg if cfg is not None else {}`
 
 ## `device`
 
@@ -13494,7 +13367,7 @@ def __init__(self, env: "GenesisEnv | Wrapper"):
 
     self.env = env
     if not isinstance(env, GenesisEnv) and not isinstance(env, Wrapper):
-        raise ValueError(
+        raise TypeError(
             f"Expected env to be a `GenesisEnv` or `Wrapper` but got {type(env)}"
         )
 ```
@@ -13592,7 +13465,6 @@ def render(self, *args, **kwargs) -> Any:
     """
     Not implemented for Genesis Forge environments.
     """
-    pass
 ```
 
 ## `reset()`
@@ -13609,18 +13481,18 @@ Returns:
 
 | Name    | Type                 | Description                       |
 | ------- | -------------------- | --------------------------------- |
-| `tuple` | `Tuple[Tensor, Any]` | Observation (tensor), info (dict) |
+| `tuple` | `tuple[Tensor, Any]` | Observation (tensor), info (dict) |
 
 Source code in `genesis_forge/wrappers/skrl.py`
 
 ```
-def reset(self) -> Tuple[torch.Tensor, Any]:
+def reset(self) -> tuple[torch.Tensor, Any]:
     """Reset the environment
 
     Raises:
         NotImplementedError: Not implemented
 
-    Returns: 
+    Returns:
         tuple: Observation (tensor), info (dict)
     """
     return self._env.reset()
@@ -13642,7 +13514,7 @@ Source code in `genesis_forge/wrappers/skrl.py`
 def state(self) -> torch.Tensor:
     """Get the environment state
 
-    Returns: 
+    Returns:
         State (torch.Tensor)
     """
     return self.env.state()
@@ -13662,21 +13534,21 @@ Returns:
 
 | Type                                         | Description                                                                                                               |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `Tuple[Tensor, Tensor, Tensor, Tensor, Any]` | tuple of tensors and a dict: Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict) |
+| `tuple[Tensor, Tensor, Tensor, Tensor, Any]` | tuple of tensors and a dict: Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict) |
 
 Source code in `genesis_forge/wrappers/skrl.py`
 
 ```
 def step(
     self, actions: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
     """Perform a step in the environment
 
     Args:
         actions: The actions to perform
 
     Returns:
-        tuple of tensors and a dict: 
+        tuple of tensors and a dict:
             Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict)
     """
     obs, rewards, terminations, timeouts, extras = self._env.step(actions)
@@ -13778,7 +13650,6 @@ def __init__(
 
     self._cam: Camera | None = None
     self._start_recording_has_args: bool = False
-    self._current_filepath: str | None = None
     self._camera_attr = camera_attr
     self._out_dir = out_dir
     self._filename = filename
@@ -13786,6 +13657,8 @@ def __init__(
     self._steps_per_frame = max(1, round(1.0 / fps / self.dt)) # max prevents division by zero
     self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
     self._env_idx = env_idx
+
+    self._recording_filepath = os.path.join(self._out_dir, ".recording.mp4")
 
     if episode_trigger is None and step_trigger is None:
         episode_trigger = capped_cubic_episode_trigger
@@ -13901,13 +13774,17 @@ def finish_recording(self):
     if not self._is_recording or self._cam is None:
         return
 
+    filename = self._filename or f"{self._recording_start_step}.mp4"
+    filepath = os.path.join(self._out_dir, filename)
+
     # Save recording
     if self._logging:
-        print(f"Saving recording to {self._current_filepath}")
+        print(f"Saving recording to {filepath}")
     if self._start_recording_has_args:
         self._cam.stop_recording()
+        os.rename(self._recording_filepath, filepath)
     else:
-        self._cam.stop_recording(self._current_filepath, fps=self._actual_fps)
+        self._cam.stop_recording(filepath, fps=self._actual_fps)
 
     # Reset recording state
     self._is_recording = False
@@ -13935,7 +13812,7 @@ Source code in `genesis_forge/wrappers/wrapper.py`
 ```
 def reset(
     self,
-    env_ids: Sequence[int] = None,
+    env_ids: list[int] | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data."""
     return self.env.reset(env_ids)
@@ -13957,13 +13834,10 @@ def start_recording(self):
     self._recording_start_step = self._current_step
     self._recording_stop_step = self._current_step + self._video_length_steps
 
-    filename = self._filename or f"{self._recording_start_step}.mp4"
-    self._current_filepath = os.path.join(self._out_dir, filename)
-
     # Genesis >= 1.3: filename/fps are passed to start_recording
     if self._start_recording_has_args:
-        self._cam.start_recording(  
-            save_to_filename=self._current_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
+        self._cam.start_recording(
+            save_to_filename=self._recording_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
         )
     else:
         self._cam.start_recording()
@@ -13978,7 +13852,7 @@ Source code in `genesis_forge/wrappers/video.py`
 ```
 def step(
     self, actions: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
     """Record a video image at each step."""
     (
         observations,

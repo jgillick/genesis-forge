@@ -211,7 +211,7 @@ param is recomputed. Changing several params at once should go through `update()
 function is rebuilt once rather than once per assignment:
 
 ```python
-self.reward_manager.cfg["height"].fn.update(target_height=0.35, entity_attr="robot")
+self.reward_manager.cfg["height"].fn.update(target_height=0.35, entity=self.robot)
 ```
 
 `increment_param()` is a convenience for nudging a numeric param, with an optional limit:

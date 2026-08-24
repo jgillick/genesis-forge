@@ -77,7 +77,7 @@ build() -- bounds mapping
 
 def test_build_falls_back_to_the_aabb_for_a_non_terrain_morph(env):
     env.terrain = make_flat_terrain(z=0.7)
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     assert mgr.get_bounds() == (0.0, 10.0, 0.0, 10.0)
@@ -85,7 +85,7 @@ def test_build_falls_back_to_the_aabb_for_a_non_terrain_morph(env):
 
 def test_build_maps_bounds_from_the_terrain_morph(env):
     env.terrain = make_subterrain_setup()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     assert mgr.get_bounds() == (0.0, 20.0, 0.0, 20.0)
@@ -93,7 +93,7 @@ def test_build_maps_bounds_from_the_terrain_morph(env):
 
 def test_build_maps_each_subterrains_bounds(env):
     env.terrain = make_subterrain_setup()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     assert mgr.get_bounds("flat") == (0.0, 10.0, 0.0, 10.0)
@@ -104,7 +104,7 @@ def test_build_maps_each_subterrains_bounds(env):
 
 def test_get_bounds_falls_back_to_full_bounds_for_an_unknown_subterrain(env):
     env.terrain = make_subterrain_setup()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     assert mgr.get_bounds("nonexistent") == mgr.get_bounds()
@@ -117,7 +117,7 @@ get_terrain_height()
 
 def test_get_terrain_height_without_a_height_field_returns_the_origin_z(env):
     env.terrain = make_flat_terrain(z=0.7)
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     heights = mgr.get_terrain_height(torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0]))
@@ -133,7 +133,7 @@ def test_get_terrain_height_interpolates_the_height_field(env):
     height_field = torch.tensor([[0.0, 20.0], [10.0, 30.0]])
     geom = FakeGeom(aabb=aabb, pos=pos, metadata={"height_field": height_field})
     env.terrain = FakeTerrain(geoms=[geom], morph=FakeMorph(vertical_scale=1.0))
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     x = torch.tensor([0.0, 10.0, 0.0, 10.0])
@@ -151,7 +151,7 @@ def test_get_terrain_height_is_independent_of_num_envs(env):
     height_field = torch.tensor([[0.0, 20.0], [10.0, 30.0]])
     geom = FakeGeom(aabb=aabb, pos=pos, metadata={"height_field": height_field})
     env.terrain = FakeTerrain(geoms=[geom], morph=FakeMorph(vertical_scale=1.0))
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     x = torch.tensor([0.0, 10.0, 0.0, 10.0, 0.0, 10.0])
@@ -169,7 +169,7 @@ def test_get_terrain_height_applies_the_vertical_scale(env):
     height_field = torch.full((2, 2), 5.0)
     geom = FakeGeom(aabb=aabb, pos=pos, metadata={"height_field": height_field})
     env.terrain = FakeTerrain(geoms=[geom], morph=FakeMorph(vertical_scale=2.0))
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     heights = mgr.get_terrain_height(torch.tensor([5.0]), torch.tensor([5.0]))
@@ -183,7 +183,7 @@ generate_random_positions()
 
 def test_generate_random_positions_stays_within_the_usable_ratio_bounds(env):
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     output = mgr.generate_random_positions(num=env.num_envs, usable_ratio=0.5, height_offset=0.0)
@@ -195,7 +195,7 @@ def test_generate_random_positions_stays_within_the_usable_ratio_bounds(env):
 
 def test_generate_random_positions_applies_the_height_offset(env):
     env.terrain = make_flat_terrain(z=1.0)
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     output = mgr.generate_random_positions(num=env.num_envs, height_offset=0.05)
@@ -205,7 +205,7 @@ def test_generate_random_positions_applies_the_height_offset(env):
 
 def test_generate_random_positions_requires_output_or_num(env):
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     with pytest.raises(AssertionError):
@@ -214,7 +214,7 @@ def test_generate_random_positions_requires_output_or_num(env):
 
 def test_generate_random_positions_writes_only_to_the_given_out_idx(env):
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     output = torch.full((4, 3), -1.0)
@@ -230,7 +230,7 @@ def test_generate_random_positions_supports_num_greater_than_num_envs(env):
     """num is independent of env.num_envs -- generate_random_positions is a
     general-purpose "N random positions" utility, not limited to one per env."""
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     output = mgr.generate_random_positions(
@@ -245,7 +245,7 @@ def test_generate_random_positions_supports_num_greater_than_num_envs(env):
 
 def test_generate_random_positions_uses_the_subterrain_bounds(env):
     env.terrain = make_subterrain_setup()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     output = mgr.generate_random_positions(
@@ -263,7 +263,7 @@ generate_random_env_pos()
 
 def test_generate_random_env_pos_updates_only_the_requested_envs(env):
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
     mgr._env_pos_buffer[:] = -1.0
 
@@ -278,7 +278,7 @@ def test_generate_random_env_pos_updates_only_the_requested_envs(env):
 
 def test_generate_random_env_pos_defaults_to_every_env(env):
     env.terrain = make_flat_terrain()
-    mgr = TerrainManager(env, terrain_attr="terrain")
+    mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
     result = mgr.generate_random_env_pos()

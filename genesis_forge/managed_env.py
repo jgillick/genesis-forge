@@ -239,7 +239,7 @@ class ManagedEnvironment(GenesisEnv):
             def config(self):
                 EntityManager(
                     self,
-                    entity_attr="robot",
+                    entity=self.robot,
                     on_reset={
                         "position": {
                             "fn": reset.position(

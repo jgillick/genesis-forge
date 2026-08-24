@@ -15,7 +15,7 @@ Here are the relevant snippets:
     # Randomly add/subtract mass to the robot's body
     self.robot_manager = EntityManager(
         self,
-        entity_attr="robot",
+        entity=self.robot,
         on_reset={
             "mass": {
                 "fn": reset.randomize_link_mass_shift(

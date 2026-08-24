@@ -80,7 +80,7 @@ class MyFirstEnv(ManagedEnvironment):
         # Entity Manager - Handles robot resets
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "position": {
                     "fn": reset.position(

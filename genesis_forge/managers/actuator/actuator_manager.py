@@ -68,7 +68,7 @@ class ActuatorManager(BaseManager):
         stiffness: The stiffness values.
         frictionloss: The frictionloss values.
         armature: The armature values.
-        entity_attr: The attribute of the environment to get the robot from.
+        entity: The robot entity to manage. Defaults to `env.robot`.
 
     Example::
 
@@ -108,13 +108,13 @@ class ActuatorManager(BaseManager):
         stiffness: float | NoisyValue | dict = None,
         frictionloss: float | NoisyValue | dict = None,
         armature: float | NoisyValue | dict = None,
-        entity_attr: str = "robot",
+        entity: RigidEntity = None,
     ):
         super().__init__(env, type="actuator")
         default_pos_val = default_pos if default_pos is not None else {".*": 0.0}
 
         self._dofs: dict[str, int] = {}
-        self._robot: RigidEntity = getattr(env, entity_attr)
+        self._robot: RigidEntity = entity if entity is not None else env.robot
         self._default_pos_cfg = ensure_dof_pattern(default_pos_val)
         self._kp_cfg = ensure_dof_pattern(kp)
         self._kv_cfg = ensure_dof_pattern(kv)

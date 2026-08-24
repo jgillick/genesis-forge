@@ -67,7 +67,7 @@ class Go2CEnv(ManagedEnvironment):
         # Robot manager - Reset the robot's initial position on reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "position": {
                     "fn": reset.position(

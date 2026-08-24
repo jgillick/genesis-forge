@@ -12,9 +12,9 @@ class MyEnv(ManagedEnvironment):
         # Detect the body hitting the ground
         self.contact_manager = ContactManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             sensor_links=["body"],
-            with_entity_attr="terrain"
+            with_entity=self.terrain,
         )
 
         # Terminate when the body touches the floor with more than 10N
@@ -73,8 +73,8 @@ class MyEnv(ManagedEnvironment):
         # Detect the body links colliding with other body liks
         self.contact_manager = ContactManager(
             self,
-            entity_attr="robot",
-            with_entity_attr="robot"
+            entity=self.robot,
+            with_entity=self.robot,
         )
 
         RewardManager(
@@ -104,9 +104,9 @@ To visualize which contacts are being registered, you can enable debugging, with
 ```python
 self.contact_manager = ContactManager(
     self,
-    entity_attr="robot",
+    entity=self.robot,
     sensor_links=["body"],
-    with_entity_attr="terrain"
+    with_entity=self.terrain,
     debug_visualizer=True,
     debug_visualizer_cfg={
         "envs_idx": [0],

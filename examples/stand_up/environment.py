@@ -106,7 +106,7 @@ class Go2StandUpEnv(ManagedEnvironment):
 
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "random_ground_pose": {
                     "fn": random_ground_pose(),

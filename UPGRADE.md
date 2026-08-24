@@ -232,6 +232,44 @@ self.action_manager.actuator_manager
 "fn": rewards.dof_similar_to_default(actuator_manager=self.actuator_manager),
 ```
 
+### `*_attr` params replaced with direct object references
+
+Parameters that referenced an environment object used to take the _name_ of an environment
+attribute (`entity_attr="robot"`). They now take the object itself (`entity=self.robot`). This applies to everything except wrappers, like`VideoWrapper`'s `camera_attr`, since they're configured outside the environment and wont have a direct reference to the object.
+
+**Before:**
+
+```python
+self.robot_manager = EntityManager(self, entity_attr="robot")
+self.terrain_manager = TerrainManager(self, terrain_attr="terrain")
+self.contact_manager = ContactManager(
+    self,
+    link_names=[".*_foot"],
+    entity_attr="robot",
+    with_entity_attr="terrain",
+)
+"fn": rewards.base_height(target_height=0.3, entity_attr="robot"),
+```
+
+**After:**
+
+```python
+self.robot_manager = EntityManager(self, entity=self.robot)
+self.terrain_manager = TerrainManager(self, terrain=self.terrain)
+self.contact_manager = ContactManager(
+    self,
+    link_names=[".*_foot"],
+    entity=self.robot,
+    with_entity=self.terrain,
+)
+"fn": rewards.base_height(target_height=0.3, entity=self.robot),
+```
+
+Params that defaulted to `"robot"` (or, for `ContactManager`'s `with_entity_attr`,
+whichever entity is being tracked) still default the same way -- just to `env.robot`
+instead of the string `"robot"` -- so most call sites that relied on the default can
+drop the param entirely instead of passing the object.
+
 ### `default_noise_scale` removed from `ActuatorManager`.
 
 Use `NoisyValue` on individual values instead of a single global noise scale:

@@ -54,7 +54,7 @@ class EntityManager(BaseManager):
 
     Args:
         env: The environment instance.
-        entity_attr: The attribute name of the environment that the entity is stored in.
+        entity: The entity to manage.
         on_reset: The reset configuration for the entity.
 
     Example::
@@ -66,7 +66,7 @@ class EntityManager(BaseManager):
             def config(self):
                 self.entity_manager = EntityManager(
                     self,
-                    entity_attr="robot",
+                    entity=self.robot,
                     on_reset={
                         "position": {
                             "fn": reset.randomize_terrain_position(
@@ -82,15 +82,14 @@ class EntityManager(BaseManager):
     def __init__(
         self,
         env: GenesisEnv,
-        entity_attr: str,
+        entity: RigidEntity,
         on_reset: dict[str, EntityResetConfig] | None = None,
     ):
         super().__init__(env, type="entity")
         if hasattr(env, "add_entity_manager"):
             env.add_entity_manager(self)
 
-        self.entity: RigidEntity | None = None
-        self._entity_attr = entity_attr
+        self.entity: RigidEntity = entity
 
         # Wrap config items
         on_reset = on_reset if on_reset is not None else {}
@@ -165,7 +164,6 @@ class EntityManager(BaseManager):
         """
         Build the entity manager.
         """
-        self.entity = getattr(self.env, self._entity_attr)
         self._cached_calcs()
 
         # Build reset function classes

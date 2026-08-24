@@ -161,11 +161,11 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
         return {agent: fused for agent in self.AGENTS}
 
     def config(self) -> None:
-        self.terrain_manager = TerrainManager(self, terrain_attr="terrain")
+        self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Randomize the robot's position on the terrain after reset
                 "position": {
@@ -221,7 +221,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                     "weight": -30.0,
                     "fn": rewards.base_height(
                         target_height=0.3,
-                        entity_attr="robot",
+                        entity=self.robot,
                         terrain_manager=self.terrain_manager,
                     ),
                 },

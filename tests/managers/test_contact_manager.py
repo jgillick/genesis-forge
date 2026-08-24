@@ -87,11 +87,11 @@ build() -- the with-filter (contacts against a specific other entity/links)
 """
 
 
-def test_build_with_entity_attr_alone_selects_every_link_of_that_entity(env):
+def test_build_with_entity_alone_selects_every_link_of_that_entity(env):
     env.robot = make_robot()
     env.terrain = FakeEntity([FakeLink("ground", idx=200, idx_local=0)])
     env.scene = FakeScene()
-    mgr = ContactManager(env, link_names=[".*_foot"], with_entity_attr="terrain")
+    mgr = ContactManager(env, link_names=[".*_foot"], with_entity=env.terrain)
     mgr.build()
 
     assert mgr._with_link_ids.tolist() == [200]

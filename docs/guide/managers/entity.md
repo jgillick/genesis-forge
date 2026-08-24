@@ -21,7 +21,7 @@ class MyEnv(ManagedEnvironment):
     def config(self):
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot", # references self.robot
+            entity=self.robot,
             on_reset={
                 "position": {
                     # resets the robot to the same position and rotation at each reset
@@ -43,7 +43,7 @@ Each reset config item has the following possible values:
 ```python
 EntityManager(
     self,
-    entity_attr="robot", # references self.robot
+    entity=self.robot,
     on_reset={
         "position": {
             # resets the robot to the same position and rotation at each reset
@@ -93,7 +93,7 @@ class MyEnv(ManagedEnvironment):
     def config(self):
         EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "random_mass": {
                     "fn": add_mass_on_reset(link_name="body"),

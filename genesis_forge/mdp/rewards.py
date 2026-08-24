@@ -71,7 +71,7 @@ class base_height(MdpFn):
         target_height: The target height to penalize the base height away from
         height_command: Get the target height from a height command manager. This expects the command to have a single range value.
         terrain_manager: The terrain manager will adjust the height based on the terrain height.
-        entity_attr: The attribute name of the entity in the environment.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. Not necessary if `entity_manager` is provided.
         entity_manager: The entity manager for the entity.
 
     Returns:
@@ -81,14 +81,14 @@ class base_height(MdpFn):
     target_height: float | torch.Tensor = None
     height_command: CommandManager = None
     terrain_manager: TerrainManager = None
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             robot = self.entity_manager.entity
         else:
-            robot = getattr(env, self.entity_attr)
+            robot = self.entity if self.entity is not None else env.robot
 
         base_pos = robot.get_pos()
         height_offset = 0.0
@@ -146,21 +146,22 @@ class lin_vel_z_l2(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for z axis base linear velocity
     """
 
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             linear_vel = self.entity_manager.get_linear_velocity()
         else:
-            linear_vel = entity_lin_vel(getattr(env, self.entity_attr))
+            robot = self.entity if self.entity is not None else env.robot
+            linear_vel = entity_lin_vel(robot)
         return torch.square(linear_vel[:, 2])
 
 
@@ -171,20 +172,21 @@ class lin_vel_xy_l2(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for xy axis base linear velocity
     """
 
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             lin_vel = self.entity_manager.get_linear_velocity()
         else:
-            lin_vel = entity_lin_vel(getattr(env, self.entity_attr))
+            robot = self.entity if self.entity is not None else env.robot
+            lin_vel = entity_lin_vel(robot)
         return torch.sum(torch.square(lin_vel[:, :2]), dim=1)
 
 
@@ -195,21 +197,22 @@ class ang_vel_xy_l2(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor
     """
 
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             angle_vel = self.entity_manager.get_angular_velocity()
         else:
-            angle_vel = entity_ang_vel(getattr(env, self.entity_attr))
+            robot = self.entity if self.entity is not None else env.robot
+            angle_vel = entity_ang_vel(robot)
         return torch.sum(torch.square(angle_vel[:, :2]), dim=1)
 
 
@@ -221,14 +224,14 @@ class flat_orientation_l2(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Penalty for non-flat base orientation
     """
 
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -237,9 +240,8 @@ class flat_orientation_l2(MdpFn):
         if self.entity_manager is not None:
             projected_gravity = self.entity_manager.get_projected_gravity()
         else:
-            projected_gravity = entity_projected_gravity(
-                getattr(env, self.entity_attr)
-            )
+            robot = self.entity if self.entity is not None else env.robot
+            projected_gravity = entity_projected_gravity(robot)
 
         # Penalize the xy-components (horizontal tilt) using L2 squared kernel.
         # A flat orientation means these components should be close to zero.
@@ -253,12 +255,12 @@ class body_acceleration_exp(MdpFn):
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
         sensitivity: The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.
     """
 
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
     sensitivity: float = 0.10
 
@@ -272,7 +274,7 @@ class body_acceleration_exp(MdpFn):
             curr_lin_vel = self.entity_manager.get_linear_velocity()
             curr_ang_vel = self.entity_manager.get_angular_velocity()
         else:
-            robot = getattr(env, self.entity_attr)
+            robot = self.entity if self.entity is not None else env.robot
             curr_lin_vel = entity_lin_vel(robot)
             curr_ang_vel = entity_ang_vel(robot)
 
@@ -454,8 +456,8 @@ class command_tracking_lin_vel(MdpFn):
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Reward for tracking of linear velocity commands (xy axes)
@@ -464,7 +466,7 @@ class command_tracking_lin_vel(MdpFn):
     command: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
     sensitivity: float = 0.25
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def build(self):
@@ -476,7 +478,7 @@ class command_tracking_lin_vel(MdpFn):
         if self.entity_manager is not None:
             linear_vel_local = self.entity_manager.get_linear_velocity()
         else:
-            robot = getattr(env, self.entity_attr)
+            robot = self.entity if self.entity is not None else env.robot
             linear_vel_local = entity_lin_vel(robot)
 
         command = self.command
@@ -499,8 +501,8 @@ class command_tracking_ang_vel(MdpFn):
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
-                        This is slightly more performant than using the `entity_attr` parameter.
-        entity_attr: The attribute name of the entity in the environment. This isn't necessary if `entity_manager` is provided.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
         torch.Tensor: Reward for tracking of angular velocity commands (yaw)
@@ -509,7 +511,7 @@ class command_tracking_ang_vel(MdpFn):
     commanded_ang_vel: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
     sensitivity: float = 0.25
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
     entity_manager: EntityManager = None
 
     def build(self):
@@ -521,7 +523,7 @@ class command_tracking_ang_vel(MdpFn):
         if self.entity_manager is not None:
             angular_vel = self.entity_manager.get_angular_velocity()
         else:
-            robot = getattr(env, self.entity_attr)
+            robot = self.entity if self.entity is not None else env.robot
             angular_vel = entity_ang_vel(robot)
 
         target = self.commanded_ang_vel
@@ -719,14 +721,14 @@ class feet_slide(MdpFn):
 
     Args:
         contact_manager: The contact manager for the feet
-        entity_attr: The attribute name of the robot entity that the feet are attached to.
+        entity: The robot entity that the feet are attached to. Defaults to `env.robot`.
 
     Returns:
         The penalty for the feet slide
     """
 
     contact_manager: ContactManager
-    entity_attr: str = "robot"
+    entity: RigidEntity = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get links in contact
@@ -735,7 +737,7 @@ class feet_slide(MdpFn):
         # Get link velocities.
         # If the links aren't moving, then they're being used to move the robot and not sliding.
         link_ids = self.contact_manager.local_link_ids
-        robot: RigidEntity = getattr(env, self.entity_attr)
+        robot: RigidEntity = self.entity if self.entity is not None else env.robot
         link_vel = robot.get_links_vel(links_idx_local=link_ids)
 
         return torch.sum(link_vel.norm(dim=-1) * contacts, dim=1)

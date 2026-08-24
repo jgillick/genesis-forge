@@ -95,14 +95,14 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         """
         Configure the environment managers
         """
-        self.terrain_manager = TerrainManager(self)
+        self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
         ##
         # Robot manager
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Randomize the robot's position on the terrain after reset
                 "position": {

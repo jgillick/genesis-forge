@@ -22,7 +22,7 @@ class TerrainManager(BaseManager):
 
     Args:
         env: The environment instance.
-        terrain_attr: The attribute name of the terrain in the environment.
+        terrain: The terrain entity to manage. Defaults to `env.terrain`.
 
     Example::
 
@@ -47,7 +47,7 @@ class TerrainManager(BaseManager):
             def config(self):
                 self.terrain_manager = TerrainManager(
                     self,
-                    terrain_attr="terrain",
+                    terrain=self.terrain,
                 )
 
              def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
@@ -63,15 +63,14 @@ class TerrainManager(BaseManager):
     def __init__(
         self,
         env: GenesisEnv,
-        terrain_attr: str = "terrain",
+        terrain: RigidEntity = None,
     ):
         super().__init__(env, type="terrain")
 
         self._origin = (0, 0, 0)
         self._bounds = (0, 0, 0, 0)  # x_min, x_max, y_min, y_max
         self._size = (0, 0)
-        self._terrain: RigidEntity = None
-        self._terrain_attr = terrain_attr
+        self._terrain: RigidEntity = terrain if terrain is not None else env.terrain
         self._subterrain_bounds = {}
         self._height_field: torch.Tensor | None = None
         self._env_pos_buffer = torch.zeros(
@@ -80,7 +79,6 @@ class TerrainManager(BaseManager):
 
     def build(self):
         """Cache the terrain height field"""
-        self._terrain = self.env.__getattribute__(self._terrain_attr)
         self._map_terrain()
 
     def get_bounds(

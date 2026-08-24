@@ -76,17 +76,6 @@ class TerrainManager(BaseManager):
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
 
-        # Pre-allocated buffers for terrain height calculation to avoid memory allocations
-        self._norm_coords_buffer = torch.zeros(
-            (self.env.num_envs, 2), device=gs.device, dtype=gs.tc_float
-        )
-        self._grid_buffer = torch.zeros(
-            (self.env.num_envs, 1, 1, 2), device=gs.device, dtype=gs.tc_float
-        )
-        self._heights_buffer = torch.zeros(
-            self.env.num_envs, device=gs.device, dtype=gs.tc_float
-        )
-
     def build(self):
         """Cache the terrain height field"""
         self._terrain = self.env.__getattribute__(self._terrain_attr)
@@ -117,34 +106,16 @@ class TerrainManager(BaseManager):
 
         # No height field, so we can assume the height is consistent
         if self._height_field is None:
-            self._heights_buffer[:n_envs] = self._origin[2]
-            return self._heights_buffer[:n_envs]
+            return torch.full(
+                (n_envs,), self._origin[2], device=gs.device, dtype=gs.tc_float
+            )
 
         # Normalize coordinates to [-1, 1] range expected by grid_sample
         (x_min, x_max, y_min, y_max) = self._bounds
+        norm_x = 2 * (x - x_min) / (x_max - x_min) - 1
+        norm_y = 2 * (y - y_min) / (y_max - y_min) - 1
 
-        # Use pre-allocated buffer and in-place operations to avoid memory allocation
-        norm_x = self._norm_coords_buffer[:n_envs, 0]
-        norm_y = self._norm_coords_buffer[:n_envs, 1]
-
-        # In-place normalization to avoid creating new tensors
-        # norm_x = 2 * (norm_x - x_min) / (x_max - x_min) - 1
-        norm_x.copy_(x)
-        norm_x.sub_(x_min)
-        norm_x.div_(x_max - x_min)
-        norm_x.mul_(2)
-        norm_x.sub_(1)
-        # norm_y = 2 * (norm_y - y_min) / (y_max - y_min) - 1
-        norm_y.copy_(y)
-        norm_y.sub_(y_min)
-        norm_y.div_(y_max - y_min)
-        norm_y.mul_(2)
-        norm_y.sub_(1)
-
-        # Use pre-allocated grid buffer
-        grid = self._grid_buffer[:n_envs]
-        grid[:, 0, 0, 0] = norm_x
-        grid[:, 0, 0, 1] = norm_y
+        grid = torch.stack([norm_x, norm_y], dim=-1).view(n_envs, 1, 1, 2)
 
         # Border padding mode isn't supported on Mac GPU (mps)
         # https://github.com/pytorch/pytorch/issues/125098
@@ -165,10 +136,7 @@ class TerrainManager(BaseManager):
         )
 
         # Extract the height values at the specific coordinates
-        heights = self._heights_buffer[:n_envs]
-        heights.copy_(interpolated[:, 0, 0, 0])
-
-        return heights
+        return interpolated[:, 0, 0, 0]
 
     def generate_random_positions(
         self,

@@ -159,7 +159,7 @@ class VelocityCommandManager(CommandManager):
     @range.setter
     def range(self, range: VelocityCommandRange):
         """Update the velocity ranges."""
-        super().range = range
+        CommandManager.range.fset(self, range)
 
     """
     Lifecycle Operations

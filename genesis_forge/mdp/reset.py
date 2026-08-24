@@ -213,14 +213,10 @@ class randomize_link_mass_shift(ResetMdpFn):
 
     def build(self):
         self._links_idx_local = []
-        self._orig_mass = None
         if self.link_name is not None:
             links = links_by_name_pattern(self.entity, self.link_name)
             if len(links) > 0:
                 self._links_idx_local = [link.idx_local for link in links]
-                self._mass_shift_buffer = torch.zeros(
-                    (self.env.num_envs, len(self._links_idx_local)), device=gs.device
-                )
             else:
                 raise ValueError(
                     f"No links found with name/pattern '{self.link_name}'"
@@ -228,11 +224,13 @@ class randomize_link_mass_shift(ResetMdpFn):
 
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
         # Randomize mass
-        self._mass_shift_buffer[envs_idx, :].uniform_(*self.mass_range)
+        mass_shift = torch.empty(
+            (len(envs_idx), len(self._links_idx_local)), device=gs.device
+        ).uniform_(*self.mass_range)
 
         # Set mass on entity
         entity.set_mass_shift(
-            self._mass_shift_buffer[envs_idx],
+            mass_shift,
             links_idx_local=self._links_idx_local,
             envs_idx=envs_idx,
         )

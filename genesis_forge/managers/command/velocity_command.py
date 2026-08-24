@@ -1,5 +1,5 @@
 import math
-from typing import NotRequired, Tuple, TypedDict
+from typing import NotRequired, Tuple, TypedDict, cast
 
 import torch
 import genesis as gs
@@ -38,17 +38,25 @@ class VelocityDebugVisualizerConfig(TypedDict):
     actual_color: NotRequired[Tuple[float, float, float, float]]
     """The color of the actual robot velocity arrow"""
 
+    standing_color: NotRequired[Tuple[float, float, float, float]]
+    """The color of the standing target indicator ball"""
+
+    standing_ball_radius: NotRequired[float]
+    """The radius of the standing target indicator ball"""
+
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
 
-DEFAULT_VISUALIZER_CONFIG: VelocityDebugVisualizerConfig = {
-    "envs_idx": None,
+DEFAULT_VISUALIZER_CONFIG = {
+    "envs_idx": [],
     "arrow_offset": 0.12,
     "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
     "actual_color": (0.0, 0.0, 0.5, 1.0),
+    "standing_color": (1.0, 0.0, 0.0, 1.0),
+    "standing_ball_radius": 0.03,
     "fps": 30,
 }
 
@@ -72,6 +80,7 @@ class VelocityCommandManager(CommandManager):
         - GREEN: Commanded velocity (robot-relative, transformed to world coordinates for visualization)
           When joystick is "forward", this arrow points in the robot's forward direction
         - BLUE: Actual robot velocity in world coordinates
+        - RED BALL: Shown instead of the green arrow when the env is commanded to stand still
 
     Args:
         env: The environment to control
@@ -135,14 +144,19 @@ class VelocityCommandManager(CommandManager):
         resample_time_sec: float = 5.0,
         standing_probability: float = 0.0,
         debug_visualizer: bool = False,
-        debug_visualizer_cfg: VelocityDebugVisualizerConfig = DEFAULT_VISUALIZER_CONFIG,
+        debug_visualizer_cfg: VelocityDebugVisualizerConfig = {},
     ):
-        super().__init__(env, range=range, resample_time_sec=resample_time_sec)
+        super().__init__(
+            env, 
+            range=range, 
+            resample_time_sec=resample_time_sec,
+        )
+                
         self._arrow_nodes: list = []
         self.standing_probability = standing_probability
         self.debug_visualizer = debug_visualizer
-        self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
-        self.debug_envs_idx = None
+        self.debug_envs_idx: list | None = None
+        self.visualizer_cfg = debug_visualizer_cfg
 
         self._is_standing_env = torch.zeros(
             env.num_envs, dtype=torch.bool, device=gs.device
@@ -154,12 +168,20 @@ class VelocityCommandManager(CommandManager):
     @property
     def range(self) -> VelocityCommandRange:
         """The velocity range dict."""
-        return self._range
-    
+        return cast(VelocityCommandRange, self._range)
+
     @range.setter
-    def range(self, range: VelocityCommandRange):
+    def range(self, range: VelocityCommandRange, *_args, **_kwargs):
         """Update the velocity ranges."""
         CommandManager.range.fset(self, range)
+
+    @property
+    def standing_envs(self):
+        """
+        A tensor which has the "standing" state (1 or 0) of all the environments.
+        If the state is 1, the command has no movement commanded, linear or angular.
+        """
+        return self._is_standing_env
 
     """
     Lifecycle Operations
@@ -200,20 +222,23 @@ class VelocityCommandManager(CommandManager):
         # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
         if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-            self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = list[int](range(self.env.num_envs))
+            if self.env.scene.vis_options.rendered_envs_idx is not None:
+                self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
+            else:
+                self.debug_envs_idx = list[int](range(self.env.num_envs))
 
         # Calculate the number of steps per debug render
-        fps = self.visualizer_cfg.get("fps", 30)
+        fps = self.visualizer_cfg.get("fps", DEFAULT_VISUALIZER_CONFIG['fps'])
         self._steps_per_debug_render = math.ceil(1.0 / fps / self.env.dt)
 
         # Arrow scale factor
         # Scales the arrow size based on the maximum target velocity range
-        self._arrow_scale_factor = self.visualizer_cfg["arrow_max_length"] / max(
-            *self._range["lin_vel_x"],
-            *self._range["lin_vel_y"],
-            *self._range["ang_vel_z"],
+        velocity_range = cast(VelocityCommandRange, self.range)
+        arrow_max_length = self.visualizer_cfg.get("arrow_max_length", DEFAULT_VISUALIZER_CONFIG['arrow_max_length'])
+        self._arrow_scale_factor = arrow_max_length / max(
+            *velocity_range["lin_vel_x"],
+            *velocity_range["lin_vel_y"],
+            *velocity_range["ang_vel_z"],
         )
 
     def step(self):
@@ -223,12 +248,13 @@ class VelocityCommandManager(CommandManager):
         super().step()
         self._render_arrows()
 
-    def use_gamepad(
+    def use_gamepad( 
         self,
         gamepad: Gamepad,
         lin_vel_y_axis: int = 0,
         lin_vel_x_axis: int = 1,
         ang_vel_z_axis: int = 2,
+        *args, **kwargs
     ):
         """
         Use a connected gamepad to control the command.
@@ -265,8 +291,8 @@ class VelocityCommandManager(CommandManager):
         transformed to world coordinates for visualization. The blue arrow is the robot's actual velocity.
         """
         # Is the debug visualizer enabled?
-        if not self.debug_visualizer or len(self.debug_envs_idx) == 0:
-            return
+        if not self.debug_visualizer or self.debug_envs_idx is None or len(self.debug_envs_idx) == 0:
+            return 
 
         # Don't update for every step
         if self.env.step_count % self._steps_per_debug_render != 0:
@@ -279,7 +305,7 @@ class VelocityCommandManager(CommandManager):
 
         # Calculate the arrow position over the robot
         self._arrow_pos_buffer[:] = self.env.robot.get_pos()
-        self._arrow_pos_buffer[:, 2] += self.visualizer_cfg["arrow_offset"]
+        self._arrow_pos_buffer[:, 2] += self.visualizer_cfg.get("arrow_offset", DEFAULT_VISUALIZER_CONFIG['arrow_offset'])
         self._arrow_pos_buffer += self._scene_env_offset
 
         # Transform robot-relative velocity commands to world coordinates for visualization
@@ -290,18 +316,30 @@ class VelocityCommandManager(CommandManager):
         self._actual_vec_buffer[:, 2] = 0.0
 
         for i in self.debug_envs_idx:
-            # Target arrow (robot-relative command transformed to world coordinates for visualization)
-            self._draw_arrow(
-                pos=self._arrow_pos_buffer[i],
-                vec=target_velocity[i],
-                color=self.visualizer_cfg["commanded_color"],
-            )
+            # Target indicator: a red ball when the env is standing still, otherwise
+            # the commanded velocity arrow (robot-relative command transformed to
+            # world coordinates for visualization)
+            if self._is_standing_env[i]:
+                self._draw_target_ball(
+                    pos=self._arrow_pos_buffer[i],
+                    color=self.visualizer_cfg.get(
+                        "standing_color", DEFAULT_VISUALIZER_CONFIG['standing_color']
+                    ),
+                )
+            else:
+                self._draw_arrow(
+                    pos=self._arrow_pos_buffer[i],
+                    vec=target_velocity[i],
+                    color=self.visualizer_cfg.get(
+                        "commanded_color", DEFAULT_VISUALIZER_CONFIG['commanded_color']
+                    ),
+                )
 
             # Actual arrow
             self._draw_arrow(
                 pos=self._arrow_pos_buffer[i],
                 vec=self._actual_vec_buffer[i],
-                color=self.visualizer_cfg["actual_color"],
+                color=self.visualizer_cfg.get("actual_color", DEFAULT_VISUALIZER_CONFIG['actual_color']),
             )
 
     def _target_velocity_in_world_frame(self) -> torch.Tensor:
@@ -323,7 +361,9 @@ class VelocityCommandManager(CommandManager):
         # Transform from robot-relative (base) frame to world frame using quaternion
         # This is the inverse of what robot_lin_vel does
         robot_quat = self.env.robot.get_quat()
-        vec_world = transform_by_quat(self._vec_3d_buffer, robot_quat)
+        vec_world = cast(
+            torch.Tensor, transform_by_quat(self._vec_3d_buffer, robot_quat)
+        )
 
         # Scale the transformed world velocity vector
         vec_world[:, :] *= self._arrow_scale_factor
@@ -334,7 +374,7 @@ class VelocityCommandManager(CommandManager):
         self,
         pos: torch.Tensor,
         vec: torch.Tensor,
-        color: list[float],
+        color: Tuple[float, float, float, float],
     ):
         # If velocity is zero, don't draw the arrow
         if not torch.any(vec != 0.0):
@@ -344,7 +384,23 @@ class VelocityCommandManager(CommandManager):
                 pos=pos.cpu().numpy(),
                 vec=vec.cpu().numpy(),
                 color=color,
-                radius=self.visualizer_cfg["arrow_radius"],
+                radius=self.visualizer_cfg.get("arrow_radius", DEFAULT_VISUALIZER_CONFIG['arrow_radius']),
+            )
+            if node:
+                self._arrow_nodes.append(node)
+        except Exception as e:
+            print(f"Error adding debug visualizing in VelocityCommandManager: {e}")
+
+    def _draw_target_ball(
+        self,
+        pos: torch.Tensor,
+        color: Tuple[float, float, float, float],
+    ):
+        try:
+            node = self.env.scene.draw_debug_sphere(
+                pos=pos.cpu().numpy(),
+                radius=self.visualizer_cfg.get("standing_ball_radius", DEFAULT_VISUALIZER_CONFIG['standing_ball_radius']),
+                color=color,
             )
             if node:
                 self._arrow_nodes.append(node)

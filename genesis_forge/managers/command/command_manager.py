@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple, Callable
+from typing import Tuple, Callable, TypedDict
 
 import os
 import torch
@@ -10,7 +10,7 @@ from genesis_forge.managers.base import BaseManager
 from genesis_forge.gamepads import Gamepad
 
 CommandRangeValue = Tuple[float, float]
-CommandRange = CommandRangeValue | dict[str, CommandRangeValue]
+CommandRange = CommandRangeValue | dict[str, CommandRangeValue] | TypedDict
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 

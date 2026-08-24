@@ -154,7 +154,7 @@ class out_of_bounds(MdpFn):
                         This isn't necessary if `entity_manager` is provided.
     """
 
-    terrain_manager: TerrainManager = None
+    terrain_manager: TerrainManager
     subterrain: str | None = None
     border_margin: float = 0.5
     entity_attr: str = "robot"
@@ -193,7 +193,7 @@ class has_contact(MdpFn):
         True for each environment that has contact
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 1.0
     min_contacts: int = 1
 
@@ -215,7 +215,7 @@ class contact_force(MdpFn):
         The total force for the contact manager for each environment
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 1.0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -241,7 +241,7 @@ class contact_force_with_grace_period(MdpFn):
         Boolean tensor indicating which environments should terminate
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 100.0
     grace_steps: int = 10
 
@@ -275,7 +275,7 @@ class dof_control_force_limit(MdpFn):
         Boolean tensor indicating which environments should terminate
     """
 
-    actuator_manager: ActuatorManager = None
+    actuator_manager: ActuatorManager
     threshold: float | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -302,8 +302,8 @@ class dof_velocity_limit(MdpFn):
         Boolean tensor indicating which environments should terminate
     """
 
-    actuator_manager: ActuatorManager = None
-    threshold: float = None
+    actuator_manager: ActuatorManager
+    threshold: float
     unit: Literal["rpm", "rad"] = "rad"
 
     def build(self):

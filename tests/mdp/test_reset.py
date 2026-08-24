@@ -235,6 +235,57 @@ def test_randomize_link_mass_shift_applies_to_matched_links(env, monkeypatch):
     assert torch.all(mass >= -1.0) and torch.all(mass <= 1.0)
 
 
+def test_randomize_link_mass_shift_accepts_a_list_of_patterns(env, monkeypatch):
+    class FakeLink:
+        def __init__(self, idx_local):
+            self.idx_local = idx_local
+
+    def fake_links_by_name_pattern(entity, pattern):
+        return {
+            "front": [FakeLink(2), FakeLink(3)],
+            "back": [FakeLink(7)],
+        }[pattern]
+
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern", fake_links_by_name_pattern
+    )
+
+    entity = FakeEntity()
+    fn = reset.randomize_link_mass_shift(
+        link_name=["front", "back"], mass_range=(-1.0, 1.0)
+    )
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    fn(env, entity, [0, 1])
+
+    _, links_idx, _ = entity.mass_shift_calls[0]
+    assert links_idx == [2, 3, 7]
+
+
+def test_randomize_link_mass_shift_raises_when_one_of_several_patterns_matches_nothing(
+    env, monkeypatch
+):
+    class FakeLink:
+        def __init__(self, idx_local):
+            self.idx_local = idx_local
+
+    def fake_links_by_name_pattern(entity, pattern):
+        return [FakeLink(2)] if pattern == "front" else []
+
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern", fake_links_by_name_pattern
+    )
+
+    entity = FakeEntity()
+    fn = reset.randomize_link_mass_shift(
+        link_name=["front", "nonexistent"], mass_range=(-1.0, 1.0)
+    )
+    with pytest.raises(ValueError, match="No links found with name/pattern 'nonexistent'"):
+        fn.context(env, entity=entity)
+        fn.safe_build()
+
+
 def test_randomize_link_mass_shift_draws_fresh_values_on_each_call(env, monkeypatch):
     """Regression guard: mass_shift used to be sliced out of a persistent buffer via
     advanced indexing, which writes to a copy and silently no-ops the randomization.

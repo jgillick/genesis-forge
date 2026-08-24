@@ -141,8 +141,15 @@ def test_dof_similar_to_default_sums_across_a_list_of_actuator_managers(env):
     assert torch.allclose(fn(env), torch.tensor([0.8]))
 
 
-def test_dof_similar_to_default_requires_a_manager_at_build_time(env):
-    fn = rewards.dof_similar_to_default()
+def test_dof_similar_to_default_requires_a_manager(env):
+    with pytest.raises(TypeError, match="actuator_manager"):
+        rewards.dof_similar_to_default()
+
+
+def test_dof_similar_to_default_rejects_an_explicit_none_at_build_time(env):
+    """actuator_manager is a required constructor arg, but nothing stops someone from
+    explicitly passing None -- build() still catches that case."""
+    fn = rewards.dof_similar_to_default(actuator_manager=None)
     fn.context(env)
     with pytest.raises(ValueError, match="actuator_manager must be provided"):
         fn.safe_build()

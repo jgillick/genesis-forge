@@ -133,7 +133,7 @@ class read_imu(MdpFn):
         torch.Tensor: Shape `(n_envs, 6)` — `[lin_acc_xyz, ang_vel_xyz]` per env.
     """
 
-    imu: "gs.sensors.IMU" = None
+    imu: "gs.sensors.IMU"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         value = self.imu.read()
@@ -267,7 +267,7 @@ class contact_force(MdpFn):
         torch.Tensor: Shape `(num_envs, num_contacts)`.
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         return torch.norm(self.contact_manager.contacts[:, :, :], dim=-1)
@@ -286,7 +286,7 @@ class has_contact(MdpFn):
         1 for each link meeting the contact threshold
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 1.0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:

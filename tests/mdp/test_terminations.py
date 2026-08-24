@@ -210,7 +210,7 @@ def test_dof_velocity_limit_converts_rpm_to_rad(env):
 def test_dof_velocity_limit_rejects_unknown_unit_at_build_time(env):
     """The unit is validated once in build() (and again on any param change),
     not on every __call__."""
-    fn = terminations.dof_velocity_limit(threshold=1.0, unit="bogus")
+    fn = terminations.dof_velocity_limit(actuator_manager=object(), threshold=1.0, unit="bogus")
     fn.context(env)
     with pytest.raises(AssertionError, match="Unknown velocity unit"):
         fn.safe_build()

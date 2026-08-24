@@ -116,7 +116,7 @@ class dof_similar_to_default(MdpFn):
         torch.Tensor: Penalty summed over included DOFs, shape ``(num_envs,)``.
     """
 
-    actuator_manager: ActuatorManager | list[ActuatorManager] | None = None
+    actuator_manager: ActuatorManager | list[ActuatorManager]
 
     def build(self):
         if self.actuator_manager is None:
@@ -411,7 +411,7 @@ class dof_torque_l2(MdpFn):
         torch.Tensor: Penalty for joint torque effort, shape (num_envs,)
     """
 
-    actuator_manager: ActuatorManager = None
+    actuator_manager: ActuatorManager
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         torque = self.actuator_manager.get_dofs_control_force()
@@ -430,7 +430,7 @@ class dof_velocity_l2(MdpFn):
         torch.Tensor: Penalty for joint angular velocity, shape (num_envs,)
     """
 
-    action_manager: PositionActionManager = None
+    action_manager: PositionActionManager
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         dof_vel = self.action_manager.get_dofs_velocity()
@@ -545,7 +545,7 @@ class stand_still_joint_deviation_l1(MdpFn):
         torch.Tensor: Penalty for offsets from the default joint positions when the command is very small
     """
 
-    vel_cmd_manager: VelocityCommandManager = None
+    vel_cmd_manager: VelocityCommandManager
     actuator_manager: ActuatorManager = None
     command_threshold: float = 0.06
     action_manager: PositionActionManager = None
@@ -590,7 +590,7 @@ class has_contact(MdpFn):
         1 for each contact meeting the threshold
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 1.0
     min_contacts: int = 1
 
@@ -615,7 +615,7 @@ class contact_force(MdpFn):
         The total force for the contact manager for each environment
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     threshold: float = 1.0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -646,8 +646,8 @@ class feet_air_time(MdpFn):
         The reward for the feet air time
     """
 
-    contact_manager: ContactManager = None
-    time_threshold: float = None
+    contact_manager: ContactManager
+    time_threshold: float
     time_threshold_max: float | None = None
     vel_cmd_manager: VelocityCommandManager | None = None
 
@@ -691,8 +691,8 @@ class feet_ground_time(MdpFn):
         The penalty for brief ground contacts, shape (num_envs,)
     """
 
-    contact_manager: ContactManager = None
-    time_threshold: float = None
+    contact_manager: ContactManager
+    time_threshold: float
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
@@ -723,7 +723,7 @@ class feet_slide(MdpFn):
         The penalty for the feet slide
     """
 
-    contact_manager: ContactManager = None
+    contact_manager: ContactManager
     entity_attr: str = "robot"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:

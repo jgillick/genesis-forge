@@ -76,7 +76,7 @@ class position(ResetMdpFn):
                        Defaults to True. This is a safety measure after a sudden change in entity pose.
     """
 
-    position: tuple[float, float, float] = None
+    position: tuple[float, float, float]
     quat: tuple[float, float, float, float] | None = None
     zero_velocity: bool = True
 
@@ -110,7 +110,6 @@ class position(ResetMdpFn):
                 zero_velocity=self.zero_velocity,
             )
 
-
 @dataclass(kw_only=True, eq=False)
 class randomize_terrain_position(ResetMdpFn):
     """
@@ -127,9 +126,9 @@ class randomize_terrain_position(ResetMdpFn):
                        Defaults to True. This is a safety measure after a sudden change in entity pose.
     """
 
-    terrain_manager: TerrainManager = None
+    terrain_manager: TerrainManager
     height_offset: float = 0.1e-3
-    subterrain: str | Callable[[], str] | None = None
+    subterrain: str | Callable[[], str | None] | None = None
     rotation: XYZRotation | None = field(
         default_factory=lambda: {"z": (0, 2 * math.pi)}
     )
@@ -205,22 +204,25 @@ class randomize_link_mass_shift(ResetMdpFn):
 
     Args:
         link_name: The name, or regex pattern, of the link(s) to set the mass for.
+                   Can also be a list of names/patterns to target multiple sets of links.
         mass_range: The range of the mass that will be added or subtracted from the link(s) on each reset.
     """
 
-    link_name: str = None
-    mass_range: tuple[float, float] = None
+    link_name: str | list[str]
+    mass_range: tuple[float, float]
 
     def build(self):
         self._links_idx_local = []
-        if self.link_name is not None:
-            links = links_by_name_pattern(self.entity, self.link_name)
-            if len(links) > 0:
-                self._links_idx_local = [link.idx_local for link in links]
-            else:
-                raise ValueError(
-                    f"No links found with name/pattern '{self.link_name}'"
-                )
+        if self.link_name is None:
+            return
+        link_names = (
+            [self.link_name] if isinstance(self.link_name, str) else self.link_name
+        )
+        for name in link_names:
+            links = links_by_name_pattern(self.entity, name)
+            if len(links) == 0:
+                raise ValueError(f"No links found with name/pattern '{name}'")
+            self._links_idx_local.extend(link.idx_local for link in links)
 
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
         # Randomize mass

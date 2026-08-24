@@ -288,3 +288,44 @@ def test_reset_tolerates_plain_functions(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": const}})
     mgr.build()
     mgr.reset([0])  # must not raise
+
+
+def test_reset_clears_history_only_for_the_reset_envs(env):
+    values = iter([1.0, 2.0, 3.0, 4.0])  # 1.0 is consumed by build()'s sizing probe
+
+    def sequential(env):
+        return torch.full((env.num_envs, 1), next(values))
+
+    mgr = ObservationManager(env, cfg={"a": {"fn": sequential}}, history_len=3)
+    mgr.build()
+    mgr.get_observations()  # 2.0
+    mgr.get_observations()  # 3.0
+
+    mgr.reset([0, 2])
+    obs = mgr.get_observations()  # 4.0
+
+    # Reset envs observe only the fresh value; their history slots are zero
+    assert torch.equal(obs[[0, 2]], torch.tensor([[4.0, 0.0, 0.0]] * 2))
+    # Non-reset envs keep their history, newest first
+    assert torch.equal(obs[[1, 3]], torch.tensor([[4.0, 3.0, 2.0]] * 2))
+
+
+def test_reset_with_no_envs_idx_clears_history_for_every_env(env):
+    values = iter([1.0, 2.0, 3.0])  # 1.0 is consumed by build()'s sizing probe
+
+    def sequential(env):
+        return torch.full((env.num_envs, 1), next(values))
+
+    mgr = ObservationManager(env, cfg={"a": {"fn": sequential}}, history_len=2)
+    mgr.build()
+    mgr.get_observations()  # 2.0
+
+    mgr.reset()
+    obs = mgr.get_observations()  # 3.0
+
+    assert torch.equal(obs, torch.tensor([[3.0, 0.0]] * env.num_envs))
+
+
+def test_reset_before_build_tolerates_the_empty_history(env):
+    mgr = ObservationManager(env, cfg={"a": {"fn": const}}, history_len=2)
+    mgr.reset([0])  # must not raise

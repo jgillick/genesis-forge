@@ -218,15 +218,23 @@ class ObservationManager(BaseManager):
 
     def reset(self, envs_idx: list[int] | None = None):
         """
-        Reset any stateful observation functions for the given environments.
+        Reset any stateful observation functions and clear the stacked
+        observation history for the given environments.
 
         Args:
             envs_idx: The environment ids being reset. All environments, if None.
         """
         if envs_idx is None:
             envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+
+        # Reset observation functions
         for cfg in self.cfg.values():
             cfg.reset(envs_idx)
+
+        # Clear stacked history so a fresh episode doesn't observe the previous
+        # episode's final states.
+        for buffer in self._history:
+            buffer[envs_idx] = 0.0
 
     def get_observations(
         self, values: dict[str, float | torch.Tensor] | None = None

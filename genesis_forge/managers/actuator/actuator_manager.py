@@ -361,6 +361,20 @@ class ActuatorManager(BaseManager):
         """
         self._robot.control_dofs_position(position, dofs_idx or self.dofs_idx)
 
+    def control_dofs_velocity(
+        self, velocity: torch.Tensor, dofs_idx: list[int] | None = None
+    ):
+        """
+        Control the velocity of the configured DOFs.
+        This is a wrapper for `RigidEntity.control_dofs_velocity`.
+
+        Args:
+            velocity: The velocity to set the DOFs to. The indices of this tensor should match the configured DOFs
+                      (see: `dofs_names` and `dofs_idx` properties).
+            dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
+        """
+        self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+
     """
     Lifecycle operations
     """

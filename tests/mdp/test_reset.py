@@ -232,3 +232,30 @@ def test_randomize_link_mass_shift_applies_to_matched_links(env, monkeypatch):
     assert links_idx == [2, 5]
     assert envs_idx == [0, 1]
     assert mass.shape == (2, 2)
+    assert torch.all(mass >= -1.0) and torch.all(mass <= 1.0)
+
+
+def test_randomize_link_mass_shift_draws_fresh_values_on_each_call(env, monkeypatch):
+    """Regression guard: mass_shift used to be sliced out of a persistent buffer via
+    advanced indexing, which writes to a copy and silently no-ops the randomization.
+    It's now a freshly allocated tensor per call -- confirm two calls actually vary."""
+    class FakeLink:
+        def __init__(self, idx_local):
+            self.idx_local = idx_local
+
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern",
+        lambda entity, pattern: [FakeLink(2)],
+    )
+
+    entity = FakeEntity()
+    fn = reset.randomize_link_mass_shift(link_name="base", mass_range=(-1.0, 1.0))
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    fn(env, entity, [0, 1, 2, 3])
+    fn(env, entity, [0, 1, 2, 3])
+
+    first, _, _ = entity.mass_shift_calls[0]
+    second, _, _ = entity.mass_shift_calls[1]
+    assert not torch.equal(first, second)

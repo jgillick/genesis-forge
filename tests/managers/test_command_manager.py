@@ -282,6 +282,36 @@ def test_velocity_command_keeps_the_sampled_value_when_never_standing(env):
     assert torch.all(mgr.command == 3.0)
 
 
+def test_standing_envs_reflects_which_envs_were_marked_standing(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+    mgr.resample_command([0, 1, 2, 3])
+    assert mgr.standing_envs.tolist() == [True, True, True, True]
+
+
+def test_standing_envs_is_false_for_every_env_when_never_standing(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.0)
+    mgr.resample_command([0, 1, 2, 3])
+    assert mgr.standing_envs.tolist() == [False, False, False, False]
+
+
+def test_standing_envs_defaults_to_false_before_any_resample(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+    assert mgr.standing_envs.tolist() == [False, False, False, False]
+
+
+def test_standing_envs_only_updates_the_resampled_envs(env):
+    """A partial resample must not touch other envs' standing state."""
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+    mgr.resample_command([0, 2])
+    assert mgr.standing_envs.tolist() == [True, False, True, False]
+
+    # Now resample the remaining envs with standing_probability=0.0 -- envs 0 and 2
+    # must keep their earlier "standing" state since they aren't in this call.
+    mgr.standing_probability = 0.0
+    mgr.resample_command([1, 3])
+    assert mgr.standing_envs.tolist() == [True, False, True, False]
+
+
 def test_build_without_debug_visualizer_is_a_noop(env):
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE)
     mgr.build()  # must not raise -- no scene is available in this fake env

@@ -23,4 +23,4 @@ jobs:
         run: uv run ruff check genesis_forge examples tests
 
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run pytest -v

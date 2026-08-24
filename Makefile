@@ -9,7 +9,7 @@ lint:
 	uv run ruff check genesis_forge examples tests
 
 test:
-	uv run pytest -v --disable-warnings --maxfail=1
+	uv run pytest -v
 
 build: clean lint test
 	uv build

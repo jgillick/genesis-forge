@@ -258,7 +258,7 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
         if self._actions is None:
-            self._actions = torch.empty_like(actions, device=gs.device)
+            self._actions = torch.zeros_like(actions, device=gs.device)
             self._last_actions = torch.zeros_like(actions, device=gs.device)
         self._last_actions[:] = self._actions[:]
 

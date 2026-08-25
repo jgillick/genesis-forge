@@ -16,6 +16,7 @@ class FakeEnv:
     """Stands in for a GenesisEnv wherever only the plain attributes are read."""
 
     num_envs: int = 4
+    num_actions: int = 0
     dt: float = 0.02
     actions: object = None
     extras: dict = field(default_factory=lambda: {"episode": {}})

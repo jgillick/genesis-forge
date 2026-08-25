@@ -117,8 +117,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         )
         self.action_manager = VelocityActionManager(
             self,
-            scale=2.0,
-            clip=(-6.28, 6.28),
+            scale=3.0,
             actuator_manager=self.actuator_manager,
         )
 

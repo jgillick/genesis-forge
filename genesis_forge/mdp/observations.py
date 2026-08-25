@@ -254,6 +254,8 @@ class current_actions(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.action_manager is not None:
             return self.action_manager.raw_actions
+        if env.actions is None:
+            return torch.zeros((env.num_envs, env.num_actions), device=gs.device)
         return env.actions
 
 

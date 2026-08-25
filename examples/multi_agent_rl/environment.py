@@ -18,7 +18,7 @@ from genesis_forge.managers import (
     TerrainManager,
     VelocityCommandManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 OBS_SHARED_KEY = "shared"
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -306,7 +306,9 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                         "fn": lambda env, mgr=action_manager: mgr.get_dofs_velocity(),
                         "scale": 0.05,
                     },
-                    "actions": {"fn": lambda env, mgr=action_manager: mgr.get_actions()},
+                    "actions": {
+                        "fn": observations.current_actions(action_manager=action_manager)
+                    },
                 },
             )
 

@@ -84,6 +84,25 @@ def test_build_builds_each_mdp_fn_config_item(env):
     assert fn.builds == 1
 
 
+def test_build_sizes_the_space_from_an_mdp_fn(env):
+    """__call__ must be valid the instant build() returns, not on the first step."""
+
+    @dataclass(kw_only=True, eq=False)
+    class Buffered(MdpFn):
+        width: int = 2
+
+        def build(self):
+            self.buf = torch.zeros((self.env.num_envs, self.width))
+
+        def __call__(self, env):
+            return self.buf
+
+    mgr = ObservationManager(env, cfg={"history": {"fn": Buffered(width=3)}})
+    mgr.build()
+
+    assert mgr.observation_space.shape == (3,)
+
+
 def test_build_raises_a_clear_error_for_a_noncallable_fn(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": 42}})
     with pytest.raises(AssertionError, match="not callable"):

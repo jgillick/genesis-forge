@@ -17,7 +17,7 @@ from genesis_forge.managers import (
     RewardManager,
     TerminationManager,
 )
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import observations, rewards, terminations
 
 
 class Go2StandUpEnv(ManagedEnvironment):
@@ -223,7 +223,7 @@ class Go2StandUpEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

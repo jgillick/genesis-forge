@@ -14,6 +14,7 @@ from genesis_forge.managers import (
     MdpFn,
     PositionActionManager,
 )
+from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.utils import (
     entity_ang_vel,
     entity_lin_vel,
@@ -240,18 +241,19 @@ Actions
 @dataclass(kw_only=True, eq=False)
 class current_actions(MdpFn):
     """
-    The most current step actions.
+    The most current step's raw actions.
+    This should be the actions before they've been processed and converted into their target values.
 
     Args:
         action_manager: The action manager to source actions from. If not provided,
-                        actions are read from `env.actions`.
+                        all actions are read from `env.actions`.
     """
 
-    action_manager: PositionActionManager = None
+    action_manager: BaseActionManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.action_manager is not None:
-            return self.action_manager.get_actions()
+            return self.action_manager.raw_actions
         return env.actions
 
 

@@ -221,3 +221,11 @@ def test_reset_defaults_to_every_env(env):
     mgr.reset()
 
     assert fn.reset_calls == [list(range(env.num_envs))]
+
+
+def test_reset_tolerates_plain_functions(env):
+    mgr = TerminationManager(
+        env, term_cfg={"a": {"fn": const, "params": {"value": [False] * env.num_envs}}}
+    )
+    mgr.build()
+    mgr.reset([0])  # must not raise

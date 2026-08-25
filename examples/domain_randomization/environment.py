@@ -11,7 +11,7 @@ from genesis_forge.managers import (
     VelocityCommandManager,
 )
 from genesis_forge.managers.actuator import NoisyValue
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
@@ -254,7 +254,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "noise": 0.01,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

@@ -106,8 +106,6 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         ##
         # Wheel actuation
-        # kp is left unset -- Genesis's velocity-control force kernel ignores it
-        # entirely, so setting it would have no effect.
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -133,7 +131,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 "lin_vel_y": (-0.2, 0.2),
                 "ang_vel_z": (-0.2, 0.2),
             },
-            standing_probability=0.02,
+            stopped_probability=0.02,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={

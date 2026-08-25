@@ -271,45 +271,75 @@ VELOCITY_RANGE = {
 
 
 def test_velocity_command_forces_standing_envs_to_zero(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
     mgr.resample_command([0, 1, 2, 3])
     assert torch.all(mgr.command == 0.0)
 
 
 def test_velocity_command_keeps_the_sampled_value_when_never_standing(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.0)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
     mgr.resample_command([0, 1, 2, 3])
     assert torch.all(mgr.command == 3.0)
 
 
-def test_standing_envs_reflects_which_envs_were_marked_standing(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+def test_stopped_envs_reflects_which_envs_were_marked_standing(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
     mgr.resample_command([0, 1, 2, 3])
-    assert mgr.standing_envs.tolist() == [True, True, True, True]
+    assert mgr.stopped_envs.tolist() == [True, True, True, True]
 
 
-def test_standing_envs_is_false_for_every_env_when_never_standing(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.0)
+def test_stopped_envs_is_false_for_every_env_when_never_standing(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
     mgr.resample_command([0, 1, 2, 3])
-    assert mgr.standing_envs.tolist() == [False, False, False, False]
+    assert mgr.stopped_envs.tolist() == [False, False, False, False]
 
 
-def test_standing_envs_defaults_to_false_before_any_resample(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
-    assert mgr.standing_envs.tolist() == [False, False, False, False]
+def test_stopped_envs_defaults_to_false_before_any_resample(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
+    assert mgr.stopped_envs.tolist() == [False, False, False, False]
 
 
-def test_standing_envs_only_updates_the_resampled_envs(env):
+def test_stopped_envs_only_updates_the_resampled_envs(env):
     """A partial resample must not touch other envs' standing state."""
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=1.0)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
     mgr.resample_command([0, 2])
-    assert mgr.standing_envs.tolist() == [True, False, True, False]
+    assert mgr.stopped_envs.tolist() == [True, False, True, False]
 
-    # Now resample the remaining envs with standing_probability=0.0 -- envs 0 and 2
+    # Now resample the remaining envs with stopped_probability=0.0 -- envs 0 and 2
     # must keep their earlier "standing" state since they aren't in this call.
-    mgr.standing_probability = 0.0
+    mgr.stopped_probability = 0.0
     mgr.resample_command([1, 3])
-    assert mgr.standing_envs.tolist() == [True, False, True, False]
+    assert mgr.stopped_envs.tolist() == [True, False, True, False]
+
+
+"""
+VelocityCommandManager -- deprecated standing_probability/standing_envs aliases
+"""
+
+
+def test_deprecated_standing_probability_param_warns_and_sets_stopped_probability(env):
+    with pytest.warns(DeprecationWarning, match="stopped_probability"):
+        mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.7)
+    assert mgr.stopped_probability == 0.7
+
+
+def test_deprecated_standing_probability_property_stays_in_sync_with_stopped_probability(env):
+    """Guards against the alias going stale after a later mutation."""
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.5)
+    mgr.stopped_probability = 0.0
+    with pytest.warns(DeprecationWarning, match="stopped_probability"):
+        assert mgr.standing_probability == 0.0
+
+    with pytest.warns(DeprecationWarning, match="stopped_probability"):
+        mgr.standing_probability = 0.9
+    assert mgr.stopped_probability == 0.9
+
+
+def test_deprecated_standing_envs_property_warns_and_matches_stopped_envs(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
+    mgr.resample_command([0, 1, 2, 3])
+    with pytest.warns(DeprecationWarning, match="stopped_envs"):
+        assert mgr.standing_envs.tolist() == mgr.stopped_envs.tolist()
 
 
 def test_build_without_debug_visualizer_is_a_noop(env):

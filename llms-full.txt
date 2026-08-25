@@ -5493,14 +5493,15 @@ Arrow meanings:
 
 Parameters:
 
-| Name                   | Type                            | Description                                                                                 | Default                                    |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `env`                  | `GenesisEnv`                    | The environment to control                                                                  | *required*                                 |
-| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                   | *required*                                 |
-| `standing_probability` | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                                      |
-| `resample_time_sec`    | `float`                         | The time interval between changing the command                                              | `5.0`                                      |
-| `debug_visualizer`     | `bool`                          | Enable the debug arrow visualization                                                        | `False`                                    |
-| `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                      | The configuration for the debug visualizer |
+| Name                   | Type                            | Description                                                                                              | Default                                    |
+| ---------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `env`                  | `GenesisEnv`                    | The environment to control                                                                               | *required*                                 |
+| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                                | *required*                                 |
+| `stopped_probability`  | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)              | `0.0`                                      |
+| `standing_probability` | `float`                         | (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                                      |
+| `resample_time_sec`    | `float`                         | The time interval between changing the command                                                           | `5.0`                                      |
+| `debug_visualizer`     | `bool`                          | Enable the debug arrow visualization                                                                     | `False`                                    |
+| `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                                   | The configuration for the debug visualizer |
 
 Example::
 
@@ -5553,11 +5554,16 @@ class MyEnv(GenesisEnv):
 Source code in `genesis_forge/managers/command/velocity_command.py`
 
 ```
+@deprecated_params(
+    "standing_probability",
+    reason="Use 'stopped_probability' instead"
+)
 def __init__(
     self,
     env: GenesisEnv,
     range: VelocityCommandRange,
     resample_time_sec: float = 5.0,
+    stopped_probability: float = 0.0,
     standing_probability: float = 0.0,
     debug_visualizer: bool = False,
     debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
@@ -5569,12 +5575,12 @@ def __init__(
     )
 
     self._arrow_nodes: list = []
-    self.standing_probability = standing_probability
+    self.stopped_probability = stopped_probability or standing_probability
     self.debug_visualizer = debug_visualizer
     self.debug_envs_idx: list | None = None
     self.visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
 
-    self._is_standing_env = torch.zeros(
+    self._is_stopped_env = torch.zeros(
         env.num_envs, dtype=torch.bool, device=gs.device
     )
 ```
@@ -5601,9 +5607,13 @@ The time interval (in seconds) between changing the command for each environment
 
 ## `standing_envs`
 
+## `standing_probability`
+
+## `stopped_envs`
+
 A tensor which has the "standing" state (1 or 0) of all the environments. If the state is 1, the command has no movement commanded, linear or angular.
 
-## `standing_probability = standing_probability`
+## `stopped_probability = stopped_probability or standing_probability`
 
 ## `type = type`
 
@@ -5814,8 +5824,8 @@ def resample_command(self, env_ids: list[int]):
 
     # Set standing environments
     rand_buffer = torch.empty(len(env_ids), device=gs.device).uniform_(0.0, 1.0)
-    self._is_standing_env[env_ids] = rand_buffer <= self.standing_probability
-    standing_envs_idx = self._is_standing_env.nonzero(as_tuple=False).flatten()
+    self._is_stopped_env[env_ids] = rand_buffer <= self.stopped_probability
+    standing_envs_idx = self._is_stopped_env.nonzero(as_tuple=False).flatten()
     self._command[standing_envs_idx, :] = 0.0
 ```
 

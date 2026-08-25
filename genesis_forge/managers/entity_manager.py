@@ -108,6 +108,11 @@ class EntityManager(BaseManager):
             (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
         )
         self._inv_base_quat = torch.zeros_like(self._base_quat)
+        self._linear_velocity = torch.zeros(
+            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._angular_velocity = torch.zeros_like(self._linear_velocity)
+        self._projected_gravity = torch.zeros_like(self._linear_velocity)
 
     """
     Properties
@@ -141,20 +146,23 @@ class EntityManager(BaseManager):
     def get_projected_gravity(self) -> torch.Tensor:
         """
         The projected gravity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self._global_gravity, self._inv_base_quat)
+        return self._projected_gravity
 
     def get_linear_velocity(self) -> torch.Tensor:
         """
         The linear velocity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self.entity.get_vel(), self._inv_base_quat)
+        return self._linear_velocity
 
     def get_angular_velocity(self) -> torch.Tensor:
         """
         The angular velocity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self.entity.get_ang(), self._inv_base_quat)
+        return self._angular_velocity
 
     """
     Operations.
@@ -203,3 +211,12 @@ class EntityManager(BaseManager):
         self._base_pos[:] = self.entity.get_pos()
         self._base_quat[:] = self.entity.get_quat()
         self._inv_base_quat = inv_quat(self._base_quat)
+        self._linear_velocity[:] = transform_by_quat(
+            self.entity.get_vel(), self._inv_base_quat
+        )
+        self._angular_velocity[:] = transform_by_quat(
+            self.entity.get_ang(), self._inv_base_quat
+        )
+        self._projected_gravity[:] = transform_by_quat(
+            self._global_gravity, self._inv_base_quat
+        )

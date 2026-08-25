@@ -43,7 +43,7 @@ class BaseActionManager(BaseManager):
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
         self._dofs: dict[int, str] = {}
-        self._actuator_dof_filter: torch.Tensor = None
+        self._actuator_dof_filter: torch.Tensor | None = None
 
         if self._actuator_manager is None:
             raise ValueError("No ActuatorManager provided.")
@@ -204,8 +204,9 @@ class BaseActionManager(BaseManager):
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Process the actions and convert them to actuator commands.
-        Override this function if you want to change the action processing logic.
+        Convert the incoming step actions into the values to send to the simulation.
+        Override this function to define how actions are processed -- for example,
+        `AffineDofActionManager` applies a per-DOF scale/offset/clip transform.
 
         Args:
             actions: The incoming step actions to handle.
@@ -213,9 +214,11 @@ class BaseActionManager(BaseManager):
         Returns:
             The processed and converted actions.
         """
-        return actions
+        raise NotImplementedError(
+            "process_actions is not implemented for this action manager."
+        )
 
-    def send_actions_to_simulation(self) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Send the latest processed actions to the actuators in the simulation.
         Override this function to define how the actions are sent to the simulation.

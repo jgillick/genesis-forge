@@ -1332,6 +1332,35 @@ def control_dofs_position(
     self._robot.control_dofs_position(position, dofs_idx or self.dofs_idx)
 ```
 
+## `control_dofs_velocity(velocity, dofs_idx=None)`
+
+Control the velocity of the configured DOFs. This is a wrapper for `RigidEntity.control_dofs_velocity`.
+
+Parameters:
+
+| Name       | Type        | Description                                                                                                                             | Default                                                                                      |
+| ---------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `velocity` | `Tensor`    | The velocity to set the DOFs to. The indices of this tensor should match the configured DOFs (see: dofs_names and dofs_idx properties). | *required*                                                                                   |
+| `dofs_idx` | \`list[int] | None\`                                                                                                                                  | The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used. |
+
+Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+
+```
+def control_dofs_velocity(
+    self, velocity: torch.Tensor, dofs_idx: list[int] | None = None
+):
+    """
+    Control the velocity of the configured DOFs.
+    This is a wrapper for `RigidEntity.control_dofs_velocity`.
+
+    Args:
+        velocity: The velocity to set the DOFs to. The indices of this tensor should match the configured DOFs
+                  (see: `dofs_names` and `dofs_idx` properties).
+        dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
+    """
+    self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+```
+
 ## `get_dofs_control_force(noise=0.0, clip_to_max_force=False, dofs_idx=None)`
 
 Return the force output by the configured DOFs. This is a wrapper for `RigidEntity.get_dofs_control_force`.
@@ -2255,6 +2284,11 @@ def __init__(
         (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
     )
     self._inv_base_quat = torch.zeros_like(self._base_quat)
+    self._linear_velocity = torch.zeros(
+        (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+    )
+    self._angular_velocity = torch.zeros_like(self._linear_velocity)
+    self._projected_gravity = torch.zeros_like(self._linear_velocity)
 ```
 
 ## `base_pos`
@@ -2299,7 +2333,7 @@ def build(self):
 
 ## `get_angular_velocity()`
 
-The angular velocity of the entity's base link, in the entity's local frame.
+The angular velocity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
 Source code in `genesis_forge/managers/entity_manager.py`
 
@@ -2307,13 +2341,14 @@ Source code in `genesis_forge/managers/entity_manager.py`
 def get_angular_velocity(self) -> torch.Tensor:
     """
     The angular velocity of the entity's base link, in the entity's local frame.
+    Cached once per step -- see `_cached_calcs()`.
     """
-    return transform_by_quat(self.entity.get_ang(), self._inv_base_quat)
+    return self._angular_velocity
 ```
 
 ## `get_linear_velocity()`
 
-The linear velocity of the entity's base link, in the entity's local frame.
+The linear velocity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
 Source code in `genesis_forge/managers/entity_manager.py`
 
@@ -2321,13 +2356,14 @@ Source code in `genesis_forge/managers/entity_manager.py`
 def get_linear_velocity(self) -> torch.Tensor:
     """
     The linear velocity of the entity's base link, in the entity's local frame.
+    Cached once per step -- see `_cached_calcs()`.
     """
-    return transform_by_quat(self.entity.get_vel(), self._inv_base_quat)
+    return self._linear_velocity
 ```
 
 ## `get_projected_gravity()`
 
-The projected gravity of the entity's base link, in the entity's local frame.
+The projected gravity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
 Source code in `genesis_forge/managers/entity_manager.py`
 
@@ -2335,8 +2371,9 @@ Source code in `genesis_forge/managers/entity_manager.py`
 def get_projected_gravity(self) -> torch.Tensor:
     """
     The projected gravity of the entity's base link, in the entity's local frame.
+    Cached once per step -- see `_cached_calcs()`.
     """
-    return transform_by_quat(self._global_gravity, self._inv_base_quat)
+    return self._projected_gravity
 ```
 
 ## `reset(envs_idx=None)`
@@ -2671,7 +2708,7 @@ def get_observations(
 
 ## `reset(envs_idx=None)`
 
-Reset any stateful observation functions for the given environments.
+Reset any stateful observation functions and clear the stacked observation history for the given environments.
 
 Parameters:
 
@@ -2684,15 +2721,23 @@ Source code in `genesis_forge/managers/observation_manager.py`
 ```
 def reset(self, envs_idx: list[int] | None = None):
     """
-    Reset any stateful observation functions for the given environments.
+    Reset any stateful observation functions and clear the stacked
+    observation history for the given environments.
 
     Args:
         envs_idx: The environment ids being reset. All environments, if None.
     """
     if envs_idx is None:
         envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+
+    # Reset observation functions
     for cfg in self.cfg.values():
         cfg.reset(envs_idx)
+
+    # Clear stacked history so a fresh episode doesn't observe the previous
+    # episode's final states.
+    for buffer in self._history:
+        buffer[envs_idx] = 0.0
 ```
 
 ## `step()`
@@ -3569,7 +3614,7 @@ These managers take in actions and convert them to DOF actuator values.
 
 # PositionActionManager
 
-Bases: `BaseActionManager`
+Bases: `AffineDofActionManager`
 
 Converts actions to DOF positions, using affine transformations (scale and offset).
 
@@ -3591,7 +3636,6 @@ Parameters:
 | `use_default_offset`      | `bool`                | Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.                                                       | `True`                                                                                                                      |
 | `clip`                    | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                                                                               | None\`                                                                                                                      |
 | `soft_limit_scale_factor` | `float`               | Scales the clip range of all limits by this factor around the midpoint of each joint's limits to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
-| `quiet_action_errors`     | `bool`                | Whether to quiet action errors.                                                                                                                                | `False`                                                                                                                     |
 | `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.                                                        | `0`                                                                                                                         |
 
 Example::
@@ -3675,7 +3719,6 @@ def __init__(
     clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
     use_default_offset: bool = True,
-    quiet_action_errors: bool = False,
     delay_step: int = 0,
 ):
     super().__init__(
@@ -3688,11 +3731,10 @@ def __init__(
     self._scale_cfg = ensure_dof_pattern(scale)
     self._clip_cfg = ensure_dof_pattern(clip)
     self._soft_limit_scale_factor = soft_limit_scale_factor
-    self._quiet_action_errors = quiet_action_errors
     self._enabled_dof = None
     self._use_default_offset = use_default_offset
 
-    self._dofs_pos_buffer: torch.Tensor = None
+    self._dofs_pos_buffer: torch.Tensor | None = None
 
     if use_default_offset and offset != 0.0:
         raise ValueError("Cannot set both use_default_offset and offset")
@@ -3943,7 +3985,7 @@ def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Te
 
 ## `process_actions(actions)`
 
-Convert the actions to position commands, and clamp them to the limits.
+Apply the affine scale/offset transform and clip to `self._scale_values` / `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
 
 Parameters:
 
@@ -3953,31 +3995,28 @@ Parameters:
 
 Returns:
 
-| Type     | Description                       |
-| -------- | --------------------------------- |
-| `Tensor` | The actions as position commands. |
+| Type     | Description                          |
+| -------- | ------------------------------------ |
+| `Tensor` | The processed and converted actions. |
 
-Source code in `genesis_forge/managers/action/position_action_manager.py`
+Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
 
 ```
 def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
     """
-    Convert the actions to position commands, and clamp them to the limits.
+    Apply the affine scale/offset transform and clip to `self._scale_values` /
+    `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
 
     Args:
         actions: The incoming step actions to handle.
 
     Returns:
-        The actions as position commands.
+        The processed and converted actions.
     """
-    # Validate actions
-    if not self._quiet_action_errors:
-        if torch.isnan(actions).any():
-            print(f"ERROR: NaN actions received! Actions: {actions}")
-        if torch.isinf(actions).any():
-            print(f"ERROR: Infinite actions received! Actions: {actions}")
-
-    # Process actions
+    if self._scale_values is None or self._offset_values is None or self._clip_values is None:
+        raise RuntimeError(
+            "AffineDofActionManager: _scale_values, _offset_values, and _clip_values must be set by a subclass's build() before calling process_actions()"
+        )
     actions = actions * self._scale_values + self._offset_values
     actions = torch.clamp(
         actions,
@@ -4066,7 +4105,6 @@ Parameters:
 | `actuator_joints`         | \`list[str]           | str\`                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
 | `limit`                   | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                               | None\`                                                                                                                      |
 | `soft_limit_scale_factor` | `float`               | Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
-| `quiet_action_errors`     | `bool`                | Whether to quiet action errors.                                                                                | `False`                                                                                                                     |
 | `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.        | `0`                                                                                                                         |
 
 Simple example using the limits defined in the model::
@@ -4124,7 +4162,6 @@ def __init__(
     env: GenesisEnv,
     actuator_manager: ActuatorManager | None = None,
     actuator_joints: list[str] | str = ".*",
-    quiet_action_errors: bool = False,
     limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
     delay_step: int = 0,
@@ -4133,7 +4170,6 @@ def __init__(
         env,
         actuator_manager=actuator_manager,
         actuator_joints=actuator_joints,
-        quiet_action_errors=quiet_action_errors,
         delay_step=delay_step,
     )
     self._limit_cfg = ensure_dof_pattern(limit if limit is not None else {})
@@ -4433,6 +4469,419 @@ def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
     """
     actions = self.get_actions()
     self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
+```
+
+## `step(actions)`
+
+Handle actions received in this step.
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def step(self, actions: torch.Tensor) -> None:
+    """
+    Handle actions received in this step.
+    """
+    # Action delay buffer
+    if self._delay_step > 0:
+        self._action_delay_buffer.insert(0, actions)
+        actions = self._action_delay_buffer.pop()
+
+    # Copy the actions into the manager buffer
+    self._raw_actions = actions
+    if self._actions is None:
+        self._actions = torch.zeros_like(actions, device=gs.device)
+        self._last_actions = torch.zeros_like(actions, device=gs.device)
+    self._last_actions[:] = self._actions[:]
+
+    # Process the actions
+    self._actions[:] = self.process_actions(self._raw_actions[:])
+
+    return self._actions
+```
+
+# VelocityActionManager
+
+Bases: `AffineDofActionManager`
+
+Converts actions to DOF target velocities, using affine transformations (scale and offset).
+
+.. math::
+
+velocity = offset + scaling * action
+
+Parameters:
+
+| Name               | Type                  | Description                                                                                             | Default                                                                                                                     |
+| ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `env`              | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                        | *required*                                                                                                                  |
+| `clip`             | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                        | None\`                                                                                                                      |
+| `actuator_manager` | \`ActuatorManager     | None\`                                                                                                  | The actuator manager which is used to setup and control the DOF joints.                                                     |
+| `actuator_joints`  | \`list[str]           | str\`                                                                                                   | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
+| `scale`            | \`float               | dict[str, float]\`                                                                                      | How much to scale the action.                                                                                               |
+| `offset`           | \`float               | dict[str, float]\`                                                                                      | Offset factor for the action.                                                                                               |
+| `delay_step`       | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system. | `0`                                                                                                                         |
+
+Example::
+
+```
+class MyEnv(ManagedEnvironment):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ...define scene and robot...
+
+    def config(self):
+        self.actuator_manager = ActuatorManager(
+            self,
+            joint_names=["wheel1", "wheel2"],
+            kv=5.0,
+        )
+        self.action_manager = VelocityActionManager(
+            self,
+            clip=(-16.0, 16.0),
+            actuator_manager=self.actuator_manager,
+        )
+```
+
+Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+
+```
+def __init__(
+    self,
+    env: GenesisEnv,
+    clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
+    actuator_manager: ActuatorManager | None = None,
+    actuator_joints: list[str] | str = ".*",
+    scale: float | dict[str, float] = 1.0,
+    offset: float | dict[str, float] = 0.0,
+    delay_step: int = 0,
+):
+    super().__init__(
+        env,
+        delay_step=delay_step,
+        actuator_manager=actuator_manager,
+        actuator_joints=actuator_joints,
+    )
+    self._clip_cfg = ensure_dof_pattern(clip if clip is not None else {})
+    self._scale_cfg = ensure_dof_pattern(scale)
+    self._offset_cfg = ensure_dof_pattern(offset)
+```
+
+## `action_space`
+
+Returns the actions space for the environment, based on the number of DOFs defined in this action manager.
+
+## `actions`
+
+The processed actions for for the current step.
+
+## `actuator_dof_filter`
+
+An index filter for the actuator DOF buffer values.
+
+## `actuator_manager`
+
+Get the actuator manager.
+
+## `dofs`
+
+Get a dictionary of the DOF names and their indices
+
+## `dofs_idx`
+
+Get the indices of the DOFs that this action manager controls.
+
+## `enabled = True`
+
+## `env = env`
+
+## `last_actions`
+
+The processed actions for for the previous step.
+
+## `num_actions`
+
+Get the number of actions.
+
+## `raw_actions`
+
+The actions received from the policy, before being processed.
+
+## `type = type`
+
+## `build()`
+
+Builds the manager and initializes all the buffers.
+
+Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+
+```
+def build(self):
+    """
+    Builds the manager and initializes all the buffers.
+    """
+    super().build()
+
+    # Clip value
+    if self._clip_cfg is not None:
+        # Default clip values to +/-inf (unbounded)
+        self._clip_values = torch.full(
+            (self.num_actions, 2), float("inf"), device=gs.device, dtype=gs.tc_float
+        )
+        self._clip_values[:, 0] = float("-inf")
+
+        self._get_dof_value_tensor(
+            self._clip_cfg,
+            output=self._clip_values,
+        )
+
+    # Scale
+    if self._scale_cfg is not None:
+        self._scale_values = self._get_dof_value_tensor(
+            self._scale_cfg, default_value=1.0
+        )
+
+    # Offset
+    if self._offset_cfg is not None:
+        self._offset_values = self._get_dof_value_tensor(
+            self._offset_cfg, default_value=0.0
+        )
+```
+
+## `get_actions()`
+
+Get the current actions for the environments.
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_actions(self) -> torch.Tensor:
+    """
+    Get the current actions for the environments.
+    """
+    if self._actions is None:
+        return torch.zeros((self.env.num_envs, self.num_actions))
+    return self._actions
+```
+
+## `get_actions_dict(env_idx=0)`
+
+Get the latest actions for an environment as a dictionary of DOF names and values.
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
+    """
+    Get the latest actions for an environment as a dictionary of DOF names and values.
+    """
+    return {
+        name: value.item()
+        for name, value in zip(
+            self.dofs.keys(), self._actions[env_idx, :]
+        )
+    }
+```
+
+## `get_dofs_force(clip_to_max_force=False)`
+
+A wrapper for `RigidEntity.get_dofs_force` that returns the force experienced by the controlled DOFs.
+
+Parameters:
+
+| Name                | Type   | Description                                                                                                      | Default |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `clip_to_max_force` | `bool` | Clip the force returned to the maximum force defined by the max_force parameter defined in the actuator manager. | `False` |
+
+Returns:
+
+| Name    | Type     | Description                                |
+| ------- | -------- | ------------------------------------------ |
+| `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
+|         | `Tensor` | The force experienced by the enabled DOFs. |
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_force` that returns the force experienced by the controlled DOFs.
+
+    Args:
+        clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                           defined in the actuator manager.
+
+    Returns:
+        force: torch.Tensor, shape (n_envs, n_dofs)
+        The force experienced by the enabled DOFs.
+    """
+    return self.actuator_manager.get_dofs_force(
+        clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
+    )
+```
+
+## `get_dofs_limits()`
+
+A wrapper for `RigidEntity.get_dofs_limit` that returns the limits of the controlled DOFs.
+
+Returns:
+
+| Name          | Type     | Description                                                                                                       |
+| ------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `lower_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The lower limit of the positional limits for the entity's dofs. |
+| `upper_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The upper limit of the positional limits for the entity's dofs. |
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    A wrapper for `RigidEntity.get_dofs_limit` that returns the limits of the controlled DOFs.
+
+    Returns:
+        lower_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                     The lower limit of the positional limits for the entity's dofs.
+        upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+                     The upper limit of the positional limits for the entity's dofs.
+    """
+    return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
+```
+
+## `get_dofs_position()`
+
+A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
+
+Returns:
+
+| Name       | Type     | Description                                                                                   |
+| ---------- | -------- | --------------------------------------------------------------------------------------------- |
+| `position` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) The position of the DOFs managed by this action manager. |
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_position(self) ->  torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
+
+    Returns:
+        position: torch.Tensor, shape (n_envs, n_dofs)
+                  The position of the DOFs managed by this action manager.
+    """
+    return self.actuator_manager.get_dofs_position(dofs_idx=self.dofs_idx)
+```
+
+## `get_dofs_velocity(clip=None)`
+
+A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
+
+Parameters:
+
+| Name   | Type                  | Description | Default                        |
+| ------ | --------------------- | ----------- | ------------------------------ |
+| `clip` | \`tuple[float, float] | None\`      | Range to clip the velocity to. |
+
+Returns:
+
+| Name       | Type     | Description                                                      |
+| ---------- | -------- | ---------------------------------------------------------------- |
+| `velocity` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)                             |
+|            | `Tensor` | The velocity of the enabled DOFs managed by this action manager. |
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
+
+    Args:
+        clip: Range to clip the velocity to.
+
+    Returns:
+        velocity: torch.Tensor, shape (n_envs, n_dofs)
+        The velocity of the enabled DOFs managed by this action manager.
+    """
+    return self.actuator_manager.get_dofs_velocity(
+        clip=clip, dofs_idx=self.dofs_idx
+    )
+```
+
+## `process_actions(actions)`
+
+Apply the affine scale/offset transform and clip to `self._scale_values` / `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
+
+Parameters:
+
+| Name      | Type     | Description                          | Default    |
+| --------- | -------- | ------------------------------------ | ---------- |
+| `actions` | `Tensor` | The incoming step actions to handle. | *required* |
+
+Returns:
+
+| Type     | Description                          |
+| -------- | ------------------------------------ |
+| `Tensor` | The processed and converted actions. |
+
+Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+
+```
+def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
+    """
+    Apply the affine scale/offset transform and clip to `self._scale_values` /
+    `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
+
+    Args:
+        actions: The incoming step actions to handle.
+
+    Returns:
+        The processed and converted actions.
+    """
+    if self._scale_values is None or self._offset_values is None or self._clip_values is None:
+        raise RuntimeError(
+            "AffineDofActionManager: _scale_values, _offset_values, and _clip_values must be set by a subclass's build() before calling process_actions()"
+        )
+    actions = actions * self._scale_values + self._offset_values
+    actions = torch.clamp(
+        actions,
+        min=self._clip_values[:, 0],
+        max=self._clip_values[:, 1],
+    )
+    return actions
+```
+
+## `reset(envs_idx)`
+
+Reset environments.
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def reset(self, envs_idx: list[int] | None):
+    """Reset environments."""
+    if (
+        self._delay_step > 0
+        and len(self._action_delay_buffer) < self._delay_step
+        and self.num_actions > 0
+    ):
+        while len(self._action_delay_buffer) < self._delay_step:
+            self._action_delay_buffer.append(
+                torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
+            )
+```
+
+## `send_actions_to_simulation(actions)`
+
+Sends the actions as velocity commands to the actuators in the simulation.
+
+Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+
+```
+def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    """
+    Sends the actions as velocity commands to the actuators in the simulation.
+    """
+    self.actuator_manager.control_dofs_velocity(self.get_actions(), self.dofs_idx)
 ```
 
 ## `step(actions)`

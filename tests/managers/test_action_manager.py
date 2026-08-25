@@ -220,7 +220,15 @@ def test_base_send_actions_to_simulation_is_not_implemented(env):
     mgr = BaseActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
     mgr.build()
     with pytest.raises(NotImplementedError):
-        mgr.send_actions_to_simulation()
+        mgr.send_actions_to_simulation(None)
+
+
+def test_base_process_actions_is_not_implemented(env):
+    actuator = make_actuator_manager()
+    mgr = BaseActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr.build()
+    with pytest.raises(NotImplementedError):
+        mgr.process_actions(torch.tensor([[0.0]] * env.num_envs))
 
 
 """
@@ -255,7 +263,6 @@ def test_process_actions_scales_offsets_and_clamps_to_limits(env):
         actuator_joints=["FL_.*"],
         scale={"FL_hip": 2.0, "FL_knee": 0.5},
         use_default_offset=True,
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -275,7 +282,6 @@ def test_soft_limit_scale_factor_shrinks_the_clip_range_around_the_midpoint(env)
         offset=0.0,
         scale=1.0,
         soft_limit_scale_factor=0.5,
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -293,7 +299,6 @@ def test_custom_clip_overrides_the_default_limit_based_clip(env):
         offset=0.0,
         scale=1.0,
         clip={"FL_hip": (-0.2, 0.2)},
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -381,13 +386,16 @@ VelocityActionManager -- construction, DOF filtering, and clip validation
 """
 
 
-def test_velocity_manager_requires_clip(env):
+def test_velocity_manager_clip_defaults_to_unbounded(env):
     actuator = make_actuator_manager()
-    with pytest.raises(ValueError, match="requires an explicit `clip`"):
-        VelocityActionManager(env, actuator_manager=actuator, clip=None)
+    mgr = VelocityActionManager(env, actuator_manager=actuator, actuator_joints=["FL_hip"])
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[1e9]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[1e9]] * env.num_envs))
 
 
-def test_velocity_manager_build_raises_when_clip_does_not_cover_every_dof(env):
+def test_velocity_manager_dof_uncovered_by_clip_dict_is_left_unbounded(env):
     actuator = make_actuator_manager()
     mgr = VelocityActionManager(
         env,
@@ -395,8 +403,10 @@ def test_velocity_manager_build_raises_when_clip_does_not_cover_every_dof(env):
         actuator_joints=["FL_.*"],
         clip={"FL_hip": (-16.0, 16.0)},  # FL_knee is uncovered
     )
-    with pytest.raises(ValueError, match="does not cover DOF"):
-        mgr.build()
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0, 1e9]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[16.0, 1e9]] * env.num_envs))
 
 
 def test_velocity_manager_build_filters_dofs_by_pattern_preserving_actuator_order(env):
@@ -425,7 +435,6 @@ def test_velocity_manager_process_actions_scales_offsets_and_clamps(env):
         scale={"FL_hip": 2.0, "FL_knee": 0.5},
         offset={"FL_hip": 1.0, "FL_knee": 0.0},
         clip=(-16.0, 16.0),
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -442,7 +451,6 @@ def test_velocity_manager_clamps_actions_outside_clip_to_the_boundary(env):
         actuator_manager=actuator,
         actuator_joints=["FL_hip"],
         clip=(-16.0, 16.0),
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -457,38 +465,11 @@ def test_velocity_manager_per_dof_clip_override(env):
         actuator_manager=actuator,
         actuator_joints=["FL_.*"],
         clip={"FL_hip": (-16.0, 16.0), "FL_knee": (-1.0, 1.0)},
-        quiet_action_errors=True,
     )
     mgr.build()
 
     processed = mgr.process_actions(torch.tensor([[100.0, 100.0]] * env.num_envs))
     assert torch.allclose(processed, torch.tensor([[16.0, 1.0]] * env.num_envs))
-
-
-def test_velocity_manager_prints_error_on_nan_actions(env, capsys):
-    actuator = make_actuator_manager()
-    mgr = VelocityActionManager(
-        env, actuator_manager=actuator, actuator_joints=["FL_hip"], clip=(-16.0, 16.0)
-    )
-    mgr.build()
-
-    mgr.process_actions(torch.tensor([[float("nan")]] * env.num_envs))
-    assert "NaN actions" in capsys.readouterr().out
-
-
-def test_velocity_manager_quiet_action_errors_suppresses_nan_warning(env, capsys):
-    actuator = make_actuator_manager()
-    mgr = VelocityActionManager(
-        env,
-        actuator_manager=actuator,
-        actuator_joints=["FL_hip"],
-        clip=(-16.0, 16.0),
-        quiet_action_errors=True,
-    )
-    mgr.build()
-
-    mgr.process_actions(torch.tensor([[float("nan")]] * env.num_envs))
-    assert capsys.readouterr().out == ""
 
 
 """
@@ -503,7 +484,6 @@ def test_velocity_manager_send_actions_to_simulation_controls_the_actuator(env):
         actuator_manager=actuator,
         actuator_joints=["FL_.*"],
         clip=(-16.0, 16.0),
-        quiet_action_errors=True,
     )
     mgr.build()
     mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))

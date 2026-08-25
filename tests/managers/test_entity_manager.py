@@ -21,8 +21,8 @@ class FakeEntity:
     def __init__(self, pos, quat, vel=None, ang=None):
         self._pos = pos
         self._quat = quat
-        self._vel = vel
-        self._ang = ang
+        self._vel = vel if vel is not None else torch.zeros_like(pos)
+        self._ang = ang if ang is not None else torch.zeros_like(pos)
 
     def get_pos(self):
         return self._pos
@@ -103,6 +103,35 @@ def test_step_recomputes_cached_values_after_the_entity_moves(env):
     mgr.step()
 
     assert torch.equal(mgr.base_pos, entity._pos)
+
+
+def test_get_linear_velocity_returns_the_same_cached_tensor_across_calls_within_a_step(env):
+    """Velocity/gravity are cached once per step() -- repeated calls within a step
+    must not re-query the entity or return a fresh (differently-identitied) tensor."""
+    vel = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    entity = make_entity(env.num_envs, vel=vel)
+    mgr = EntityManager(env, entity=entity)
+    mgr.build()
+
+    first = mgr.get_linear_velocity()
+    entity._vel = torch.full((env.num_envs, 3), 99.0)  # entity moves, but no step() yet
+    second = mgr.get_linear_velocity()
+
+    assert first is second
+    assert torch.allclose(second, vel)
+
+
+def test_step_recomputes_linear_and_angular_velocity_and_projected_gravity(env):
+    entity = make_entity(env.num_envs)
+    mgr = EntityManager(env, entity=entity)
+    mgr.build()
+
+    entity._vel = torch.full((env.num_envs, 3), 5.0)
+    entity._ang = torch.full((env.num_envs, 3), 6.0)
+    mgr.step()
+
+    assert torch.allclose(mgr.get_linear_velocity(), entity._vel)
+    assert torch.allclose(mgr.get_angular_velocity(), entity._ang)
 
 
 """

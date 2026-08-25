@@ -23,7 +23,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         limit: A dictionary of DOF name patterns and their position limits.
                If omitted, the limits will be set to the limits of the actuators defined in the model.
         soft_limit_scale_factor: Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0.
-        quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
 
@@ -77,7 +76,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
-        quiet_action_errors: bool = False,
         limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         delay_step: int = 0,
@@ -86,7 +84,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
             env,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
-            quiet_action_errors=quiet_action_errors,
             delay_step=delay_step,
         )
         self._limit_cfg = ensure_dof_pattern(limit if limit is not None else {})

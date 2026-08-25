@@ -8,18 +8,17 @@ exporter knowing anything about it.
 
 from __future__ import annotations
 
-import datetime as _datetime
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from .errors import ExportError
+from .probe import detect_pipeline_state_entries
+from .provenance import build_provenance
 
 if TYPE_CHECKING:  # pragma: no cover
     from genesis_forge_deploy import Manifest
 
     from genesis_forge.managers.action.base import BaseActionManager
-
-
-class ExportError(Exception):
-    """The environment cannot be exported as it is currently configured."""
 
 
 @dataclass
@@ -76,7 +75,7 @@ def capture_environment(
 
     action_specs, action_managers = _capture_actions(env, managers, names)
     observation_manager, layout_data, entry_names = _capture_observations(
-        managers, names, action_managers
+        managers, env, action_managers
     )
     actuators = _capture_actuators(managers, names)
 
@@ -97,7 +96,7 @@ def capture_environment(
             ActuatorSpec.from_dict(spec, where="actuators") for spec in actuators
         ),
         policy=PolicySpec(file=policy_file) if policy_file else None,
-        provenance=_provenance(checkpoint=checkpoint, policy=policy),
+        provenance=build_provenance(checkpoint=checkpoint, policy=policy),
     )
 
     return Capture(
@@ -107,11 +106,6 @@ def capture_environment(
         action_managers=action_managers,
         num_envs=num_envs,
     )
-
-
-"""
-Per-manager capture
-"""
 
 
 def _capture_actions(
@@ -165,7 +159,7 @@ def _capture_actions(
 
 def _capture_observations(
     managers: dict[str, Any],
-    names: dict[int, str],
+    env: Any,
     action_managers: dict[str, BaseActionManager],
 ) -> tuple[Any, dict[str, Any], list[str]]:
     """Capture the layout of the pipeline that actually feeds the policy."""
@@ -194,80 +188,8 @@ def _capture_observations(
         )
 
     layout = chosen.get_deployment_layout()
-    _detect_pipeline_state_entries(chosen, layout, names, action_managers)
+    detect_pipeline_state_entries(chosen, layout, env, action_managers)
     return chosen, layout, list(chosen.cfg.keys())
-
-
-def _detect_pipeline_state_entries(
-    manager: Any,
-    layout: dict[str, Any],
-    names: dict[int, str],
-    action_managers: dict[str, BaseActionManager],
-) -> None:
-    """Mark observations that echo the policy's own output, so the robot auto-fills them.
-
-    ``current_actions`` is the built-in way to feed previous actions back in, and it
-    returns *processed* actions when given an action manager but the *raw* policy
-    output otherwise. Getting that backwards on hardware is silent and expensive, so
-    detect it here rather than relying on the user to annotate it. An explicit
-    ``pipeline_state`` marker in the config always wins.
-    """
-    from genesis_forge.mdp.observations import current_actions
-
-    entries = {entry["name"]: entry for entry in layout["entries"]}
-
-    for name, config_item in manager.cfg.items():
-        entry = entries.get(name)
-        if entry is None:
-            continue  # zero-width entries are not deployed
-
-        if entry.get("source") == "pipeline_state":
-            # Explicitly marked in the config. A processed-actions entry still needs
-            # to say which manager it came from; with a single action manager that is
-            # unambiguous, so fill it in rather than making the user repeat it.
-            _resolve_marked_action_manager(name, entry, action_managers)
-            continue
-
-        function = getattr(config_item, "fn", None)
-        if not isinstance(function, current_actions):
-            continue
-
-        source_manager = getattr(function, "action_manager", None)
-        entry["source"] = "pipeline_state"
-        if source_manager is None:
-            entry["pipeline_stage"] = "raw_actions"
-            continue
-
-        manager_name = names.get(id(source_manager))
-        if manager_name is None or manager_name not in action_managers:
-            raise ExportError(
-                f"Observation '{name}' reads processed actions from an action manager "
-                f"that is not registered with this environment, so the deployment "
-                f"runtime could not reproduce it."
-            )
-        entry["pipeline_stage"] = "processed_actions"
-        entry["action_manager"] = manager_name
-
-
-def _resolve_marked_action_manager(
-    name: str, entry: dict[str, Any], action_managers: dict[str, BaseActionManager]
-) -> None:
-    """Attach the source manager to an explicitly-marked processed-actions entry."""
-    if entry.get("pipeline_stage") != "processed_actions" or entry.get("action_manager"):
-        return
-
-    if len(action_managers) == 1:
-        entry["action_manager"] = next(iter(action_managers))
-        return
-
-    available = ", ".join(sorted(action_managers))
-    raise ExportError(
-        f"Observation '{name}' is marked as echoing processed actions, but this "
-        f"environment has several action managers ({available}), so which one it "
-        f"reads from is ambiguous. Use "
-        f"genesis_forge.mdp.observations.current_actions(action_manager=...) instead "
-        f"of the marker, so the source is unambiguous."
-    )
 
 
 def _capture_actuators(
@@ -284,11 +206,6 @@ def _capture_actuators(
     return specs
 
 
-"""
-Internal helpers
-"""
-
-
 def _attribute_names(env: Any) -> dict[int, str]:
     """Map manager objects to the attribute they were assigned to on the environment.
 
@@ -296,53 +213,3 @@ def _attribute_names(env: Any) -> dict[int, str]:
     ``action_manager_0``), matching how they were written in ``config()``.
     """
     return {id(value): name for name, value in vars(env).items()}
-
-
-def _provenance(*, checkpoint: str | None, policy: Any) -> Any:
-    from genesis_forge_deploy import Provenance
-
-    return Provenance(
-        exported_at=_datetime.datetime.now(_datetime.timezone.utc).isoformat(
-            timespec="seconds"
-        ),
-        genesis_forge_version=_package_version("genesis-forge"),
-        torch_version=_torch_version(),
-        policy_framework=_policy_framework(policy),
-        policy_framework_version=_policy_framework_version(policy),
-        checkpoint=str(checkpoint) if checkpoint else None,
-    )
-
-
-def _package_version(name: str) -> str | None:
-    try:
-        from importlib.metadata import PackageNotFoundError, version
-
-        return version(name)
-    except (ImportError, PackageNotFoundError):  # pragma: no cover
-        return None
-
-
-def _torch_version() -> str | None:
-    try:
-        import torch
-
-        return str(torch.__version__)
-    except ImportError:  # pragma: no cover
-        return None
-
-
-def _policy_framework(policy: Any) -> str | None:
-    if policy is None:
-        return None
-    module = type(policy).__module__ or ""
-    return module.split(".")[0] or None
-
-
-def _policy_framework_version(policy: Any) -> str | None:
-    framework = _policy_framework(policy)
-    if not framework:
-        return None
-    return _package_version(framework.replace("_", "-")) or _package_version(framework)
-
-
-__all__ = ["Capture", "ExportError", "capture_environment"]

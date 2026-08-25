@@ -12,8 +12,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .capture import Capture, ExportError, capture_environment
-from .parity import ParityReport, check_parity, check_policy_parity
+from .capture import Capture, capture_environment
+from .errors import ExportError
+from .parity import ParityReport, check_parity
+from .policy_parity import check_policy_parity
 
 
 def export(
@@ -134,13 +136,12 @@ def _report(destination: Path, capture: Capture, report: ParityReport) -> None:
     layout = manifest.observations
     print(f"Deployment bundle written to {destination}")
     print(f"  {report.summary()}")
+    fed_back = len(layout.pipeline_state_inputs)
+    feedback_note = f", {fed_back} fed back from the decoder" if fed_back else ""
     print(
         f"  observations: {layout.total_size} values "
-        f"({len(layout.required_inputs)} input(s) to wire up)"
+        f"({len(layout.sensor_inputs)} sensor input(s) to wire up{feedback_note})"
     )
     print(f"  actions: {manifest.num_actions} joint target(s)")
     print(f"  control rate: {manifest.control_hz:.1f} Hz")
     print("  install the runtime on the robot with: pip install genesis-forge-deploy")
-
-
-__all__ = ["export"]

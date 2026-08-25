@@ -297,10 +297,6 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 },
                 "actions": {
                     "fn": lambda env: self.action_manager.get_actions(),
-                    # Echoes the pipeline's own output rather than a sensor, so a
-                    # deployed policy fills this in itself instead of asking the
-                    # user for it.
-                    "pipeline_state": "processed_actions",
                 },
             },
         )

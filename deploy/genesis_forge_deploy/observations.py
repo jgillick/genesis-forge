@@ -4,6 +4,10 @@ This mirrors ``genesis_forge.managers.ObservationManager`` exactly -- same entry
 order, same per-entry scaling, same newest-first history stacking -- minus the
 simulator lookups and minus the training noise. The parity gate on the export
 side proves the two agree before a bundle is ever written.
+
+Every entry is supplied by the caller, including the ones that echo the pipeline's
+own previous output (read those off the decoder). Nothing is filled in silently:
+a feedback wire you forget raises, rather than quietly reading zeros forever.
 """
 
 from __future__ import annotations
@@ -13,20 +17,12 @@ from typing import Any
 
 import numpy as np
 
-from .bundle import (
-    STAGE_PROCESSED_ACTIONS,
-    STAGE_RAW_ACTIONS,
-    ObservationEntry,
-    ObservationLayout,
-)
-
-
-class ObservationError(Exception):
-    """A value handed to the assembler was missing, mis-sized, or unexpected."""
+from .errors import ObservationError
+from .observation_schema import ObservationEntry, ObservationLayout
 
 
 class ObservationAssembler:
-    """Assembles the policy input vector from named sensor values.
+    """Assembles the policy input vector from named values.
 
     Args:
         layout: The observation layout from a loaded bundle's manifest.
@@ -38,12 +34,13 @@ class ObservationAssembler:
     Example::
 
         assembler = bundle.observation_assembler()
-        for entry in assembler.required_inputs:
-            print(entry.describe())
+        decoder = bundle.action_decoder()
+        print(assembler.describe_inputs())
 
         obs = assembler.assemble({
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
+            "actions": decoder.last_target_actions,
         })
     """
 
@@ -64,8 +61,6 @@ class ObservationAssembler:
             self._offsets[entry.name] = (cursor, cursor + entry.size)
             cursor += entry.size
 
-        self._last_raw_actions: np.ndarray | None = None
-        self._last_decoded_actions: dict[str, np.ndarray] = {}
         self._history: list[np.ndarray] = []
         self.reset()
 
@@ -79,12 +74,17 @@ class ObservationAssembler:
 
     @property
     def required_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries the caller must supply each tick. Pipeline state is excluded."""
+        """Every entry the caller must supply each tick."""
         return self._layout.required_inputs
 
     @property
-    def auto_filled_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries the runtime fills from the policy's own previous output."""
+    def sensor_inputs(self) -> tuple[ObservationEntry, ...]:
+        """Entries that come from real sensors."""
+        return self._layout.sensor_inputs
+
+    @property
+    def pipeline_state_inputs(self) -> tuple[ObservationEntry, ...]:
+        """Entries fed back from the decoder's previous output."""
         return self._layout.pipeline_state_inputs
 
     @property
@@ -97,47 +97,26 @@ class ObservationAssembler:
     """
 
     def reset(self) -> None:
-        """Clear history and remembered actions back to a fresh-start state.
+        """Clear the stacked history back to zeros.
 
-        History fills with zeros, exactly as training's ``ObservationManager.reset()``
-        does at the start of every episode. Call this whenever you (re)start control
-        so the robot begins from the same state an episode began from in training.
+        This is exactly what training's ``ObservationManager.reset()`` does at the
+        start of every episode. Call it whenever you (re)start control so the robot
+        begins from the same state an episode began from in training.
         """
         self._history = [
             np.zeros(self._layout.single_size, dtype=self._dtype)
             for _ in range(self._layout.history_length)
         ]
-        self._last_raw_actions = None
-        self._last_decoded_actions = {}
-
-    def record_actions(
-        self,
-        raw_actions: Any = None,
-        *,
-        decoded: dict[str, Any] | None = None,
-    ) -> None:
-        """Feed the policy's output back in, for auto-filled observation entries.
-
-        Call this once per tick after running the policy when the layout contains
-        pipeline-state entries (:attr:`auto_filled_inputs`). ``raw_actions`` is the
-        policy's raw output; ``decoded`` maps an action manager's name to its
-        post-decode joint targets.
-        """
-        if raw_actions is not None:
-            self._last_raw_actions = self._to_array(raw_actions, name="raw_actions")
-        if decoded:
-            for manager_name, values in decoded.items():
-                self._last_decoded_actions[manager_name] = self._to_array(
-                    values, name=f"decoded[{manager_name}]"
-                )
 
     def assemble(self, values: dict[str, Any] | None = None) -> np.ndarray:
         """Build one observation vector.
 
         Args:
-            values: One entry per name in :attr:`required_inputs`. Values may be
-                scalars, sequences, or numpy arrays; each is flattened and must
-                match the entry's declared size.
+            values: One entry per name in :attr:`required_inputs`. Sensor readings
+                come from your hardware; entries that echo the pipeline's own output
+                come from the decoder (``decoder.last_target_actions`` or
+                ``decoder.last_raw_actions``). Values may be scalars, sequences, or
+                numpy arrays; each is flattened and must match the declared size.
 
         Returns:
             The policy input vector, shape ``(output_size,)``. Add a batch
@@ -166,12 +145,12 @@ class ObservationAssembler:
 
     def describe_inputs(self) -> str:
         """Human-readable listing of everything the caller must supply."""
-        lines = ["Observation inputs required each tick:"]
-        lines.extend(f"  - {entry.describe()}" for entry in self.required_inputs)
-        auto = self.auto_filled_inputs
-        if auto:
-            lines.append("Filled automatically from the policy's own output:")
-            lines.extend(f"  - {entry.describe()}" for entry in auto)
+        lines = ["Sensor values to supply each tick:"]
+        lines.extend(f"  - {entry.describe()}" for entry in self.sensor_inputs)
+        fed_back = self.pipeline_state_inputs
+        if fed_back:
+            lines.append("Values to feed back from the decoder:")
+            lines.extend(f"  - {entry.describe()}" for entry in fed_back)
         return "\n".join(lines)
 
     """
@@ -179,16 +158,10 @@ class ObservationAssembler:
     """
 
     def _value_for(self, entry: ObservationEntry, values: dict[str, Any]) -> np.ndarray:
-        if entry.is_pipeline_state:
-            raw = self._pipeline_state_value(entry)
-        else:
-            if entry.name not in values:
-                raise ObservationError(
-                    f"Missing observation value '{entry.name}'. This layout requires: "
-                    f"{', '.join(item.name for item in self.required_inputs)}."
-                )
-            raw = self._to_array(values[entry.name], name=entry.name)
+        if entry.name not in values:
+            raise ObservationError(self._missing_value_message(entry))
 
+        raw = self._to_array(values[entry.name], name=entry.name)
         if raw.size != entry.size:
             raise ObservationError(
                 f"Observation '{entry.name}' expects {entry.size} value(s), got "
@@ -202,35 +175,24 @@ class ObservationAssembler:
             return raw * np.asarray(entry.scale, dtype=self._dtype)
         return raw
 
-    def _pipeline_state_value(self, entry: ObservationEntry) -> np.ndarray:
-        """Resolve an auto-filled entry from the runtime's own last output."""
-        if entry.pipeline_stage == STAGE_RAW_ACTIONS:
-            source = self._last_raw_actions
-        elif entry.pipeline_stage == STAGE_PROCESSED_ACTIONS:
-            source = self._last_decoded_actions.get(entry.action_manager)
-        else:  # pragma: no cover - the manifest loader rejects other stages
-            raise ObservationError(
-                f"Observation '{entry.name}' has unsupported pipeline stage "
-                f"'{entry.pipeline_stage}'."
+    def _missing_value_message(self, entry: ObservationEntry) -> str:
+        """Say what is missing -- and for fed-back entries, where to get it."""
+        if entry.is_pipeline_state:
+            return (
+                f"Missing observation value '{entry.name}'. It echoes the policy's "
+                f"own previous output rather than a sensor -- pass "
+                f"{entry.decoder_source}."
             )
-
-        if source is None:
-            # First tick: nothing has run yet. Training starts from zeros too.
-            return np.zeros(entry.size, dtype=self._dtype)
-        return source
+        return (
+            f"Missing observation value '{entry.name}'. This layout requires: "
+            f"{', '.join(item.name for item in self.required_inputs)}."
+        )
 
     def _check_for_unknown_names(self, values: dict[str, Any]) -> None:
         if not self._strict_inputs:
             return
         known = {entry.name for entry in self._layout.entries}
         unknown = sorted(set(values) - known)
-        auto_filled = {entry.name for entry in self.auto_filled_inputs} & set(values)
-        if auto_filled:
-            raise ObservationError(
-                f"Observation(s) {', '.join(sorted(auto_filled))} are filled "
-                f"automatically from the policy's output; pass them via "
-                f"record_actions() instead of assemble()."
-            )
         if unknown:
             raise ObservationError(
                 f"Unknown observation name(s): {', '.join(unknown)}. Expected one of: "
@@ -250,6 +212,3 @@ class ObservationAssembler:
 def iter_input_names(entries: Iterable[ObservationEntry]) -> list[str]:
     """Convenience for stub generation and diagnostics."""
     return [entry.name for entry in entries]
-
-
-__all__ = ["ObservationAssembler", "ObservationError", "iter_input_names"]

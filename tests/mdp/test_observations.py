@@ -177,8 +177,7 @@ def test_current_actions_falls_back_to_env_actions(env):
 
 def test_current_actions_prefers_action_manager(env):
     class FakeActionManager:
-        def get_actions(self):
-            return torch.tensor([[9.0]])
+        raw_actions = torch.tensor([[9.0]])
 
     env.actions = torch.tensor([[0.1]])
     fn = observations.current_actions(action_manager=FakeActionManager())

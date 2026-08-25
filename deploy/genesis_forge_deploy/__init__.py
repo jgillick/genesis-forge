@@ -16,23 +16,34 @@ Typical robot-side use::
     decoder = bundle.action_decoder()
 
     while True:
-        obs = assembler.assemble({"robot_ang_vel": gyro, ...})
-        actions = policy(obs)          # onnxruntime, or anything else
-        targets = decoder.decode(actions)
-        send_to_motors(targets)
+        obs = assembler.assemble({
+            "robot_ang_vel": gyro,
+            "actions": decoder.last_target_actions_by_manager["action_manager"],
+        })
+        targets = decoder.decode(policy(obs))
+        send_to_motors(targets.by_joint)
+
+The modules behind it, roughly in dependency order:
+
+* :mod:`~genesis_forge_deploy.constants` -- the manifest's vocabulary
+* :mod:`~genesis_forge_deploy.errors` -- every exception raised here
+* :mod:`~genesis_forge_deploy.serialization` -- JSON to numpy and back
+* :mod:`~genesis_forge_deploy.observation_schema` /
+  :mod:`~genesis_forge_deploy.action_schema` -- the two halves of the contract
+* :mod:`~genesis_forge_deploy.manifest` -- the contract as a whole
+* :mod:`~genesis_forge_deploy.bundle` -- reading and writing a bundle directory
+* :mod:`~genesis_forge_deploy.observations` /
+  :mod:`~genesis_forge_deploy.decoders` / :mod:`~genesis_forge_deploy.actions`
+  -- the runtime itself
 
 **Trust model:** a bundle is trusted input, equivalent to executable code --
 loading one may import decoder classes it names. Only load bundles you produced.
 """
 
-from .actions import (
-    ActionDecoder,
-    AffineDecoder,
-    DecodedActions,
-    DecoderError,
-    ManagerDecoder,
-)
-from .bundle import (
+from .action_schema import ActionManagerSpec, ActuatorSpec
+from .actions import ActionDecoder, DecodedActions
+from .bundle import Bundle, load_bundle, load_manifest, save_bundle
+from .constants import (
     GOLDEN_FILENAME,
     HISTORY_NEWEST_FIRST,
     MANIFEST_FILENAME,
@@ -41,24 +52,20 @@ from .bundle import (
     SCHEMA_VERSION,
     SOURCE_PIPELINE_STATE,
     SOURCE_SENSOR,
-    STAGE_PROCESSED_ACTIONS,
     STAGE_RAW_ACTIONS,
-    ActionManagerSpec,
-    ActuatorSpec,
-    Bundle,
-    BundleError,
-    MalformedBundleError,
-    Manifest,
-    ObservationEntry,
-    ObservationLayout,
-    PolicySpec,
-    Provenance,
-    SchemaVersionError,
-    load_bundle,
-    load_manifest,
-    save_bundle,
+    STAGE_TARGET_ACTIONS,
 )
-from .observations import ObservationAssembler, ObservationError
+from .decoders import AffineDecoder, ManagerDecoder
+from .errors import (
+    BundleError,
+    DecoderError,
+    MalformedBundleError,
+    ObservationError,
+    SchemaVersionError,
+)
+from .manifest import Manifest, PolicySpec, Provenance
+from .observation_schema import ObservationEntry, ObservationLayout
+from .observations import ObservationAssembler
 
 __version__ = "1.0.0"
 
@@ -71,8 +78,8 @@ __all__ = [
     "SCHEMA_VERSION",
     "SOURCE_PIPELINE_STATE",
     "SOURCE_SENSOR",
-    "STAGE_PROCESSED_ACTIONS",
     "STAGE_RAW_ACTIONS",
+    "STAGE_TARGET_ACTIONS",
     "ActionDecoder",
     "ActionManagerSpec",
     "ActuatorSpec",

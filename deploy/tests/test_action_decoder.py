@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from genesis_forge_deploy import ActionManagerSpec
-from genesis_forge_deploy.actions import (
+from genesis_forge_deploy import (
     ActionDecoder,
+    ActionManagerSpec,
     AffineDecoder,
     DecoderError,
     ManagerDecoder,
-    resolve_decoder_class,
 )
+from genesis_forge_deploy.decoders import resolve_decoder_class
 
 
 def position_spec(
@@ -320,7 +320,7 @@ def test_builtin_types_resolve_without_an_import_path():
 
 def test_every_builtin_action_manager_type_has_a_decoder():
     """Guard: a new affine manager type upstream must not ship undeployable."""
-    from genesis_forge_deploy.actions import BUILTIN_DECODERS
+    from genesis_forge_deploy.decoders import BUILTIN_DECODERS
 
     assert {"affine_dof", "position", "position_within_limits", "velocity"} <= set(
         BUILTIN_DECODERS
@@ -408,7 +408,7 @@ def test_a_class_that_is_not_a_manager_decoder_is_rejected(tmp_path, monkeypatch
 
 CUSTOM_DECODER_MODULE = '''
 import numpy as np
-from genesis_forge_deploy.actions import ManagerDecoder
+from genesis_forge_deploy import ManagerDecoder
 
 
 class DoublingDecoder(ManagerDecoder):
@@ -516,3 +516,155 @@ def test_a_configured_velocity_clip_is_honored():
     result = ActionDecoder((spec,)).decode([100.0, -100.0])
 
     np.testing.assert_allclose(result.targets, [16.0, -16.0])
+
+
+"""Feeding the previous output back (R15)
+
+The decoder remembers its last output so the caller can hand it to the next
+observation, replacing the older implicit auto-fill.
+"""
+
+
+def test_remembered_outputs_start_at_zero():
+    """Before the first decode, matching how training starts an episode."""
+    decoder = ActionDecoder((position_spec(),))
+
+    np.testing.assert_allclose(decoder.last_raw_actions, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(decoder.last_target_actions, [0.0, 0.0, 0.0])
+
+
+def test_the_decoder_remembers_raw_and_target_actions_separately():
+    """These differ, and feeding back the wrong one is the classic silent bug."""
+    decoder = ActionDecoder((position_spec(),))
+
+    decoder.decode([2.0, 2.0, 2.0])
+
+    np.testing.assert_allclose(decoder.last_raw_actions, [2.0, 2.0, 2.0])
+    np.testing.assert_allclose(decoder.last_target_actions, [1.0, 2.0, 0.0])
+
+
+def test_remembered_outputs_update_every_tick():
+    decoder = ActionDecoder((position_spec(),))
+
+    decoder.decode([2.0, 2.0, 2.0])
+    decoder.decode([0.0, 0.0, 0.0])
+
+    np.testing.assert_allclose(decoder.last_raw_actions, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(decoder.last_target_actions, [0.0, 1.0, -1.0])
+
+
+def test_reset_clears_the_remembered_outputs():
+    decoder = ActionDecoder((position_spec(),))
+    decoder.decode([2.0, 2.0, 2.0])
+
+    decoder.reset()
+
+    np.testing.assert_allclose(decoder.last_raw_actions, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(decoder.last_target_actions, [0.0, 0.0, 0.0])
+
+
+def test_remembered_outputs_are_copies_not_live_buffers():
+    decoder = ActionDecoder((position_spec(),))
+    decoder.decode([2.0, 2.0, 2.0])
+
+    snapshot = decoder.last_target_actions
+    decoder.decode([0.0, 0.0, 0.0])
+
+    np.testing.assert_allclose(snapshot, [1.0, 2.0, 0.0])
+
+
+def test_target_actions_are_also_available_per_manager():
+    legs = position_spec("legs", start=0, joints=("hip", "knee", "ankle"))
+    arm = within_limits_spec("arm", start=3)
+    decoder = ActionDecoder((legs, arm))
+
+    decoder.decode([2.0, 2.0, 2.0, 0.0, 0.0])
+
+    by_manager = decoder.last_target_actions_by_manager
+    np.testing.assert_allclose(by_manager["legs"], [1.0, 2.0, 0.0])
+    np.testing.assert_allclose(by_manager["arm"], [0.0, 1.0])
+
+
+def test_the_feedback_loop_reads_off_the_decoder():
+    """The documented control-loop shape, end to end."""
+    from genesis_forge_deploy import (
+        SOURCE_PIPELINE_STATE,
+        STAGE_TARGET_ACTIONS,
+        ObservationAssembler,
+        ObservationEntry,
+        ObservationLayout,
+    )
+
+    layout = ObservationLayout(
+        entries=(
+            ObservationEntry(name="gyro", size=3),
+            ObservationEntry(
+                name="actions",
+                size=3,
+                source=SOURCE_PIPELINE_STATE,
+                pipeline_stage=STAGE_TARGET_ACTIONS,
+                action_manager="action_manager",
+            ),
+        )
+    )
+    assembler = ObservationAssembler(layout)
+    decoder = ActionDecoder((position_spec(),))
+
+    # Tick one: nothing decoded yet, so the feedback is zeros.
+    first = assembler.assemble(
+        {"gyro": [0.0, 0.0, 0.0], "actions": decoder.last_target_actions}
+    )
+    np.testing.assert_allclose(first, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    decoder.decode([2.0, 2.0, 2.0])
+
+    # Tick two: the feedback carries the previous decode's targets.
+    second = assembler.assemble(
+        {"gyro": [0.0, 0.0, 0.0], "actions": decoder.last_target_actions}
+    )
+    np.testing.assert_allclose(second, [0.0, 0.0, 0.0, 1.0, 2.0, 0.0])
+
+
+def test_every_pipeline_stage_names_real_decoder_properties():
+    """Guard the string coupling between the schema and this class.
+
+    ObservationEntry.decoder_source builds a property name by interpolation --
+    ``decoder.last_{stage}`` or ``decoder.last_{stage}_by_manager[...]`` -- and the
+    assembler's missing-value error repeats it verbatim. A stage the decoder does
+    not actually expose would send someone looking for an attribute that isn't
+    there, on a robot, while they are already unsure what to wire. Renaming either
+    side without the other breaks that silently, since the messages are plain
+    strings.
+    """
+    from genesis_forge_deploy import STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS
+
+    for stage in (STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS):
+        for attribute in (f"last_{stage}", f"last_{stage}_by_manager"):
+            assert hasattr(ActionDecoder, attribute), (
+                f"Pipeline stage '{stage}' points at ActionDecoder.{attribute}, "
+                f"which does not exist -- but the runtime tells users to read it."
+            )
+
+
+def test_the_decoder_source_expression_actually_evaluates():
+    """Stronger still: the exact string handed to users must run."""
+    from genesis_forge_deploy import (
+        SOURCE_PIPELINE_STATE,
+        STAGE_RAW_ACTIONS,
+        STAGE_TARGET_ACTIONS,
+        ObservationEntry,
+    )
+
+    decoder = ActionDecoder((position_spec(),))
+    decoder.decode([1.0, 1.0, 1.0])
+
+    for stage in (STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS):
+        for manager in (None, "action_manager"):
+            entry = ObservationEntry(
+                name="actions",
+                size=3,
+                source=SOURCE_PIPELINE_STATE,
+                pipeline_stage=stage,
+                action_manager=manager,
+            )
+            value = eval(entry.decoder_source, {"decoder": decoder})
+            assert len(value) == 3, entry.decoder_source

@@ -11,12 +11,13 @@ import numpy as np
 import pytest
 from genesis_forge_deploy import (
     SOURCE_PIPELINE_STATE,
-    STAGE_PROCESSED_ACTIONS,
     STAGE_RAW_ACTIONS,
+    STAGE_TARGET_ACTIONS,
+    ObservationAssembler,
     ObservationEntry,
+    ObservationError,
     ObservationLayout,
 )
-from genesis_forge_deploy.observations import ObservationAssembler, ObservationError
 
 
 def layout(*entries: ObservationEntry, history_length: int = 1) -> ObservationLayout:
@@ -152,7 +153,12 @@ def test_reset_clears_history_back_to_zeros():
     np.testing.assert_allclose(assembler.assemble({"value": 9.0}), [9.0, 0.0])
 
 
-"""Auto-filled pipeline-state entries (R15)"""
+"""Entries fed back from the decoder (R15)
+
+These echo the pipeline's own previous output rather than a sensor. The caller
+still passes them explicitly -- reading them off the decoder -- so a forgotten
+feedback wire raises instead of silently feeding zeros forever.
+"""
 
 
 def raw_actions_layout() -> ObservationLayout:
@@ -167,68 +173,58 @@ def raw_actions_layout() -> ObservationLayout:
     )
 
 
-def processed_actions_layout() -> ObservationLayout:
+def target_actions_layout() -> ObservationLayout:
     return layout(
         ObservationEntry(name="gyro", size=2),
         ObservationEntry(
             name="joint_targets",
             size=2,
             source=SOURCE_PIPELINE_STATE,
-            pipeline_stage=STAGE_PROCESSED_ACTIONS,
+            pipeline_stage=STAGE_TARGET_ACTIONS,
             action_manager="action_manager",
         ),
     )
 
 
-def test_pipeline_state_entries_are_excluded_from_required_inputs():
+def test_fed_back_entries_are_still_required_inputs():
     assembler = ObservationAssembler(raw_actions_layout())
 
-    assert [entry.name for entry in assembler.required_inputs] == ["gyro"]
-    assert [entry.name for entry in assembler.auto_filled_inputs] == ["actions"]
+    assert [entry.name for entry in assembler.required_inputs] == ["gyro", "actions"]
+    assert [entry.name for entry in assembler.sensor_inputs] == ["gyro"]
+    assert [entry.name for entry in assembler.pipeline_state_inputs] == ["actions"]
 
 
-def test_raw_action_entry_is_filled_from_the_last_policy_output():
+def test_a_fed_back_value_is_placed_like_any_other_entry():
     assembler = ObservationAssembler(raw_actions_layout())
 
-    assembler.assemble({"gyro": [0.0, 0.0]})
-    assembler.record_actions([0.5, -0.5])
-    obs = assembler.assemble({"gyro": [1.0, 2.0]})
+    obs = assembler.assemble({"gyro": [1.0, 2.0], "actions": [0.5, -0.5]})
 
     np.testing.assert_allclose(obs, [1.0, 2.0, 0.5, -0.5])
 
 
-def test_processed_action_entry_is_filled_from_the_decoded_output():
-    """`current_actions` echoes *processed* actions when given a manager, so a
-    processed-marked entry must read decoded targets, not the raw policy output."""
-    assembler = ObservationAssembler(processed_actions_layout())
-
-    assembler.record_actions(
-        [0.1, 0.2],  # raw policy output -- deliberately different
-        decoded={"action_manager": [1.5, -1.5]},
-    )
-    obs = assembler.assemble({"gyro": [0.0, 0.0]})
-
-    np.testing.assert_allclose(obs, [0.0, 0.0, 1.5, -1.5])
-
-
-def test_auto_filled_entries_start_at_zero_on_the_first_tick():
+def test_forgetting_the_feedback_wire_raises_rather_than_reading_zeros():
+    """The whole point of passing it explicitly: omitting it is loud, not silent."""
     assembler = ObservationAssembler(raw_actions_layout())
 
-    obs = assembler.assemble({"gyro": [1.0, 2.0]})
+    with pytest.raises(ObservationError) as error:
+        assembler.assemble({"gyro": [1.0, 2.0]})
 
-    np.testing.assert_allclose(obs, [1.0, 2.0, 0.0, 0.0])
-
-
-def test_reset_clears_remembered_actions():
-    assembler = ObservationAssembler(raw_actions_layout())
-    assembler.record_actions([9.0, 9.0])
-
-    assembler.reset()
-
-    np.testing.assert_allclose(assembler.assemble({"gyro": [0.0, 0.0]}), [0.0, 0.0, 0.0, 0.0])
+    message = str(error.value)
+    assert "actions" in message
+    assert "decoder.last_raw_actions" in message
 
 
-def test_scaling_applies_to_auto_filled_entries_too():
+def test_a_target_actions_entry_names_the_right_decoder_property():
+    """Raw vs target is the easy thing to get wrong, so the error says which."""
+    assembler = ObservationAssembler(target_actions_layout())
+
+    with pytest.raises(ObservationError) as error:
+        assembler.assemble({"gyro": [0.0, 0.0]})
+
+    assert "decoder.last_target_actions" in str(error.value)
+
+
+def test_scaling_applies_to_fed_back_entries_too():
     assembler = ObservationAssembler(
         layout(
             ObservationEntry(
@@ -240,9 +236,8 @@ def test_scaling_applies_to_auto_filled_entries_too():
             )
         )
     )
-    assembler.record_actions([2.0, 4.0])
 
-    np.testing.assert_allclose(assembler.assemble(), [1.0, 2.0])
+    np.testing.assert_allclose(assembler.assemble({"actions": [2.0, 4.0]}), [1.0, 2.0])
 
 
 """Error paths"""
@@ -282,13 +277,13 @@ def test_unknown_name_is_rejected_with_the_valid_names():
     assert "gyro" in message
 
 
-def test_supplying_an_auto_filled_entry_points_at_record_actions():
+def test_supplying_a_fed_back_entry_is_simply_accepted():
+    """It is an ordinary input now; passing it is the correct thing to do."""
     assembler = ObservationAssembler(raw_actions_layout())
 
-    with pytest.raises(ObservationError) as error:
-        assembler.assemble({"gyro": [0.0, 0.0], "actions": [1.0, 1.0]})
+    obs = assembler.assemble({"gyro": [0.0, 0.0], "actions": [1.0, 1.0]})
 
-    assert "record_actions" in str(error.value)
+    np.testing.assert_allclose(obs, [0.0, 0.0, 1.0, 1.0])
 
 
 def test_unknown_names_are_allowed_when_strict_inputs_is_off():
@@ -313,11 +308,13 @@ def test_non_numeric_value_is_reported_with_the_entry_name():
 """Listings (R5)"""
 
 
-def test_describe_inputs_separates_supplied_from_auto_filled():
+def test_describe_inputs_separates_sensors_from_fed_back_values():
     assembler = ObservationAssembler(raw_actions_layout())
 
     text = assembler.describe_inputs()
 
+    assert "Sensor values" in text
     assert "gyro" in text
-    assert "automatically" in text
-    assert "actions" in text
+    # Fed-back entries are listed separately and name where to read them.
+    assert "feed back from the decoder" in text
+    assert "decoder.last_raw_actions" in text

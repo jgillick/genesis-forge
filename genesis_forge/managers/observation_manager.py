@@ -40,12 +40,17 @@ class ObservationConfig(ConfigItemDict):
     them here is the cheapest guard against it."""
 
     pipeline_state: NotRequired[str | None]
-    """Marks an observation that echoes the policy's own output rather than a sensor
-    reading, so the deployment runtime fills it in automatically instead of asking
-    the user for it. Either ``"raw_actions"`` (the policy's unprocessed output) or
-    ``"processed_actions"`` (an action manager's decoded joint targets). Observations
-    built from :class:`~genesis_forge.mdp.observations.current_actions` are detected
-    automatically and need no marker."""
+    """Override for how deployment export classifies this observation.
+
+    Rarely needed: export works out on its own which observations echo the policy's
+    own output rather than a sensor, so an ordinary previous-actions entry needs no
+    marker. Set this only when that detection gets it wrong -- for example an entry
+    that transforms the actions before returning them, which export conservatively
+    treats as a sensor input.
+
+    Either ``"raw_actions"`` (the policy's unprocessed output) or ``"target_actions"``
+    (an action manager's decoded joint targets). Recorded in the deployment bundle so
+    the robot-side listing says to read the value off the action decoder."""
 
 
 class ObservationManager(BaseManager):

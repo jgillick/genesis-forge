@@ -83,11 +83,11 @@ print(bundle.describe())
 Bundle: my_policy
   control rate: 50.0 Hz (dt=0.02)
   observation vector: 45 values (15 per tick x 3 history)
-  inputs you supply each tick:
+  sensor values you supply each tick:
     - robot_ang_vel (3 values) in rad/s, scaled by 0.25 -- Body-frame angular velocity
     - dof_pos (12 values) in rad -- Joint positions relative to the default pose
-  inputs filled automatically by the runtime:
-    - actions (12 values) auto-filled from raw_actions
+  values you feed back from the decoder:
+    - actions (12 values), from decoder.last_target_actions_by_manager["action_manager"]
   joint targets produced (12):
     - [position] FL_hip, FL_thigh, FL_calf, ...
 ```
@@ -107,19 +107,42 @@ while True:
     observation = assembler.assemble({
         "robot_ang_vel": imu.gyro,        # rad/s, body frame
         "dof_pos": joints.positions,      # rad, relative to default pose
+        # bundle.describe() prints this line verbatim -- copy it.
+        "actions": decoder.last_target_actions_by_manager["action_manager"],
     })
 
-    raw_actions = policy(observation)
-    targets = decoder.decode(raw_actions)
+    targets = decoder.decode(policy(observation))
 
-    # Feeds auto-filled observation entries on the next tick.
-    assembler.record_actions(raw_actions, decoded=targets.by_manager)
-
-    for joint_name, position in targets.by_joint.items():
-        motors[joint_name].set_position(position)
+    for joint_name, target in targets.by_joint.items():
+        motors[joint_name].set_position(target)   # a position manager -> position
 
     sleep_until_next_tick(bundle.manifest.dt)
 ```
+
+That `"actions"` entry is the policy's own previous output fed back in — a common
+input in locomotion policies. You read it off the decoder rather than off a sensor.
+`bundle.describe()` tells you which entries work that way and which decoder property
+to use, and the assembler raises if you leave one out.
+
+You do not annotate any of this. Export determines which observations echo the
+pipeline's own output by running each one against known values and seeing what comes
+back, so an ordinary `lambda env: self.action_manager.get_actions()` is recognised as
+it stands. An entry that *transforms* the actions before returning them is treated as
+a sensor input, since export will not guess; if you need to override the
+classification, set `"pipeline_state"` on the observation config.
+
+It also tells apart the two feedback shapes, which is worth knowing because they hold
+different numbers:
+
+| In training | Feeds back | On the robot |
+|---|---|---|
+| `lambda env: mgr.get_actions()` | decoded joint targets | `decoder.last_target_actions_by_manager[...]` |
+| `current_actions(action_manager=mgr)` | that manager's raw policy output | `decoder.last_raw_actions_by_manager[...]` |
+| `current_actions()` | the whole raw policy vector | `decoder.last_raw_actions` |
+
+The per-manager forms are used whenever an entry belongs to a specific manager, since
+the flat properties hold the entire policy vector — which is the same thing only when
+you have exactly one action manager.
 
 A few things the runtime does for you:
 
@@ -129,9 +152,10 @@ A few things the runtime does for you:
   raises immediately and says which one. Silence would mean a misaligned vector.
 - **It refuses bad output.** If the policy emits `NaN` or infinity, the decoder raises
   rather than passing it to your motors.
-- **Previous actions are filled in automatically.** If your observation config feeds
-  actions back in, the runtime supplies them from its own output — you do not wire
-  them yourself.
+- **Feedback values are explicit, not magic.** If your observation config feeds
+  actions back in, you pass `decoder.last_target_actions` (or `last_raw_actions`)
+  yourself. Nothing is filled in behind your back, so a feedback wire you forget
+  raises immediately instead of quietly feeding zeros forever.
 
 ### Match the control rate and gains
 
@@ -225,7 +249,9 @@ one produced each target, because that determines what you do with the number:
 
 The first two go to a position command, the third to a velocity command — the
 arithmetic that produces them is identical, which is exactly why the bundle names the
-type rather than leaving you to infer it:
+type rather than leaving you to infer it. `targets.by_joint` is keyed by joint name
+either way; what the *value* means is what changes, so check the type before wiring
+it to a motor call:
 
 ```python
 for spec in bundle.manifest.actions:
@@ -260,7 +286,7 @@ And on the robot, in a module that imports without torch:
 
 ```python
 import numpy as np
-from genesis_forge_deploy.actions import ManagerDecoder
+from genesis_forge_deploy import ManagerDecoder
 
 class CartesianImpedanceDecoder(ManagerDecoder):
     def decode(self, actions):

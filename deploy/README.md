@@ -20,11 +20,19 @@ Then, on the robot:
 from genesis_forge_deploy import load_bundle
 
 bundle = load_bundle("./my_policy")
+print(bundle.describe())          # what to wire up
+
 assembler = bundle.observation_assembler()
 decoder = bundle.action_decoder()
 
-for name, size, description in assembler.required_inputs:
-    print(f"{name}: {size} values -- {description}")
+while True:
+    observation = assembler.assemble({
+        "robot_ang_vel": imu.gyro,
+        "dof_pos": joints.positions,
+        "actions": decoder.last_target_actions,   # zeros before the first tick
+    })
+    targets = decoder.decode(policy(observation))
+    send_to_motors(targets.by_joint)
 ```
 
 See the Genesis Forge deployment guide for the full control-loop walkthrough.

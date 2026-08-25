@@ -274,7 +274,7 @@ class BaseActionManager(BaseManager):
 
     def get_actions(self) -> torch.Tensor:
         """
-        Get the current actions for the environments.
+        Get the current target actions for the environments.
         """
         if self._actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
@@ -383,7 +383,7 @@ class BaseActionManager(BaseManager):
         return plain data only -- see :class:`DeploymentActionConfig`.
 
         Custom action managers opt in by overriding this method and shipping a
-        matching :class:`~genesis_forge_deploy.actions.ManagerDecoder` subclass.
+        matching :class:`~genesis_forge_deploy.ManagerDecoder` subclass.
 
         Raises:
             NotImplementedError: This manager has not opted in to deployment export.

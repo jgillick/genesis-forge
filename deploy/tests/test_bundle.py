@@ -376,7 +376,8 @@ def test_golden_samples_can_be_skipped(tmp_path):
 """Listings"""
 
 
-def test_required_inputs_excludes_pipeline_state_entries():
+def test_the_layout_separates_sensor_inputs_from_fed_back_ones():
+    """Both are caller-supplied; the split says where to read each value from."""
     layout = ObservationLayout(
         entries=(
             ObservationEntry(name="gyro", size=3),
@@ -389,7 +390,8 @@ def test_required_inputs_excludes_pipeline_state_entries():
         )
     )
 
-    assert [entry.name for entry in layout.required_inputs] == ["gyro"]
+    assert [entry.name for entry in layout.required_inputs] == ["gyro", "actions"]
+    assert [entry.name for entry in layout.sensor_inputs] == ["gyro"]
     assert [entry.name for entry in layout.pipeline_state_inputs] == ["actions"]
 
 
@@ -428,13 +430,13 @@ def test_importing_the_runtime_does_not_pull_in_torch_or_genesis():
     assert result.stdout.strip() == "", f"heavy modules leaked in: {result.stdout.strip()}"
 
 
-def test_a_processed_actions_entry_must_name_its_manager(tmp_path):
+def test_a_target_actions_entry_must_name_its_manager(tmp_path):
     """Without a manager the runtime would fill zeros instead of decoded targets."""
     path = write_bundle(tmp_path)
     manifest_file = path / "manifest.json"
     data = json.loads(manifest_file.read_text())
     data["observations"]["entries"][1].update(
-        {"source": SOURCE_PIPELINE_STATE, "pipeline_stage": "processed_actions"}
+        {"source": SOURCE_PIPELINE_STATE, "pipeline_stage": "target_actions"}
     )
     manifest_file.write_text(json.dumps(data))
 

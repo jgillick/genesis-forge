@@ -57,7 +57,8 @@ When `debug_visualizer` is `True`, arrows will be displayed above your robot sho
 - **Blue Arrow**: Actual robot velocity (world frame)
 
 !!! warning "Caution"
-The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
+
+    The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
 
     It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
 

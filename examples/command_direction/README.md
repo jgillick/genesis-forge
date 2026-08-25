@@ -17,7 +17,7 @@ def config(self):
             "lin_vel_y": [-1.0, 1.0],
             "ang_vel_z": [-1.0, 1.0],
         },
-        standing_probability=0.05,
+        stopped_probability=0.05,
         resample_time_sec=5.0,
         debug_visualizer=True,
         debug_visualizer_cfg={
@@ -112,7 +112,7 @@ You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech 
 
 Simply connect your gamepad and run:
 
-****
+---
 
 ```shell
 # With uv

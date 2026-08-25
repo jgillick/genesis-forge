@@ -1,0 +1,14 @@
+[project]
+name = "genesis-forge-wheeled-robot-example"
+version = "0.1.0"
+description = "A Genesis Forge example environment demonstrating a wheeled robot tracking a commanded direction."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "genesis-forge",
+    "rsl-rl-lib~=5.0",
+    "tensorboard",
+]
+
+[tool.uv.sources]
+genesis-forge = { path = "../../" }

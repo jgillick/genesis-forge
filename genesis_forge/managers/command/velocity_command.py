@@ -3,6 +3,7 @@ from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
 import torch
+from deprecated import deprecated, deprecated_params
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
@@ -85,7 +86,8 @@ class VelocityCommandManager(CommandManager):
     Args:
         env: The environment to control
         range: The ranges of linear & angular velocities
-        standing_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
+        stopped_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
+        standing_probability: (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
         resample_time_sec: The time interval between changing the command
         debug_visualizer: Enable the debug arrow visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
@@ -137,11 +139,16 @@ class VelocityCommandManager(CommandManager):
                 )
     """
 
+    @deprecated_params(
+        "standing_probability",
+        reason="Use 'stopped_probability' instead"
+    )
     def __init__(
         self,
         env: GenesisEnv,
         range: VelocityCommandRange,
         resample_time_sec: float = 5.0,
+        stopped_probability: float = 0.0,
         standing_probability: float = 0.0,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
@@ -153,12 +160,12 @@ class VelocityCommandManager(CommandManager):
         )
 
         self._arrow_nodes: list = []
-        self.standing_probability = standing_probability
+        self.stopped_probability = stopped_probability or standing_probability
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx: list | None = None
         self.visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
 
-        self._is_standing_env = torch.zeros(
+        self._is_stopped_env = torch.zeros(
             env.num_envs, dtype=torch.bool, device=gs.device
         )
 
@@ -176,12 +183,27 @@ class VelocityCommandManager(CommandManager):
         CommandManager.range.fset(self, range)
 
     @property
-    def standing_envs(self):
+    def stopped_envs(self):
         """
         A tensor which has the "standing" state (1 or 0) of all the environments.
         If the state is 1, the command has no movement commanded, linear or angular.
         """
-        return self._is_standing_env
+        return self._is_stopped_env
+
+    @property
+    @deprecated("Use 'stopped_envs' instead")
+    def standing_envs(self):
+        return self.stopped_envs
+
+    @property
+    @deprecated("Use 'stopped_probability' instead")
+    def standing_probability(self) -> float:
+        return self.stopped_probability
+
+    @standing_probability.setter
+    @deprecated("Use 'stopped_probability' instead")
+    def standing_probability(self, value: float) -> None:
+        self.stopped_probability = value
 
     """
     Lifecycle Operations
@@ -197,8 +219,8 @@ class VelocityCommandManager(CommandManager):
 
         # Set standing environments
         rand_buffer = torch.empty(len(env_ids), device=gs.device).uniform_(0.0, 1.0)
-        self._is_standing_env[env_ids] = rand_buffer <= self.standing_probability
-        standing_envs_idx = self._is_standing_env.nonzero(as_tuple=False).flatten()
+        self._is_stopped_env[env_ids] = rand_buffer <= self.stopped_probability
+        standing_envs_idx = self._is_stopped_env.nonzero(as_tuple=False).flatten()
         self._command[standing_envs_idx, :] = 0.0
 
     def build(self):
@@ -319,7 +341,7 @@ class VelocityCommandManager(CommandManager):
             # Target indicator: a red ball when the env is standing still, otherwise
             # the commanded velocity arrow (robot-relative command transformed to
             # world coordinates for visualization)
-            if self._is_standing_env[i]:
+            if self._is_stopped_env[i]:
                 self._draw_target_ball(
                     pos=self._arrow_pos_buffer[i],
                     color=self.visualizer_cfg.get(

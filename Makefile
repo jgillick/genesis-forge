@@ -6,13 +6,13 @@ clean:
 	rm -rf dist/ build/ *.egg-info/
 
 lint:
-	uv run ruff check genesis_forge examples tests
+	uv run ruff check genesis_forge examples tests deploy
 
 test:
 	uv run pytest -v
 
 build: clean lint test
-	uv build
+	uv build --all-packages
 
 deploy: build
 	uv run twine upload dist/*

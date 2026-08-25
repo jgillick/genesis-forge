@@ -787,6 +787,8 @@ name = "genesis-forge"
 version = "1.0.0"
 source = { directory = "../../" }
 dependencies = [
+    { name = "deprecated" },
+    { name = "genesis-forge-deploy" },
     { name = "genesis-world" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -799,6 +801,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "deprecated", specifier = ">=1.3.1" },
+    { name = "genesis-forge-deploy", editable = "../../deploy" },
     { name = "genesis-world", specifier = ">=1.0.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -815,6 +819,23 @@ dev = [
     { name = "ruff", specifier = ">=0.16.4" },
     { name = "twine", specifier = ">=7.0.0" },
 ]
+
+[[package]]
+name = "genesis-forge-deploy"
+version = "1.0.0"
+source = { editable = "../../deploy" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.17" },
+]
+provides-extras = ["onnx"]
 
 [[package]]
 name = "genesis-forge-wheeled-robot-example"

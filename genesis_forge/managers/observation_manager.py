@@ -29,6 +29,24 @@ class ObservationConfig(ConfigItemDict):
     """The noise scale to add to the observation. If None, no noise will be added.
     This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
 
+    description: NotRequired[str | None]
+    """Human-readable description of what this value is, recorded into the deployment
+    bundle so whoever wires up the robot knows what to feed in. Optional, but the
+    first thing someone reads when connecting real sensors."""
+
+    units: NotRequired[str | None]
+    """Units this observation is expressed in (for example ``"rad/s"``), recorded into
+    the deployment bundle. Wrong units are a classic sim-to-real failure, and naming
+    them here is the cheapest guard against it."""
+
+    pipeline_state: NotRequired[str | None]
+    """Marks an observation that echoes the policy's own output rather than a sensor
+    reading, so the deployment runtime fills it in automatically instead of asking
+    the user for it. Either ``"raw_actions"`` (the policy's unprocessed output) or
+    ``"processed_actions"`` (an action manager's decoded joint targets). Observations
+    built from :class:`~genesis_forge.mdp.observations.current_actions` are detected
+    automatically and need no marker."""
+
 
 class ObservationManager(BaseManager):
     """
@@ -149,6 +167,7 @@ class ObservationManager(BaseManager):
         self.noise = noise
         self._observation_size = 1
         self._observation_space = None
+        self._entry_sizes: dict[str, int] = {}
 
         if history_len is not None and history_len < 1:
             raise ValueError("history_len must be greater than 0")
@@ -272,18 +291,75 @@ class ObservationManager(BaseManager):
         return self._history_output.clone()
 
     """
+    Deployment
+    """
+
+    def get_deployment_layout(self) -> dict[str, Any]:
+        """Describe this manager's observation vector for a deployment bundle.
+
+        Captures the layout a robot needs to rebuild the policy's input: entry
+        order, per-entry width and scale, the history configuration, and whatever
+        deployment metadata the config supplied. Training noise is deliberately
+        excluded -- it exists to harden the policy, not to be replayed.
+
+        Must be called after :meth:`build`, when entry widths are known.
+
+        Returns:
+            Plain data matching the bundle's observation layout schema.
+        """
+        if not self._entry_sizes:
+            raise RuntimeError(
+                f"Observation manager '{self.name}' has not been built, so its entry "
+                f"sizes are unknown. Build the environment before exporting."
+            )
+
+        entries: list[dict[str, Any]] = []
+        for name, cfg in self.cfg.items():
+            size = self._entry_sizes.get(name, 0)
+            if size == 0:
+                # Training skips zero-width entries entirely, so the bundle must
+                # not ask the robot to supply a value for one.
+                continue
+
+            entry: dict[str, Any] = {
+                "name": name,
+                "size": size,
+                "scale": float(cfg.scale) if cfg.scale is not None else 1.0,
+            }
+            if cfg.description:
+                entry["description"] = cfg.description
+            if cfg.units:
+                entry["units"] = cfg.units
+            if cfg.pipeline_state:
+                entry["source"] = "pipeline_state"
+                entry["pipeline_stage"] = cfg.pipeline_state
+            entries.append(entry)
+
+        return {
+            "entries": entries,
+            "history_length": self._history_len,
+            # ObservationManager concatenates history newest-first; recorded so the
+            # runtime can never silently disagree about the order.
+            "history_order": "newest_first",
+        }
+
+    """
     Private methods.
     """
 
     def _setup_observation_functions(self) -> int:
         """Build all the observation function classes, and determine the observation space."""
         size = 0
+        self._entry_sizes = {}
         for name, cfg in self.cfg.items():
             try:
                 cfg.build()
                 assert callable(cfg.fn), f"Observation function {name} is not callable"
                 value = cfg.execute()
                 value_size = value.shape[-1]
+                # Recorded per entry (not just summed) so deployment export knows the
+                # width of each slot without re-probing the simulator.
+                self._entry_sizes[name] = int(value_size)
                 if value_size > 0:
                     size += value_size
             except Exception as e:

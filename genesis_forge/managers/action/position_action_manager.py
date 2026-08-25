@@ -102,6 +102,8 @@ class PositionActionManager(AffineDofActionManager):
 
     """
 
+    deploy_type: str = "position"
+
     def __init__(
         self,
         env: GenesisEnv,

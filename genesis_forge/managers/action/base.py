@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
+from typing import Any
 
 import genesis as gs
 import numpy as np
@@ -10,6 +12,93 @@ from gymnasium import spaces
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
+
+
+@dataclass
+class DeploymentActionConfig:
+    """How an action manager's decode is reproduced on a robot.
+
+    Returned by :meth:`BaseActionManager.get_deployment_config` and written into
+    the deployment bundle. Everything here must be plain data -- no tensors, no
+    references to the simulator -- because it is read back by a numpy-only
+    runtime that never imports Genesis or torch.
+
+    Args:
+        deploy_type: Stable name for this manager's decode. The runtime resolves
+            its decoder by this name, so it is the manifest's contract: keep it
+            stable across refactors. Built-in names are ``"position"`` and
+            ``"position_within_limits"``.
+        config: Plain-data parameters the decoder needs (numbers, lists of
+            numbers, strings). The schema belongs to the decoder, not to the
+            exporter, so custom managers are free to define their own.
+        decoder_import_path: For custom managers, where the matching decoder
+            class lives, written as ``"my_package.decoders:MyDecoder"``. Leave
+            unset for built-in types, which the runtime already ships.
+    """
+
+    deploy_type: str
+    config: dict[str, Any] = field(default_factory=dict)
+    decoder_import_path: str | None = None
+
+
+def to_nominal_array(
+    tensor: torch.Tensor,
+    *,
+    name: str,
+    num_joints: int,
+    num_envs: int,
+    manager_name: str,
+) -> list[float]:
+    """Reduce a possibly per-environment tensor to one nominal value per joint.
+
+    Decode parameters are stored per-environment, and domain randomization may
+    perturb them differently in each one. A bundle describes a single robot, so
+    export refuses to guess which environment is authoritative: if the values
+    diverge across environments, this raises instead of silently baking in
+    whatever environment 0 happened to hold.
+
+    Args:
+        tensor: The parameter to reduce, shaped ``(num_joints,)`` or
+            ``(num_envs, num_joints)``.
+        name: Parameter name, used in error messages.
+        num_joints: How many joints this manager controls.
+        num_envs: The environment's parallel environment count.
+        manager_name: Manager name, used in error messages.
+
+    Returns:
+        One plain float per joint.
+
+    Raises:
+        ValueError: The values differ across parallel environments, or the shape
+            is not one this reduction understands.
+    """
+    values = tensor.detach()
+
+    if values.ndim == 1:
+        if values.shape[0] != num_joints:
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager_name}': "
+                f"expected {num_joints} value(s), found {values.shape[0]}."
+            )
+        return [float(item) for item in values.cpu().tolist()]
+
+    if values.ndim == 2 and values.shape[1] == num_joints:
+        if values.shape[0] > 1 and not bool((values == values[0]).all()):
+            spread = float((values.max(dim=0).values - values.min(dim=0).values).max())
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager_name}': the "
+                f"value differs across parallel environments (largest spread "
+                f"{spread:g}). This usually means domain randomization is active. "
+                f"Export from a build with randomization disabled so the bundle "
+                f"records the nominal values the policy was trained against."
+            )
+        return [float(item) for item in values[0].cpu().tolist()]
+
+    raise ValueError(
+        f"Cannot export '{name}' from action manager '{manager_name}': unexpected "
+        f"shape {tuple(values.shape)} for {num_joints} joint(s) across {num_envs} "
+        f"environment(s)."
+    )
 
 
 class BaseActionManager(BaseManager):
@@ -281,3 +370,27 @@ class BaseActionManager(BaseManager):
                 self._action_delay_buffer.append(
                     torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
                 )
+
+    """
+    Deployment
+    """
+
+    def get_deployment_config(self) -> DeploymentActionConfig:
+        """Describe this manager's decode so it can be reproduced on a robot.
+
+        Called by :func:`genesis_forge.deployment.export` after the environment is
+        built, when every decode parameter has been resolved. Implementations
+        return plain data only -- see :class:`DeploymentActionConfig`.
+
+        Custom action managers opt in by overriding this method and shipping a
+        matching :class:`~genesis_forge_deploy.actions.ManagerDecoder` subclass.
+
+        Raises:
+            NotImplementedError: This manager has not opted in to deployment export.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support deployment export. Override "
+            f"get_deployment_config() to return a DeploymentActionConfig describing "
+            f"this manager's decode as plain data, and ship a ManagerDecoder "
+            f"subclass that replays it on the robot."
+        )

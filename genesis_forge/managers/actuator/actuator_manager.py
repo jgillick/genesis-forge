@@ -186,6 +186,51 @@ class ActuatorManager(BaseManager):
         return self._values.get("default_pos", {}).get("buffer", None)
 
     """
+    Deployment
+    """
+
+    def get_deployment_values(self) -> dict[str, Any]:
+        """Nominal actuator gains and defaults, for a deployment bundle.
+
+        Reads the *nominal* buffers -- the values configured at build time, before
+        any per-reset domain randomization, which is only ever written into the
+        separate output buffer. A robot's motor controllers should be configured
+        with these, matching what the policy trained against.
+
+        Returns:
+            Plain data: the joint names, one value per joint for each configured
+            actuator parameter, and the names of any parameters that were
+            randomized during training (recorded so the difference is visible
+            rather than silently flattened).
+        """
+        values: dict[str, list[float]] = {}
+        randomized: list[str] = []
+
+        for value_name, item in self._values.items():
+            # Every parameter is pre-seeded as None; only configured ones hold a buffer.
+            if not item:
+                continue
+            buffer = item.get("buffer", None)
+            if buffer is None:
+                continue
+            tensor = buffer.detach()
+            # Per-DOF buffers may carry a leading environment dimension; the
+            # nominal row is identical across environments by construction.
+            if tensor.ndim == 2:
+                tensor = tensor[0]
+            if tensor.ndim != 1 or tensor.shape[0] != self.num_dofs:
+                continue
+            values[value_name] = [float(entry) for entry in tensor.cpu().tolist()]
+            if item.get("has_noise", False):
+                randomized.append(value_name)
+
+        return {
+            "joint_names": list(self.dofs_names),
+            "values": values,
+            "randomized": sorted(randomized),
+        }
+
+    """
     Actuator handlers
     """
 

@@ -224,6 +224,11 @@ class Go2StandUpEnv(ManagedEnvironment):
                 },
                 "actions": {
                     "fn": lambda env: self.action_manager.get_actions(),
+                    # Echoes the pipeline's own output rather than a sensor, so a
+                    # deployed policy fills this in itself instead of asking the
+                    # user for it. (An MDP function like current_actions() is
+                    # detected automatically; a lambda needs this marker.)
+                    "pipeline_state": "processed_actions",
                 },
             },
         )

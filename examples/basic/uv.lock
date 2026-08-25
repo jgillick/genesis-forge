@@ -744,6 +744,7 @@ name = "genesis-forge"
 version = "1.0.0"
 source = { directory = "../../" }
 dependencies = [
+    { name = "genesis-forge-deploy" },
     { name = "genesis-world" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -756,6 +757,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "genesis-forge-deploy", editable = "../../deploy" },
     { name = "genesis-world", specifier = ">=1.0.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -789,6 +791,22 @@ requires-dist = [
     { name = "rsl-rl-lib", specifier = "~=5.0" },
     { name = "tensorboard" },
 ]
+
+[[package]]
+name = "genesis-forge-deploy"
+version = "1.0.0"
+source = { editable = "../../deploy" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.17" },
+]
+provides-extras = ["onnx"]
 
 [[package]]
 name = "genesis-world"

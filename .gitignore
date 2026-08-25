@@ -68,8 +68,10 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
+# Documentation
 docs/_build/
+docs/brainstorms/
+docs/plans/
 
 # PyBuilder
 .pybuilder/

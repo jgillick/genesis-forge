@@ -3,23 +3,22 @@ import genesis as gs
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    ContactManager,
     EntityManager,
     ObservationManager,
-    PositionActionManager,
     RewardManager,
     TerminationManager,
+    VelocityActionManager,
     VelocityCommandManager,
 )
 from genesis_forge.mdp import reset, rewards, terminations
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.515]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.035)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
-
-class BerkeleyHumanoidEnv(ManagedEnvironment):
+class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
     """
-    Example training environment for the Berkeley Humanoid robot.
+    Example training environment for LeKiwi, a 3-wheeled omnidirectional robot
+    base from the LeRobot ecosystem, trained to track a commanded body velocity.
     """
 
     def __init__(
@@ -42,8 +41,8 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
                 refresh_rate=int(0.5 / self.dt),
-                camera_pos=(2.5, 0.0, 2.5),
-                camera_lookat=(0.0, 0.0, 0.5),
+                camera_pos=(-0.5, -0.5, 0.5),
+                camera_lookat=(0.0, 0.0, 0.0),
                 camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
@@ -51,7 +50,6 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
-                enable_self_collision=True,
                 enable_joint_limit=True,
             ),
         )
@@ -59,18 +57,23 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
         # Create terrain
         self.terrain = self.scene.add_entity(gs.morphs.Plane())
 
-        # Robot
+        # Robot -- LeKiwi's 3 driven wheels, each already modeled by its authors
+        # as a single low-friction collision capsule (no passive rollers).
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="./model/berkeley_humanoid.xml",
+                file="./lekiwi/lekiwi.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
         )
 
+        # Update the main viewer to follow the robot
+        if self.scene.viewer is not None:
+            self.scene.viewer.follow_entity(self.robot)
+
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(2.5, 0.0, 2.5),
+            pos=(-0.5, -0.5, 0.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -90,6 +93,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             self,
             entity=self.robot,
             on_reset={
+                # Reset the robot's initial position
                 "position": {
                     "fn": reset.position(
                         position=INITIAL_BODY_POSITION,
@@ -101,39 +105,20 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
         )
 
         ##
-        # Joint Actions & actuator configuration
+        # Wheel actuation
         self.actuator_manager = ActuatorManager(
             self,
-            joint_names=[".*"],
-            kp=15.0,
+            joint_names=[
+                "base_back_wheel_joint",
+                "base_left_wheel_joint",
+                "base_right_wheel_joint"
+            ],
             kv=1.0,
-            default_pos={
-                "LL_HR": -0.071,
-                "LR_HR": 0.071,
-                "LL_HAA": 0.103,
-                "LR_HAA": -0.103,
-                "LL_HFE": -0.463,
-                "LR_HFE": -0.463,
-                "LL_KFE": 0.983,
-                "LR_KFE": 0.983,
-                "LL_FFE": -0.350,
-                "LR_FFE": -0.350,
-                "LL_FAA": 0.126,
-                "LR_FAA": -0.126,
-            },
-            max_force={
-                ".*_HR": 20.0,
-                ".*_HAA": 20.0,
-                ".*_HFE": 30.0,
-                ".*_KFE": 30.0,
-                ".*_FFE": 20.0,
-                ".*_FAA": 5.0,
-            },
         )
-        self.action_manager = PositionActionManager(
+        self.action_manager = VelocityActionManager(
             self,
-            scale=0.5,
-            use_default_offset=True,
+            scale=2.0,
+            clip=(-6.28, 6.28),
             actuator_manager=self.actuator_manager,
         )
 
@@ -142,29 +127,16 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [0.0, 1.0],
-                "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_x": (-0.2, 0.2),
+                "lin_vel_y": (-0.2, 0.2),
+                "ang_vel_z": (-0.2, 0.2),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
-                "arrow_offset": 0.4,
             },
-        )
-
-        ##
-        # Contact managers
-        self.torso_contact_manager = ContactManager(
-            self,
-            link_names=["torso"],
-        )
-        self.feet_contact_manager = ContactManager(
-            self,
-            link_names=[".*_faa"],
-            track_air_time=True,
         )
 
         ##
@@ -188,31 +160,12 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                     ),
                 },
                 "lin_vel_z": {
-                    "weight": -2.0,
+                    "weight": -1.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
-                },
-                "ang_vel_xy_l2": {
-                    "weight": -0.05,
-                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.005,
                     "fn": rewards.action_rate_l2(),
-                },
-                "similar_to_default": {
-                    "weight": -0.05,
-                    "fn": rewards.dof_similar_to_default(
-                        actuator_manager=self.actuator_manager,
-                    ),
-                },
-                "feet_air_time": {
-                    "weight": 2.0,
-                    "fn": rewards.feet_air_time(
-                        time_threshold=0.2,
-                        time_threshold_max=0.5,
-                        contact_manager=self.feet_contact_manager,
-                        vel_cmd_manager=self.velocity_command,
-                    ),
                 },
             },
         )
@@ -228,10 +181,10 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
-                # Terminate if the robot's pitch and yaw angles are too large
-                "torso_contact": {
-                    "fn": terminations.contact_force(
-                        contact_manager=self.torso_contact_manager,
+                # Terminate if the robot tips over.
+                "fall_over": {
+                    "fn": terminations.bad_orientation(
+                        entity_manager=self.robot_manager,
                     ),
                 },
             },
@@ -251,9 +204,6 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
-                },
-                "dof_position": {
-                    "fn": lambda env: self.action_manager.get_dofs_position(),
                 },
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),

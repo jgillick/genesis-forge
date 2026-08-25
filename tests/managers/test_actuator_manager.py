@@ -86,6 +86,9 @@ class FakeRobot:
     def control_dofs_position(self, position, dofs_idx):
         self.calls.append(("control_dofs_position", position.clone(), list(dofs_idx)))
 
+    def control_dofs_velocity(self, velocity, dofs_idx):
+        self.calls.append(("control_dofs_velocity", velocity.clone(), list(dofs_idx)))
+
     def set_dofs_kp(self, kp, dofs_idx, envs_idx):
         self.calls.append(("set_dofs_kp", kp.clone(), list(dofs_idx), envs_idx))
 
@@ -493,6 +496,34 @@ def test_control_dofs_position_forwards_to_the_robot(env):
     _, position, dofs_idx = env.robot.calls_named("control_dofs_position")[0]
     assert dofs_idx == [5, 8, 12]
     assert torch.equal(position, actions)
+
+
+def test_control_dofs_velocity_forwards_to_the_robot(env):
+    env.robot = FakeRobot(make_joints())
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    actions = torch.ones((env.num_envs, 3))
+    mgr.control_dofs_velocity(actions)
+
+    _, velocity, dofs_idx = env.robot.calls_named("control_dofs_velocity")[0]
+    assert dofs_idx == [5, 8, 12]
+    assert torch.equal(velocity, actions)
+
+
+def test_control_dofs_velocity_forwards_explicit_dofs_idx(env):
+    env.robot = FakeRobot(make_joints())
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    actions = torch.ones((env.num_envs, 2))
+    mgr.control_dofs_velocity(actions, dofs_idx=[5, 8])
+
+    _, velocity, dofs_idx = env.robot.calls_named("control_dofs_velocity")[0]
+    assert dofs_idx == [5, 8]
+    assert torch.equal(velocity, actions)
 
 
 def test_set_dofs_position_forwards_to_the_robot(env):

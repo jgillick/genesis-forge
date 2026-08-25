@@ -14,6 +14,7 @@ import torch
 from genesis_forge.managers import (
     PositionActionManager,
     PositionWithinLimitsActionManager,
+    VelocityActionManager,
 )
 from genesis_forge.managers.action.base import BaseActionManager
 
@@ -51,6 +52,9 @@ class FakeActuatorManager:
 
     def control_dofs_position(self, position, dofs_idx):
         self.control_calls.append((position.clone(), list(dofs_idx)))
+
+    def control_dofs_velocity(self, velocity, dofs_idx):
+        self.control_calls.append((velocity.clone(), list(dofs_idx)))
 
 
 def make_actuator_manager(num_envs=4, position=None, velocity=None, force=None):
@@ -216,7 +220,15 @@ def test_base_send_actions_to_simulation_is_not_implemented(env):
     mgr = BaseActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
     mgr.build()
     with pytest.raises(NotImplementedError):
-        mgr.send_actions_to_simulation()
+        mgr.send_actions_to_simulation(None)
+
+
+def test_base_process_actions_is_not_implemented(env):
+    actuator = make_actuator_manager()
+    mgr = BaseActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr.build()
+    with pytest.raises(NotImplementedError):
+        mgr.process_actions(torch.tensor([[0.0]] * env.num_envs))
 
 
 """
@@ -251,7 +263,6 @@ def test_process_actions_scales_offsets_and_clamps_to_limits(env):
         actuator_joints=["FL_.*"],
         scale={"FL_hip": 2.0, "FL_knee": 0.5},
         use_default_offset=True,
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -271,7 +282,6 @@ def test_soft_limit_scale_factor_shrinks_the_clip_range_around_the_midpoint(env)
         offset=0.0,
         scale=1.0,
         soft_limit_scale_factor=0.5,
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -289,7 +299,6 @@ def test_custom_clip_overrides_the_default_limit_based_clip(env):
         offset=0.0,
         scale=1.0,
         clip={"FL_hip": (-0.2, 0.2)},
-        quiet_action_errors=True,
     )
     mgr.build()
 
@@ -370,3 +379,118 @@ def test_within_limits_soft_limit_scale_factor_shrinks_the_range(env):
 
     processed = mgr.process_actions(torch.tensor([[1.0]] * env.num_envs))
     assert torch.allclose(processed, torch.tensor([[0.5]] * env.num_envs))
+
+
+"""
+VelocityActionManager -- construction, DOF filtering, and clip validation
+"""
+
+
+def test_velocity_manager_clip_defaults_to_unbounded(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(env, actuator_manager=actuator, actuator_joints=["FL_hip"])
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[1e9]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[1e9]] * env.num_envs))
+
+
+def test_velocity_manager_dof_uncovered_by_clip_dict_is_left_unbounded(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        clip={"FL_hip": (-16.0, 16.0)},  # FL_knee is uncovered
+    )
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0, 1e9]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[16.0, 1e9]] * env.num_envs))
+
+
+def test_velocity_manager_build_filters_dofs_by_pattern_preserving_actuator_order(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"], clip=(-16.0, 16.0)
+    )
+    mgr.build()
+
+    assert mgr.dofs == {"FL_hip": 100, "FL_knee": 101}
+    assert mgr.dofs_idx == [100, 101]
+    assert torch.equal(mgr.actuator_dof_filter, torch.tensor([0, 1], dtype=torch.int32))
+
+
+"""
+VelocityActionManager -- process_actions: scale + offset, then clamp to `clip`
+"""
+
+
+def test_velocity_manager_process_actions_scales_offsets_and_clamps(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        scale={"FL_hip": 2.0, "FL_knee": 0.5},
+        offset={"FL_hip": 1.0, "FL_knee": 0.0},
+        clip=(-16.0, 16.0),
+    )
+    mgr.build()
+
+    # FL_hip: 5*2.0 + 1.0 = 11.0 (within clip)
+    # FL_knee: 5*0.5 + 0.0 = 2.5 (within clip)
+    processed = mgr.process_actions(torch.tensor([[5.0, 5.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[11.0, 2.5]] * env.num_envs))
+
+
+def test_velocity_manager_clamps_actions_outside_clip_to_the_boundary(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_hip"],
+        clip=(-16.0, 16.0),
+    )
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[16.0]] * env.num_envs))
+
+
+def test_velocity_manager_per_dof_clip_override(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        clip={"FL_hip": (-16.0, 16.0), "FL_knee": (-1.0, 1.0)},
+    )
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0, 100.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[16.0, 1.0]] * env.num_envs))
+
+
+"""
+VelocityActionManager -- send_actions_to_simulation
+"""
+
+
+def test_velocity_manager_send_actions_to_simulation_controls_the_actuator(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        clip=(-16.0, 16.0),
+    )
+    mgr.build()
+    mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
+
+    # The `actions` arg is accepted but ignored -- it re-reads self.actions internally.
+    mgr.send_actions_to_simulation(None)
+
+    velocity, dofs_idx = actuator.control_calls[0]
+    assert dofs_idx == [100, 101]
+    assert torch.allclose(velocity, mgr.actions)

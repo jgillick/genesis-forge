@@ -163,7 +163,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                 "lin_vel_y": [0.0, 0.0],
                 "ang_vel_z": [-1.0, 1.0],
             },
-            standing_probability=0.00,
+            stopped_probability=0.00,
             resample_time_sec=3.0,
         )
 

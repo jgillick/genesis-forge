@@ -78,6 +78,8 @@ def test_context_alone_does_not_build(env):
 
 
 def test_safe_build_after_context_builds_once(env):
+    """build() assigns self.builds, self.seen and self._derived every time; if any
+    of those re-entered the hook this would already have blown the stack."""
     fn = Counting(threshold=3.0)
     fn.context(env)
     fn.safe_build()
@@ -130,15 +132,6 @@ def test_non_field_assignment_never_rebuilds(env, name):
     fn.context(env)
     fn.safe_build()
     setattr(fn, name, torch.zeros(3))
-    assert fn.builds == 1
-
-
-def test_build_assigning_derived_attributes_does_not_recurse(env):
-    fn = Counting()
-    fn.context(env)
-    fn.safe_build()
-    # build() assigns self.builds, self.seen and self._derived every time; if any
-    # of those re-entered the hook this would already have blown the stack.
     assert fn.builds == 1
 
 

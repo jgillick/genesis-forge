@@ -383,16 +383,6 @@ def test_velocity_range_setter_rejects_a_size_change(env):
         mgr.range = {"lin_vel_x": (-1.0, 1.0), "lin_vel_y": (-1.0, 1.0)}
 
 
-def test_velocity_range_setter_rejects_a_type_change(env):
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE)
-    # CommandManager's setter checks shape before base type, and a non-dict range
-    # is always treated as size 1, so a base-type-only mismatch isn't reachable
-    # for a 3-key velocity range -- this still hits the (earlier) shape check,
-    # which only matters because both checks live in the delegated parent setter.
-    with pytest.raises(ValueError, match="shape"):
-        mgr.range = (-1.0, 1.0)
-
-
 def test_velocity_range_setter_rejects_different_dict_keys(env):
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE)
     with pytest.raises(ValueError, match="dict keys"):

@@ -175,6 +175,16 @@ def test_current_actions_falls_back_to_env_actions(env):
     assert torch.equal(fn(env), torch.tensor([[0.1, 0.2]]))
 
 
+def test_current_actions_falls_back_to_zeros_before_first_step(env):
+    env.num_envs = 4
+    env.num_actions = 3
+    env.actions = None
+    fn = observations.current_actions()
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.zeros((4, 3)))
+
+
 def test_current_actions_prefers_action_manager(env):
     class FakeActionManager:
         raw_actions = torch.tensor([[9.0]])

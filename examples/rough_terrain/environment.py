@@ -16,7 +16,7 @@ from genesis_forge.managers import (
     TerrainManager,
     VelocityCommandManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4  # How high above the terrain the robot should be placed
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
@@ -279,7 +279,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

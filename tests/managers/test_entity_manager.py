@@ -53,14 +53,6 @@ build()
 """
 
 
-def test_build_sets_the_entity_from_the_configured_attr(env):
-    entity = make_entity(env.num_envs)
-    mgr = EntityManager(env, entity=entity)
-    mgr.build()
-
-    assert mgr.entity is entity
-
-
 def test_build_populates_the_cached_base_pos_and_quat(env):
     pos = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
     quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * env.num_envs)

@@ -10,7 +10,7 @@ from genesis_forge.managers import (
     VelocityActionManager,
     VelocityCommandManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 INITIAL_BODY_POSITION = (0.0, 0.0, 0.035)
 INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
@@ -117,8 +117,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         )
         self.action_manager = VelocityActionManager(
             self,
-            scale=2.0,
-            clip=(-6.28, 6.28),
+            scale=3.0,
             actuator_manager=self.actuator_manager,
         )
 
@@ -210,7 +209,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

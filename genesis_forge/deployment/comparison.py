@@ -5,7 +5,11 @@ Tolerances are tiered by what can legitimately differ:
 * numpy vs torch pipeline math -- the same operations in two libraries, so
   near-bit-exact. Ordering and scale bugs produce large errors, which means a
   tight bound costs nothing and catches everything.
-* onnxruntime vs torch -- graph rewrites change accumulation order, so looser.
+* onnxruntime vs torch -- graph rewrites change accumulation order, so looser,
+  and *relative*: that drift scales with activation magnitude, and action spaces
+  are not all unit-scale. A wheeled robot emitting velocity targets around 10
+  drifts ~30x further than one emitting joint positions around 1, for exactly the
+  same graph.
 """
 
 from __future__ import annotations
@@ -16,11 +20,13 @@ import torch
 from .errors import ParityError
 
 PIPELINE_RTOL = 1.3e-6
-
-
 PIPELINE_ATOL = 1e-5
 
-
+#: Measured on a trained wheeled-robot policy (actions ~10, obs width 18): matched
+#: weights drift at most 2.7e-05 over N(0,1) observations, while the *closest*
+#: wrong checkpoint diverges by at least 2.3e-01. Anything between those is not a
+#: case that occurs, so rtol sits ~30x above the noise and ~2000x below a real bug.
+POLICY_RTOL = 1e-4
 POLICY_ATOL = 1e-5
 
 

@@ -54,6 +54,13 @@ Source: https://github.com/jgillick/genesis-forge
 - [SKRL](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/skrl.md)
 - [Video](https://genesis-forge.readthedocs.io/en/latest/api/wrappers/video.md)
 
+## Deployment
+
+- [Deployment](https://genesis-forge.readthedocs.io/en/latest/api/deployment/index.md)
+- [Contract](https://genesis-forge.readthedocs.io/en/latest/api/deployment/contract.md)
+- [export](https://genesis-forge.readthedocs.io/en/latest/api/deployment/export.md)
+- [Parity](https://genesis-forge.readthedocs.io/en/latest/api/deployment/parity.md)
+
 ## Other
 
 - [Gamepad](https://genesis-forge.readthedocs.io/en/latest/api/other/gamepad.md)

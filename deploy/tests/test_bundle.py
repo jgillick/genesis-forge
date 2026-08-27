@@ -390,7 +390,7 @@ def test_the_layout_separates_sensor_inputs_from_fed_back_ones():
         )
     )
 
-    assert [entry.name for entry in layout.required_inputs] == ["gyro", "actions"]
+    assert [entry.name for entry in layout.entries] == ["gyro", "actions"]
     assert [entry.name for entry in layout.sensor_inputs] == ["gyro"]
     assert [entry.name for entry in layout.pipeline_state_inputs] == ["actions"]
 

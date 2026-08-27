@@ -12,7 +12,6 @@ a feedback wire you forget raises, rather than quietly reading zeros forever.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
@@ -27,20 +26,22 @@ class ObservationAssembler:
     Args:
         layout: The observation layout from a loaded bundle's manifest.
         dtype: Output dtype. Defaults to float32, what the policy expects.
-        strict_inputs: Raise when handed a name the layout does not define.
-            On by default: a typo'd or stale sensor key is exactly the silent
-            mis-wiring this package exists to prevent.
+
+    A name the layout does not define is always rejected. It could not corrupt
+    the vector -- assembly reads entries by name, so a stray key is inert -- but
+    it means the control loop and the bundle disagree about what this policy
+    consumes, and that is worth hearing about on the bench rather than later.
 
     Example::
 
-        assembler = bundle.observation_assembler()
-        decoder = bundle.action_decoder()
-        print(assembler.describe_inputs())
+        observation_assembler = bundle.create_observation_assembler()
+        action_decoder = bundle.create_action_decoder()
+        print(observation_assembler.describe_inputs())
 
-        obs = assembler.assemble({
+        obs = observation_assembler.assemble({
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
-            "actions": decoder.last_target_actions,
+            "actions": action_decoder.last_target_actions,
         })
     """
 
@@ -49,12 +50,11 @@ class ObservationAssembler:
         layout: ObservationLayout,
         *,
         dtype: Any = np.float32,
-        strict_inputs: bool = True,
     ) -> None:
         self._layout = layout
         self._dtype = np.dtype(dtype)
-        self._strict_inputs = strict_inputs
 
+        # Determine where each entry lives in the flat vector
         self._offsets: dict[str, tuple[int, int]] = {}
         cursor = 0
         for entry in layout.entries:
@@ -69,13 +69,14 @@ class ObservationAssembler:
     """
 
     @property
-    def layout(self) -> ObservationLayout:
-        return self._layout
+    def inputs(self) -> tuple[ObservationEntry, ...]:
+        """Everything you pass to :meth:`assemble` each tick.
 
-    @property
-    def required_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Every entry the caller must supply each tick."""
-        return self._layout.required_inputs
+        The union of :attr:`sensor_inputs` and :attr:`pipeline_state_inputs` --
+        the two differ only in where you read the value from, not in whether you
+        have to supply it.
+        """
+        return self._layout.entries
 
     @property
     def sensor_inputs(self) -> tuple[ObservationEntry, ...]:
@@ -112,10 +113,10 @@ class ObservationAssembler:
         """Build one observation vector.
 
         Args:
-            values: One entry per name in :attr:`required_inputs`. Sensor readings
+            values: One entry per name in :attr:`inputs`. Sensor readings
                 come from your hardware; entries that echo the pipeline's own output
-                come from the decoder (``decoder.last_target_actions`` or
-                ``decoder.last_raw_actions``). Values may be scalars, sequences, or
+                come from the decoder (``action_decoder.last_target_actions`` or
+                ``action_decoder.last_raw_actions``). Values may be scalars, sequences, or
                 numpy arrays; each is flattened and must match the declared size.
 
         Returns:
@@ -134,7 +135,6 @@ class ObservationAssembler:
             current[start:end] = self._value_for(entry, values)
 
         # Rotate newest-first, reusing the oldest buffer -- the same rotation
-        # ObservationManager.get_observations performs on the training side.
         buffer = self._history.pop()
         buffer[:] = current
         self._history.insert(0, buffer)
@@ -185,18 +185,16 @@ class ObservationAssembler:
             )
         return (
             f"Missing observation value '{entry.name}'. This layout requires: "
-            f"{', '.join(item.name for item in self.required_inputs)}."
+            f"{', '.join(item.name for item in self.inputs)}."
         )
 
     def _check_for_unknown_names(self, values: dict[str, Any]) -> None:
-        if not self._strict_inputs:
-            return
         known = {entry.name for entry in self._layout.entries}
         unknown = sorted(set(values) - known)
         if unknown:
             raise ObservationError(
                 f"Unknown observation name(s): {', '.join(unknown)}. Expected one of: "
-                f"{', '.join(entry.name for entry in self.required_inputs)}."
+                f"{', '.join(entry.name for entry in self.inputs)}."
             )
 
     def _to_array(self, value: Any, *, name: str) -> np.ndarray:
@@ -207,8 +205,3 @@ class ObservationAssembler:
                 f"Observation '{name}' could not be read as numbers: {error}"
             ) from error
         return np.atleast_1d(array).ravel()
-
-
-def iter_input_names(entries: Iterable[ObservationEntry]) -> list[str]:
-    """Convenience for stub generation and diagnostics."""
-    return [entry.name for entry in entries]

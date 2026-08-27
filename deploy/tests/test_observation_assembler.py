@@ -186,10 +186,10 @@ def target_actions_layout() -> ObservationLayout:
     )
 
 
-def test_fed_back_entries_are_still_required_inputs():
+def test_fed_back_entries_are_listed_among_the_inputs():
     assembler = ObservationAssembler(raw_actions_layout())
 
-    assert [entry.name for entry in assembler.required_inputs] == ["gyro", "actions"]
+    assert [entry.name for entry in assembler.inputs] == ["gyro", "actions"]
     assert [entry.name for entry in assembler.sensor_inputs] == ["gyro"]
     assert [entry.name for entry in assembler.pipeline_state_inputs] == ["actions"]
 
@@ -211,7 +211,7 @@ def test_forgetting_the_feedback_wire_raises_rather_than_reading_zeros():
 
     message = str(error.value)
     assert "actions" in message
-    assert "decoder.last_raw_actions" in message
+    assert "action_decoder.last_raw_actions" in message
 
 
 def test_a_target_actions_entry_names_the_right_decoder_property():
@@ -221,7 +221,7 @@ def test_a_target_actions_entry_names_the_right_decoder_property():
     with pytest.raises(ObservationError) as error:
         assembler.assemble({"gyro": [0.0, 0.0]})
 
-    assert "decoder.last_target_actions" in str(error.value)
+    assert "action_decoder.last_target_actions" in str(error.value)
 
 
 def test_scaling_applies_to_fed_back_entries_too():
@@ -286,14 +286,17 @@ def test_supplying_a_fed_back_entry_is_simply_accepted():
     np.testing.assert_allclose(obs, [0.0, 0.0, 1.0, 1.0])
 
 
-def test_unknown_names_are_allowed_when_strict_inputs_is_off():
-    assembler = ObservationAssembler(simple_layout(), strict_inputs=False)
+def test_a_superfluous_name_is_rejected_even_though_it_is_harmless():
+    """A stray key cannot corrupt the vector, but it means the loop has drifted
+    from the bundle -- so it is reported rather than quietly ignored."""
+    assembler = ObservationAssembler(simple_layout())
 
-    obs = assembler.assemble(
-        {"gyro": [4.0, 8.0, 12.0], "dof_pos": [1.0, 3.0], "extra_sensor": [0.0]}
-    )
+    with pytest.raises(ObservationError) as error:
+        assembler.assemble(
+            {"gyro": [4.0, 8.0, 12.0], "dof_pos": [1.0, 3.0], "extra_sensor": [0.0]}
+        )
 
-    np.testing.assert_allclose(obs, [1.0, 2.0, 3.0, 2.0, 6.0])
+    assert "extra_sensor" in str(error.value)
 
 
 def test_non_numeric_value_is_reported_with_the_entry_name():
@@ -317,4 +320,4 @@ def test_describe_inputs_separates_sensors_from_fed_back_values():
     assert "gyro" in text
     # Fed-back entries are listed separately and name where to read them.
     assert "feed back from the decoder" in text
-    assert "decoder.last_raw_actions" in text
+    assert "action_decoder.last_raw_actions" in text

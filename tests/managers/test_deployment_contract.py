@@ -466,24 +466,6 @@ def test_observation_export_records_history_configuration(env):
     assert layout["history_order"] == "newest_first"
 
 
-def test_a_pipeline_state_marker_is_exported(env):
-    manager = ObservationManager(
-        env,
-        cfg={
-            "actions": {
-                "fn": lambda env: torch.ones((env.num_envs, 2)),
-                "pipeline_state": "raw_actions",
-            }
-        },
-    )
-    manager.build()
-
-    entry = manager.get_deployment_layout()["entries"][0]
-
-    assert entry["source"] == "pipeline_state"
-    assert entry["pipeline_stage"] == "raw_actions"
-
-
 def test_zero_width_entries_are_excluded(env):
     """Training skips them, so the bundle must not demand a value for one."""
     manager = ObservationManager(

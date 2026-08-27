@@ -118,8 +118,9 @@ def test_a_wrong_observation_scale_is_caught(deployable_env):
 
 def test_a_reversed_history_order_is_caught(make_env, monkeypatch):
     """Multi-tick comparison is what catches ordering bugs a single tick cannot."""
-    import genesis_forge_deploy
     from genesis_forge_deploy import ObservationAssembler
+
+    from genesis_forge.deployment import parity
 
     class ReversedHistoryAssembler(ObservationAssembler):
         def assemble(self, values=None):
@@ -128,9 +129,8 @@ def test_a_reversed_history_order_is_caught(make_env, monkeypatch):
             chunks = [vector[i : i + width] for i in range(0, vector.size, width)]
             return np.concatenate(list(reversed(chunks)))
 
-    monkeypatch.setattr(
-        genesis_forge_deploy, "ObservationAssembler", ReversedHistoryAssembler
-    )
+    # Patch where it is looked up, not where it is defined.
+    monkeypatch.setattr(parity, "ObservationAssembler", ReversedHistoryAssembler)
     capture = capture_environment(make_env(history_len=2))
 
     with pytest.raises(ParityError) as error:

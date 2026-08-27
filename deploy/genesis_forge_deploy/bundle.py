@@ -19,9 +19,11 @@ from typing import Any
 
 import numpy as np
 
+from .actions import ActionDecoder
 from .constants import GOLDEN_FILENAME, MANIFEST_FILENAME
 from .errors import MalformedBundleError
 from .manifest import Manifest
+from .observations import ObservationAssembler
 
 
 @dataclass(frozen=True)
@@ -39,16 +41,21 @@ class Bundle:
             return None
         return self.path / self.manifest.policy.file
 
-    def observation_assembler(self, **kwargs: Any) -> Any:
-        """Build the :class:`ObservationAssembler` for this bundle."""
-        from .observations import ObservationAssembler
+    def create_observation_assembler(self, **kwargs: Any) -> Any:
+        """Build a new :class:`ObservationAssembler` for this bundle.
 
+        Each call returns a fresh assembler with its own zero-filled history, so
+        create one and keep it for the life of the control loop -- a second one
+        starts with no history at all.
+        """
         return ObservationAssembler(self.manifest.observations, **kwargs)
 
-    def action_decoder(self, **kwargs: Any) -> Any:
-        """Build the :class:`ActionDecoder` for this bundle."""
-        from .actions import ActionDecoder
+    def create_action_decoder(self, **kwargs: Any) -> Any:
+        """Build a new :class:`ActionDecoder` for this bundle.
 
+        Each call returns a fresh decoder with its own remembered actions and
+        delay buffers, so create one and keep it for the life of the control loop.
+        """
         return ActionDecoder(self.manifest.actions, **kwargs)
 
     def describe(self) -> str:
@@ -73,7 +80,8 @@ class Bundle:
             joints = ", ".join(spec.joint_names)
             lines.append(f"    - [{spec.deploy_type}] {joints}")
         if self.policy_path is not None:
-            lines.append(f"  policy: {self.policy_path.name}")
+            policy_format = self.manifest.policy.format or "unknown format"
+            lines.append(f"  policy: {self.policy_path.name} ({policy_format})")
         return "\n".join(lines)
 
 
@@ -114,8 +122,6 @@ def load_bundle(path: str | Path, *, load_golden: bool = True) -> Bundle:
     golden: dict[str, np.ndarray] | None = None
     golden_path = bundle_path / GOLDEN_FILENAME
     if load_golden and golden_path.is_file():
-        # allow_pickle stays False (the numpy default): a bundle travels between
-        # machines, and object arrays would make loading one arbitrary-code execution.
         with np.load(golden_path, allow_pickle=False) as archive:
             golden = {key: archive[key] for key in archive.files}
 

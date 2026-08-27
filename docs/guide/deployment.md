@@ -45,6 +45,10 @@ my_policy/
   policy.onnx     # your exported policy, if you passed one
 ```
 
+The policy keeps whatever extension you handed it, and the manifest records what
+kind of file it is — `policy.pt` and `format: "torchscript"` if that is what you
+exported. Nothing here requires ONNX.
+
 ### The parity gate
 
 Export does not simply write out what it found. Before anything reaches disk, it
@@ -61,6 +65,20 @@ Largest difference 4.500e-01 at index 1: deployment produced 1.35, training prod
 ```
 
 A bundle that exists is a bundle that passed.
+
+What each half of the gate covers is worth being precise about, because they are not
+equally strong:
+
+- **Action decoding is verified end to end.** The numpy decoder is compared against
+  the manager's own `process_actions`, so the scale, offset, clipping, and joint
+  order cannot drift apart unnoticed.
+- **Observation assembly is verified as far as the layout.** The gate feeds both
+  sides the same values, so it proves the ordering, per-entry scaling, and history
+  stacking match. It does *not* run your observation functions — supplying the
+  values is what bypasses them — so it cannot tell you that the `dof_pos` your robot
+  reads means the same thing as the `dof_pos` training computed. Matching units and
+  frames on the robot is still yours to get right, and `bundle.describe()` prints the
+  units it recorded to help.
 
 ## Running on the robot
 
@@ -87,7 +105,7 @@ Bundle: my_policy
     - robot_ang_vel (3 values) in rad/s, scaled by 0.25 -- Body-frame angular velocity
     - dof_pos (12 values) in rad -- Joint positions relative to the default pose
   values you feed back from the decoder:
-    - actions (12 values), from decoder.last_target_actions_by_manager["action_manager"]
+    - actions (12 values), from action_decoder.last_target_actions_by_manager["action_manager"]
   joint targets produced (12):
     - [position] FL_hip, FL_thigh, FL_calf, ...
 ```
@@ -99,19 +117,19 @@ import numpy as np
 from genesis_forge_deploy import load_bundle
 
 bundle = load_bundle("./my_policy")
-assembler = bundle.observation_assembler()
-decoder = bundle.action_decoder()
+observation_assembler = bundle.create_observation_assembler()
+action_decoder = bundle.create_action_decoder()
 policy = ...  # see "Running the policy" below
 
 while True:
-    observation = assembler.assemble({
+    observation = observation_assembler.assemble({
         "robot_ang_vel": imu.gyro,        # rad/s, body frame
         "dof_pos": joints.positions,      # rad, relative to default pose
         # bundle.describe() prints this line verbatim -- copy it.
-        "actions": decoder.last_target_actions_by_manager["action_manager"],
+        "actions": action_decoder.last_target_actions_by_manager["action_manager"],
     })
 
-    targets = decoder.decode(policy(observation))
+    targets = action_decoder.decode(policy(observation))
 
     for joint_name, target in targets.by_joint.items():
         motors[joint_name].set_position(target)   # a position manager -> position
@@ -124,21 +142,21 @@ input in locomotion policies. You read it off the decoder rather than off a sens
 `bundle.describe()` tells you which entries work that way and which decoder property
 to use, and the assembler raises if you leave one out.
 
-You do not annotate any of this. Export determines which observations echo the
-pipeline's own output by running each one against known values and seeing what comes
-back, so an ordinary `lambda env: self.action_manager.get_actions()` is recognised as
-it stands. An entry that *transforms* the actions before returning them is treated as
-a sensor input, since export will not guess; if you need to override the
-classification, set `"pipeline_state"` on the observation config.
+You do not annotate any of this. `current_actions()` is an MDP function, so export
+reads its source straight off the object and records where the value comes from.
+
+Write the feedback as a lambda instead and export cannot see inside it, so the entry
+is listed as an ordinary sensor input with no hint about where to get it. That is
+the safe default rather than a guess — and a good reason to reach for
+`current_actions()`.
 
 It also tells apart the two feedback shapes, which is worth knowing because they hold
 different numbers:
 
 | In training | Feeds back | On the robot |
 |---|---|---|
-| `lambda env: mgr.get_actions()` | decoded joint targets | `decoder.last_target_actions_by_manager[...]` |
-| `current_actions(action_manager=mgr)` | that manager's raw policy output | `decoder.last_raw_actions_by_manager[...]` |
-| `current_actions()` | the whole raw policy vector | `decoder.last_raw_actions` |
+| `current_actions()` | the whole raw policy vector | `action_decoder.last_raw_actions` |
+| `current_actions(action_manager=mgr)` | that manager's raw policy output | `action_decoder.last_raw_actions_by_manager[...]` |
 
 The per-manager forms are used whenever an entry belongs to a specific manager, since
 the flat properties hold the entire policy vector — which is the same thing only when
@@ -148,12 +166,15 @@ A few things the runtime does for you:
 
 - **Names, not indices.** You supply values by name and get targets back by joint
   name, so there is no index arithmetic to get wrong.
-- **It refuses bad input.** A missing entry, a wrong-length value, or an unknown name
-  raises immediately and says which one. Silence would mean a misaligned vector.
+- **It refuses bad input.** A missing entry or a wrong-length value raises
+  immediately and says which one — silence there would mean a misaligned vector. An
+  unrecognized name raises too: it could not corrupt the vector, since entries are
+  read by name, but it means your loop and the bundle disagree about what this
+  policy consumes.
 - **It refuses bad output.** If the policy emits `NaN` or infinity, the decoder raises
   rather than passing it to your motors.
 - **Feedback values are explicit, not magic.** If your observation config feeds
-  actions back in, you pass `decoder.last_target_actions` (or `last_raw_actions`)
+  actions back in, you pass `action_decoder.last_target_actions` (or `last_raw_actions`)
   yourself. Nothing is filled in behind your back, so a feedback wire you forget
   raises immediately instead of quietly feeding zeros forever.
 
@@ -174,8 +195,8 @@ before blaming the policy.
 ### Reset when you restart control
 
 History starts zero-filled, which is exactly what training does at the start of every
-episode -- so it is a state the policy knows well. Call `assembler.reset()` and
-`decoder.reset()` whenever you (re)start the control loop, so the robot begins from
+episode -- so it is a state the policy knows well. Call `observation_assembler.reset()` and
+`action_decoder.reset()` whenever you (re)start the control loop, so the robot begins from
 the same state an episode began from in training.
 
 The first `history_length` ticks still carry less information than a full buffer, so
@@ -184,8 +205,11 @@ it is worth holding the robot in a safe posture until it fills.
 ## Running the policy
 
 The runtime does not care how you run inference — hand `assemble()`'s output to
-anything that takes a float32 vector. ONNX with `onnxruntime` is the usual choice on
-a Pi or Jetson:
+anything that takes a float32 vector. The bundle carries the policy file and records
+its format; running it is yours to choose.
+
+ONNX with `onnxruntime` is the usual choice on a Pi or Jetson, because it installs
+without pulling in torch:
 
 ```bash
 pip install genesis-forge-deploy[onnx]
@@ -201,9 +225,25 @@ def policy(observation):
     return session.run(None, {"obs": observation[None, :].astype("float32")})[0].ravel()
 ```
 
-### Exporting the policy to ONNX
+TorchScript works too, if you would rather keep torch on the robot:
 
-**rsl_rl** ships this already:
+```python
+import torch
+
+module = torch.jit.load("my_policy/policy.pt").eval()
+
+def policy(observation):
+    with torch.no_grad():
+        return module(torch.from_numpy(observation)[None, :]).numpy().ravel()
+```
+
+That is a real trade: torch is a large install and slower to start, but it removes
+the export step as a place for things to go wrong. ONNX is the recommendation on
+small boards; TorchScript is reasonable on a Jetson or an x86 robot PC.
+
+### Exporting the policy
+
+**rsl_rl** ships an ONNX exporter:
 
 ```python
 runner.export_policy_to_onnx(path="./my_policy", filename="policy.onnx")
@@ -218,15 +258,41 @@ state preprocessor and export that with `torch.onnx.export`. Two details matter:
 and it clamps normalized observations to ±5.0 — miss that and the graph will agree
 with training on ordinary inputs and diverge on extreme ones.
 
-Pass the exported file to `export()` along with the torch policy, and the parity gate
-extends across the ONNX graph too:
+For **TorchScript**, trace or script the same wrapped policy and save it with
+`torch.jit.save`. The normalizer has to be inside what you trace, exactly as it does
+for ONNX.
+
+### Verifying the exported policy
+
+Pass the exported file to `export()` along with the torch policy it came from, and
+the parity gate extends across the exported file too:
 
 ```python
-export(env, "./my_policy", policy_path="policy.onnx", torch_policy=policy)
+export(env, "./my_policy", policy_path="policy.onnx", reference_policy=policy)
 ```
 
-This is worth doing. A normalizer that silently failed to make it into the exported
-graph is the classic sim-to-real failure, and it is invisible to every other check.
+This works for both ONNX and TorchScript — the file's format is inferred from its
+extension, and the matching validator runs. It is worth doing. A normalizer that
+silently failed to make it into the exported file is the classic sim-to-real failure,
+and it is invisible to every other check.
+
+The bound here is **relative** to the size of your actions, not absolute. Exporting
+reorders floating-point accumulation, so two runtimes running the same graph differ
+by an amount that grows with activation magnitude — a policy emitting wheel
+velocities around 50 drifts far further than one emitting joint angles around 1. On a
+trained wheeled-robot policy that drift measures ~3e-05, while the *closest* wrong
+checkpoint diverges by at least 2e-01. Real faults are orders of magnitude clear of
+rounding, which is what makes the check worth trusting.
+
+Any other format is still packaged, and the export tells you it went in unverified:
+
+```
+note: policy.mnn was packaged but not verified against the trained policy
+```
+
+Validating a format the library does not know is on you — load it yourself and
+compare against `golden.npz`, which holds the observations and the errors the parity
+run measured.
 
 ## Installing on a Pi or Jetson
 

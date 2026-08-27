@@ -91,3 +91,57 @@ python ./gamepad.py
 ```
 
 You should now be able to use the joysticks to control the wheeled robot.
+
+## Deploy to a real robot
+
+Export the trained policy along with the observation and action pipelines it was
+trained against:
+
+```shell
+# With uv
+uv run ./deploy.py
+
+# Without uv
+python ./deploy.py
+```
+
+This writes `./deploy_bundle/` containing a readable `manifest.json`, the policy as
+`policy.onnx`, and recorded input/output pairs for an on-robot smoke test. Before
+writing anything it runs the deployment code against the live training pipeline and
+refuses to produce a bundle if the two disagree.
+
+The script prints exactly what to wire up on the robot:
+
+```
+Bundle: ./deploy_bundle
+  control rate: 50.0 Hz (dt=0.02)
+  observation vector: 18 values (18 per tick x 1 history)
+  sensor values you supply each tick:
+    - velocity_cmd (3 values)
+    - angle_velocity (3 values)
+    ...
+  values you feed back from the decoder:
+    - actions (3 values), from action_decoder.last_raw_actions
+  joint targets produced (3):
+    - [velocity] base_back_wheel_joint, base_right_wheel_joint, base_left_wheel_joint
+```
+
+Note the `[velocity]` tag: this robot's action manager produces wheel *velocities*,
+so those targets go to a velocity command rather than a position one.
+
+Copy the folder to the robot and install just the runtime — it needs numpy only, no
+simulator:
+
+```shell
+pip install genesis-forge-deploy[onnx]
+```
+
+See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/)
+for the full control loop.
+
+To export the pipeline contract before you have a trained checkpoint — useful for
+wiring up the robot side early — skip the policy:
+
+```shell
+uv run ./deploy.py --skip-policy
+```

@@ -56,7 +56,7 @@ def sample_observation_values(
     """Random values at realistic magnitudes, one per entry the caller supplies."""
     return {
         entry.name: rng.uniform(-2.0, 2.0, size=entry.size).astype(np.float32)
-        for entry in manifest.observations.required_inputs
+        for entry in manifest.observations.entries
     }
 
 

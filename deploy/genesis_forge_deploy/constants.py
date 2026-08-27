@@ -13,7 +13,16 @@ MIN_SUPPORTED_SCHEMA_VERSION = 1
 
 MANIFEST_FILENAME = "manifest.json"
 GOLDEN_FILENAME = "golden.npz"
-POLICY_FILENAME = "policy.onnx"
+
+#: The policy is stored under this stem, keeping its own extension, so a bundle
+#: never misrepresents what it holds.
+POLICY_STEM = "policy"
+
+#: Policy formats the bundle understands. The bundle records what the file *is*;
+#: it does not require any particular one. The runtime itself is format-agnostic --
+#: it hands you an observation vector and takes actions back, whatever ran between.
+POLICY_FORMAT_ONNX = "onnx"
+POLICY_FORMAT_TORCHSCRIPT = "torchscript"
 
 #: An observation entry the user reads off real hardware each tick.
 SOURCE_SENSOR = "sensor"

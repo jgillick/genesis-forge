@@ -12,10 +12,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from genesis_forge_deploy import POLICY_STEM, save_bundle
+
 from .capture import Capture, capture_environment
 from .errors import ExportError
 from .parity import ParityReport, check_parity
-from .policy_parity import check_policy_parity
+from .policy_parity import infer_policy_format, validate_policy
 
 
 def export(
@@ -23,8 +26,7 @@ def export(
     path: str | Path,
     *,
     policy_path: str | Path | None = None,
-    torch_policy: Any = None,
-    policy: Any = None,
+    reference_policy: Any = None,
     checkpoint: str | Path | None = None,
     parity_ticks: int = 6,
     seed: int = 0,
@@ -44,11 +46,14 @@ def export(
     Args:
         env: A built :class:`~genesis_forge.ManagedEnvironment`.
         path: Directory to write the bundle to.
-        policy_path: An exported ``.onnx`` policy to copy into the bundle.
-        torch_policy: The trained policy as a callable. When given alongside
-            ``policy_path``, the parity gate is extended across the ONNX graph too
-            -- which is what catches a dropped observation normalizer.
-        policy: The framework's policy object, recorded as provenance.
+        policy_path: An exported policy to copy into the bundle. ONNX is the
+            documented path, but TorchScript (or anything else you load
+            yourself) works too -- the bundle records the format rather than
+            requiring one.
+        reference_policy: The trained policy still live in memory -- a torch
+            callable -- for the exported file to be checked against. That check
+            is what catches a dropped observation normalizer, or a stale file
+            from a previous run. ONNX and TorchScript are both supported.
         checkpoint: Path to the trained checkpoint, recorded as provenance.
         parity_ticks: How many sequential ticks the parity gate compares.
         seed: Seed for the parity inputs, so a failure reproduces.
@@ -72,8 +77,6 @@ def export(
         env.build()
         export(env, "./my_policy", policy_path="policy.onnx")
     """
-    from genesis_forge_deploy import POLICY_FILENAME, save_bundle
-
     destination = Path(path)
     if destination.exists():
         if not overwrite:
@@ -84,24 +87,33 @@ def export(
             raise ExportError(f"'{destination}' exists and is not a directory.")
 
     policy_source = Path(policy_path) if policy_path else None
-    if policy_source is not None and not policy_source.is_file():
-        raise ExportError(f"No policy file at '{policy_source}'.")
+    policy_file = None
+    policy_format = None
+    if policy_source is not None:
+        if not policy_source.is_file():
+            raise ExportError(f"No policy file at '{policy_source}'.")
+        # Keep the file's own extension: a bundle must not claim to hold an ONNX
+        # graph when it holds a TorchScript module.
+        policy_file = f"{POLICY_STEM}{policy_source.suffix}"
+        policy_format = infer_policy_format(policy_source)
 
     capture = capture_environment(
         env,
         checkpoint=str(checkpoint) if checkpoint else None,
-        policy_file=POLICY_FILENAME if policy_source else None,
-        policy=policy,
+        policy_file=policy_file,
+        policy_format=policy_format,
+        reference_policy=reference_policy,
     )
 
     # The gate. Raises ParityError before anything reaches disk.
     report = check_parity(capture, ticks=parity_ticks, seed=seed)
 
-    if policy_source is not None and torch_policy is not None:
-        worst = check_policy_parity(
-            str(policy_source),
-            torch_policy,
+    if policy_source is not None and reference_policy is not None:
+        worst = validate_policy(
+            policy_source,
+            reference_policy,
             report.golden["observations"],
+            policy_format=policy_format,
             input_name=capture.manifest.policy.input_name,
         )
         report.golden["policy_max_error"] = _as_array(worst)
@@ -113,7 +125,7 @@ def export(
             Path(staging) / "bundle", capture.manifest, golden=report.golden
         )
         if policy_source is not None:
-            shutil.copy2(policy_source, staged / POLICY_FILENAME)
+            shutil.copy2(policy_source, staged / policy_file)
 
         if destination.exists():
             shutil.rmtree(destination)
@@ -122,12 +134,15 @@ def export(
 
     if verbose:
         _report(destination, capture, report)
+        if policy_source is not None and reference_policy is None:
+            print(
+                f"  note: {policy_file} was packaged but not verified against the "
+                f"trained policy -- pass reference_policy= to check it"
+            )
     return destination
 
 
 def _as_array(value: float):
-    import numpy as np
-
     return np.asarray([value], dtype=np.float32)
 
 

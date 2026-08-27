@@ -591,6 +591,12 @@ def __init__(
 
 ## `_truncated_buf = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_bool)`
 
+## `action_ranges`
+
+Each action manager's `(start, end)` slice of the action vector.
+
+Indices line up with `managers["action"]` in registration order, which is the same order :meth:`step` slices the incoming actions in. Deployment export records these so a robot can route the policy's output to the right decoder.
+
 ## `action_space`
 
 The action space, provided by the action manager(s), if any exist.
@@ -1359,6 +1365,66 @@ def control_dofs_velocity(
         dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
     """
     self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+```
+
+## `get_deployment_values()`
+
+Nominal actuator gains and defaults, for a deployment bundle.
+
+Reads the *nominal* buffers -- the values configured at build time, before any per-reset domain randomization, which is only ever written into the separate output buffer. A robot's motor controllers should be configured with these, matching what the policy trained against.
+
+Returns:
+
+| Type             | Description                                                          |
+| ---------------- | -------------------------------------------------------------------- |
+| `dict[str, Any]` | Plain data: the joint names, one value per joint for each configured |
+| `dict[str, Any]` | actuator parameter, and the names of any parameters that were        |
+| `dict[str, Any]` | randomized during training (recorded so the difference is visible    |
+| `dict[str, Any]` | rather than silently flattened).                                     |
+
+Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+
+```
+def get_deployment_values(self) -> dict[str, Any]:
+    """Nominal actuator gains and defaults, for a deployment bundle.
+
+    Reads the *nominal* buffers -- the values configured at build time, before
+    any per-reset domain randomization, which is only ever written into the
+    separate output buffer. A robot's motor controllers should be configured
+    with these, matching what the policy trained against.
+
+    Returns:
+        Plain data: the joint names, one value per joint for each configured
+        actuator parameter, and the names of any parameters that were
+        randomized during training (recorded so the difference is visible
+        rather than silently flattened).
+    """
+    values: dict[str, list[float]] = {}
+    randomized: list[str] = []
+
+    for value_name, item in self._values.items():
+        # Every parameter is pre-seeded as None; only configured ones hold a buffer.
+        if not item:
+            continue
+        buffer = item.get("buffer", None)
+        if buffer is None:
+            continue
+        tensor = buffer.detach()
+        # Per-DOF buffers may carry a leading environment dimension; the
+        # nominal row is identical across environments by construction.
+        if tensor.ndim == 2:
+            tensor = tensor[0]
+        if tensor.ndim != 1 or tensor.shape[0] != self.num_dofs:
+            continue
+        values[value_name] = [float(entry) for entry in tensor.cpu().tolist()]
+        if item.get("has_noise", False):
+            randomized.append(value_name)
+
+    return {
+        "joint_names": list(self.dofs_names),
+        "values": values,
+        "randomized": sorted(randomized),
+    }
 ```
 
 ## `get_dofs_control_force(noise=0.0, clip_to_max_force=False, dofs_idx=None)`
@@ -2577,6 +2643,7 @@ def __init__(
     self.noise = noise
     self._observation_size = 1
     self._observation_space = None
+    self._entry_sizes: dict[str, int] = {}
 
     if history_len is not None and history_len < 1:
         raise ValueError("history_len must be greater than 0")
@@ -2647,6 +2714,70 @@ def build(self):
         (self.env.num_envs, self._observation_size),
         device=gs.device,
     )
+```
+
+## `get_deployment_layout()`
+
+Describe this manager's observation vector for a deployment bundle.
+
+Captures the layout a robot needs to rebuild the policy's input: entry order, per-entry width and scale, the history configuration, and whatever deployment metadata the config supplied. Training noise is deliberately excluded -- it exists to harden the policy, not to be replayed.
+
+Must be called after :meth:`build`, when entry widths are known.
+
+Returns:
+
+| Type             | Description                                                 |
+| ---------------- | ----------------------------------------------------------- |
+| `dict[str, Any]` | Plain data matching the bundle's observation layout schema. |
+
+Source code in `genesis_forge/managers/observation_manager.py`
+
+```
+def get_deployment_layout(self) -> dict[str, Any]:
+    """Describe this manager's observation vector for a deployment bundle.
+
+    Captures the layout a robot needs to rebuild the policy's input: entry
+    order, per-entry width and scale, the history configuration, and whatever
+    deployment metadata the config supplied. Training noise is deliberately
+    excluded -- it exists to harden the policy, not to be replayed.
+
+    Must be called after :meth:`build`, when entry widths are known.
+
+    Returns:
+        Plain data matching the bundle's observation layout schema.
+    """
+    if not self._entry_sizes:
+        raise RuntimeError(
+            f"Observation manager '{self.name}' has not been built, so its entry "
+            f"sizes are unknown. Build the environment before exporting."
+        )
+
+    entries: list[dict[str, Any]] = []
+    for name, cfg in self.cfg.items():
+        size = self._entry_sizes.get(name, 0)
+        if size == 0:
+            # Training skips zero-width entries entirely, so the bundle must
+            # not ask the robot to supply a value for one.
+            continue
+
+        entry: dict[str, Any] = {
+            "name": name,
+            "size": size,
+            "scale": float(cfg.scale) if cfg.scale is not None else 1.0,
+        }
+        if cfg.description:
+            entry["description"] = cfg.description
+        if cfg.units:
+            entry["units"] = cfg.units
+        entries.append(entry)
+
+    return {
+        "entries": entries,
+        "history_length": self._history_len,
+        # ObservationManager concatenates history newest-first; recorded so the
+        # runtime can never silently disagree about the order.
+        "history_order": "newest_first",
+    }
 ```
 
 ## `get_observations(values=None)`
@@ -3760,6 +3891,8 @@ Get the actuator manager.
 
 Return the default DOF positions.
 
+## `deploy_type = 'position'`
+
 ## `dofs`
 
 Get a dictionary of the DOF names and their indices
@@ -3826,14 +3959,14 @@ def build(self):
 
 ## `get_actions()`
 
-Get the current actions for the environments.
+Get the current target actions for the environments.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
     """
-    Get the current actions for the environments.
+    Get the current target actions for the environments.
     """
     if self._actions is None:
         return torch.zeros((self.env.num_envs, self.num_actions))
@@ -3857,6 +3990,66 @@ def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
             self.dofs.keys(), self._actions[env_idx, :]
         )
     }
+```
+
+## `get_deployment_config()`
+
+Export the affine decode: scale, offset, and the clip bounds.
+
+Shared by every affine manager, so `PositionActionManager`, `VelocityActionManager`, and any future affine subclass are deployable without writing anything new -- they differ only in `deploy_type` and in the values their `build()` resolved.
+
+Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+
+```
+def get_deployment_config(self) -> DeploymentActionConfig:
+    """Export the affine decode: scale, offset, and the clip bounds.
+
+    Shared by every affine manager, so `PositionActionManager`,
+    `VelocityActionManager`, and any future affine subclass are deployable
+    without writing anything new -- they differ only in `deploy_type` and in
+    the values their `build()` resolved.
+    """
+    if (
+        self._scale_values is None
+        or self._offset_values is None
+        or self._clip_values is None
+    ):
+        raise RuntimeError(
+            f"{type(self).__name__} has not been built, so its decode parameters "
+            f"are unknown. Build the environment before exporting."
+        )
+
+    clip = self._clip_values.detach()
+    if clip.ndim == 2:  # (num_joints, 2) -- bounds shared across environments
+        clip_low, clip_high = clip[:, 0], clip[:, 1]
+    else:  # (num_envs, 2, num_joints) -- per-environment bounds
+        clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
+
+    def nominal(tensor, name):
+        return to_nominal_array(
+            tensor,
+            name=name,
+            num_joints=self.num_actions,
+            num_envs=self.env.num_envs,
+            manager_name=type(self).__name__,
+        )
+
+    config: dict[str, Any] = {
+        "scale": nominal(self._scale_values, "scale"),
+        "offset": nominal(self._offset_values, "offset"),
+    }
+
+    # An unbounded side (every value infinite, as VelocityActionManager defaults
+    # to) is simply omitted: the runtime treats a missing bound as no clip, and
+    # infinities have no portable JSON representation.
+    low = nominal(clip_low, "clip lower bound")
+    high = nominal(clip_high, "clip upper bound")
+    if any(value != float("-inf") for value in low):
+        config["post_clip_low"] = low
+    if any(value != float("inf") for value in high):
+        config["post_clip_high"] = high
+
+    return DeploymentActionConfig(deploy_type=self.deploy_type, config=config)
 ```
 
 ## `get_dofs_force(clip_to_max_force=False)`
@@ -4196,6 +4389,8 @@ Get the actuator manager.
 
 Return the default DOF positions.
 
+## `deploy_type = 'position_within_limits'`
+
 ## `dofs`
 
 Get a dictionary of the DOF names and their indices
@@ -4244,14 +4439,14 @@ def build(self):
 
 ## `get_actions()`
 
-Get the current actions for the environments.
+Get the current target actions for the environments.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
     """
-    Get the current actions for the environments.
+    Get the current target actions for the environments.
     """
     if self._actions is None:
         return torch.zeros((self.env.num_envs, self.num_actions))
@@ -4275,6 +4470,44 @@ def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
             self.dofs.keys(), self._actions[env_idx, :]
         )
     }
+```
+
+## `get_deployment_config()`
+
+Export this manager's decode: pre-clip to [-1, 1], then map into limits.
+
+Overrides :class:`PositionActionManager` deliberately. This manager inherits the parent's `build()` -- so `_scale_values`, `_offset_values` and `_clip_values` all exist -- but its `process_actions` ignores them in favour of `_scale`/`_offset` and applies no post-clip. Exporting the parent's parameters would describe a decode this manager never performs.
+
+Source code in `genesis_forge/managers/action/position_within_limits.py`
+
+```
+def get_deployment_config(self) -> DeploymentActionConfig:
+    """Export this manager's decode: pre-clip to [-1, 1], then map into limits.
+
+    Overrides :class:`PositionActionManager` deliberately. This manager
+    inherits the parent's ``build()`` -- so ``_scale_values``, ``_offset_values``
+    and ``_clip_values`` all exist -- but its ``process_actions`` ignores them
+    in favour of ``_scale``/``_offset`` and applies no post-clip. Exporting the
+    parent's parameters would describe a decode this manager never performs.
+    """
+
+    def nominal(tensor, name):
+        return to_nominal_array(
+            tensor,
+            name=name,
+            num_joints=self.num_actions,
+            num_envs=self.env.num_envs,
+            manager_name=type(self).__name__,
+        )
+
+    return DeploymentActionConfig(
+        deploy_type=self.deploy_type,
+        config={
+            "pre_clip": [-1.0, 1.0],
+            "scale": nominal(self._scale, "scale"),
+            "offset": nominal(self._offset, "offset"),
+        },
+    )
 ```
 
 ## `get_dofs_force(clip_to_max_force=False)`
@@ -4583,6 +4816,8 @@ An index filter for the actuator DOF buffer values.
 
 Get the actuator manager.
 
+## `deploy_type = 'velocity'`
+
 ## `dofs`
 
 Get a dictionary of the DOF names and their indices
@@ -4650,14 +4885,14 @@ def build(self):
 
 ## `get_actions()`
 
-Get the current actions for the environments.
+Get the current target actions for the environments.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
     """
-    Get the current actions for the environments.
+    Get the current target actions for the environments.
     """
     if self._actions is None:
         return torch.zeros((self.env.num_envs, self.num_actions))
@@ -4681,6 +4916,66 @@ def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
             self.dofs.keys(), self._actions[env_idx, :]
         )
     }
+```
+
+## `get_deployment_config()`
+
+Export the affine decode: scale, offset, and the clip bounds.
+
+Shared by every affine manager, so `PositionActionManager`, `VelocityActionManager`, and any future affine subclass are deployable without writing anything new -- they differ only in `deploy_type` and in the values their `build()` resolved.
+
+Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+
+```
+def get_deployment_config(self) -> DeploymentActionConfig:
+    """Export the affine decode: scale, offset, and the clip bounds.
+
+    Shared by every affine manager, so `PositionActionManager`,
+    `VelocityActionManager`, and any future affine subclass are deployable
+    without writing anything new -- they differ only in `deploy_type` and in
+    the values their `build()` resolved.
+    """
+    if (
+        self._scale_values is None
+        or self._offset_values is None
+        or self._clip_values is None
+    ):
+        raise RuntimeError(
+            f"{type(self).__name__} has not been built, so its decode parameters "
+            f"are unknown. Build the environment before exporting."
+        )
+
+    clip = self._clip_values.detach()
+    if clip.ndim == 2:  # (num_joints, 2) -- bounds shared across environments
+        clip_low, clip_high = clip[:, 0], clip[:, 1]
+    else:  # (num_envs, 2, num_joints) -- per-environment bounds
+        clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
+
+    def nominal(tensor, name):
+        return to_nominal_array(
+            tensor,
+            name=name,
+            num_joints=self.num_actions,
+            num_envs=self.env.num_envs,
+            manager_name=type(self).__name__,
+        )
+
+    config: dict[str, Any] = {
+        "scale": nominal(self._scale_values, "scale"),
+        "offset": nominal(self._offset_values, "offset"),
+    }
+
+    # An unbounded side (every value infinite, as VelocityActionManager defaults
+    # to) is simply omitted: the runtime treats a missing bound as no clip, and
+    # infinities have no portable JSON representation.
+    low = nominal(clip_low, "clip lower bound")
+    high = nominal(clip_high, "clip upper bound")
+    if any(value != float("-inf") for value in low):
+        config["post_clip_low"] = low
+    if any(value != float("inf") for value in high):
+        config["post_clip_high"] = high
+
+    return DeploymentActionConfig(deploy_type=self.deploy_type, config=config)
 ```
 
 ## `get_dofs_force(clip_to_max_force=False)`
@@ -6182,13 +6477,13 @@ def update(self, **params: Any) -> None:
 
 Bases: `MdpFn`
 
-The most current step actions.
+The most current step's raw actions. This should be the actions before they've been processed and converted into their target values.
 
 Parameters:
 
-| Name             | Type                    | Description                                                                                    | Default |
-| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------- | ------- |
-| `action_manager` | `PositionActionManager` | The action manager to source actions from. If not provided, actions are read from env.actions. | `None`  |
+| Name             | Type                | Description | Default                                                                                            |
+| ---------------- | ------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `action_manager` | \`BaseActionManager | None\`      | The action manager to source actions from. If not provided, all actions are read from env.actions. |
 
 ### `action_manager = None`
 
@@ -14341,6 +14636,693 @@ def step(
         terminateds,
         truncateds,
         extras,
+    )
+```
+# Deployment
+
+# Deployment
+
+Exporting a trained environment for a real robot, and the simulation-free runtime that replays it. See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html) for the end-to-end walkthrough.
+
+The training-side API lives in `genesis_forge.deployment`; the robot-side runtime is the separate `genesis-forge-deploy` package.
+
+# Deployment Contract
+
+The plain-data description an action manager publishes so its decode can be reproduced on a robot.
+
+How an action manager's decode is reproduced on a robot.
+
+Returned by :meth:`BaseActionManager.get_deployment_config` and written into the deployment bundle. Everything here must be plain data -- no tensors, no references to the simulator -- because it is read back by a numpy-only runtime that never imports Genesis or torch.
+
+Parameters:
+
+| Name                  | Type             | Description                                                                                                                                                                                                          | Default                                                                                                                                                                   |
+| --------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy_type`         | `str`            | Stable name for this manager's decode. The runtime resolves its decoder by this name, so it is the manifest's contract: keep it stable across refactors. Built-in names are "position" and "position_within_limits". | *required*                                                                                                                                                                |
+| `config`              | `dict[str, Any]` | Plain-data parameters the decoder needs (numbers, lists of numbers, strings). The schema belongs to the decoder, not to the exporter, so custom managers are free to define their own.                               | `dict()`                                                                                                                                                                  |
+| `decoder_import_path` | \`str            | None\`                                                                                                                                                                                                               | For custom managers, where the matching decoder class lives, written as "my_package.decoders:MyDecoder". Leave unset for built-in types, which the runtime already ships. |
+
+## `config = field(default_factory=dict)`
+
+## `decoder_import_path = None`
+
+## `deploy_type`
+
+Reduce a possibly per-environment tensor to one nominal value per joint.
+
+Decode parameters are stored per-environment, and domain randomization may perturb them differently in each one. A bundle describes a single robot, so export refuses to guess which environment is authoritative: if the values diverge across environments, this raises instead of silently baking in whatever environment 0 happened to hold.
+
+Parameters:
+
+| Name           | Type     | Description                                                              | Default    |
+| -------------- | -------- | ------------------------------------------------------------------------ | ---------- |
+| `tensor`       | `Tensor` | The parameter to reduce, shaped (num_joints,) or (num_envs, num_joints). | *required* |
+| `name`         | `str`    | Parameter name, used in error messages.                                  | *required* |
+| `num_joints`   | `int`    | How many joints this manager controls.                                   | *required* |
+| `num_envs`     | `int`    | The environment's parallel environment count.                            | *required* |
+| `manager_name` | `str`    | Manager name, used in error messages.                                    | *required* |
+
+Returns:
+
+| Type          | Description                |
+| ------------- | -------------------------- |
+| `list[float]` | One plain float per joint. |
+
+Raises:
+
+| Type         | Description                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| `ValueError` | The values differ across parallel environments, or the shape is not one this reduction understands. |
+
+Source code in `genesis_forge/managers/action/base.py`
+
+```
+def to_nominal_array(
+    tensor: torch.Tensor,
+    *,
+    name: str,
+    num_joints: int,
+    num_envs: int,
+    manager_name: str,
+) -> list[float]:
+    """Reduce a possibly per-environment tensor to one nominal value per joint.
+
+    Decode parameters are stored per-environment, and domain randomization may
+    perturb them differently in each one. A bundle describes a single robot, so
+    export refuses to guess which environment is authoritative: if the values
+    diverge across environments, this raises instead of silently baking in
+    whatever environment 0 happened to hold.
+
+    Args:
+        tensor: The parameter to reduce, shaped ``(num_joints,)`` or
+            ``(num_envs, num_joints)``.
+        name: Parameter name, used in error messages.
+        num_joints: How many joints this manager controls.
+        num_envs: The environment's parallel environment count.
+        manager_name: Manager name, used in error messages.
+
+    Returns:
+        One plain float per joint.
+
+    Raises:
+        ValueError: The values differ across parallel environments, or the shape
+            is not one this reduction understands.
+    """
+    values = tensor.detach()
+
+    if values.ndim == 1:
+        if values.shape[0] != num_joints:
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager_name}': "
+                f"expected {num_joints} value(s), found {values.shape[0]}."
+            )
+        return [float(item) for item in values.cpu().tolist()]
+
+    if values.ndim == 2 and values.shape[1] == num_joints:
+        if values.shape[0] > 1 and not bool((values == values[0]).all()):
+            spread = float((values.max(dim=0).values - values.min(dim=0).values).max())
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager_name}': the "
+                f"value differs across parallel environments (largest spread "
+                f"{spread:g}). This usually means domain randomization is active. "
+                f"Export from a build with randomization disabled so the bundle "
+                f"records the nominal values the policy was trained against."
+            )
+        return [float(item) for item in values[0].cpu().tolist()]
+
+    raise ValueError(
+        f"Cannot export '{name}' from action manager '{manager_name}': unexpected "
+        f"shape {tuple(values.shape)} for {num_joints} joint(s) across {num_envs} "
+        f"environment(s)."
+    )
+```
+
+# Export
+
+Capture a built environment into a deployment bundle.
+
+Writes a directory holding `manifest.json` (the readable deployment contract), `golden.npz` (recorded input/output pairs that double as an on-robot smoke test), and the exported policy when one is supplied.
+
+The parity gate is not optional. Before anything is written, the numpy deployment classes are run against the live torch pipeline; if they disagree, the export aborts and names the component that diverged.
+
+Parameters:
+
+| Name               | Type   | Description                                                                                                                                                                                                                                            | Default                           |
+| ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| `env`              | `Any`  | A built :class:~genesis_forge.ManagedEnvironment.                                                                                                                                                                                                      | *required*                        |
+| `path`             | \`str  | Path\`                                                                                                                                                                                                                                                 | Directory to write the bundle to. |
+| `policy_path`      | \`str  | Path                                                                                                                                                                                                                                                   | None\`                            |
+| `reference_policy` | `Any`  | The trained policy still live in memory -- a torch callable -- for the exported file to be checked against. That check is what catches a dropped observation normalizer, or a stale file from a previous run. ONNX and TorchScript are both supported. | `None`                            |
+| `checkpoint`       | \`str  | Path                                                                                                                                                                                                                                                   | None\`                            |
+| `parity_ticks`     | `int`  | How many sequential ticks the parity gate compares.                                                                                                                                                                                                    | `6`                               |
+| `seed`             | `int`  | Seed for the parity inputs, so a failure reproduces.                                                                                                                                                                                                   | `0`                               |
+| `overwrite`        | `bool` | Replace an existing bundle directory.                                                                                                                                                                                                                  | `False`                           |
+| `verbose`          | `bool` | Print a short summary of what was written.                                                                                                                                                                                                             | `True`                            |
+
+Returns:
+
+| Type   | Description           |
+| ------ | --------------------- |
+| `Path` | The bundle directory. |
+
+Raises:
+
+| Type          | Description                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `ExportError` | The environment cannot be exported as configured, or the destination already exists and overwrite is False. |
+| `ParityError` | The deployment pipeline disagreed with training. Nothing is written.                                        |
+
+Example::
+
+```
+from genesis_forge.deployment import export
+
+env = MyEnv(num_envs=1)
+env.build()
+export(env, "./my_policy", policy_path="policy.onnx")
+```
+
+Source code in `genesis_forge/deployment/exporter.py`
+
+```
+def export(
+    env: Any,
+    path: str | Path,
+    *,
+    policy_path: str | Path | None = None,
+    reference_policy: Any = None,
+    checkpoint: str | Path | None = None,
+    parity_ticks: int = 6,
+    seed: int = 0,
+    overwrite: bool = False,
+    verbose: bool = True,
+) -> Path:
+    """Capture a built environment into a deployment bundle.
+
+    Writes a directory holding ``manifest.json`` (the readable deployment
+    contract), ``golden.npz`` (recorded input/output pairs that double as an
+    on-robot smoke test), and the exported policy when one is supplied.
+
+    The parity gate is not optional. Before anything is written, the numpy
+    deployment classes are run against the live torch pipeline; if they disagree,
+    the export aborts and names the component that diverged.
+
+    Args:
+        env: A built :class:`~genesis_forge.ManagedEnvironment`.
+        path: Directory to write the bundle to.
+        policy_path: An exported policy to copy into the bundle. ONNX is the
+            documented path, but TorchScript (or anything else you load
+            yourself) works too -- the bundle records the format rather than
+            requiring one.
+        reference_policy: The trained policy still live in memory -- a torch
+            callable -- for the exported file to be checked against. That check
+            is what catches a dropped observation normalizer, or a stale file
+            from a previous run. ONNX and TorchScript are both supported.
+        checkpoint: Path to the trained checkpoint, recorded as provenance.
+        parity_ticks: How many sequential ticks the parity gate compares.
+        seed: Seed for the parity inputs, so a failure reproduces.
+        overwrite: Replace an existing bundle directory.
+        verbose: Print a short summary of what was written.
+
+    Returns:
+        The bundle directory.
+
+    Raises:
+        ExportError: The environment cannot be exported as configured, or the
+            destination already exists and ``overwrite`` is False.
+        ParityError: The deployment pipeline disagreed with training. Nothing is
+            written.
+
+    Example::
+
+        from genesis_forge.deployment import export
+
+        env = MyEnv(num_envs=1)
+        env.build()
+        export(env, "./my_policy", policy_path="policy.onnx")
+    """
+    destination = Path(path)
+    if destination.exists():
+        if not overwrite:
+            raise ExportError(
+                f"'{destination}' already exists. Pass overwrite=True to replace it."
+            )
+        if not destination.is_dir():
+            raise ExportError(f"'{destination}' exists and is not a directory.")
+
+    policy_source = Path(policy_path) if policy_path else None
+    policy_file = None
+    policy_format = None
+    if policy_source is not None:
+        if not policy_source.is_file():
+            raise ExportError(f"No policy file at '{policy_source}'.")
+        # Keep the file's own extension: a bundle must not claim to hold an ONNX
+        # graph when it holds a TorchScript module.
+        policy_file = f"{POLICY_STEM}{policy_source.suffix}"
+        policy_format = infer_policy_format(policy_source)
+
+    capture = capture_environment(
+        env,
+        checkpoint=str(checkpoint) if checkpoint else None,
+        policy_file=policy_file,
+        policy_format=policy_format,
+        reference_policy=reference_policy,
+    )
+
+    # The gate. Raises ParityError before anything reaches disk.
+    report = check_parity(capture, ticks=parity_ticks, seed=seed)
+
+    if policy_source is not None and reference_policy is not None:
+        worst = validate_policy(
+            policy_source,
+            reference_policy,
+            report.golden["observations"],
+            policy_format=policy_format,
+            input_name=capture.manifest.policy.input_name,
+        )
+        report.golden["policy_max_error"] = _as_array(worst)
+
+    # Build the bundle somewhere temporary, then move it into place, so a failure
+    # part-way through cannot leave a half-written bundle looking usable.
+    with tempfile.TemporaryDirectory(prefix="genesis-forge-export-") as staging:
+        staged = save_bundle(
+            Path(staging) / "bundle", capture.manifest, golden=report.golden
+        )
+        if policy_source is not None:
+            shutil.copy2(policy_source, staged / policy_file)
+
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(staged), str(destination))
+
+    if verbose:
+        _report(destination, capture, report)
+        if policy_source is not None and reference_policy is None:
+            print(
+                f"  note: {policy_file} was packaged but not verified against the "
+                f"trained policy -- pass reference_policy= to check it"
+            )
+    return destination
+```
+
+# Parity
+
+Compare the numpy deployment pipeline against the live torch pipeline.
+
+Runs a multi-tick sequence so history stacking and any per-step decoder state are exercised, not just a single snapshot. Inputs mix seeded random values with clip-boundary values, since clipping is where the two implementations are most likely to diverge.
+
+Parameters:
+
+| Name      | Type      | Description                                                | Default         |
+| --------- | --------- | ---------------------------------------------------------- | --------------- |
+| `capture` | `Capture` | What the exporter read out of the built environment.       | *required*      |
+| `ticks`   | `int`     | How many sequential ticks to compare.                      | `6`             |
+| `seed`    | `int`     | Seed for the sampled inputs, so a failure is reproducible. | `0`             |
+| `rtol`    | `float`   | Relative tolerance for the numpy-vs-torch comparison.      | `PIPELINE_RTOL` |
+| `atol`    | `float`   | Absolute tolerance for the numpy-vs-torch comparison.      | `PIPELINE_ATOL` |
+
+Returns:
+
+| Name | Type           | Description                                                         |
+| ---- | -------------- | ------------------------------------------------------------------- |
+| `A`  | `ParityReport` | class:ParityReport, including golden samples to ship in the bundle. |
+
+Raises:
+
+| Type          | Description                                                   |
+| ------------- | ------------------------------------------------------------- |
+| `ParityError` | The two pipelines disagreed. The message names the component. |
+
+Source code in `genesis_forge/deployment/parity.py`
+
+```
+def check_parity(
+    capture: Capture,
+    *,
+    ticks: int = 6,
+    seed: int = 0,
+    rtol: float = PIPELINE_RTOL,
+    atol: float = PIPELINE_ATOL,
+) -> ParityReport:
+    """Compare the numpy deployment pipeline against the live torch pipeline.
+
+    Runs a multi-tick sequence so history stacking and any per-step decoder state
+    are exercised, not just a single snapshot. Inputs mix seeded random values with
+    clip-boundary values, since clipping is where the two implementations are most
+    likely to diverge.
+
+    Args:
+        capture: What the exporter read out of the built environment.
+        ticks: How many sequential ticks to compare.
+        seed: Seed for the sampled inputs, so a failure is reproducible.
+        rtol: Relative tolerance for the numpy-vs-torch comparison.
+        atol: Absolute tolerance for the numpy-vs-torch comparison.
+
+    Returns:
+        A :class:`ParityReport`, including golden samples to ship in the bundle.
+
+    Raises:
+        ParityError: The two pipelines disagreed. The message names the component.
+    """
+    manifest: Manifest = capture.manifest
+    assembler = ObservationAssembler(manifest.observations)
+    decoder = ActionDecoder(manifest.actions)
+
+    rng = np.random.default_rng(seed)
+    report = ParityReport(ticks=ticks)
+
+    golden_observations: list[np.ndarray] = []
+    golden_policy_inputs: list[np.ndarray] = []
+    golden_actions: list[np.ndarray] = []
+    golden_targets: list[np.ndarray] = []
+
+    # Training mutates its own history buffer as a side effect of observing, so
+    # snapshot it and put it back -- exporting must not disturb the environment.
+    with preserved_observation_history(capture.observation_manager):
+        assembler.reset()
+        decoder.reset()
+
+        for tick in range(ticks):
+            # Every entry is caller-supplied now -- including the ones that echo the
+            # pipeline's own output -- so both sides get the same dict.
+            observation_values = sample_observation_values(manifest, rng)
+
+            numpy_obs = assembler.assemble(observation_values)
+            torch_obs = torch_observations(capture, observation_values)
+
+            error = max_abs_error(numpy_obs, torch_obs)
+            report.max_observation_error = max(report.max_observation_error, error)
+            require_close(
+                numpy_obs,
+                torch_obs,
+                rtol=rtol,
+                atol=atol,
+                component="observation assembly",
+                detail=(
+                    f"tick {tick}: the deployment assembler and the training "
+                    f"ObservationManager produced different vectors"
+                ),
+            )
+
+            raw_actions = sample_actions(manifest, rng, tick=tick)
+            decoded = decoder.decode(raw_actions)
+
+            for spec in manifest.actions:
+                manager = capture.action_managers[spec.name]
+                chunk = raw_actions[spec.slice_start : spec.slice_end]
+                torch_chunk = torch.as_tensor(
+                    np.tile(chunk, (capture.num_envs, 1)), dtype=torch.float32
+                )
+                torch_targets = manager.process_actions(torch_chunk).detach()[0]
+                numpy_targets = decoded.by_manager[spec.name]
+
+                error = max_abs_error(numpy_targets, torch_targets)
+                report.max_action_error[spec.name] = max(
+                    report.max_action_error.get(spec.name, 0.0), error
+                )
+                require_close(
+                    numpy_targets,
+                    torch_targets,
+                    rtol=rtol,
+                    atol=atol,
+                    component=f"action manager '{spec.name}' ({spec.deploy_type})",
+                    detail=(
+                        f"tick {tick}: the deployment decoder and the manager's "
+                        f"process_actions produced different joint targets"
+                    ),
+                )
+
+            golden_observations.append(numpy_obs)
+            golden_policy_inputs.append(
+                np.concatenate(
+                    [observation_values[name] for name in sorted(observation_values)]
+                )
+                if observation_values
+                else np.zeros(0, dtype=np.float32)
+            )
+            golden_actions.append(raw_actions)
+            golden_targets.append(decoded.targets)
+
+    report.golden = {
+        "observations": np.asarray(golden_observations, dtype=np.float32),
+        "raw_actions": np.asarray(golden_actions, dtype=np.float32),
+        "joint_targets": np.asarray(golden_targets, dtype=np.float32),
+    }
+    if golden_policy_inputs and golden_policy_inputs[0].size:
+        report.golden["sensor_inputs"] = np.asarray(
+            golden_policy_inputs, dtype=np.float32
+        )
+    return report
+```
+
+What the parity run compared, and the worst disagreement it saw.
+
+## `golden = field(default_factory=dict)`
+
+## `max_action_error = field(default_factory=dict)`
+
+## `max_observation_error = 0.0`
+
+## `ticks`
+
+## `summary()`
+
+Source code in `genesis_forge/deployment/parity.py`
+
+```
+def summary(self) -> str:
+    actions = ", ".join(
+        f"{name}: {error:.2e}" for name, error in sorted(self.max_action_error.items())
+    )
+    return (
+        f"parity over {self.ticks} tick(s) -- observations within "
+        f"{self.max_observation_error:.2e}"
+        + (f"; actions {actions}" if actions else "")
+    )
+```
+
+## Verifying an exported policy file
+
+Verify an exported policy against the one it came from, whatever its format.
+
+Parameters:
+
+| Name               | Type      | Description                                                                                                                                                 | Default                                                    |
+| ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `policy_path`      | \`str     | Path\`                                                                                                                                                      | The exported policy file.                                  |
+| `reference_policy` | `Any`     | What to check the file against -- the trained policy itself, as a torch callable taking a float32 tensor and returning actions.                             | *required*                                                 |
+| `observations`     | `ndarray` | Observation vectors to compare on, shaped (ticks, size).                                                                                                    | *required*                                                 |
+| `policy_format`    | \`str     | None\`                                                                                                                                                      | Override the format instead of inferring it from the file. |
+| `input_name`       | `str`     | The ONNX graph's input name. Ignored for other formats.                                                                                                     | `'obs'`                                                    |
+| `rtol`             | `float`   | Relative tolerance, applied against the reference action. This is the one that matters -- the drift between runtimes scales with how large the actions are. | `POLICY_RTOL`                                              |
+| `atol`             | `float`   | Absolute tolerance, which only takes over near zero.                                                                                                        | `POLICY_ATOL`                                              |
+
+Returns:
+
+| Type    | Description                               |
+| ------- | ----------------------------------------- |
+| `float` | The largest absolute difference observed. |
+
+Raises:
+
+| Type          | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `ParityError` | The two disagreed, or the format has no validator. |
+
+Source code in `genesis_forge/deployment/policy_parity.py`
+
+```
+def validate_policy(
+    policy_path: str | Path,
+    reference_policy: Any,
+    observations: np.ndarray,
+    *,
+    policy_format: str | None = None,
+    input_name: str = "obs",
+    rtol: float = POLICY_RTOL,
+    atol: float = POLICY_ATOL,
+) -> float:
+    """Verify an exported policy against the one it came from, whatever its format.
+
+    Args:
+        policy_path: The exported policy file.
+        reference_policy: What to check the file against -- the trained policy
+            itself, as a torch callable taking a float32 tensor and returning
+            actions.
+        observations: Observation vectors to compare on, shaped ``(ticks, size)``.
+        policy_format: Override the format instead of inferring it from the file.
+        input_name: The ONNX graph's input name. Ignored for other formats.
+        rtol: Relative tolerance, applied against the reference action. This is
+            the one that matters -- the drift between runtimes scales with how
+            large the actions are.
+        atol: Absolute tolerance, which only takes over near zero.
+
+    Returns:
+        The largest absolute difference observed.
+
+    Raises:
+        ParityError: The two disagreed, or the format has no validator.
+    """
+    resolved = policy_format or infer_policy_format(policy_path)
+
+    if resolved == "onnx":
+        return validate_onnx_policy(
+            policy_path,
+            reference_policy,
+            observations,
+            input_name=input_name,
+            rtol=rtol,
+            atol=atol,
+        )
+    if resolved == "torchscript":
+        return validate_torchscript_policy(
+            policy_path, reference_policy, observations, rtol=rtol, atol=atol
+        )
+    raise ParityError(
+        f"No validator for policy format '{resolved}'. The file is still packaged "
+        f"into the bundle -- omit the trained policy to skip this check, or pass "
+        f"policy_format= if the format was mis-detected."
+    )
+```
+
+Work out what kind of policy file this is.
+
+Uses the extension, then checks the file's own bytes for a contradiction -- a `.onnx` file that is really a torch archive is a mislabelling worth catching at export time rather than on the robot.
+
+Parameters:
+
+| Name          | Type  | Description | Default                   |
+| ------------- | ----- | ----------- | ------------------------- |
+| `policy_path` | \`str | Path\`      | The exported policy file. |
+
+Returns:
+
+| Type  | Description                                                            |
+| ----- | ---------------------------------------------------------------------- |
+| `str` | The format name, or "unknown" for an extension we do not recognise     |
+| `str` | (which is fine: the bundle records it and the runtime never loads it). |
+
+Raises:
+
+| Type          | Description                                     |
+| ------------- | ----------------------------------------------- |
+| `ParityError` | The extension and the file's contents disagree. |
+
+Source code in `genesis_forge/deployment/policy_parity.py`
+
+```
+def infer_policy_format(policy_path: str | Path) -> str:
+    """Work out what kind of policy file this is.
+
+    Uses the extension, then checks the file's own bytes for a contradiction --
+    a ``.onnx`` file that is really a torch archive is a mislabelling worth
+    catching at export time rather than on the robot.
+
+    Args:
+        policy_path: The exported policy file.
+
+    Returns:
+        The format name, or ``"unknown"`` for an extension we do not recognise
+        (which is fine: the bundle records it and the runtime never loads it).
+
+    Raises:
+        ParityError: The extension and the file's contents disagree.
+    """
+    path = Path(policy_path)
+    declared = _EXTENSION_FORMATS.get(path.suffix.lower(), "unknown")
+
+    with path.open("rb") as handle:
+        looks_like_archive = handle.read(4) == _ZIP_MAGIC
+
+    if declared == "onnx" and looks_like_archive:
+        raise ParityError(
+            f"'{path.name}' has an .onnx extension but its contents are a torch "
+            f"archive, not an ONNX graph. Export it with "
+            f"runner.export_policy_to_onnx(...), or give the file its real "
+            f"extension so the bundle records what it actually holds."
+        )
+    if declared == "torchscript" and not looks_like_archive:
+        raise ParityError(
+            f"'{path.name}' looks like a TorchScript file by extension, but its "
+            f"contents are not a torch archive. Check that the export completed."
+        )
+    return declared
+```
+
+Compare an ONNX graph under onnxruntime against the trained torch policy.
+
+Source code in `genesis_forge/deployment/policy_parity.py`
+
+```
+def validate_onnx_policy(
+    policy_path: str | Path,
+    reference_policy: Any,
+    observations: np.ndarray,
+    *,
+    input_name: str = "obs",
+    rtol: float = POLICY_RTOL,
+    atol: float = POLICY_ATOL,
+) -> float:
+    """Compare an ONNX graph under onnxruntime against the trained torch policy."""
+    try:
+        import onnxruntime
+    except ImportError as error:  # pragma: no cover - depends on the environment
+        raise ParityError(
+            "onnxruntime is required to verify an exported ONNX policy. Install it "
+            "with `pip install onnxruntime`, or export without a policy file."
+        ) from error
+
+    session = onnxruntime.InferenceSession(
+        str(policy_path), providers=["CPUExecutionProvider"]
+    )
+
+    def run(batched: np.ndarray) -> np.ndarray:
+        return np.asarray(session.run(None, {input_name: batched})[0]).ravel()
+
+    return _compare(
+        run, reference_policy, observations, rtol=rtol, atol=atol, kind="ONNX graph"
+    )
+```
+
+Compare a TorchScript module against the trained torch policy.
+
+Source code in `genesis_forge/deployment/policy_parity.py`
+
+```
+def validate_torchscript_policy(
+    policy_path: str | Path,
+    reference_policy: Any,
+    observations: np.ndarray,
+    *,
+    rtol: float = POLICY_RTOL,
+    atol: float = POLICY_ATOL,
+) -> float:
+    """Compare a TorchScript module against the trained torch policy."""
+    try:
+        module = torch.jit.load(str(policy_path), map_location="cpu")
+    except Exception as error:
+        raise ParityError(
+            f"Could not load '{Path(policy_path).name}' as TorchScript: {error}"
+        ) from error
+    module.eval()
+
+    def run(batched: np.ndarray) -> np.ndarray:
+        # The module is loaded onto the CPU, so pin its input there too -- training
+        # may well have left torch's default device pointing at the GPU.
+        with torch.no_grad():
+            output = module(
+                torch.as_tensor(batched, dtype=torch.float32, device="cpu")
+            )
+        return output.detach().cpu().numpy().ravel()
+
+    return _compare(
+        run,
+        reference_policy,
+        observations,
+        rtol=rtol,
+        atol=atol,
+        kind="TorchScript module",
     )
 ```
 # Other

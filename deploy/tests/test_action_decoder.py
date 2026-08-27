@@ -654,8 +654,8 @@ def test_the_decoder_source_expression_actually_evaluates():
         ObservationEntry,
     )
 
-    decoder = ActionDecoder((position_spec(),))
-    decoder.decode([1.0, 1.0, 1.0])
+    action_decoder = ActionDecoder((position_spec(),))
+    action_decoder.decode([1.0, 1.0, 1.0])
 
     for stage in (STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS):
         for manager in (None, "action_manager"):
@@ -666,5 +666,7 @@ def test_the_decoder_source_expression_actually_evaluates():
                 pipeline_stage=stage,
                 action_manager=manager,
             )
-            value = eval(entry.decoder_source, {"decoder": decoder})
+            # The name bound here is the one the docs tell users to use, so this
+            # fails if describe()'s prefix and the documented variable drift apart.
+            value = eval(entry.decoder_source, {"action_decoder": action_decoder})
             assert len(value) == 3, entry.decoder_source

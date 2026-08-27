@@ -38,21 +38,6 @@ class ObservationConfig(ConfigItemDict):
     """Units this observation is expressed in (for example ``"rad/s"``), recorded into
     the deployment bundle. Wrong units are a classic sim-to-real failure, and naming
     them here is the cheapest guard against it."""
-
-    pipeline_state: NotRequired[str | None]
-    """Override for how deployment export classifies this observation.
-
-    Rarely needed: export works out on its own which observations echo the policy's
-    own output rather than a sensor, so an ordinary previous-actions entry needs no
-    marker. Set this only when that detection gets it wrong -- for example an entry
-    that transforms the actions before returning them, which export conservatively
-    treats as a sensor input.
-
-    Either ``"raw_actions"`` (the policy's unprocessed output) or ``"target_actions"``
-    (an action manager's decoded joint targets). Recorded in the deployment bundle so
-    the robot-side listing says to read the value off the action decoder."""
-
-
 class ObservationManager(BaseManager):
     """
     Defines the observations and observation space for the environment.
@@ -335,9 +320,6 @@ class ObservationManager(BaseManager):
                 entry["description"] = cfg.description
             if cfg.units:
                 entry["units"] = cfg.units
-            if cfg.pipeline_state:
-                entry["source"] = "pipeline_state"
-                entry["pipeline_stage"] = cfg.pipeline_state
             entries.append(entry)
 
         return {

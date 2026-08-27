@@ -52,8 +52,8 @@ class ObservationEntry:
             return ""
         attribute = f"last_{self.pipeline_stage}"
         if self.action_manager:
-            return f'decoder.{attribute}_by_manager["{self.action_manager}"]'
-        return f"decoder.{attribute}"
+            return f'action_decoder.{attribute}_by_manager["{self.action_manager}"]'
+        return f"action_decoder.{attribute}"
 
     def describe(self) -> str:
         """One-line human summary, used by the listings and the wiring stub."""
@@ -136,17 +136,6 @@ class ObservationLayout:
     def total_size(self) -> int:
         """Width of the full vector handed to the policy."""
         return self.single_size * self.history_length
-
-    @property
-    def required_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Every entry the caller supplies each tick.
-
-        This includes entries that echo the pipeline's own previous output: the
-        caller reads those off the decoder rather than off a sensor, but they are
-        passed to :meth:`assemble` the same way. Making them explicit means a
-        forgotten feedback wire raises instead of silently reading zeros.
-        """
-        return self.entries
 
     @property
     def sensor_inputs(self) -> tuple[ObservationEntry, ...]:

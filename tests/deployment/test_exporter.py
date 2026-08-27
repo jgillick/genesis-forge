@@ -121,8 +121,8 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
 
     path = export(deployable_env, tmp_path / "bundle", verbose=False)
     bundle = load_bundle(path)
-    assembler = bundle.observation_assembler()
-    decoder = bundle.action_decoder()
+    assembler = bundle.create_observation_assembler()
+    decoder = bundle.create_action_decoder()
 
     sensors = {
         "gyro": np.array([0.3, -0.4, 0.5], dtype=np.float32),
@@ -154,7 +154,7 @@ def test_golden_samples_replay_through_the_loaded_runtime(deployable_env, tmp_pa
     """The on-robot smoke test: recorded actions must decode to recorded targets."""
     path = export(deployable_env, tmp_path / "bundle", verbose=False)
     bundle = load_bundle(path)
-    decoder = bundle.action_decoder()
+    decoder = bundle.create_action_decoder()
 
     for raw, expected in zip(
         bundle.golden["raw_actions"], bundle.golden["joint_targets"], strict=True
@@ -411,19 +411,23 @@ def test_current_actions_with_a_manager_reads_that_managers_raw_slice(
     assert entry.action_manager == "action_manager"
     assert (
         entry.decoder_source
-        == 'decoder.last_raw_actions_by_manager["action_manager"]'
+        == 'action_decoder.last_raw_actions_by_manager["action_manager"]'
     )
 
 
-def test_get_actions_and_current_actions_are_told_apart(make_env, tmp_path):
-    """The two feedback forms resolve to different decoder properties."""
+def test_only_the_inspectable_form_is_recognised(make_env, tmp_path):
+    """Side by side: the MDP function is understood, the lambda is not.
+
+    Both read the pipeline's own output, but only one says so in a way export can
+    see -- which is the argument for reaching for current_actions().
+    """
     env = make_env()
     manager = ObservationManager(
         env,
         cfg={
             "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "raw_feedback": {"fn": current_actions(action_manager=env.action_manager)},
-            "target_feedback": {"fn": lambda env: env.action_manager.get_actions()},
+            "recognised": {"fn": current_actions(action_manager=env.action_manager)},
+            "opaque": {"fn": lambda env: env.action_manager.get_actions()},
         },
     )
     env.managers["observation"] = [manager]
@@ -432,95 +436,18 @@ def test_get_actions_and_current_actions_are_told_apart(make_env, tmp_path):
 
     layout = load_bundle(export(env, tmp_path / "bundle", verbose=False)).manifest.observations
 
-    assert layout.entry("raw_feedback").pipeline_stage == "raw_actions"
-    assert layout.entry("target_feedback").pipeline_stage == "target_actions"
-
-
-def test_an_explicit_marker_wins_over_detection(make_env, tmp_path):
-    env = make_env()
-    manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {
-                "fn": current_actions(action_manager=env.action_manager),
-                "pipeline_state": "raw_actions",
-            },
-        },
-    )
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    manager.build()
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-
-    assert bundle.manifest.observations.entry("actions").pipeline_stage == "raw_actions"
-
-
-def test_an_explicit_processed_marker_resolves_the_single_action_manager(
-    make_env, tmp_path
-):
-    """A lambda-based actions entry can opt in with a marker, no import needed."""
-    env = make_env()
-    manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {
-                "fn": lambda env: env.action_manager.get_actions(),
-                "pipeline_state": "target_actions",
-            },
-        },
-    )
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    manager.build()
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("actions")
-
-    assert entry.pipeline_stage == "target_actions"
-    assert entry.action_manager == "action_manager"
-
-
-def test_an_ambiguous_processed_marker_is_refused(tmp_path):
-    from tests.deployment.conftest import FakeActuatorManager, FakeManagedEnv
-
-    env = FakeManagedEnv()
-    env.actuator_manager = FakeActuatorManager(num_envs=env.num_envs)
-    env.managers["actuator"].append(env.actuator_manager)
-    env.hips = PositionActionManager(
-        env, actuator_manager=env.actuator_manager, actuator_joints=[".*_hip"]
-    )
-    env.knees = PositionActionManager(
-        env, actuator_manager=env.actuator_manager, actuator_joints=[".*_knee"]
-    )
-    env.observation_manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {
-                "fn": lambda env: env.hips.get_actions(),
-                "pipeline_state": "target_actions",
-            },
-        },
-    )
-    env.build()
-
-    with pytest.raises(ExportError) as error:
-        export(env, tmp_path / "bundle", verbose=False)
-
-    message = str(error.value)
-    assert "actions" in message
-    assert "hips" in message and "knees" in message
+    assert layout.entry("recognised").pipeline_stage == "raw_actions"
+    assert layout.entry("recognised").action_manager == "action_manager"
+    # The lambda is indistinguishable from a sensor reading, so it is left as one.
+    assert not layout.entry("opaque").is_pipeline_state
 
 
 """
-Detecting action feedback by probing (R15)
+Detecting action feedback (R15)
 
-An observation written as a lambda cannot be introspected, so export determines
-what it reads by writing sentinels into the action buffers and seeing which one
-comes back. Anything matching no sentinel is an ordinary sensor input.
+``current_actions`` is an MdpFn instance, so export can see what it reads straight
+off the object. A lambda's body cannot be inspected, so it is treated as an
+ordinary sensor input -- the safe default, and a nudge toward the MDP function.
 """
 
 
@@ -540,8 +467,8 @@ def observation_env(make_env, cfg, *, actions=None):
     return env
 
 
-def test_a_lambda_reading_target_actions_is_detected(make_env, tmp_path):
-    """The form every example uses -- no marker, no MDP function, just a lambda."""
+def test_a_lambda_is_treated_as_a_sensor_input(make_env, tmp_path):
+    """Export will not guess at a body it cannot read, so it claims nothing."""
     env = observation_env(
         make_env,
         {
@@ -553,26 +480,8 @@ def test_a_lambda_reading_target_actions_is_detected(make_env, tmp_path):
     bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
     entry = bundle.manifest.observations.entry("actions")
 
-    assert entry.is_pipeline_state
-    assert entry.pipeline_stage == "target_actions"
-    assert entry.action_manager == "action_manager"
-
-
-def test_a_lambda_reading_raw_env_actions_is_detected(make_env, tmp_path):
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": lambda env: env.actions},
-        },
-        actions=torch.zeros((4, 3)),
-    )
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("actions")
-
-    assert entry.pipeline_stage == "raw_actions"
-    assert entry.action_manager is None
+    assert not entry.is_pipeline_state
+    assert entry.decoder_source == ""
 
 
 def test_ordinary_sensor_entries_are_left_alone(make_env, tmp_path):
@@ -585,23 +494,7 @@ def test_ordinary_sensor_entries_are_left_alone(make_env, tmp_path):
     assert not bundle.manifest.observations.entry("gyro").is_pipeline_state
 
 
-def test_a_derived_action_value_falls_back_to_sensor(make_env, tmp_path):
-    """Probing is deliberately conservative: transformed values are not claimed."""
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "half_actions": {"fn": lambda env: env.action_manager.get_actions() * 0.5},
-        },
-    )
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-
-    assert not bundle.manifest.observations.entry("half_actions").is_pipeline_state
-
-
-def test_probing_identifies_which_manager_with_several_registered(tmp_path):
-    """The case an explicit marker cannot express -- the probe just knows."""
+def test_detection_identifies_which_manager_with_several_registered(tmp_path):
     from tests.deployment.conftest import FakeActuatorManager, FakeManagedEnv
 
     env = FakeManagedEnv()
@@ -617,7 +510,7 @@ def test_probing_identifies_which_manager_with_several_registered(tmp_path):
         env,
         cfg={
             "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "knee_actions": {"fn": lambda env: env.knees.get_actions()},
+            "knee_actions": {"fn": current_actions(action_manager=env.knees)},
         },
     )
     env.build()
@@ -625,69 +518,182 @@ def test_probing_identifies_which_manager_with_several_registered(tmp_path):
     bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
     entry = bundle.manifest.observations.entry("knee_actions")
 
-    assert entry.pipeline_stage == "target_actions"
+    assert entry.pipeline_stage == "raw_actions"
     assert entry.action_manager == "knees"
+    assert entry.decoder_source == 'action_decoder.last_raw_actions_by_manager["knees"]'
 
 
-def test_an_explicit_marker_still_wins_over_probing(make_env, tmp_path):
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            # Reads target actions, but the author declares it as raw.
-            "actions": {
-                "fn": lambda env: env.action_manager.get_actions(),
-                "pipeline_state": "raw_actions",
-            },
-        },
-    )
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-
-    assert bundle.manifest.observations.entry("actions").pipeline_stage == "raw_actions"
-
-
-def test_probing_restores_the_environments_action_buffers(make_env, tmp_path):
-    """Export must not disturb an environment someone may still be training with."""
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": lambda env: env.action_manager.get_actions()},
-        },
-    )
-    env.actions = torch.full((env.num_envs, 3), 7.0)
-    env.action_manager._actions = torch.full((env.num_envs, 3), 8.0)
-    env.action_manager._raw_actions = torch.full((env.num_envs, 3), 9.0)
-    before = (env.actions, env.action_manager._actions, env.action_manager._raw_actions)
-
-    export(env, tmp_path / "bundle", verbose=False)
-
-    after = (env.actions, env.action_manager._actions, env.action_manager._raw_actions)
-    for original, restored in zip(before, after, strict=True):
-        assert original is restored
-    torch.testing.assert_close(env.actions, torch.full((env.num_envs, 3), 7.0))
-
-
-def test_a_failing_observation_function_does_not_break_the_probe(make_env, tmp_path):
-    """A probe is best-effort; it must never be the reason an export fails."""
-    calls = {"count": 0}
-
-    def flaky(env):
-        calls["count"] += 1
-        # Fails only while probing (the second call), after build() succeeded.
-        if calls["count"] == 2:
-            raise RuntimeError("sensor unavailable")
-        return torch.ones((env.num_envs, 2))
+def test_reading_from_an_unregistered_action_manager_is_refused(make_env, tmp_path):
+    """A manager belonging to some other environment cannot be reproduced."""
+    stranger = make_env().action_manager
 
     env = observation_env(
         make_env,
         {
             "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "flaky": {"fn": flaky},
+            "actions": {"fn": current_actions(action_manager=stranger)},
         },
     )
 
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
+    with pytest.raises(ExportError) as error:
+        export(env, tmp_path / "bundle", verbose=False)
 
-    assert not bundle.manifest.observations.entry("flaky").is_pipeline_state
+    assert "actions" in str(error.value)
+    assert "not registered" in str(error.value)
+
+
+"""
+Packaging a policy of any format
+"""
+
+
+def a_torchscript_policy(tmp_path):
+    module = torch.nn.Linear(4, 2).eval()
+    path = tmp_path / "trained.pt"
+    torch.jit.save(torch.jit.trace(module, torch.zeros(1, 4)), str(path))
+    return path
+
+
+def test_a_torchscript_policy_keeps_its_extension(deployable_env, tmp_path):
+    """The bundle must not rename a torch archive to policy.onnx."""
+    policy = a_torchscript_policy(tmp_path)
+
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
+    )
+
+    bundle = load_bundle(path)
+    assert bundle.policy_path.name == "policy.pt"
+    assert bundle.manifest.policy.format == "torchscript"
+
+
+def test_an_onnx_policy_is_recorded_as_onnx(deployable_env, tmp_path):
+    policy = tmp_path / "trained.onnx"
+    policy.write_bytes(b"\x08\x07not-really-but-not-a-zip-either")
+
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
+    )
+
+    bundle = load_bundle(path)
+    assert bundle.policy_path.name == "policy.onnx"
+    assert bundle.manifest.policy.format == "onnx"
+
+
+def test_a_mislabelled_policy_is_refused(deployable_env, tmp_path):
+    """An .onnx file that is really a torch archive never reaches the bundle."""
+    mislabelled = tmp_path / "trained.onnx"
+    torch.jit.save(
+        torch.jit.trace(torch.nn.Linear(4, 2).eval(), torch.zeros(1, 4)),
+        str(mislabelled),
+    )
+    destination = tmp_path / "bundle"
+
+    with pytest.raises(ParityError) as error:
+        export(deployable_env, destination, policy_path=mislabelled, verbose=False)
+
+    assert "torch archive" in str(error.value)
+    assert not destination.exists()
+
+
+def test_an_unverified_policy_is_flagged_in_the_summary(deployable_env, tmp_path, capsys):
+    policy = a_torchscript_policy(tmp_path)
+
+    export(deployable_env, tmp_path / "bundle", policy_path=policy)
+
+    output = capsys.readouterr().out
+    assert "not verified" in output
+    assert "reference_policy" in output
+
+
+def test_describe_reports_the_policy_format(deployable_env, tmp_path):
+    policy = a_torchscript_policy(tmp_path)
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
+    )
+
+    summary = load_bundle(path).describe()
+
+    assert "policy.pt (torchscript)" in summary
+
+
+"""
+Provenance
+
+Which export produced the bundle a robot is running is the first question asked
+when it misbehaves, so the training framework is identified from the reference
+policy rather than being declared separately.
+"""
+
+
+def test_the_training_framework_is_taken_from_the_reference_policy(
+    deployable_env, tmp_path
+):
+    # The framework is read off the policy's defining module, which is how a real
+    # rsl_rl export is identified (its wrapper lives in rsl_rl.models.mlp_model).
+    class FrameworkPolicy(torch.nn.Module):
+        def forward(self, observations):
+            return observations[:, :2]
+
+    FrameworkPolicy.__module__ = "rsl_rl.models.mlp_model"
+
+    path = export(
+        deployable_env,
+        tmp_path / "bundle",
+        reference_policy=FrameworkPolicy(),
+        verbose=False,
+    )
+
+    provenance = load_bundle(path).manifest.provenance
+    assert provenance.policy_framework == "rsl_rl"
+
+
+def test_provenance_still_records_versions_without_a_reference_policy(
+    deployable_env, tmp_path
+):
+    """Exporting the contract alone stays useful -- only the framework is unknown."""
+    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+
+    provenance = load_bundle(path).manifest.provenance
+    assert provenance.policy_framework is None
+    assert provenance.torch_version
+    assert provenance.exported_at
+
+
+def test_the_framework_version_survives_a_renamed_distribution(
+    deployable_env, tmp_path, monkeypatch
+):
+    """rsl_rl installs as rsl-rl-lib, so the import name alone finds no version."""
+    import importlib.metadata
+
+    class FrameworkPolicy(torch.nn.Module):
+        def forward(self, observations):
+            return observations[:, :2]
+
+    FrameworkPolicy.__module__ = "rsl_rl.models.mlp_model"
+
+    monkeypatch.setattr(
+        importlib.metadata, "packages_distributions",
+        lambda: {"rsl_rl": ["rsl-rl-lib"]},
+    )
+    monkeypatch.setattr(
+        importlib.metadata, "version",
+        lambda name: "5.4.2" if name == "rsl-rl-lib" else _no_such_package(name),
+    )
+
+    path = export(
+        deployable_env,
+        tmp_path / "bundle",
+        reference_policy=FrameworkPolicy(),
+        verbose=False,
+    )
+
+    provenance = load_bundle(path).manifest.provenance
+    assert provenance.policy_framework == "rsl_rl"
+    assert provenance.policy_framework_version == "5.4.2"
+
+
+def _no_such_package(name):
+    from importlib.metadata import PackageNotFoundError
+
+    raise PackageNotFoundError(name)

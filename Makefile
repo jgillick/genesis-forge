@@ -19,11 +19,11 @@ deploy: build
 
 docs:
 	uv pip install -r ./docs/requirements.txt
-	mkdocs build
+	uv run mkdocs build
 	cp dist/docs/llms.txt llms.txt
 	cp dist/docs/llms-full.txt llms-full.txt
 
 serve:
 	uv pip install -r ./docs/requirements.txt
-	mkdocs serve
+	uv run mkdocs serve
 

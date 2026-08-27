@@ -205,7 +205,6 @@ class ObservationConfigItem(ConfigItem):
         # the robot-side listing says what each value means and where it comes from.
         self.description = cfg.get("description", None)
         self.units = cfg.get("units", None)
-        self.pipeline_state = cfg.get("pipeline_state", None)
 
 
 def directional_clamp(value: float, increment: float, limit: float | None = None) -> float:

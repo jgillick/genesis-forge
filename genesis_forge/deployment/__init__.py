@@ -17,7 +17,7 @@ The modules behind it:
 
 * :mod:`~genesis_forge.deployment.errors` -- every exception raised here
 * :mod:`~genesis_forge.deployment.provenance` -- where a bundle came from
-* :mod:`~genesis_forge.deployment.probe` -- which observations echo the pipeline
+* :mod:`~genesis_forge.deployment.feedback` -- which observations echo the pipeline
 * :mod:`~genesis_forge.deployment.capture` -- reading the contract off managers
 * :mod:`~genesis_forge.deployment.comparison` -- tolerances and float comparison
 * :mod:`~genesis_forge.deployment.sampling` -- the inputs parity compares on
@@ -31,7 +31,12 @@ from .comparison import PIPELINE_ATOL, PIPELINE_RTOL, POLICY_ATOL
 from .errors import ExportError, ParityError
 from .exporter import export
 from .parity import ParityReport, check_parity
-from .policy_parity import check_policy_parity
+from .policy_parity import (
+    infer_policy_format,
+    validate_onnx_policy,
+    validate_policy,
+    validate_torchscript_policy,
+)
 
 __all__ = [
     "PIPELINE_ATOL",
@@ -43,6 +48,9 @@ __all__ = [
     "ParityReport",
     "capture_environment",
     "check_parity",
-    "check_policy_parity",
     "export",
+    "infer_policy_format",
+    "validate_onnx_policy",
+    "validate_policy",
+    "validate_torchscript_policy",
 ]

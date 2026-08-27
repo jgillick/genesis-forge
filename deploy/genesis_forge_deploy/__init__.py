@@ -12,15 +12,15 @@ Typical robot-side use::
     bundle = load_bundle("./my_policy")
     print(bundle.describe())          # what to wire up
 
-    assembler = bundle.observation_assembler()
-    decoder = bundle.action_decoder()
+    observation_assembler = bundle.create_observation_assembler()
+    action_decoder = bundle.create_action_decoder()
 
     while True:
-        obs = assembler.assemble({
+        obs = observation_assembler.assemble({
             "robot_ang_vel": gyro,
-            "actions": decoder.last_target_actions_by_manager["action_manager"],
+            "actions": action_decoder.last_target_actions_by_manager["action_manager"],
         })
-        targets = decoder.decode(policy(obs))
+        targets = action_decoder.decode(policy(obs))
         send_to_motors(targets.by_joint)
 
 The modules behind it, roughly in dependency order:
@@ -48,7 +48,9 @@ from .constants import (
     HISTORY_NEWEST_FIRST,
     MANIFEST_FILENAME,
     MIN_SUPPORTED_SCHEMA_VERSION,
-    POLICY_FILENAME,
+    POLICY_FORMAT_ONNX,
+    POLICY_FORMAT_TORCHSCRIPT,
+    POLICY_STEM,
     SCHEMA_VERSION,
     SOURCE_PIPELINE_STATE,
     SOURCE_SENSOR,
@@ -74,7 +76,9 @@ __all__ = [
     "HISTORY_NEWEST_FIRST",
     "MANIFEST_FILENAME",
     "MIN_SUPPORTED_SCHEMA_VERSION",
-    "POLICY_FILENAME",
+    "POLICY_FORMAT_ONNX",
+    "POLICY_FORMAT_TORCHSCRIPT",
+    "POLICY_STEM",
     "SCHEMA_VERSION",
     "SOURCE_PIPELINE_STATE",
     "SOURCE_SENSOR",

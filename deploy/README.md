@@ -22,16 +22,16 @@ from genesis_forge_deploy import load_bundle
 bundle = load_bundle("./my_policy")
 print(bundle.describe())          # what to wire up
 
-assembler = bundle.observation_assembler()
-decoder = bundle.action_decoder()
+observation_assembler = bundle.create_observation_assembler()
+action_decoder = bundle.create_action_decoder()
 
 while True:
-    observation = assembler.assemble({
+    observation = observation_assembler.assemble({
         "robot_ang_vel": imu.gyro,
         "dof_pos": joints.positions,
-        "actions": decoder.last_target_actions,   # zeros before the first tick
+        "actions": action_decoder.last_target_actions,   # zeros before the first tick
     })
-    targets = decoder.decode(policy(observation))
+    targets = action_decoder.decode(policy(observation))
     send_to_motors(targets.by_joint)
 ```
 

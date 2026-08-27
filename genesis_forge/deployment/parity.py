@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
+from genesis_forge_deploy import ActionDecoder, ObservationAssembler
 
 from .comparison import PIPELINE_ATOL, PIPELINE_RTOL, max_abs_error, require_close
 from .sampling import (
@@ -77,8 +78,6 @@ def check_parity(
     Raises:
         ParityError: The two pipelines disagreed. The message names the component.
     """
-    from genesis_forge_deploy import ActionDecoder, ObservationAssembler
-
     manifest: Manifest = capture.manifest
     assembler = ObservationAssembler(manifest.observations)
     decoder = ActionDecoder(manifest.actions)

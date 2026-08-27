@@ -20,9 +20,15 @@ from .serialization import decode_value, encode_value, require
 
 @dataclass(frozen=True)
 class PolicySpec:
-    """Where the exported policy lives and what its output means."""
+    """Where the exported policy lives, what format it is, and what its output means.
+
+    The bundle records the format rather than requiring one: ONNX is the documented
+    path, but a TorchScript file (or anything else you load yourself) is equally
+    welcome -- the runtime never loads the policy for you.
+    """
 
     file: str | None = None
+    format: str | None = None
     input_name: str = "obs"
     output_name: str = "actions"
     output_semantics: str = "raw"
@@ -32,6 +38,7 @@ class PolicySpec:
     def from_dict(cls, data: dict[str, Any]) -> PolicySpec:
         return cls(
             file=data.get("file"),
+            format=data.get("format"),
             input_name=data.get("input_name", "obs"),
             output_name=data.get("output_name", "actions"),
             output_semantics=data.get("output_semantics", "raw"),
@@ -48,6 +55,8 @@ class PolicySpec:
         }
         if self.file is not None:
             data["file"] = self.file
+        if self.format is not None:
+            data["format"] = self.format
         if self.normalizer is not None:
             data["normalizer"] = encode_value(self.normalizer)
         return data

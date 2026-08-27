@@ -11,13 +11,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from genesis_forge_deploy import (
+    ActionManagerSpec,
+    ActuatorSpec,
+    Manifest,
+    ObservationLayout,
+    PolicySpec,
+)
+
 from .errors import ExportError
-from .probe import detect_pipeline_state_entries
+from .feedback import classify_feedback_entries
 from .provenance import build_provenance
 
 if TYPE_CHECKING:  # pragma: no cover
-    from genesis_forge_deploy import Manifest
-
     from genesis_forge.managers.action.base import BaseActionManager
 
 
@@ -37,7 +43,8 @@ def capture_environment(
     *,
     checkpoint: str | None = None,
     policy_file: str | None = None,
-    policy: Any = None,
+    policy_format: str | None = None,
+    reference_policy: Any = None,
 ) -> Capture:
     """Read the full deployment contract from a built environment.
 
@@ -45,7 +52,9 @@ def capture_environment(
         env: A built :class:`~genesis_forge.ManagedEnvironment`.
         checkpoint: Optional path to the trained checkpoint, recorded as provenance.
         policy_file: Filename of an exported policy shipped inside the bundle.
-        policy: The framework's policy object, used only to record provenance.
+        policy_format: What kind of policy file it is (``"onnx"``, ``"torchscript"``).
+        reference_policy: The trained policy, used only to identify the training
+            framework for provenance.
 
     Returns:
         The :class:`Capture` the exporter and parity harness both work from.
@@ -54,14 +63,6 @@ def capture_environment(
         ExportError: The environment is not built, or is configured in a way the
             bundle schema cannot express.
     """
-    from genesis_forge_deploy import (
-        ActionManagerSpec,
-        ActuatorSpec,
-        Manifest,
-        ObservationLayout,
-        PolicySpec,
-    )
-
     managers = getattr(env, "managers", None)
     if not isinstance(managers, dict):
         raise ExportError(
@@ -75,7 +76,7 @@ def capture_environment(
 
     action_specs, action_managers = _capture_actions(env, managers, names)
     observation_manager, layout_data, entry_names = _capture_observations(
-        managers, env, action_managers
+        managers, names, action_managers
     )
     actuators = _capture_actuators(managers, names)
 
@@ -95,8 +96,12 @@ def capture_environment(
         actuators=tuple(
             ActuatorSpec.from_dict(spec, where="actuators") for spec in actuators
         ),
-        policy=PolicySpec(file=policy_file) if policy_file else None,
-        provenance=build_provenance(checkpoint=checkpoint, policy=policy),
+        policy=PolicySpec(file=policy_file, format=policy_format)
+        if policy_file
+        else None,
+        provenance=build_provenance(
+            checkpoint=checkpoint, reference_policy=reference_policy
+        ),
     )
 
     return Capture(
@@ -159,7 +164,7 @@ def _capture_actions(
 
 def _capture_observations(
     managers: dict[str, Any],
-    env: Any,
+    names: dict[int, str],
     action_managers: dict[str, BaseActionManager],
 ) -> tuple[Any, dict[str, Any], list[str]]:
     """Capture the layout of the pipeline that actually feeds the policy."""
@@ -188,7 +193,12 @@ def _capture_observations(
         )
 
     layout = chosen.get_deployment_layout()
-    detect_pipeline_state_entries(chosen, layout, env, action_managers)
+
+    # Mark the entries that read the pipeline's own output rather than a sensor.
+    feedback = classify_feedback_entries(chosen, names, action_managers)
+    for entry in layout["entries"]:
+        entry.update(feedback.get(entry["name"], {}))
+
     return chosen, layout, list(chosen.cfg.keys())
 
 

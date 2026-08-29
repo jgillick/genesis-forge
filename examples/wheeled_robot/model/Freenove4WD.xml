@@ -1,0 +1,215 @@
+<mujoco model="Freenove4WD">
+    <compiler angle="radian" />
+    <default>
+        <mesh scale="0.001 0.001 0.001" />
+        <geom contype="0" conaffinity="0" group="2" />
+        <default class="collision">
+            <geom contype="1" conaffinity="1" group="3" pos="0 0 0" mass="0.0" />
+        </default>
+    </default>
+    <custom>
+        <numeric name="ground_offset" data="0.0457855" />
+    </custom>
+    <asset>
+        <mesh name="MainPCB_visual" file="meshes/MainPCB/visual.stl" />
+        <mesh name="MainPCB_collision00" file="meshes/MainPCB/collision00.stl" />
+        <mesh name="motor_visual" file="meshes/motor/visual.stl" />
+        <mesh name="motor_collision00" file="meshes/motor/collision00.stl" />
+        <mesh name="motor_collision01" file="meshes/motor/collision01.stl" />
+        <mesh name="shell_visual" file="meshes/shell/visual.stl" />
+        <mesh name="shell_collision00" file="meshes/shell/collision00.stl" />
+        <mesh name="bottom_visual" file="meshes/bottom/visual.stl" />
+        <mesh name="bottom_collision00" file="meshes/bottom/collision00.stl" />
+        <mesh name="axel_visual" file="meshes/axel/visual.stl" />
+        <mesh name="axel_collision00" file="meshes/axel/collision00.stl" />
+        <mesh name="tire_visual" file="meshes/tire/visual.stl" />
+        <mesh name="tire_collision00" file="meshes/tire/collision00.stl" />
+        <mesh name="tire_collision01" file="meshes/tire/collision01.stl" />
+        <mesh name="tire_collision02" file="meshes/tire/collision02.stl" />
+        <mesh name="tire_collision03" file="meshes/tire/collision03.stl" />
+        <mesh name="hub_visual" file="meshes/hub/visual.stl" />
+        <mesh name="hub_collision00" file="meshes/hub/collision00.stl" />
+        <mesh name="PiSpacers_visual" file="meshes/PiSpacers/visual.stl" />
+        <mesh name="PiSpacers_collision00" file="meshes/PiSpacers/collision00.stl" />
+        <mesh name="PiSpacers_collision01" file="meshes/PiSpacers/collision01.stl" />
+        <mesh name="PiSpacers_collision02" file="meshes/PiSpacers/collision02.stl" />
+        <mesh name="PiSpacers_collision03" file="meshes/PiSpacers/collision03.stl" />
+        <mesh name="RPI4_visual" file="meshes/RPI4/visual.stl" />
+        <mesh name="RPI4_collision00" file="meshes/RPI4/collision00.stl" />
+        <material name="MainPCB_mat" rgba="0.0980 0.0980 0.0980 1.0000" roughness="0.7071" />
+        <material name="motor_mat" rgba="0.6275 0.6275 0.6275 1.0000" roughness="0.2000" />
+        <material name="shell_mat" rgba="0.9137 0.9137 0.0706 1.0000" roughness="0.2000" />
+        <material name="bottom_mat" rgba="0.1961 0.1961 0.1961 1.0000" roughness="0.2000" />
+        <material name="axel_mat" rgba="0.9725 0.9686 0.9294 1.0000" roughness="0.2000" />
+        <material name="tire_mat" rgba="0.2275 0.2275 0.2275 1.0000" roughness="0.2000" />
+        <material name="hub_mat" rgba="1.0000 1.0000 0.0000 1.0000" roughness="0.2000" />
+        <material name="PiSpacers_mat" rgba="0.9608 0.9608 0.9647 1.0000" roughness="0.2646" />
+        <material name="RPI4_mat" rgba="0.3490 0.3490 0.3490 1.0000" roughness="0.2000" />
+    </asset>
+    <worldbody>
+        <!-- Lowest point of the model is at z = -0.0457855 m in this frame. Lift the model by 0.0457855 m (e.g. wrap it in <body pos="0 0 0.0457855">) to rest it on a z=0 ground plane. See <custom><numeric name="ground_offset">. -->
+        <body name="MainPCB" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+            <freejoint />
+            <geom mesh="MainPCB_visual" name="MainPCB_MainPCB_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="MainPCB_mat" />
+            <geom mesh="MainPCB_collision00" name="MainPCB_MainPCB_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+            <inertial mass="0.04972789899717463" pos="-0.0017738419310652281 6.127429163509168e-16 -0.001175094455962315" fullinertia="3.36742086627663e-05 0.00014666691176017416 0.00017767501033443288 1.0471527577008548e-18 -4.004137997675953e-07 -6.069890097315869e-20" />
+            <body name="PiSpacers" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                <geom mesh="PiSpacers_visual" name="PiSpacers_PiSpacers_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="PiSpacers_mat" />
+                <geom mesh="PiSpacers_collision00" name="PiSpacers_PiSpacers_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <geom mesh="PiSpacers_collision01" name="PiSpacers_PiSpacers_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <geom mesh="PiSpacers_collision02" name="PiSpacers_PiSpacers_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <geom mesh="PiSpacers_collision03" name="PiSpacers_PiSpacers_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.003898153658927287" pos="-0.036641000000614266 2.2250578450185784e-18 0.007967499999999999" fullinertia="2.4025762419613576e-06 3.341056736900983e-06 5.641549284046145e-06 1.0827788318729328e-20 -6.352747104407253e-22 2.5738959574805872e-23" />
+                <body name="RPI4" pos="-0.046641000000000155 -3.552713678800501e-17 0.015035000000000008" quat="-8.99099226789501e-17 -4.084453334507917e-17 0.7071067811865485 0.7071067811865481">
+                    <geom mesh="RPI4_visual" name="RPI4_RPI4_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="RPI4_mat" />
+                    <geom mesh="RPI4_collision00" name="RPI4_RPI4_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.14743977847747752" pos="0.01455254215890048 0.004192981956926046 -0.0005398275152488248" fullinertia="4.317929331234501e-05 0.00013569136722222118 9.96879815359695e-05 -1.0265868403298057e-05 -8.606873874863068e-07 -2.279159547743445e-07" />
+                </body>
+            </body>
+            <body name="Motor_shell" pos="0.06400000000000006 -0.035500000000000004 -0.010750000000000004" quat="1.1102230246251482e-16 6.123233995736757e-17 -6.798155367234502e-33 1.0000000000000004">
+                <geom mesh="shell_visual" name="Motor_shell_shell_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="shell_mat" />
+                <geom mesh="shell_collision00" name="Motor_shell_shell_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918707 1.2362785200822959e-05 1.2838560109171476e-18" fullinertia="1.1035802615155104e-06 2.7495869785204982e-06 2.517636816068902e-06 -6.530352080899404e-10 3.561303772351923e-21 8.471129210020346e-22" />
+                <body name="Motor_motor" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                    <geom mesh="motor_visual" name="Motor_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <geom mesh="motor_collision00" name="Motor_motor_motor_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <geom mesh="motor_collision01" name="Motor_motor_motor_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.002505457365802741" pos="0.040581087769524064 7.106717631643122e-16 -5.288578257858985e-19" fullinertia="1.1337249067247854e-07 8.727071603246041e-08 6.066235498199127e-08 -2.0322994975865508e-20 -6.4551298955977345e-24 2.4888490746281334e-36" />
+                    <body name="Motor_bottom" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                        <geom mesh="bottom_visual" name="Motor_bottom_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="bottom_mat" />
+                        <geom mesh="bottom_collision00" name="Motor_bottom_bottom_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861434 -2.610931162777616e-05 8.593536034065558e-19" fullinertia="6.115472408212138e-08 4.147877758584197e-08 2.765784311673748e-08 1.1593560654293581e-10 4.8837374397826173e-23 -1.4198016945989518e-26" />
+                    </body>
+                </body>
+                <body name="Motor_axel" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                    <joint type="hinge" name="Motor_axel" axis="-2.2204460492502973e-16 1.000000000000002 2.7192621468937766e-32" pos="5.750955267558321e-17 -0.009000000000000022 5.204170427930414e-18" />
+                    <geom mesh="axel_visual" name="Motor_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <geom mesh="axel_collision00" name="Motor_axel_axel_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.0006461241749733425" pos="-7.007727731434003e-15 -1.5560281355484349e-30 5.551115123125869e-17" fullinertia="5.830431374187014e-08 2.054893650190661e-09 5.84600810556203e-08 1.2489880261518974e-23 -5.292048320917426e-23 -1.328451269662309e-38" />
+                    <body name="Wheel_hub" pos="-1.7763568394002505e-17 0.039499999999999966 2.220446049250313e-18" quat="0.5 -0.4999999999999996 -0.5000000000000006 -0.499999999999999">
+                        <joint type="hinge" name="wheel1" axis="-1.0912243597607106e-31 2.2204460492502929e-16 -1.000000000000001" pos="3.4694469519536115e-18 7.427392034742294e-17 -0.02200000000000008" />
+                        <geom mesh="hub_visual" name="Wheel_hub_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="hub_mat" />
+                        <geom mesh="hub_collision00" name="Wheel_hub_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543562e-09 -6.369771489976365e-09 -0.011307235755000157" fullinertia="3.122940455811488e-06 3.1224416351565473e-06 4.858210320729884e-06 1.1158639675923705e-12 -4.956449001767603e-13 -4.4541342088763713e-13" />
+                        <body name="Wheel_tire" pos="0.0 0.0 0.0" quat="1.0 -1.1235958579290084e-45 -3.239600292441965e-48 -2.9870780960627204e-33">
+                            <geom mesh="tire_visual" name="Wheel_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104754e-08 5.2862387714403266e-08 -0.01250121014581524" fullinertia="6.022496836837396e-06 6.022546174471783e-06 1.052643674515777e-05 2.873002084276082e-12 -1.3900669682906549e-12 -2.0127280725037815e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="Motor-2_shell" pos="-0.07550000000000004 -0.03549999999999997 -0.01125" quat="1.0000000000000002 0.0 0.0 -1.1102230246251543e-16">
+                <geom mesh="shell_visual" name="Motor-2_shell_shell_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="shell_mat" />
+                <geom mesh="shell_collision00" name="Motor-2_shell_shell_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918702 1.236278520082295e-05 2.220446049250313e-18" fullinertia="1.1035802615155023e-06 2.7495869785205084e-06 2.5176368160689154e-06 -6.530352080899394e-10 -1.694065894508603e-21 8.47032947254301e-22" />
+                <body name="Motor-2_motor" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                    <geom mesh="motor_visual" name="Motor-2_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <geom mesh="motor_collision00" name="Motor-2_motor_motor_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <geom mesh="motor_collision01" name="Motor-2_motor_motor_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.002505457365802741" pos="0.04058108776952402 7.017899789673106e-16 0.0" fullinertia="1.1337249067247795e-07 8.727071603246157e-08 6.066235498199635e-08 -1.9899478502238328e-20 -2.1175823681357537e-22 -4.7019774032891417e-38" />
+                    <body name="Motor-2_bottom" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                        <geom mesh="bottom_visual" name="Motor-2_bottom_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="bottom_mat" />
+                        <geom mesh="bottom_collision00" name="Motor-2_bottom_bottom_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.0014785534866922744" pos="0.047376799158614265 -2.610931162777614e-05 0.0" fullinertia="6.11547240821213e-08 4.147877758584148e-08 2.765784311674214e-08 1.159356065421945e-10 2.3509887016445708e-38 -1.0587911840678768e-22" />
+                    </body>
+                </body>
+                <body name="Motor-2_axel" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                    <joint type="hinge" name="Motor-2_axel" axis="-2.2204460492503091e-16 1.0000000000000013 0.0" pos="4.363176486776871e-17 -0.009000000000000041 0.0" />
+                    <geom mesh="axel_visual" name="Motor-2_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <geom mesh="axel_collision00" name="Motor-2_axel_axel_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.0006461241749733425" pos="-7.016609515630999e-15 4.440892098499074e-18 5.551115123125783e-17" fullinertia="5.8304313741869957e-08 2.0548936501889645e-09 5.846008105561945e-08 -1.9926835655205626e-22 1.1754943508222854e-38 -5.293955920339384e-23" />
+                    <body name="Wheel-2_hub" pos="-8.881784197001253e-18 -0.039500000000000014 -4.440892098500626e-18" quat="0.5 0.5 0.5000000000000007 -0.49999999999999933">
+                        <joint type="hinge" name="wheel2" axis="1.0658171779529252e-31 -2.220446049250305e-16 -1.0000000000000013" pos="-5.204170427930421e-18 6.45039577307216e-17 -0.022000000000000068" />
+                        <geom mesh="hub_visual" name="Wheel-2_hub_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="hub_mat" />
+                        <geom mesh="hub_collision00" name="Wheel-2_hub_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543565e-09 -6.369771494997785e-09 -0.01130723575500016" fullinertia="3.1229404558114627e-06 3.12244163515652e-06 4.85821032072988e-06 1.1158639709804411e-12 -4.956449035648929e-13 -4.454134472218553e-13" />
+                        <body name="Wheel-2_tire" pos="0.0 0.0 0.0" quat="1.0 5.020340165244845e-46 -7.184391540726713e-48 2.351898550868226e-33">
+                            <geom mesh="tire_visual" name="Wheel-2_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-2_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-2_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-2_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-2_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104757e-08 5.286238769996982e-08 -0.012501210145815253" fullinertia="6.022496836837397e-06 6.022546174471783e-06 1.052643674515778e-05 2.873002086817187e-12 -1.39006696913769e-12 -2.0127280840561795e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="Motor-3_shell" pos="0.06400000000000003 0.03550000000000001 -0.011250000000000003" quat="1.1102230246251565e-16 6.123233995736766e-17 -6.798155367234455e-33 1.0">
+                <geom mesh="shell_visual" name="Motor-3_shell_shell_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="shell_mat" />
+                <geom mesh="shell_collision00" name="Motor-3_shell_shell_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918683 1.2362785200822933e-05 1.2838560109171469e-18" fullinertia="1.1035802615154994e-06 2.7495869785204872e-06 2.517636816068929e-06 -6.530352080831615e-10 1.8672378778433198e-21 7.99737477313331e-26" />
+                <body name="Motor-3_motor" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                    <geom mesh="motor_visual" name="Motor-3_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <geom mesh="motor_collision00" name="Motor-3_motor_motor_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <geom mesh="motor_collision01" name="Motor-3_motor_motor_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.002505457365802741" pos="0.04058108776952391 7.017899789673097e-16 -5.288578257859001e-19" fullinertia="1.1337249067247724e-07 8.727071603245922e-08 6.066235498200567e-08 -1.9899478502238274e-20 -6.4551298955959155e-24 2.1175823681357753e-22" />
+                    <body name="Motor-3_bottom" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                        <geom mesh="bottom_visual" name="Motor-3_bottom_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="bottom_mat" />
+                        <geom mesh="bottom_collision00" name="Motor-3_bottom_bottom_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861415 -2.6109311627776105e-05 8.593536034065558e-19" fullinertia="6.115472408212156e-08 4.1478777585841585e-08 2.7657843116751033e-08 1.1593560654261771e-10 1.0177693360122146e-22 -1.4198016945938862e-26" />
+                    </body>
+                </body>
+                <body name="Motor-3_axel" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                    <joint type="hinge" name="Motor-3_axel" axis="-2.220446049250313e-16 1.0 2.719262146893782e-32" pos="2.975397705995419e-17 -0.008999999999999987 3.4694469519536107e-18" />
+                    <geom mesh="axel_visual" name="Motor-3_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <geom mesh="axel_collision00" name="Motor-3_axel_axel_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.0006461241749733425" pos="-7.01660951563099e-15 -1.5580002878114984e-30 5.551115123125869e-17" fullinertia="5.830431374186927e-08 2.054893650188535e-09 5.8460081055618603e-08 2.2424811707509447e-22 5.295863519761324e-23 5.2939559203393754e-23" />
+                    <body name="Wheel-3_hub" pos="4.4408920985006264e-17 -0.039499999999999924 -6.661338147750939e-18" quat="0.5 0.5000000000000002 -0.5000000000000002 0.5">
+                        <joint type="hinge" name="wheel3" axis="-2.298412342360779e-31 2.220446049250313e-16 -1.0000000000000004" pos="8.673617379884035e-18 1.876276911616513e-17 -0.02199999999999994" />
+                        <geom mesh="hub_visual" name="Wheel-3_hub_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="hub_mat" />
+                        <geom mesh="hub_collision00" name="Wheel-3_hub_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543557e-09 -6.369771498858148e-09 -0.011307235755000141" fullinertia="3.122940455811457e-06 3.12244163515652e-06 4.858210320729845e-06 1.1158639692863746e-12 -4.956449052589574e-13 -4.454134344401639e-13" />
+                        <body name="Wheel-3_tire" pos="0.0 0.0 0.0" quat="1.0 -4.766246943736055e-48 5.131708243377006e-48 -1.2703590903905792e-33">
+                            <geom mesh="tire_visual" name="Wheel-3_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-3_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-3_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-3_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-3_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104747e-08 5.286238770552147e-08 -0.012501210145815223" fullinertia="6.02249683683736e-06 6.02254617447179e-06 1.0526436745157757e-05 2.8730020868171854e-12 -1.3900669691376864e-12 -2.0127280657275163e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="Motor-4_shell" pos="-0.07550000000000008 0.035500000000000045 -0.01125" quat="1.0000000000000004 0.0 0.0 -1.1102230246251595e-16">
+                <geom mesh="shell_visual" name="Motor-4_shell_shell_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="shell_mat" />
+                <geom mesh="shell_collision00" name="Motor-4_shell_shell_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918707 1.2362785200822959e-05 2.220446049250313e-18" fullinertia="1.1035802615155171e-06 2.7495869785204982e-06 2.5176368160689154e-06 -6.530352080831641e-10 1.880790961315666e-37 -8.47032947254302e-22" />
+                <body name="Motor-4_motor" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                    <geom mesh="motor_visual" name="Motor-4_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <geom mesh="motor_collision00" name="Motor-4_motor_motor_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <geom mesh="motor_collision01" name="Motor-4_motor_motor_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.002505457365802741" pos="0.040581087769524085 7.062308710658117e-16 0.0" fullinertia="1.1337249067247854e-07 8.727071603246168e-08 6.066235498199296e-08 -2.0322994975865508e-20 -2.117582368135755e-22 -4.701977403289165e-38" />
+                    <body name="Motor-4_bottom" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                        <geom mesh="bottom_visual" name="Motor-4_bottom_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="bottom_mat" />
+                        <geom mesh="bottom_collision00" name="Motor-4_bottom_bottom_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861434 -2.61093116277806e-05 0.0" fullinertia="6.11547240821218e-08 4.1478777585842604e-08 2.7657843116737904e-08 1.1593560654304169e-10 -2.3509887016445823e-38 1.0587911840678775e-22" />
+                    </body>
+                </body>
+                <body name="Motor-4_axel" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                    <joint type="hinge" name="Motor-4_axel" axis="-2.22044604925032e-16 1.000000000000002 0.0" pos="8.526512829121221e-17 -0.009000000000000064 0.0" />
+                    <geom mesh="axel_visual" name="Motor-4_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <geom mesh="axel_collision00" name="Motor-4_axel_axel_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                    <inertial mass="0.0006461241749733425" pos="-7.007727731434003e-15 4.440892098499079e-18 5.551115123125783e-17" fullinertia="5.830431374186972e-08 2.054893650188967e-09 5.8460081055618603e-08 -6.227848301792085e-22 0.0 0.0" />
+                    <body name="Wheel-4_hub" pos="3.552713678800501e-17 0.03949999999999995 0.0" quat="0.5 -0.4999999999999987 0.49999999999999967 0.499999999999999">
+                        <joint type="hinge" name="wheel4" axis="-4.4951959574903254e-32 -2.2204460492503155e-16 -0.9999999999999993" pos="1.5603651520650337e-33 -4.651834473179408e-17 -0.022000000000000068" />
+                        <geom mesh="hub_visual" name="Wheel-4_hub_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="hub_mat" />
+                        <geom mesh="hub_collision00" name="Wheel-4_hub_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543549e-09 -6.369771494997787e-09 -0.01130723575500012" fullinertia="3.1229404558114636e-06 3.1224416351565405e-06 4.858210320729833e-06 1.1158639675923681e-12 -4.956449035648908e-13 -4.454134539981181e-13" />
+                        <body name="Wheel-4_tire" pos="0.0 0.0 0.0" quat="1.0 8.121106999615741e-47 7.247281110916916e-49 -1.9055386355858462e-33">
+                            <geom mesh="tire_visual" name="Wheel-4_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-4_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-4_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-4_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-4_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104737e-08 5.2862387708851613e-08 -0.0125012101458152" fullinertia="6.022496836837333e-06 6.02254617447179e-06 1.0526436745157686e-05 2.8730020868171753e-12 -1.3900669691376844e-12 -2.0127280705036483e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+</mujoco>

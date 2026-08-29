@@ -19,6 +19,7 @@ Available managers:
 - :class:`TerrainManager` — terrain height queries and bounds
 - :class:`CommandManager` / :class:`VelocityCommandManager` — sampled command signals
 """
+from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
 from .action.velocity_action_manager import VelocityActionManager
@@ -38,6 +39,7 @@ from .terrain_manager import TerrainManager
 
 __all__ = [
     "ActuatorManager",
+    "BaseActionManager",
     "BaseManager",
     "CommandManager",
     "ContactManager",

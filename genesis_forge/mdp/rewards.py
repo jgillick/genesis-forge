@@ -14,6 +14,7 @@ import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
+    BaseActionManager,
     CommandManager,
     ContactManager,
     EntityManager,
@@ -445,6 +446,19 @@ class dof_velocity_l2(MdpFn):
 Velocity Command Rewards
 """
 
+DEFAULT_TRACKING_SENSITIVITY = 0.25
+"""The tracking reward sensitivity when there is no command range to derive one from"""
+
+
+def _calculate_tracking_sensitivity(max_command: float) -> float:
+    """
+    Automatically calculate the tracking reward sensitivity for a command range: an error of half the maximum
+    commanded speed decays the reward to 1/e. Falls back to the default for a zero range.
+    """
+    if max_command <= 0.0:
+        return DEFAULT_TRACKING_SENSITIVITY
+    return (0.5 * max_command) ** 2
+
 
 @dataclass(kw_only=True, eq=False)
 class command_tracking_lin_vel(MdpFn):
@@ -455,6 +469,8 @@ class command_tracking_lin_vel(MdpFn):
         command: The commanded XY linear velocity in the shape (num_envs, 2)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+                     If not defined, the sensitivity will be derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest absolute value of the command range.
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
@@ -465,7 +481,7 @@ class command_tracking_lin_vel(MdpFn):
 
     command: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
-    sensitivity: float = 0.25
+    sensitivity: float | None = None
     entity: RigidEntity = None
     entity_manager: EntityManager = None
 
@@ -488,7 +504,21 @@ class command_tracking_lin_vel(MdpFn):
         lin_vel_error = torch.sum(
             torch.square(command - linear_vel_local[:, :2]), dim=1
         )
-        return torch.exp(-lin_vel_error / self.sensitivity)
+        sensitivity = self._get_sensitivity()
+        return torch.exp(-lin_vel_error / sensitivity)
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # The largest linear speed in the command manager's current range
+        max_speed = 0.0
+        if self.vel_cmd_manager is not None:
+            velocity_range = self.vel_cmd_manager.range
+            values = [abs(v) for v in (*velocity_range["lin_vel_x"], *velocity_range["lin_vel_y"])]
+            max_speed = max(values)
+        return _calculate_tracking_sensitivity(max_speed)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -500,6 +530,8 @@ class command_tracking_ang_vel(MdpFn):
         commanded_ang_vel: The commanded angular velocity in the shape (num_envs, 1)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+                     If not defined, the sensitivity will be derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest absolute value of the command range.
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
@@ -510,7 +542,7 @@ class command_tracking_ang_vel(MdpFn):
 
     commanded_ang_vel: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
-    sensitivity: float = 0.25
+    sensitivity: float | None = None
     entity: RigidEntity = None
     entity_manager: EntityManager = None
 
@@ -531,7 +563,20 @@ class command_tracking_ang_vel(MdpFn):
             target = self.vel_cmd_manager.command[:, 2]
 
         ang_vel_error = torch.square(target - angular_vel[:, 2])
-        return torch.exp(-ang_vel_error / self.sensitivity)
+        sensitivity = self._get_sensitivity()
+        return torch.exp(-ang_vel_error / sensitivity)
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # The largest angular speed in the command manager's current range
+        max_speed = 0.0
+        if self.vel_cmd_manager is not None:
+            values = [abs(v) for v in self.vel_cmd_manager.range["ang_vel_z"]]
+            max_speed = max(values)
+        return _calculate_tracking_sensitivity(max_speed)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -573,6 +618,50 @@ class stand_still_joint_deviation_l1(MdpFn):
         return joint_deviation * (
             torch.norm(command[:, :2], dim=1) < self.command_threshold
         )
+
+
+@dataclass(kw_only=True, eq=False)
+class stopped_dof_velocity_l2(MdpFn):
+    """
+    Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded),
+    using the L2 squared kernel.
+
+    When the robot is commanded to stop, its actuators should not be moving. This is especially
+    useful for wheeled robots, where a stopped robot with spinning or twitching wheels is not
+    penalized by the velocity tracking rewards alone.
+
+    Args:
+        vel_cmd_manager: The velocity command manager
+        actuator_manager: The actuator manager to get the DOF velocities from.
+        action_manager: The action manager to get the DOF velocities from.
+        command_threshold: The command is considered stopped when the norm of all its
+                           components (linear xy and angular z) is below this value.
+
+    Returns:
+        torch.Tensor: Penalty for joint velocity while the command is stopped, shape (num_envs,)
+    """
+
+    vel_cmd_manager: VelocityCommandManager
+    actuator_manager: ActuatorManager = None
+    action_manager: BaseActionManager = None
+    command_threshold: float = 0.01
+
+    def build(self):
+        assert (
+            self.actuator_manager is not None or self.action_manager is not None
+        ), "Either actuator_manager or action_manager must be provided to stopped_dof_velocity_l2"
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.actuator_manager is not None:
+            dof_vel = self.actuator_manager.get_dofs_velocity()
+        else:
+            dof_vel = self.action_manager.get_dofs_velocity()
+        penalty = torch.sum(torch.square(dof_vel), dim=1)
+
+        # Only penalize when nothing is commanded, linear or angular
+        command = self.vel_cmd_manager.command
+        is_stopped = torch.norm(command, dim=1) < self.command_threshold
+        return penalty * is_stopped
 
 
 """

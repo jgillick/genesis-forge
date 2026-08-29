@@ -633,7 +633,6 @@ class stopped_dof_velocity_l2(MdpFn):
     Args:
         vel_cmd_manager: The velocity command manager
         actuator_manager: The actuator manager to get the DOF velocities from.
-        action_manager: The action manager to get the DOF velocities from.
         command_threshold: The command is considered stopped when the norm of all its
                            components (linear xy and angular z) is below this value.
 
@@ -642,20 +641,11 @@ class stopped_dof_velocity_l2(MdpFn):
     """
 
     vel_cmd_manager: VelocityCommandManager
-    actuator_manager: ActuatorManager = None
-    action_manager: BaseActionManager = None
+    actuator_manager: ActuatorManager
     command_threshold: float = 0.01
 
-    def build(self):
-        assert (
-            self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to stopped_dof_velocity_l2"
-
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if self.actuator_manager is not None:
-            dof_vel = self.actuator_manager.get_dofs_velocity()
-        else:
-            dof_vel = self.action_manager.get_dofs_velocity()
+        dof_vel = self.actuator_manager.get_dofs_velocity()
         penalty = torch.sum(torch.square(dof_vel), dim=1)
 
         # Only penalize when nothing is commanded, linear or angular

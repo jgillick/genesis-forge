@@ -129,7 +129,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             range={
                 "lin_vel_x": (-0.1, 0.1), # forward/backward
                 "lin_vel_y": (-0.0, 0.0), # cannot move side-to-side
-                "ang_vel_z": (-0.2, 0.2), # turning
+                "ang_vel_z": (-0.5, 0.5), # turning
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,
@@ -150,7 +150,6 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
-                        sensitivity=0.005
                     ),
                 },
                 "tracking_ang_vel": {
@@ -158,7 +157,6 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
-                        sensitivity=0.005
                     ),
                 },
                 "action_rate": {
@@ -170,7 +168,15 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.body_acceleration_exp(
                         entity_manager=self.robot_manager,
                     ),
-                }
+                },
+                # When the command is stopped, the wheels should not be moving
+                "stopped_dof_velocity": {
+                    "weight": -0.01,
+                    "fn": rewards.stopped_dof_velocity_l2(
+                        vel_cmd_manager=self.velocity_command,
+                        action_manager=self.action_manager,
+                    ),
+                },
             },
         )
 

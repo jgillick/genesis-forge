@@ -174,7 +174,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "weight": -0.01,
                     "fn": rewards.stopped_dof_velocity_l2(
                         vel_cmd_manager=self.velocity_command,
-                        action_manager=self.action_manager,
+                        actuator_manager=self.actuator_manager,
                     ),
                 },
             },

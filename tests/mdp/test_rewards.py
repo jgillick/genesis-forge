@@ -490,7 +490,7 @@ def test_stand_still_joint_deviation_requires_a_manager_at_build_time(env):
 
 
 def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
-    class FakeActionManagerVel:
+    class FakeActuatorManagerVel:
         def get_dofs_velocity(self):
             return torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
 
@@ -499,7 +499,7 @@ def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
         torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.0, 0.2]])
     )
     fn = rewards.stopped_dof_velocity_l2(
-        vel_cmd_manager=vel_cmd, action_manager=FakeActionManagerVel()
+        vel_cmd_manager=vel_cmd, actuator_manager=FakeActuatorManagerVel()
     )
     fn.context(env)
     fn.safe_build()
@@ -507,26 +507,9 @@ def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     assert torch.allclose(fn(env), torch.tensor([5.0, 0.0, 0.0]))
 
 
-def test_stopped_dof_velocity_reads_from_the_actuator_manager(env):
-    class FakeActuatorManagerVel:
-        def get_dofs_velocity(self):
-            return torch.tensor([[3.0, 4.0]])
-
-    fn = rewards.stopped_dof_velocity_l2(
-        vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))),
-        actuator_manager=FakeActuatorManagerVel(),
-    )
-    fn.context(env)
-    fn.safe_build()
-
-    assert torch.allclose(fn(env), torch.tensor([25.0]))
-
-
-def test_stopped_dof_velocity_requires_a_manager_at_build_time(env):
-    fn = rewards.stopped_dof_velocity_l2(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
-    fn.context(env)
-    with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
-        fn.safe_build()
+def test_stopped_dof_velocity_requires_an_actuator_manager(env):
+    with pytest.raises(TypeError, match="actuator_manager"):
+        rewards.stopped_dof_velocity_l2(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
 
 
 """

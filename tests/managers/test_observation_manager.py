@@ -277,7 +277,7 @@ def test_reset_forwards_to_each_config_items_reset(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": fn}})
     mgr.build()
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
 
     assert fn.reset_calls == [[0, 2]]
 
@@ -306,7 +306,7 @@ def test_reset_defaults_to_every_env(env):
 def test_reset_tolerates_plain_functions(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": const}})
     mgr.build()
-    mgr.reset([0])  # must not raise
+    mgr.reset(torch.tensor([0]))  # must not raise
 
 
 def test_reset_clears_history_only_for_the_reset_envs(env):
@@ -320,7 +320,7 @@ def test_reset_clears_history_only_for_the_reset_envs(env):
     mgr.get_observations()  # 2.0
     mgr.get_observations()  # 3.0
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
     obs = mgr.get_observations()  # 4.0
 
     # Reset envs observe only the fresh value; their history slots are zero
@@ -347,4 +347,4 @@ def test_reset_with_no_envs_idx_clears_history_for_every_env(env):
 
 def test_reset_before_build_tolerates_the_empty_history(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": const}}, history_len=2)
-    mgr.reset([0])  # must not raise
+    mgr.reset(torch.tensor([0]))  # must not raise

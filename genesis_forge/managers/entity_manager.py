@@ -30,7 +30,7 @@ class ResetConfigFn(Protocol):
     Return:
         result: torch.Tensor, shape (n_envs, 1)
     """
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, env_ids: torch.Tensor, *params: Any, **kwargs: Any) -> None: ...
 
 
 class EntityResetConfig(ConfigItemDict):
@@ -184,14 +184,14 @@ class EntityManager(BaseManager):
         """
         self._cached_calcs()
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """
         Call all reset functions
         """
         if not self.enabled:
             return
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
 
         for name, cfg in self.on_reset.items():
             try:

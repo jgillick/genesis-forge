@@ -24,6 +24,10 @@ class FakeEnv:
     episode_length: object = None
     max_episode_length: object = None
 
+    @property
+    def all_envs_idx(self) -> torch.Tensor:
+        return torch.arange(self.num_envs, dtype=torch.long)
+
 
 @pytest.fixture
 def env() -> FakeEnv:

@@ -89,7 +89,7 @@ pos = self.terrain_manager.generate_random_positions(num=10, subterrain="flat_te
 To integrate this into a reset function to place your robots:
 
 ```python
-def reset(envs_idx: list[int]):
+def reset(envs_idx: torch.Tensor | Sequence[int]):
     pos = terrain_manager.generate_random_env_pos(
         envs_idx=envs_idx,
         subterrain="fractal_terrain",

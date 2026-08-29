@@ -33,7 +33,7 @@ class zero_all_dofs_velocity(ResetMdpFn):
     Zero the velocity of all dofs of the entity.
     """
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         entity.zero_all_dofs_velocity(envs_idx)
 
 
@@ -53,7 +53,7 @@ class set_rotation(ResetMdpFn):
     y: float | tuple[float, float] = 0
     z: float | tuple[float, float] = 0
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         angle_buffer = torch.zeros((len(envs_idx), 3), device=gs.device)
         if isinstance(self.x, tuple):
             angle_buffer[:, 0].uniform_(*self.x)
@@ -97,7 +97,7 @@ class position(ResetMdpFn):
                 (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
             )
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         self._pos_buffer[envs_idx] = self.reset_pos
         entity.set_pos(
             self._pos_buffer[envs_idx],
@@ -148,7 +148,7 @@ class randomize_terrain_position(ResetMdpFn):
             (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
         )
 
-    def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
+    def define_quat(self, envs_idx: torch.Tensor, rotation: XYZRotation):
         """
         Set the rotation quaternion for the given environment ids.
         """
@@ -173,7 +173,7 @@ class randomize_terrain_position(ResetMdpFn):
         # Set angle as quat
         self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         # Get the subterrain
         subterrain = self.subterrain
         if subterrain is not None and callable(subterrain):
@@ -227,7 +227,7 @@ class randomize_link_mass_shift(ResetMdpFn):
                 raise ValueError(f"No links found with name/pattern '{name}'")
             self._links_idx_local.extend(link.idx_local for link in links)
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         # Randomize mass
         mass_shift = torch.empty(
             (len(envs_idx), len(self._links_idx_local)), device=gs.device

@@ -364,7 +364,7 @@ class action_acceleration_l2(MdpFn):
             (self.env.num_envs,), dtype=torch.long, device=gs.device
         )
 
-    def reset(self, envs_idx):
+    def reset(self, envs_idx: torch.Tensor):
         """
         Clear the action history for the specified environments.
         """

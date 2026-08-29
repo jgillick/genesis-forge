@@ -270,7 +270,7 @@ class BaseActionManager(BaseManager):
 
         return self._actions
 
-    def reset(self, envs_idx: list[int] | None):
+    def reset(self, envs_idx: torch.Tensor | None):
         """Reset environments."""
         if (
             self._delay_step > 0

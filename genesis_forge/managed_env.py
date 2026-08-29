@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, TypedDict
 
 import genesis as gs
@@ -344,7 +345,7 @@ class ManagedEnvironment(GenesisEnv):
         )
 
     def reset(
-        self, env_ids: list[int] | None = None
+        self, env_ids: torch.Tensor | Sequence[int] | None = None
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
         Reset one or more environments.
@@ -358,7 +359,7 @@ class ManagedEnvironment(GenesisEnv):
         """
         reset_all = env_ids is None
         if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=gs.device)
+            env_ids = self.all_envs_idx
         elif not isinstance(env_ids, torch.Tensor):
             env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 

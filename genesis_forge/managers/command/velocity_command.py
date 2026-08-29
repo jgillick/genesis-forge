@@ -244,7 +244,7 @@ class VelocityCommandManager(CommandManager):
     Lifecycle Operations
     """
 
-    def resample_command(self, env_ids: list[int]):
+    def resample_command(self, env_ids: torch.Tensor):
         """
         Overwrites commands for environments that should be stopped.
         """
@@ -321,6 +321,20 @@ class VelocityCommandManager(CommandManager):
         super().step()
         self._render_debug()
 
+    def reset(self, env_ids: torch.Tensor | None = None):
+        """
+        Resample the commands of the reset environments and redraw the debug visualization.
+
+        The environment resets after the managers have stepped, so the visuals drawn during
+        this step show the robot's pre-reset position and command. Redraw them now so they
+        match the reset state, rather than waiting for the next throttled render.
+        """
+        super().reset(env_ids)
+        if not self.enabled or not self.debug_visualizer or not self.debug_envs_idx:
+            return
+        if env_ids is None or set(self.debug_envs_idx).intersection(env_ids.tolist()):
+            self._render_debug(force=True)
+
     def use_gamepad(
         self,
         gamepad: Gamepad,
@@ -360,16 +374,19 @@ class VelocityCommandManager(CommandManager):
         """A debug visualizer config value, or its default when not configured"""
         return self.visualizer_cfg.get(key, DEFAULT_VISUALIZER_CONFIG[key])
 
-    def _render_debug(self):
+    def _render_debug(self, force: bool = False):
         """
         Draw the debug visuals above each debug environment's robot: the linear velocity
         arrows (or the stopped ball) and the angular velocity arcs.
+
+        Args:
+            force: Draw now, even if this step is not a scheduled render for the configured FPS
         """
         if not self.debug_visualizer or not self.debug_envs_idx:
             return
 
         # Don't update for every step
-        if self.env.step_count % self._steps_per_debug_render != 0:
+        if not force and self.env.step_count % self._steps_per_debug_render != 0:
             return
 
         self._clear_debug_objects()

@@ -43,7 +43,7 @@ class BaseActionManager(BaseManager):
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
         self._dofs: dict[int, str] = {}
-        self._actuator_dof_filter: torch.Tensor | None = None
+        self._actuator_dof_filter: torch.Tensor = None
 
         if self._actuator_manager is None:
             raise ValueError("No ActuatorManager provided.")
@@ -88,7 +88,7 @@ class BaseActionManager(BaseManager):
         return self._actuator_dof_filter
 
     @property
-    def action_space(self) -> tuple[float, float]:
+    def action_space(self) -> spaces.Space:
         """
         Returns the actions space for the environment, based on the number of DOFs defined in this action manager.
         """

@@ -147,7 +147,7 @@ class ManagedEnvironment(GenesisEnv):
             "termination": None,
         }
 
-        self._action_space = None
+        self._action_space: spaces.Space | None = None
         self._action_ranges: list[tuple[int, int]] = []
         self._observation_space = None
         self._reward_buf = torch.zeros(
@@ -166,7 +166,7 @@ class ManagedEnvironment(GenesisEnv):
     """
 
     @property
-    def action_space(self) -> torch.Tensor:
+    def action_space(self) -> spaces.Space | None:
         """
         The action space, provided by the action manager(s), if any exist.
         """
@@ -393,8 +393,8 @@ class ManagedEnvironment(GenesisEnv):
         """
         Returns the current observations for this step.
 
-        Named observations are stored in `extras["observations"]`. 
-        If a manager named `"policy"` exists, only its tensor is returned; 
+        Named observations are stored in `extras["observations"]`.
+        If a manager named `"policy"` exists, only its tensor is returned;
         otherwise all managers are concatenated in registration order.
         """
         self.extras["observations"] = TensorDict({}, device=gs.device)

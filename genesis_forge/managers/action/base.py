@@ -257,13 +257,20 @@ class BaseActionManager(BaseManager):
             index_filter, device=gs.device, dtype=gs.tc_int
         )
 
+        # Seed the action delay buffer with zero actions, so the first `delay_step`
+        # steps send no-op actions while the real ones are still queued
+        self._action_delay_buffer = [
+            torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
+            for _ in range(self._delay_step)
+        ]
+
     def step(self, actions: torch.Tensor) -> None:
         """
         Handle actions received in this step.
         """
-        # Action delay buffer
+        # Action delay buffer: queue a copy of this step's actions and send the oldest
         if self._delay_step > 0:
-            self._action_delay_buffer.insert(0, actions)
+            self._action_delay_buffer.insert(0, actions.clone())
             actions = self._action_delay_buffer.pop()
 
         # Copy the actions into the manager buffer
@@ -278,14 +285,14 @@ class BaseActionManager(BaseManager):
 
         return self._actions
 
-    def reset(self, envs_idx: torch.Tensor | None):
-        """Reset environments."""
-        if (
-            self._delay_step > 0
-            and len(self._action_delay_buffer) < self._delay_step
-            and self.num_actions > 0
-        ):
-            while len(self._action_delay_buffer) < self._delay_step:
-                self._action_delay_buffer.append(
-                    torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-                )
+    def reset(self, envs_idx: torch.Tensor | None = None):
+        """
+        Clear the action history of the reset environments, so the previous episode's
+        actions are neither delivered by the delay buffer nor reported as the last actions.
+        """
+        if envs_idx is None:
+            envs_idx = self.env.all_envs_idx
+        for delayed_actions in self._action_delay_buffer:
+            delayed_actions[envs_idx] = 0.0
+        if self._last_actions is not None:
+            self._last_actions[envs_idx] = 0.0

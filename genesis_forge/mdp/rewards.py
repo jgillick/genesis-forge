@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import torch
 import genesis as gs
+from genesis.utils.geom import quat_to_xyz
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
     CommandManager,
+    PositionCommandManager,
+    PoseCommandManager,
     VelocityCommandManager,
     PositionActionManager,
     ContactManager,
@@ -410,6 +413,138 @@ def dof_velocity_l2(env: GenesisEnv, action_manager: PositionActionManager) -> t
     """Penalize joint angular velocities to encourage slow, deliberate motion."""
     dof_vel = action_manager.get_dofs_velocity()
     return torch.sum(torch.square(dof_vel), dim=1)
+
+
+"""
+Position Command Rewards
+"""
+
+
+def command_tracking_position(
+    env: GenesisEnv,
+    command: torch.Tensor = None,
+    position_cmd_manager: PositionCommandManager = None,
+    sensitivity: float = 0.25,
+    entity_attr: str = "robot",
+    link_name: str = None,
+    entity_manager: EntityManager = None,
+) -> torch.Tensor:
+    """
+    Penalize base pos away from target.
+
+    Args:
+        env: The Genesis environment containing the robot
+        command: The commanded XYZ position the the world frame, its shape is(num_envs, 3)
+        position_cmd_manager: The Position command manager
+        sensitivity: A lower value means the reward is more sensitive to the error
+        entity_attr: The attribute name of the entity in the environment.
+        entity_manager: The entity manager for the entity.
+
+    Returns:
+        torch.Tensor: Penalty for base position away from target
+    """
+    assert (
+        command is not None or position_cmd_manager is not None
+    ), "Either command or position_cmd_manager must be provided to commonad_tracking_base_position"
+
+    if entity_manager is not None:
+        entity = entity_manager.entity
+    else:
+        entity = getattr(env, entity_attr)
+
+    if link_name is None or link_name == "":
+        link = entity.base_link
+    else:
+        try:
+            link = entity.get_link(link_name)
+        except Exception as e:
+            raise ValueError(
+                f"Link name '{link_name}' not found in entity '{entity_attr}'."
+            )
+
+    pos = link.get_pos()
+    if position_cmd_manager is not None:
+        command = position_cmd_manager.command
+
+    pos_error = torch.sum(torch.square(command - pos), dim=1)
+    return torch.exp(-pos_error / sensitivity)
+
+
+"""
+Pose Command Rewards
+"""
+
+
+def command_tracking_pose(
+    env: GenesisEnv,
+    command: torch.Tensor = None,
+    pose_cmd_manager: PoseCommandManager = None,
+    pos_sensitivity: float = 0.25,
+    euler_sensitivity: float = 0.25,
+    entity_attr: str = "robot",
+    link_name: str = None,
+    entity_manager: "EntityManager" = None,
+) -> torch.Tensor:
+    """
+    Penalize base pose away from target (both position and orientation) with separate sensitivities.
+
+    Args:
+        env: The Genesis environment containing the robot
+        command: The commanded XYZ position and Euler angles (in world frame), shape (num_envs, 6) where first 3 are position and last 3 are Euler angles.
+        pose_cmd_manager: The Pose command manager
+        pos_sensitivity: A lower value means the reward is more sensitive to position error
+        euler_sensitivity: A lower value means the reward is more sensitive to Euler angle error
+        entity_attr: The attribute name of the entity in the environment.
+        entity_manager: The entity manager for the entity.
+
+    Returns:
+        torch.Tensor: Penalty for base position and Euler angles away from target
+    """
+    assert (
+        command is not None or pose_cmd_manager is not None
+    ), "Either command or pose_cmd_manager must be provided to command_tracking_pose"
+
+    if entity_manager is not None:
+        entity = entity_manager.entity
+    else:
+        entity = getattr(env, entity_attr)
+
+    if link_name is None or link_name == "":
+        link = entity.base_link
+    else:
+        try:
+            link = entity.get_link(link_name)
+        except Exception as e:
+            raise ValueError(
+                f"Link name '{link_name}' not found in entity '{entity_attr}'."
+            )
+
+    link_pos = link.get_pos()
+    link_euler = quat_to_xyz(link.get_quat())
+
+    if pose_cmd_manager is not None:
+        command = pose_cmd_manager.command
+    command_pos = command[:, :3]
+    command_euler = command[:, 3:6]
+
+    pos_error = torch.sum(torch.square(command_pos - link_pos), dim=1)
+
+    euler_error = torch.sum(
+        torch.square(
+            torch.min(
+                torch.abs(command_euler - link_euler),
+                2 * torch.pi - torch.abs(command_euler - link_euler),
+            )
+        ),
+        dim=1,
+    )
+
+    pos_penalty = torch.exp(-pos_error / pos_sensitivity)
+    euler_penalty = torch.exp(-euler_error / euler_sensitivity)
+
+    total_penalty = pos_penalty + euler_penalty
+
+    return total_penalty
 
 
 """

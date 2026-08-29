@@ -23,7 +23,12 @@ from .reward_manager import RewardManager
 from .termination_manager import TerminationManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
-from .command import CommandManager, VelocityCommandManager
+from .command import (
+    CommandManager,
+    PositionCommandManager,
+    PoseCommandManager,
+    VelocityCommandManager,
+)
 from .contact import ContactManager
 from .terrain_manager import TerrainManager
 from .entity_manager import EntityManager
@@ -39,6 +44,8 @@ __all__ = [
     "RewardManager",
     "TerminationManager",
     "CommandManager",
+    "PositionCommandManager",
+    "PoseCommandManager",
     "VelocityCommandManager",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",

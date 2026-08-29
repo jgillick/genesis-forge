@@ -84,7 +84,7 @@ class ContactManager(BaseManager):
                 self.contact_manager.step()
                 return obs, rewards, terminations, timeouts, info
 
-            def reset(self, envs_idx: list[int] | None = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
                 self.contact_manager.reset(envs_idx)
                 return obs, info
@@ -334,10 +334,10 @@ class ContactManager(BaseManager):
             self.last_contact_time = torch.zeros_like(self.last_air_time)
             self.current_contact_time = torch.zeros_like(self.last_air_time)
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         super().reset(envs_idx)
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
 
         if not self.enabled:
             return

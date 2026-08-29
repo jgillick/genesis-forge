@@ -233,7 +233,7 @@ def test_reset_defaults_to_noop(env):
     fn = Counting()
     fn.context(env)
     fn.safe_build()
-    fn.reset([0, 1])
+    fn.reset(torch.tensor([0, 1]))
 
 
 def test_reset_receives_indices(env):
@@ -251,7 +251,7 @@ def test_reset_receives_indices(env):
     fn = Resettable()
     fn.context(env)
     fn.safe_build()
-    fn.reset([0, 2])
+    fn.reset(torch.tensor([0, 2]))
     assert torch.equal(fn.buf, torch.tensor([0.0, 1.0, 0.0, 1.0]))
 
 

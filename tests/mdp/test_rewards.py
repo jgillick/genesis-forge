@@ -287,7 +287,7 @@ def test_action_acceleration_reset_clears_history(env):
         env.actions = torch.tensor([actions] * env.num_envs)
         fn(env)
 
-    fn.reset([0, 1])
+    fn.reset(torch.tensor([0, 1]))
 
     env.actions = torch.tensor([[0.5] * 3] * env.num_envs)
     value = fn(env)

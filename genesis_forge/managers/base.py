@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 
 ManagerType = Literal[
@@ -40,5 +42,6 @@ class BaseManager:
     def step(self):
         """Called when the environment is stepped"""
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx:
+              torch.Tensor | None = None):
         """One or more environments have been reset"""

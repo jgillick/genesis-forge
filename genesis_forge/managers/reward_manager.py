@@ -76,7 +76,7 @@ class RewardManager(BaseManager):
                 # ... other step logic ...
                 return obs, rewards, terminations, timeouts, info
 
-            def reset(self, envs_idx: list[int] | None = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
                 # ... other reset logic ...
                 return obs, info
@@ -191,10 +191,10 @@ class RewardManager(BaseManager):
 
         return self._reward_buf
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """Log the reward mean values at the end of the episode"""
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
 
         # Reset function classes
         for cfg in self.cfg.values():

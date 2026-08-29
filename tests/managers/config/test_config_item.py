@@ -8,6 +8,7 @@ must be able to drive both through the same interface.
 from dataclasses import dataclass
 
 import pytest
+import torch
 
 from genesis_forge.managers.config import ConfigItem, MdpFn, ResetMdpFn
 
@@ -50,7 +51,7 @@ def test_plain_function_params_are_splatted(env):
 def test_plain_function_reset_is_a_noop(env):
     item = ConfigItem({"fn": plain_reward, "params": {}}, env)
     item.build()
-    item.reset([0, 1])  # must not raise
+    item.reset(torch.tensor([0, 1]))  # must not raise
 
 
 def test_plain_function_without_params_key(env):
@@ -99,7 +100,7 @@ def test_mdp_fn_reset_is_forwarded(env):
     item = ConfigItem({"fn": fn}, env)
     item.build()
 
-    item.reset([0, 2])
+    item.reset(torch.tensor([0, 2]))
 
     assert fn.reset_calls == [[0, 2]]
 

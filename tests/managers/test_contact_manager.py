@@ -276,7 +276,7 @@ def test_reset_zeros_air_time_buffers_for_the_given_envs(env):
     mgr.last_air_time[:] = 1.0
     mgr.last_contact_time[:] = 1.0
 
-    mgr.reset([0])
+    mgr.reset(torch.tensor([0]))
 
     assert torch.all(mgr.current_air_time[0] == 0.0)
     assert torch.all(mgr.current_air_time[1:] == 1.0)

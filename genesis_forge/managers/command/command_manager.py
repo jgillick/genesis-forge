@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 
 import genesis as gs
 import torch
@@ -146,7 +146,7 @@ class CommandManager(BaseManager):
         self,
         range_key: str,
         value: torch.Tensor,
-        envs_idx: list[int] | None = None,
+        envs_idx: torch.Tensor | Sequence[int] | None = None,
     ):
         """
         Update a command value for selected environments.
@@ -234,12 +234,12 @@ class CommandManager(BaseManager):
         )
         self.resample_command(resample_command_envs)
 
-    def reset(self, env_ids: list[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | None = None):
         """One or more environments have been reset"""
         if not self.enabled:
             return
         if env_ids is None:
-            env_ids = torch.arange(self.env.num_envs, device=gs.device)
+            env_ids = self.env.all_envs_idx
         self.resample_command(env_ids)
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
@@ -370,7 +370,7 @@ class CommandManager(BaseManager):
             self._command, device=gs.device
         )
 
-    def resample_command(self, env_ids: list[int]):
+    def resample_command(self, env_ids: torch.Tensor):
         """Create a new command for the given environment ids."""
 
         # Get range values (this might have changed since init due to curriculum training)

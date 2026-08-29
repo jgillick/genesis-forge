@@ -1,10 +1,10 @@
 # Wheeled Robot - Commanded direction
 
-Train the [LeKiwi](https://github.com/SIGRobotics-UIUC/LeKiwi) platform, a 3-wheeled omnidirectional mobile base from the LeRobot ecosystem, to move in a commanded direction, controlled programmatically or through a gamepad controller.
+Train a simplified [Freenove 4WD car](https://store.freenove.com/products/fnk0043) platform, to move in a commanded direction, controlled programmatically or through a gamepad controller.
 
-This builds on the [command_direction](../command_direction/) example, but demonstrates driving continuously-rotating wheel joints instead of legged position control. The main thing that differs from a legged example:
+This builds on the [command_direction](../command_direction/) example, but demonstrates driving four continuously-rotating wheels instead of legged position control.
 
-**`VelocityActionManager`** instead of `PositionActionManager` — the policy's actions are raw target velocities for the 3 wheel joints, not joint positions. Wheels rotate continuously, so there's no bounded "position" to control toward.
+The velocity action manager setup looks like this:
 
 ```python
 def config(self):
@@ -13,16 +13,31 @@ def config(self):
     self.actuator_manager = ActuatorManager(
         self,
         joint_names=[
-            "base_back_wheel_joint",
-            "base_left_wheel_joint",
-            "base_right_wheel_joint"
+            "wheel1",
+            "wheel2",
+            "wheel3",
+            "wheel4"
         ],
         kv=1.0,
     )
     self.action_manager = VelocityActionManager(
         self,
-        scale=2.0,
+        scale=5.0,
         actuator_manager=self.actuator_manager,
+    )
+```
+
+This is a ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering) robot, which means, all 4 wheels are facing the same direction and turning is done by changing the speed each wheel is rotating at. As such, the velocity command can only direct the robot to go forwards/backwards, and turn along the center axis.
+
+```python
+    self.velocity_command = VelocityCommandManager(
+        self,
+        range={
+            "lin_vel_x": (-0.1, 0.1), # forward/backward
+            "lin_vel_y": (-0.0, 0.0), # cannot move side-to-side
+            "ang_vel_z": (-0.2, 0.2), # turning
+        },
+        ...
     )
 ```
 

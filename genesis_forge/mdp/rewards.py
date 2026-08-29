@@ -14,7 +14,6 @@ import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
-    BaseActionManager,
     CommandManager,
     ContactManager,
     EntityManager,

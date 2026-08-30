@@ -16,6 +16,7 @@ from genesis_forge.mdp import observations, reset, rewards, terminations
 INITIAL_BODY_POSITION = (0.0, 0.0, 0.0458)
 INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
+
 class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
     """
     Example training environment for the Freenove 4WD raspberry pi platform.
@@ -59,7 +60,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="./model/Freenove4WD.xml",
+                file="./model/Freenove4WD_platform.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
@@ -71,7 +72,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-0.5, 0.5, 0.5), # x, y, z
+            pos=(-0.5, 0.5, 0.5),  # x, y, z
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -106,20 +107,17 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         ##
         # Wheel actuation
-        self.actuator_manager = ActuatorManager(
+        self.wheel_motors = ActuatorManager(
             self,
             joint_names=[
-                "wheel1",
-                "wheel2",
-                "wheel3",
-                "wheel4"
+                "TT_Motor-[1-4]_axel",
             ],
             kv=1.0,
         )
         self.action_manager = VelocityActionManager(
             self,
             scale=5.0,
-            actuator_manager=self.actuator_manager,
+            actuator_manager=self.wheel_motors,
         )
 
         ##
@@ -127,9 +125,9 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": (-0.1, 0.1), # forward/backward
-                "lin_vel_y": (-0.0, 0.0), # cannot move side-to-side
-                "ang_vel_z": (-0.5, 0.5), # turning
+                "lin_vel_x": (-0.1, 0.1),  # forward/backward
+                "lin_vel_y": (-0.0, 0.0),  # cannot move side-to-side
+                "ang_vel_z": (-0.5, 0.5),  # turning
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,
@@ -174,7 +172,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                     "weight": -0.01,
                     "fn": rewards.stopped_dof_velocity_l2(
                         vel_cmd_manager=self.velocity_command,
-                        actuator_manager=self.actuator_manager,
+                        actuator_manager=self.wheel_motors,
                     ),
                 },
             },
@@ -194,7 +192,9 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 # The robot went out of the terrain
                 "out_of_bounds": {
                     "time_out": True,
-                    "fn": terminations.out_of_bounds(terrain_manager=self.terrain_manager),
+                    "fn": terminations.out_of_bounds(
+                        terrain_manager=self.terrain_manager
+                    ),
                 },
             },
         )

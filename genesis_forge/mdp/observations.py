@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import torch
 import torch.nn.functional as F
@@ -235,6 +235,76 @@ class imu_projected_gravity(MdpFn):
         self._estimate = F.normalize(blended, dim=-1)
 
         return self._estimate
+
+
+@dataclass(kw_only=True, eq=False)
+class raycaster_distance(MdpFn):
+    """
+    Distance reading(s) from a raycaster-based sensor (`gs.sensors.Raycaster`, `gs.sensors.Lidar`,
+    or `gs.sensors.DepthCamera`).
+
+    With ``reduce="min"``, returns the smallest distance across all of the sensor's rays,
+    which approximates a sensor that reports its nearest echo, like an ultrasonic range sensor.
+    With ``reduce="flatten"``, returns all ray distances as a flat vector — for example, a
+    depth camera image as an observation.
+
+    Args:
+        sensor: The raycaster sensor to read from, as returned by `scene.add_sensor()`.
+        reduce: How to reduce the ray distances: "min" for the nearest reading (default),
+                "flatten" for all readings as a flat vector.
+        normalize: Divide the distances by the sensor's max range, scaling them to [0, 1].
+        max_range: The range to normalize by. If not set, it is read from the sensor's options.
+
+    Example::
+
+        # In the environment's __init__ (sensors must be added before the scene is built):
+        self.ultrasonic = self.scene.add_sensor(
+            gs.sensors.Raycaster(
+                pattern=gs.sensors.SphericalPattern(fov=(15.0, 15.0), n_points=(5, 5)),
+                entity_idx=self.robot.idx,
+                link_idx_local=self.robot.get_link("head").idx_local,
+                max_range=4.0,
+                return_points=False,
+            )
+        )
+
+        # In config():
+        ObservationManager(
+            self,
+            cfg={
+                "ultrasonic": {
+                    "fn": observations.raycaster_distance(sensor=self.ultrasonic, normalize=True),
+                },
+            },
+        )
+
+    Returns:
+        torch.Tensor: Shape `(num_envs, 1)` for "min", or `(num_envs, num_rays)` for "flatten".
+    """
+
+    sensor: gs.sensors.Raycaster
+    reduce: Literal["min", "flatten"] = "min"
+    normalize: bool = False
+    max_range: float | None = None
+
+    def build(self):
+        self._max_range = self.max_range
+        if self._max_range is None:
+            options = getattr(self.sensor, "_options", None)
+            self._max_range = getattr(options, "max_range", None)
+        if self.normalize and self._max_range is None:
+            raise ValueError(
+                "Could not determine the sensor's max range for normalization. "
+                "Set the max_range parameter explicitly."
+            )
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        distances = self.sensor.read().distances.flatten(start_dim=1)
+        if self.reduce == "min":
+            distances = distances.amin(dim=1, keepdim=True)
+        if self.normalize:
+            distances = distances / self._max_range
+        return distances
 
 
 """

@@ -1,4 +1,5 @@
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (

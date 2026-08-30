@@ -136,6 +136,83 @@ env.velocity_command.use_gamepad(gamepad)
 # Run policy...
 ```
 
+## Position Command Manager
+
+`PositionCommandManager` commands a goal *position* rather than a velocity. Use it for navigation tasks, where the policy is told where to end up and has to choose its own heading and speed to get there.
+
+```python
+from genesis_forge.managers.command import PositionCommandManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.position_command = PositionCommandManager(
+            self,
+            range={
+                "x": (-2.5, 2.5),
+                "y": (-2.5, 2.5),
+            },
+            goal_reached_threshold=0.15,  # how close counts as arrived
+            resample_on_reached=True,     # reaching a goal earns a new one
+            debug_visualizer=True,        # draw the goal in the scene
+        )
+```
+
+Goals are sampled in the environment's local frame, and a new one is drawn whenever the environment resets, whenever the goal is reached (with `resample_on_reached`), and on a timer if you set `resample_time_sec`. Left unset, `resample_time_sec` means a goal never expires — the robot keeps working at it until it arrives or the episode ends.
+
+### Using Position Commands in Observations
+
+The observation is the vector from the robot to its goal, rotated into the **robot's own frame**, so those two numbers carry both the direction to turn and the distance remaining:
+
+```python
+ObservationManager(
+    self,
+    cfg={
+        "goal_vec": {"fn": self.position_command.observation},
+    },
+)
+```
+
+### Using Position Commands in Rewards
+
+Goal-reaching usually wants both a reward for *being* at the goal and one for *getting closer*, since the first is nearly flat when the robot starts far away:
+
+```python
+from genesis_forge.mdp import rewards
+
+RewardManager(
+    self,
+    cfg={
+        # Strongest at the goal: makes the robot settle there rather than drive past
+        "position_tracking": {
+            "fn": rewards.position_tracking(
+                position_cmd_manager=self.position_command,
+            ),
+            "weight": 1.0,
+        },
+        # Pays for closing the distance at any range: gets the robot moving
+        "position_progress": {
+            "fn": rewards.position_progress(
+                position_cmd_manager=self.position_command,
+            ),
+            "weight": 1.0,
+        },
+        # A bonus for arriving
+        "reached_goal": {
+            "fn": rewards.reached_goal(
+                position_cmd_manager=self.position_command,
+            ),
+            "weight": 10.0,
+        },
+    },
+)
+```
+
+Like the velocity tracking rewards, `position_tracking` derives its sensitivity from the command range, so widening the range in a curriculum loosens the reward to match.
+
+The manager also exposes `distance_to_goal` and `goal_reached` for writing your own reward or termination functions.
+
+See [examples/wheeled_robot_goal_nav](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_goal_nav) for a full navigation environment.
+
 ## Custom Command Manager
 
 You can also create arbitrary commands with the basic `CommandManager`.

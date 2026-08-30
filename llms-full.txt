@@ -79,7 +79,7 @@ class MyEnv(GenesisEnv):
         # ...step logic here...
         return obs, rewards, terminations, truncations, info
 
-    def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+    def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
         # ...reset logic here...
         return obs, info
 
@@ -136,6 +136,10 @@ def __init__(
 ## `actions`
 
 The actions for each environment for this step. If you're using an action manager, these are the actions prior to being handled by the action manager.
+
+## `all_envs_idx`
+
+Generate the indices of all environments: a new long tensor on `gs.device`, shape (num_envs,)
 
 ## `can_be_wrapped = True`
 
@@ -281,9 +285,9 @@ Reset one or more environments. Each of the registered managers will also be res
 
 Parameters:
 
-| Name      | Type        | Description | Default                                                            |
-| --------- | ----------- | ----------- | ------------------------------------------------------------------ |
-| `env_ids` | \`list[int] | None\`      | The environment ids to reset. If None, all environments are reset. |
+| Name      | Type     | Description   | Default |
+| --------- | -------- | ------------- | ------- |
+| `env_ids` | \`Tensor | Sequence[int] | None\`  |
 
 Returns:
 
@@ -296,7 +300,7 @@ Source code in `genesis_forge/genesis_env.py`
 ```
 def reset(
     self,
-    env_ids: list[int] | None = None,
+    env_ids: torch.Tensor | Sequence[int] | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Reset one or more environments.
@@ -309,7 +313,7 @@ def reset(
         A batch of observations and info from the vectorized environment.
     """
     if env_ids is None:
-        env_ids = torch.arange(self.num_envs, device=gs.device)
+        env_ids = self.all_envs_idx
     elif not isinstance(env_ids, torch.Tensor):
         env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
@@ -550,7 +554,7 @@ def __init__(
         "termination": None,
     }
 
-    self._action_space = None
+    self._action_space: spaces.Space | None = None
     self._action_ranges: list[tuple[int, int]] = []
     self._observation_space = None
     self._reward_buf = torch.zeros(
@@ -598,6 +602,10 @@ The action space, provided by the action manager(s), if any exist.
 ## `actions`
 
 The actions for each environment for this step. If you're using an action manager, these are the actions prior to being handled by the action manager.
+
+## `all_envs_idx`
+
+Generate the indices of all environments: a new long tensor on `gs.device`, shape (num_envs,)
 
 ## `device = gs.device`
 
@@ -890,8 +898,8 @@ def get_observations(self) -> torch.Tensor:
     """
     Returns the current observations for this step.
 
-    Named observations are stored in `extras["observations"]`. 
-    If a manager named `"policy"` exists, only its tensor is returned; 
+    Named observations are stored in `extras["observations"]`.
+    If a manager named `"policy"` exists, only its tensor is returned;
     otherwise all managers are concatenated in registration order.
     """
     self.extras["observations"] = TensorDict({}, device=gs.device)
@@ -922,9 +930,9 @@ Reset one or more environments. Each of the registered managers will also be res
 
 Parameters:
 
-| Name      | Type        | Description | Default                                                            |
-| --------- | ----------- | ----------- | ------------------------------------------------------------------ |
-| `env_ids` | \`list[int] | None\`      | The environment ids to reset. If None, all environments are reset. |
+| Name      | Type     | Description   | Default |
+| --------- | -------- | ------------- | ------- |
+| `env_ids` | \`Tensor | Sequence[int] | None\`  |
 
 Returns:
 
@@ -936,7 +944,7 @@ Source code in `genesis_forge/managed_env.py`
 
 ```
 def reset(
-    self, env_ids: list[int] | None = None
+    self, env_ids: torch.Tensor | Sequence[int] | None = None
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Reset one or more environments.
@@ -950,7 +958,7 @@ def reset(
     """
     reset_all = env_ids is None
     if env_ids is None:
-        env_ids = torch.arange(self.num_envs, device=gs.device)
+        env_ids = self.all_envs_idx
     elif not isinstance(env_ids, torch.Tensor):
         env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
@@ -1646,7 +1654,7 @@ Source code in `genesis_forge/managers/actuator/actuator_manager.py`
 ```
 def reset(
     self,
-    envs_idx: list[int] | None = None,
+    envs_idx: torch.Tensor | None = None,
 ):
     """Reset the DOF positions."""
     if not self.enabled:
@@ -1748,17 +1756,17 @@ Tracks the contact forces between entity links in the environment.
 
 Parameters:
 
-| Name                         | Type                           | Description                                                                                 | Default                                                              |
-| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                            | *required*                                                           |
-| `link_names`                 | `list[str]`                    | The names, or name regex patterns, of the entity links to track the contact forces for.     | *required*                                                           |
-| `entity`                     | `RigidEntity`                  | The entity with the links we're tracking. Defaults to env.robot.                            | `None`                                                               |
-| `with_entity`                | `RigidEntity`                  | Filter the contact forces to only include contacts with this entity.                        | `None`                                                               |
-| `with_links_names`           | \`list[str]                    | None\`                                                                                      | Filter the contact forces to only include contacts with these links. |
-| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                  | `False`                                                              |
-| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered. | `1.0`                                                                |
-| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points.                                                    | `False`                                                              |
-| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                         | `DEFAULT_VISUALIZER_CONFIG`                                          |
+| Name                         | Type                           | Description                                                                                 | Default                                                                                                                        |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                            | *required*                                                                                                                     |
+| `link_names`                 | \`list[str]                    | None\`                                                                                      | The names, or name regex patterns, of the entity links to track the contact forces for. Defaults to all of the entity's links. |
+| `entity`                     | `RigidEntity`                  | The entity with the links we're tracking. Defaults to env.robot.                            | `None`                                                                                                                         |
+| `with_entity`                | \`RigidEntity                  | list[RigidEntity]\`                                                                         | Filter the contact forces to only include contacts with this entity, or with any entity in this list.                          |
+| `with_links_names`           | \`list[str]                    | None\`                                                                                      | Filter the contact forces to only include contacts with these links.                                                           |
+| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                  | `False`                                                                                                                        |
+| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered. | `1.0`                                                                                                                          |
+| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points.                                                    | `False`                                                                                                                        |
+| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                         | `DEFAULT_VISUALIZER_CONFIG`                                                                                                    |
 
 Example with ManagedEnvironment::
 
@@ -1813,7 +1821,7 @@ class MyEnv(GenesisEnv):
         self.contact_manager.step()
         return obs, rewards, terminations, timeouts, info
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         super().reset(envs_idx)
         self.contact_manager.reset(envs_idx)
         return obs, info
@@ -1864,15 +1872,28 @@ class MyEnv(ManagedEnvironment):
     # ...other operations here...
 ```
 
+Filtering to several entities::
+
+```
+# Detect the robot hitting any obstacle, anywhere on its body. Filtering by the
+# obstacles (rather than by link name) keeps the robot's normal contact with the
+# ground from registering as a collision.
+self.collision_manager = ContactManager(
+    self,
+    entity=self.robot,
+    with_entity=self.obstacles,
+)
+```
+
 Source code in `genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def __init__(
     self,
     env: GenesisEnv,
-    link_names: list[str],
+    link_names: list[str] | None = None,
     entity: RigidEntity = None,
-    with_entity: RigidEntity = None,
+    with_entity: RigidEntity | list[RigidEntity] = None,
     with_links_names: list[str] | None = None,
     track_air_time: bool = False,
     air_time_contact_threshold: float = 1.0,
@@ -1891,6 +1912,8 @@ def __init__(
     self._with_links_names = with_links_names
     self._with_link_ids = torch.empty(0, device=gs.device)
     self._with_local_link_ids = None
+    if isinstance(with_entity, (list, tuple)) and len(with_entity) == 0:
+        raise ValueError("with_entity cannot be an empty list")
     self._has_with_filter = (
         with_entity is not None or with_links_names is not None
     )
@@ -1992,15 +2015,23 @@ def build(self):
     )
     if not self._link_ids.is_contiguous():
         self._link_ids = self._link_ids.contiguous()
-    if self._with_entity or self._with_links_names:
-        with_entity = (
-            self._with_entity if self._with_entity is not None else self.env.robot
-        )
-        (self._with_link_ids, self._with_local_link_ids) = self._get_links_idx(
-            with_entity, self._with_links_names
-        )
-        if not self._with_link_ids.is_contiguous():
-            self._with_link_ids = self._with_link_ids.contiguous()
+    if self._has_with_filter:
+        with_entities = self._with_entity
+        if with_entities is None:
+            with_entities = [self.env.robot]
+        elif not isinstance(with_entities, (list, tuple)):
+            with_entities = [with_entities]
+
+        with_link_ids = []
+        with_local_link_ids = []
+        for with_entity in with_entities:
+            (link_ids, local_link_ids) = self._get_links_idx(
+                with_entity, self._with_links_names
+            )
+            with_link_ids.append(link_ids)
+            with_local_link_ids.append(local_link_ids)
+        self._with_link_ids = torch.cat(with_link_ids).contiguous()
+        self._with_local_link_ids = torch.cat(with_local_link_ids)
 
     # Initialize buffers
     link_count = self._link_ids.shape[0]
@@ -2184,10 +2215,10 @@ def has_made_contact(self, dt: float, time_margin: float = 1.0e-8) -> torch.Tens
 Source code in `genesis_forge/managers/contact/contact_manager.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx: torch.Tensor | None = None):
     super().reset(envs_idx)
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
 
     if not self.enabled:
         return
@@ -2383,14 +2414,14 @@ Call all reset functions
 Source code in `genesis_forge/managers/entity_manager.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx: torch.Tensor | None = None):
     """
     Call all reset functions
     """
     if not self.enabled:
         return
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
 
     for name, cfg in self.on_reset.items():
         try:
@@ -2551,7 +2582,7 @@ class MyEnv(GenesisEnv):
         obs = self.observation_manager.observation()
         return obs, rewards, terminations, timeouts, info
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         super().reset(envs_idx)
 
         # ... reset logic ...
@@ -2712,14 +2743,14 @@ Reset any stateful observation functions and clear the stacked observation histo
 
 Parameters:
 
-| Name       | Type        | Description | Default                                                     |
-| ---------- | ----------- | ----------- | ----------------------------------------------------------- |
-| `envs_idx` | \`list[int] | None\`      | The environment ids being reset. All environments, if None. |
+| Name       | Type     | Description | Default                                                     |
+| ---------- | -------- | ----------- | ----------------------------------------------------------- |
+| `envs_idx` | \`Tensor | None\`      | The environment ids being reset. All environments, if None. |
 
 Source code in `genesis_forge/managers/observation_manager.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx: torch.Tensor | None = None):
     """
     Reset any stateful observation functions and clear the stacked
     observation history for the given environments.
@@ -2728,7 +2759,7 @@ def reset(self, envs_idx: list[int] | None = None):
         envs_idx: The environment ids being reset. All environments, if None.
     """
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
 
     # Reset observation functions
     for cfg in self.cfg.values():
@@ -2817,7 +2848,7 @@ class MyEnv(GenesisEnv):
         # ... other step logic ...
         return obs, rewards, terminations, timeouts, info
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         super().reset(envs_idx)
         # ... other reset logic ...
         return obs, info
@@ -2938,10 +2969,10 @@ Log the reward mean values at the end of the episode
 Source code in `genesis_forge/managers/reward_manager.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx: torch.Tensor | None = None):
     """Log the reward mean values at the end of the episode"""
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
 
     # Reset function classes
     for cfg in self.cfg.values():
@@ -3089,7 +3120,7 @@ class MyEnv(GenesisEnv):
 
         return obs, rewards, terminated, truncated, info
 
-    def reset(self, envs_idx: Sequence[int] = None):
+    def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         super().reset(envs_idx)
         # ...do reset logic here...x
 
@@ -3170,14 +3201,14 @@ Reset any stateful termination functions for the given environments.
 
 Parameters:
 
-| Name       | Type        | Description | Default                                                     |
-| ---------- | ----------- | ----------- | ----------------------------------------------------------- |
-| `envs_idx` | \`list[int] | None\`      | The environment ids being reset. All environments, if None. |
+| Name       | Type     | Description | Default                                                     |
+| ---------- | -------- | ----------- | ----------------------------------------------------------- |
+| `envs_idx` | \`Tensor | None\`      | The environment ids being reset. All environments, if None. |
 
 Source code in `genesis_forge/managers/termination_manager.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx: torch.Tensor | None = None):
     """
     Reset any stateful termination functions for the given environments.
 
@@ -3185,7 +3216,7 @@ def reset(self, envs_idx: list[int] | None = None):
         envs_idx: The environment ids being reset. All environments, if None.
     """
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
     for cfg in self.term_cfg.values():
         cfg.reset(envs_idx)
 ```
@@ -3285,7 +3316,7 @@ class MyEnv(ManagedEnvironment):
             terrain=self.terrain,
         )
 
-     def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+     def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
         # Randomize positions on the terrain
         pos = self.terrain_manager.generate_random_env_pos(
             envs_idx=envs_idx,
@@ -3340,12 +3371,12 @@ Generate one X/Y/Z position on the terrain for each environment. The X & Y posit
 
 Parameters:
 
-| Name            | Type        | Description                                                                                                                                                                                                                                                          | Default                                                                                                |
-| --------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `envs_idx`      | \`list[int] | Tensor                                                                                                                                                                                                                                                               | None\`                                                                                                 |
-| `usable_ratio`  | `float`     | How much of the terrain/subterrain area should be used for random positions. For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain. This helps avoid placing things right on th edge of the terrain/subterrain. | `0.5`                                                                                                  |
-| `subterrain`    | \`str       | None\`                                                                                                                                                                                                                                                               | The subterrain to generate positions for. If None, positions will be generated for the entire terrain. |
-| `height_offset` | `float`     | The offset to add to the terrain height.                                                                                                                                                                                                                             | `0.0001`                                                                                               |
+| Name            | Type     | Description                                                                                                                                                                                                                                                          | Default                                                                                                |
+| --------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `envs_idx`      | \`Tensor | Sequence[int]                                                                                                                                                                                                                                                        | None\`                                                                                                 |
+| `usable_ratio`  | `float`  | How much of the terrain/subterrain area should be used for random positions. For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain. This helps avoid placing things right on th edge of the terrain/subterrain. | `0.5`                                                                                                  |
+| `subterrain`    | \`str    | None\`                                                                                                                                                                                                                                                               | The subterrain to generate positions for. If None, positions will be generated for the entire terrain. |
+| `height_offset` | `float`  | The offset to add to the terrain height.                                                                                                                                                                                                                             | `0.0001`                                                                                               |
 
 Returns:
 
@@ -3358,7 +3389,7 @@ Source code in `genesis_forge/managers/terrain_manager.py`
 ```
 def generate_random_env_pos(
     self,
-    envs_idx: list[int] | torch.Tensor | None = None,
+    envs_idx: torch.Tensor | Sequence[int] | None = None,
     usable_ratio: float = 0.5,
     subterrain: str | None = None,
     height_offset: float = 0.1e-3,
@@ -3382,7 +3413,7 @@ def generate_random_env_pos(
         The position tensor of shape (1, 3)
     """
     if envs_idx is None:
-        envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+        envs_idx = self.env.all_envs_idx
     elif isinstance(envs_idx, list):
         envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 
@@ -3593,7 +3624,8 @@ One or more environments have been reset
 Source code in `genesis_forge/managers/base.py`
 
 ```
-def reset(self, envs_idx: list[int] | None = None):
+def reset(self, envs_idx:
+          torch.Tensor | None = None):
     """One or more environments have been reset"""
 ```
 
@@ -3698,7 +3730,7 @@ class MyEnv(GenesisEnv):
 
         # ...do other step things...
 
-    reset(self, envs_idx: list[int] = None) -> None:
+    reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> None:
         super().reset(envs_idx)
         self.actuator_manager.reset(envs_idx)
         self.action_manager.reset(envs_idx)
@@ -4026,24 +4058,24 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
     return actions
 ```
 
-## `reset(envs_idx)`
+## `reset(envs_idx=None)`
 
-Reset environments.
+Clear the action history of the reset environments, so the previous episode's actions are neither delivered by the delay buffer nor reported as the last actions.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
-def reset(self, envs_idx: list[int] | None):
-    """Reset environments."""
-    if (
-        self._delay_step > 0
-        and len(self._action_delay_buffer) < self._delay_step
-        and self.num_actions > 0
-    ):
-        while len(self._action_delay_buffer) < self._delay_step:
-            self._action_delay_buffer.append(
-                torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-            )
+def reset(self, envs_idx: torch.Tensor | None = None):
+    """
+    Clear the action history of the reset environments, so the previous episode's
+    actions are neither delivered by the delay buffer nor reported as the last actions.
+    """
+    if envs_idx is None:
+        envs_idx = self.env.all_envs_idx
+    for delayed_actions in self._action_delay_buffer:
+        delayed_actions[envs_idx] = 0.0
+    if self._last_actions is not None:
+        self._last_actions[envs_idx] = 0.0
 ```
 
 ## `send_actions_to_simulation(actions)`
@@ -4072,9 +4104,9 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer
+    # Action delay buffer: queue a copy of this step's actions and send the oldest
     if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions)
+        self._action_delay_buffer.insert(0, actions.clone())
         actions = self._action_delay_buffer.pop()
 
     # Copy the actions into the manager buffer
@@ -4436,24 +4468,24 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
     return actions
 ```
 
-## `reset(envs_idx)`
+## `reset(envs_idx=None)`
 
-Reset environments.
+Clear the action history of the reset environments, so the previous episode's actions are neither delivered by the delay buffer nor reported as the last actions.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
-def reset(self, envs_idx: list[int] | None):
-    """Reset environments."""
-    if (
-        self._delay_step > 0
-        and len(self._action_delay_buffer) < self._delay_step
-        and self.num_actions > 0
-    ):
-        while len(self._action_delay_buffer) < self._delay_step:
-            self._action_delay_buffer.append(
-                torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-            )
+def reset(self, envs_idx: torch.Tensor | None = None):
+    """
+    Clear the action history of the reset environments, so the previous episode's
+    actions are neither delivered by the delay buffer nor reported as the last actions.
+    """
+    if envs_idx is None:
+        envs_idx = self.env.all_envs_idx
+    for delayed_actions in self._action_delay_buffer:
+        delayed_actions[envs_idx] = 0.0
+    if self._last_actions is not None:
+        self._last_actions[envs_idx] = 0.0
 ```
 
 ## `send_actions_to_simulation(actions)`
@@ -4482,9 +4514,9 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer
+    # Action delay buffer: queue a copy of this step's actions and send the oldest
     if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions)
+        self._action_delay_buffer.insert(0, actions.clone())
         actions = self._action_delay_buffer.pop()
 
     # Copy the actions into the manager buffer
@@ -4850,24 +4882,24 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
     return actions
 ```
 
-## `reset(envs_idx)`
+## `reset(envs_idx=None)`
 
-Reset environments.
+Clear the action history of the reset environments, so the previous episode's actions are neither delivered by the delay buffer nor reported as the last actions.
 
 Source code in `genesis_forge/managers/action/base.py`
 
 ```
-def reset(self, envs_idx: list[int] | None):
-    """Reset environments."""
-    if (
-        self._delay_step > 0
-        and len(self._action_delay_buffer) < self._delay_step
-        and self.num_actions > 0
-    ):
-        while len(self._action_delay_buffer) < self._delay_step:
-            self._action_delay_buffer.append(
-                torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-            )
+def reset(self, envs_idx: torch.Tensor | None = None):
+    """
+    Clear the action history of the reset environments, so the previous episode's
+    actions are neither delivered by the delay buffer nor reported as the last actions.
+    """
+    if envs_idx is None:
+        envs_idx = self.env.all_envs_idx
+    for delayed_actions in self._action_delay_buffer:
+        delayed_actions[envs_idx] = 0.0
+    if self._last_actions is not None:
+        self._last_actions[envs_idx] = 0.0
 ```
 
 ## `send_actions_to_simulation(actions)`
@@ -4895,9 +4927,9 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer
+    # Action delay buffer: queue a copy of this step's actions and send the oldest
     if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions)
+        self._action_delay_buffer.insert(0, actions.clone())
         actions = self._action_delay_buffer.pop()
 
     # Copy the actions into the manager buffer
@@ -5157,7 +5189,7 @@ Create a new command for the given environment ids.
 Source code in `genesis_forge/managers/command/command_manager.py`
 
 ```
-def resample_command(self, env_ids: list[int]):
+def resample_command(self, env_ids: torch.Tensor):
     """Create a new command for the given environment ids."""
 
     # Get range values (this might have changed since init due to curriculum training)
@@ -5180,12 +5212,12 @@ One or more environments have been reset
 Source code in `genesis_forge/managers/command/command_manager.py`
 
 ```
-def reset(self, env_ids: list[int] | None = None):
+def reset(self, env_ids: torch.Tensor | None = None):
     """One or more environments have been reset"""
     if not self.enabled:
         return
     if env_ids is None:
-        env_ids = torch.arange(self.env.num_envs, device=gs.device)
+        env_ids = self.env.all_envs_idx
     self.resample_command(env_ids)
 ```
 
@@ -5200,7 +5232,7 @@ def set_command(
     self,
     range_key: str,
     value: torch.Tensor,
-    envs_idx: list[int] | None = None,
+    envs_idx: torch.Tensor | Sequence[int] | None = None,
 ):
     """
     Update a command value for selected environments.
@@ -5469,6 +5501,671 @@ def use_gamepad(
     )
 ```
 
+# PositionCommandManager
+
+Bases: `CommandManager`
+
+Generates a goal position command, sampled uniformly from an X/Y range in the environment's local frame. Use this for navigation tasks where the robot should drive to a target point.
+
+The goal for each environment is resampled when the environment resets, when the goal is reached (if `resample_on_reached` is True), and on a timer (if `resample_time_sec` is set).
+
+Debug Visualization
+
+If you set `debug_visualizer` to True, a sphere is rendered at each goal position, changing color when the goal has been reached.
+
+Parameters:
+
+| Name                     | Type                            | Description                                                                    | Default                                                                                                        |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `env`                    | `GenesisEnv`                    | The environment to control                                                     | *required*                                                                                                     |
+| `range`                  | `PositionCommandRange`          | The X/Y ranges to sample goal positions from, in the environment's local frame | *required*                                                                                                     |
+| `resample_time_sec`      | \`float                         | None\`                                                                         | The time interval between changing the goal. Defaults to None: the goal only changes on reset or when reached. |
+| `goal_reached_threshold` | `float`                         | The distance (in meters) at which the goal counts as reached.                  | `0.15`                                                                                                         |
+| `resample_on_reached`    | `bool`                          | Sample a new goal for an environment when its goal is reached.                 | `True`                                                                                                         |
+| `entity`                 | \`RigidEntity                   | None\`                                                                         | The entity that is navigating to the goal. Defaults to env.robot.                                              |
+| `debug_visualizer`       | `bool`                          | Enable the debug visualization                                                 | `False`                                                                                                        |
+| `debug_visualizer_cfg`   | \`PositionDebugVisualizerConfig | None\`                                                                         | The configuration for the debug visualizer                                                                     |
+
+Example::
+
+```
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.position_command = PositionCommandManager(
+            self,
+            range={
+                "x": (-2.0, 2.0),
+                "y": (-2.0, 2.0),
+            },
+            debug_visualizer=True,
+        )
+
+        RewardManager(
+            self,
+            cfg={
+                "position_tracking": {
+                    "weight": 1.0,
+                    "fn": rewards.position_tracking(
+                        position_cmd_manager=self.position_command,
+                    ),
+                },
+                "reached_goal": {
+                    "weight": 10.0,
+                    "fn": rewards.reached_goal(
+                        position_cmd_manager=self.position_command,
+                    ),
+                },
+                # ... other rewards ...
+            },
+        )
+
+        # Observations
+        ObservationManager(
+            self,
+            cfg={
+                # The goal position, as a vector in the robot's local frame
+                "goal_vec": {"fn": self.position_command.observation},
+                # ... other observations ...
+            },
+        )
+```
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def __init__(
+    self,
+    env: GenesisEnv,
+    range: PositionCommandRange,
+    resample_time_sec: float | None = None,
+    goal_reached_threshold: float = 0.15,
+    resample_on_reached: bool = True,
+    entity: "RigidEntity | None" = None,
+    debug_visualizer: bool = False,
+    debug_visualizer_cfg: PositionDebugVisualizerConfig | None = None,
+):
+    # The resampled mask is written by resample_command, which the base constructor
+    # can indirectly trigger, so it must exist first
+    self._resampled_last_step = torch.zeros(
+        env.num_envs, dtype=torch.bool, device=gs.device
+    )
+
+    super().__init__(
+        env,
+        range=range,
+        resample_time_sec=resample_time_sec,
+    )
+
+    self.goal_reached_threshold = goal_reached_threshold
+    self.resample_on_reached = resample_on_reached
+    self._entity = entity
+
+    self.debug_visualizer = debug_visualizer
+    self.debug_envs_idx: list | None = None
+    self.visualizer_cfg = (
+        debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
+    )
+    self._debug_nodes: list = []
+```
+
+## `command`
+
+The desired command value. Shape is (num_envs, num_ranges).
+
+## `debug_envs_idx = None`
+
+## `debug_visualizer = debug_visualizer`
+
+## `distance_to_goal`
+
+The XY distance from the entity to its goal position. Shape is (num_envs,).
+
+## `enabled = True`
+
+## `entity`
+
+The entity that is navigating to the goal.
+
+## `env = env`
+
+## `goal_reached`
+
+Whether each environment's entity is within `goal_reached_threshold` of its goal. Shape is (num_envs,).
+
+## `goal_reached_threshold = goal_reached_threshold`
+
+## `range`
+
+The goal position range dict.
+
+## `resample_on_reached = resample_on_reached`
+
+## `resample_time_sec`
+
+The time interval (in seconds) between changing the goal for each environment, or None to only change the goal on reset or when it is reached.
+
+## `resampled_last_step`
+
+Boolean tensor marking the environments whose goal was resampled since the previous step's rewards were computed. Reward functions that track per-step goal history (e.g. progress toward the goal) use this to skip the step that spans a goal change. Shape is (num_envs,).
+
+## `type = type`
+
+## `visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}`
+
+## `build()`
+
+Build the position command manager
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def build(self):
+    """Build the position command manager"""
+    super().build()
+    self._obs_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
+    self.build_debug()
+```
+
+## `build_debug()`
+
+Build the debug visualizer buffers and render throttle
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def build_debug(self):
+    """Build the debug visualizer buffers and render throttle"""
+    if not self.debug_visualizer:
+        return
+
+    self._scene_env_offset = torch.from_numpy(self.env.scene.envs_offset).to(
+        gs.device
+    )
+
+    # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+    self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
+    if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
+        if self.env.scene.vis_options.rendered_envs_idx is not None:
+            self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
+        else:
+            self.debug_envs_idx = list[int](range(self.env.num_envs))
+
+    # Calculate the number of steps per debug render
+    self._steps_per_debug_render = math.ceil(
+        1.0 / self._vis_cfg("fps") / self.env.dt
+    )
+```
+
+## `get_command(range_key)`
+
+If the range is a dict, get the command values for the given key.
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def get_command(self, range_key: str) -> torch.Tensor:
+    """
+    If the range is a dict, get the command values for the given key.
+    """
+    if not isinstance(self._range, dict):
+        raise TypeError("The range is not a dict")
+    return self._command[:, self._range_idx[range_key]]
+```
+
+## `get_command_idx(key)`
+
+If the range is a dict, get the command index for the given key.
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def get_command_idx(self, key: str) -> int:
+    """
+    If the range is a dict, get the command index for the given key.
+    """
+    if not isinstance(self._range, dict):
+        raise TypeError("The range is not a dict")
+    return self._range_idx[key]
+```
+
+## `increment_range(range_key, increment, limit=None)`
+
+Increment a command range target values by the given amount, with an optional limit.
+
+Both increment and limit can be passed as a single float or a tuple of two floats. When they are tuples, they represent the increment and limit for both min and max. When they are a single float, they will be applied to both min and max as (-value, +value).
+
+Example::
+
+# Increment the range by 0.5 (+/-) for both min and max
+
+command_manager.increment_range("height", 0.5)
+
+```
+# Increment the range min by -0.25 and max by 1.0
+command_manager.increment_range("height", (-0.25, 1.0))
+
+# Increment the range by (-0.25, 1.0) and keep min above -0.5 and max below 2.0
+command_manager.increment_range("height", (-0.25, 1.0), (-0.5, 2.0))
+```
+
+Parameters:
+
+| Name        | Type    | Description                                | Default                                                                                                                                                                                                                     |
+| ----------- | ------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `range_key` | `str`   | The key of the command range to increment. | *required*                                                                                                                                                                                                                  |
+| `increment` | \`float | tuple[float, float]\`                      | The amount to increment the min & max range values by (+/-). If this is a tuple, it will be: (min_increment, max_increment). If this is a single float, it will be applied to both min and max as (-increment, +increment). |
+| `limit`     | \`float | tuple[float, float]                        | None\`                                                                                                                                                                                                                      |
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def increment_range(
+    self,
+    range_key: str,
+    increment: float | tuple[float, float],
+    limit: float | tuple[float, float] | None = None,
+):
+    """
+    Increment a command range target values by the given amount, with an optional limit.
+
+    Both increment and limit can be passed as a single float or a tuple of two floats.
+    When they are tuples, they represent the increment and limit for both min and max.
+    When they are a single float, they will be applied to both min and max as (-value, +value).
+
+    Example::
+        # Increment the range by 0.5 (+/-) for both min and max
+        command_manager.increment_range("height", 0.5)
+
+        # Increment the range min by -0.25 and max by 1.0
+        command_manager.increment_range("height", (-0.25, 1.0))
+
+        # Increment the range by (-0.25, 1.0) and keep min above -0.5 and max below 2.0
+        command_manager.increment_range("height", (-0.25, 1.0), (-0.5, 2.0))
+
+    Args:
+        range_key: The key of the command range to increment.
+        increment: The amount to increment the min & max range values by (+/-).
+                   If this is a tuple, it will be: `(min_increment, max_increment)`.
+                   If this is a single float, it will be applied to both min and max as (-increment, +increment).
+        limit: Do not set the values beyond this limit range.
+               This is a tuple of `(min_limit, max_limit)`.
+    """
+    # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
+    if not isinstance(self.range, dict):
+        raise TypeError("Cannot increment a non-dict range item")
+    range_item = self._range.get(range_key, None)
+    if range_item is None:
+        raise ValueError(f"Range item {range_key} not found")
+    range_item = list[float](range_item)  # Ensure it's a list, not a tuple
+
+    # Expand single increment/limit values to tuples
+    if not isinstance(increment, (list, tuple)):
+        increment = (-increment, increment)
+    if limit is not None and not isinstance(limit, (list, tuple)):
+        limit = (-limit, limit)
+
+    # Increment the range values
+    for i, value in enumerate(range_item):
+        value += increment[i]
+        if limit is not None:
+            if increment[i] > 0:
+                value = min(value, limit[i])
+            else:
+                value = max(value, limit[i])
+        range_item[i] = value
+    self._range[range_key] = range_item
+```
+
+## `observation(env)`
+
+The vector from the entity to its goal position, in the entity's local frame. This encodes both the direction and the distance to the goal.
+
+Returns:
+
+| Type     | Description                       |
+| -------- | --------------------------------- |
+| `Tensor` | torch.Tensor: Shape (num_envs, 2) |
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def observation(self, env: GenesisEnv) -> torch.Tensor:
+    """
+    The vector from the entity to its goal position, in the entity's local frame.
+    This encodes both the direction and the distance to the goal.
+
+    Returns:
+        torch.Tensor: Shape (num_envs, 2)
+    """
+    entity = self.entity
+    self._obs_vec_buffer[:, :2] = self.command - entity.get_pos()[:, :2]
+    self._obs_vec_buffer[:, 2] = 0.0
+    vec_local = transform_by_quat(
+        self._obs_vec_buffer, inv_quat(entity.get_quat())
+    )
+    return vec_local[:, :2]
+```
+
+## `resample_command(env_ids)`
+
+Sample new goal positions for the given environment ids.
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def resample_command(self, env_ids: torch.Tensor):
+    """Sample new goal positions for the given environment ids."""
+    super().resample_command(env_ids)
+    self._resampled_last_step[env_ids] = True
+```
+
+## `reset(env_ids=None)`
+
+Resample the goals of the reset environments and redraw the debug visualization.
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def reset(self, env_ids: torch.Tensor | None = None):
+    """
+    Resample the goals of the reset environments and redraw the debug visualization.
+    """
+    super().reset(env_ids)
+    if not self.enabled or not self.debug_visualizer or not self.debug_envs_idx:
+        return
+    if env_ids is None or set(self.debug_envs_idx).intersection(env_ids.tolist()):
+        self._render_debug(force=True)
+```
+
+## `set_command(range_key, value, envs_idx=None)`
+
+Update a command value for selected environments.
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def set_command(
+    self,
+    range_key: str,
+    value: torch.Tensor,
+    envs_idx: torch.Tensor | Sequence[int] | None = None,
+):
+    """
+    Update a command value for selected environments.
+    """
+    if not isinstance(self._range, dict):
+        raise TypeError("The range is not a dict")
+    if envs_idx is None:
+        self._command[:, self._range_idx[range_key]] = value
+    else:
+        self._command[envs_idx, self._range_idx[range_key]] = value
+```
+
+## `step()`
+
+Resample goals on the timer (if enabled) and for reached environments.
+
+Source code in `genesis_forge/managers/command/position_command.py`
+
+```
+def step(self):
+    """Resample goals on the timer (if enabled) and for reached environments."""
+    if not self.enabled:
+        return
+
+    # Rewards for this step have already been computed, so the resampled marks
+    # from the previous step have been consumed
+    self._resampled_last_step[:] = False
+
+    # Timer-based resampling (the base implementation), only when enabled
+    if self._resample_steps > 0:
+        super().step()
+
+    # Resample environments that reached their goal
+    if self.resample_on_reached and self._external_controller is None:
+        reached_envs_idx = self.goal_reached.nonzero(as_tuple=False).flatten()
+        if len(reached_envs_idx) > 0:
+            self.resample_command(reached_envs_idx)
+
+    self._render_debug()
+```
+
+## `use_external_controller(controller)`
+
+Bypass the internal command controller, and generate the command values with an external control function. This can be used to connect a gamepad, joystick, or other external controller to the command manager.
+
+Parameters:
+
+| Name         | Type                            | Description                                                                                                        | Default    |
+| ------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
+| `controller` | `Callable[[int], CommandRange]` | A function that takes the step index and returns a tensor of command values with the shape (num_envs, num_ranges). | *required* |
+
+Example::
+
+```
+N_ENVS = 1
+MIN_HEIGHT = 0.1
+MAX_HEIGHT = 0.2
+
+# Create environment
+class MyEnv(GenesisEnv):
+    def config(self):
+        self.height_command = CommandManager(self, range=(MIN_HEIGHT, MAX_HEIGHT))
+    # ...
+
+# Setup gamepad
+gamepad = Gamepad(GAMEPAD_PRODUCT)
+cmd_buffer = torch.zeros((N_ENVS, 1), device=gs.device)
+def gamepad_controller(_step):
+    a_pressed = "a" in gamepad.state.buttons
+    cmd_buffer[:, 0] = MAX_HEIGHT if a_pressed else MIN_HEIGHT
+    return cmd_buffer
+
+# Create environment & connect gamepad
+env = MyEnv(num_envs=N_ENVS)
+env.build()
+env.command_manager.use_external_controller(gamepad_controller)
+```
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def use_external_controller(self, controller: Callable[[int], CommandRange]):
+    """
+    Bypass the internal command controller, and generate the command values with an external control function.
+    This can be used to connect a gamepad, joystick, or other external controller to the command manager.
+
+    Args:
+        controller: A function that takes the step index and returns a tensor of command values with the shape (num_envs, num_ranges).
+
+    Example::
+
+        N_ENVS = 1
+        MIN_HEIGHT = 0.1
+        MAX_HEIGHT = 0.2
+
+        # Create environment
+        class MyEnv(GenesisEnv):
+            def config(self):
+                self.height_command = CommandManager(self, range=(MIN_HEIGHT, MAX_HEIGHT))
+            # ...
+
+        # Setup gamepad
+        gamepad = Gamepad(GAMEPAD_PRODUCT)
+        cmd_buffer = torch.zeros((N_ENVS, 1), device=gs.device)
+        def gamepad_controller(_step):
+            a_pressed = "a" in gamepad.state.buttons
+            cmd_buffer[:, 0] = MAX_HEIGHT if a_pressed else MIN_HEIGHT
+            return cmd_buffer
+
+        # Create environment & connect gamepad
+        env = MyEnv(num_envs=N_ENVS)
+        env.build()
+        env.command_manager.use_external_controller(gamepad_controller)
+    """
+    self._external_controller = controller
+```
+
+## `use_gamepad(gamepad, range_axis, invert_axis=False)`
+
+A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
+
+Parameters:
+
+| Name          | Type      | Description                 | Default                                                                                        |
+| ------------- | --------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `gamepad`     | `Gamepad` | The gamepad wrapper to use. | *required*                                                                                     |
+| `range_axis`  | \`int     | dict[str, int]\`            | The axis or dict of axes to use for the command value. This should match the range init param. |
+| `invert_axis` | \`bool    | dict[str, bool]\`           | Whether to invert each mapped axis before converting it into the command range.                |
+
+Example::
+
+```
+# Create environment
+class MyEnv(GenesisEnv):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.height_command = CommandManager(self, range=(0.1, 0.2))
+    # ...
+
+# Connect gamepad
+from genesis_forge.gamepads import Gamepad
+gamepad = Gamepad()
+
+# Create environment & connect gamepad
+env = MyEnv(num_envs=1)
+env.build()
+
+# Connect joystick axis 3 to the height command
+env.height_command.use_gamepad(gamepad, range_axis=3)
+```
+
+Example with multiple ranges::
+
+```
+# Create environment
+class MyEnv(GenesisEnv):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.height_command = CommandManager(
+            self,
+            range={
+                "cmd1": (-2.0, 2.0),
+                "cmd2": (1.0, 5.0),
+            }
+        )
+    # ...
+
+# Connect gamepad
+from genesis_forge.gamepads import Gamepad
+gamepad = Gamepad()
+
+# Create environment & connect gamepad
+env = MyEnv(num_envs=1)
+env.build()
+
+# Connect joystick axis 2 and 3 to to the indvidual ranges
+env.height_command.use_gamepad(
+    gamepad,
+    range_axis={
+        "cmd1": 2,
+        "cmd2": 3,
+    })
+```
+
+Source code in `genesis_forge/managers/command/command_manager.py`
+
+```
+def use_gamepad(
+    self,
+    gamepad: Gamepad,
+    range_axis: int | dict[str, int],
+    invert_axis: bool | dict[str, bool] = False,
+):
+    """
+    A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
+
+    Args:
+        gamepad: The gamepad wrapper to use.
+        range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+        invert_axis: Whether to invert each mapped axis before converting it into the command range.
+
+    Example::
+
+        # Create environment
+        class MyEnv(GenesisEnv):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.height_command = CommandManager(self, range=(0.1, 0.2))
+            # ...
+
+        # Connect gamepad
+        from genesis_forge.gamepads import Gamepad
+        gamepad = Gamepad()
+
+        # Create environment & connect gamepad
+        env = MyEnv(num_envs=1)
+        env.build()
+
+        # Connect joystick axis 3 to the height command
+        env.height_command.use_gamepad(gamepad, range_axis=3)
+
+    Example with multiple ranges::
+
+        # Create environment
+        class MyEnv(GenesisEnv):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.height_command = CommandManager(
+                    self,
+                    range={
+                        "cmd1": (-2.0, 2.0),
+                        "cmd2": (1.0, 5.0),
+                    }
+                )
+            # ...
+
+        # Connect gamepad
+        from genesis_forge.gamepads import Gamepad
+        gamepad = Gamepad()
+
+        # Create environment & connect gamepad
+        env = MyEnv(num_envs=1)
+        env.build()
+
+        # Connect joystick axis 2 and 3 to to the indvidual ranges
+        env.height_command.use_gamepad(
+            gamepad,
+            range_axis={
+                "cmd1": 2,
+                "cmd2": 3,
+            })
+    """
+    self._external_controller = self._gamepad_axis_command
+
+    # Map axis to range keys
+    axis_map = []
+    axis_invert_map = []
+    if isinstance(range_axis, int):
+        axis_map.append(range_axis)
+        axis_invert_map.append(invert_axis)
+    elif isinstance(range_axis, dict):
+        for key in self._range:
+            axis_map.append(range_axis[key])
+            axis_invert_map.append(
+                invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
+            )
+
+    self._gamepad_cfg = {
+        "gamepad": gamepad,
+        "axis_map": axis_map,
+        "axis_invert_map": axis_invert_map,
+    }
+    self._gamepad_axis_command_buffer = torch.zeros_like(
+        self._command, device=gs.device
+    )
+```
+
 # VelocityCommandManager
 
 Bases: `CommandManager`
@@ -5483,13 +6180,18 @@ IMPORTANT: The velocity commands are interpreted as robot-relative coordinates:
 
 Debug Visualization
 
-If you set `debug_visualizer` to True, arrows will be rendered above your robot showing the commanded velocity vs the actual velocity.
+If you set `debug_visualizer` to True, the commanded and actual velocities are rendered above your robot.
 
-Arrow meanings:
+Linear velocity:
 
-- GREEN: Commanded velocity (robot-relative, transformed to world coordinates for visualization) When joystick is "forward", this arrow points in the robot's forward direction
-- BLUE: Actual robot velocity in world coordinates
-- RED BALL: Shown instead of the green arrow when the env is commanded to stand still
+- GREEN ARROW: Commanded velocity (robot-relative, transformed to world coordinates for visualization) When joystick is "forward", this arrow points in the robot's forward direction
+- BLUE ARROW: Actual robot velocity in world coordinates
+- RED BALL: Shown instead of the green arrow when no linear velocity is commanded
+
+Angular velocity (yaw rate), shown as flat arcs circling the vertical axis just beyond the arrows. The arc length is the yaw rate magnitude and the arc direction (clockwise/counter-clockwise from above) is the rotation direction. Arcs start from the direction the commanded linear velocity points, or from the robot's forward direction when no linear velocity is commanded.
+
+- GREEN ARC (outer): Commanded angular velocity
+- BLUE ARC (inner): Actual angular velocity
 
 Parameters:
 
@@ -5500,7 +6202,7 @@ Parameters:
 | `stopped_probability`  | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)              | `0.0`                                      |
 | `standing_probability` | `float`                         | (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                                      |
 | `resample_time_sec`    | `float`                         | The time interval between changing the command                                                           | `5.0`                                      |
-| `debug_visualizer`     | `bool`                          | Enable the debug arrow visualization                                                                     | `False`                                    |
+| `debug_visualizer`     | `bool`                          | Enable the debug visualization                                                                           | `False`                                    |
 | `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                                   | The configuration for the debug visualizer |
 
 Example::
@@ -5509,14 +6211,14 @@ Example::
 class MyEnv(GenesisEnv):
     def config(self):
         # Create a velocity command manager
-        self.command_manager = VelocityCommandManager(
+        self.velocity_command = VelocityCommandManager(
             self,
-            visualize=True,
-            range = {
-                "lin_vel_x_range": (-1.0, 1.0),
-                "lin_vel_y_range": (-1.0, 1.0),
-                "ang_vel_z_range": (-0.5, 0.5),
-            }
+            range={
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-0.5, 0.5),
+            },
+            debug_visualizer=True,
         )
 
         RewardManager(
@@ -5525,17 +6227,15 @@ class MyEnv(GenesisEnv):
             cfg={
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                    ),
                 },
                 # ... other rewards ...
             },
@@ -5574,11 +6274,11 @@ def __init__(
         resample_time_sec=resample_time_sec,
     )
 
-    self._arrow_nodes: list = []
     self.stopped_probability = stopped_probability or standing_probability
     self.debug_visualizer = debug_visualizer
     self.debug_envs_idx: list | None = None
     self.visualizer_cfg = debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
+    self._debug_nodes: list = []
 
     self._is_stopped_env = torch.zeros(
         env.num_envs, dtype=torch.bool, device=gs.device
@@ -5611,7 +6311,7 @@ The time interval (in seconds) between changing the command for each environment
 
 ## `stopped_envs`
 
-A tensor which has the "standing" state (1 or 0) of all the environments. If the state is 1, the command has no movement commanded, linear or angular.
+A tensor which has the "stopped" state (1 or 0) of all the environments. If the state is 1, the command has no movement commanded, linear or angular.
 
 ## `stopped_probability = stopped_probability or standing_probability`
 
@@ -5634,20 +6334,20 @@ def build(self):
 
 ## `build_debug()`
 
-Build the debug components of the velocity command manager
+Build the debug visualizer: buffers, render throttle, and the visual scale factors
 
 Source code in `genesis_forge/managers/command/velocity_command.py`
 
 ```
 def build_debug(self):
-    """Build the debug components of the velocity command manager"""
-    if not self.debug_visualizer or self.visualizer_cfg is None:
+    """Build the debug visualizer: buffers, render throttle, and the visual scale factors"""
+    if not self.debug_visualizer:
         return
 
     # Pre-allocate buffers
-    self._arrow_pos_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
+    self._origin_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
+    self._commanded_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
     self._actual_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
-    self._vec_3d_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
     self._scene_env_offset = torch.from_numpy(self.env.scene.envs_offset).to(
         gs.device
     )
@@ -5661,18 +6361,34 @@ def build_debug(self):
             self.debug_envs_idx = list[int](range(self.env.num_envs))
 
     # Calculate the number of steps per debug render
-    fps = self.visualizer_cfg.get("fps", DEFAULT_VISUALIZER_CONFIG['fps'])
-    self._steps_per_debug_render = math.ceil(1.0 / fps / self.env.dt)
+    self._steps_per_debug_render = math.ceil(1.0 / self._vis_cfg("fps") / self.env.dt)
 
-    # Arrow scale factor
-    # Scales the arrow size based on the maximum target velocity range
-    velocity_range = cast(VelocityCommandRange, self.range)
-    arrow_max_length = self.visualizer_cfg.get("arrow_max_length", DEFAULT_VISUALIZER_CONFIG['arrow_max_length'])
-    self._arrow_scale_factor = arrow_max_length / max(
-        *velocity_range["lin_vel_x"],
-        *velocity_range["lin_vel_y"],
-        *velocity_range["ang_vel_z"],
+    # Linear velocity arrows: a full-length arrow is the fastest linear velocity in the range
+    velocity_range = self.range
+    arrow_max_length = self._vis_cfg("arrow_max_length")
+    max_lin_vel = max(
+        abs(v) for v in (*velocity_range["lin_vel_x"], *velocity_range["lin_vel_y"])
     )
+    self._arrow_scale_factor = (
+        arrow_max_length / max_lin_vel if max_lin_vel > 0.0 else 1.0
+    )
+
+    # Angular velocity arcs: a full sweep is the fastest angular velocity in the range,
+    # and both arcs sit just beyond the tip of a full-length linear velocity arrow
+    max_ang_vel = max(abs(v) for v in velocity_range["ang_vel_z"])
+    self._ang_arc_enabled = self._vis_cfg("ang_arc_enabled") and max_ang_vel > 0.0
+    if self._ang_arc_enabled:
+        self._ang_arc_max_sweep = self._vis_cfg("ang_arc_max_sweep")
+        self._ang_arc_scale_factor = self._ang_arc_max_sweep / max_ang_vel
+        arc_gap = self._vis_cfg("ang_arc_gap")
+        self._actual_arc_radius = arrow_max_length + arc_gap
+        self._commanded_arc_radius = self._actual_arc_radius + arc_gap
+
+        # Unit-circle cross-section of the arc tube, used by trimesh.creation.revolve.
+        # The last point repeats the first exactly, so revolve sees a closed profile.
+        theta = np.linspace(0.0, 2.0 * np.pi, _ARC_TUBE_SIDES + 1)
+        self._arc_cross_section = np.stack([np.cos(theta), np.sin(theta)], axis=1)
+        self._arc_cross_section[-1] = self._arc_cross_section[0]
 ```
 
 ## `get_command(range_key)`
@@ -5809,40 +6525,48 @@ def observation(self, env: GenesisEnv) -> torch.Tensor:
 
 ## `resample_command(env_ids)`
 
-Overwrites commands for environments that should be standing still.
+Overwrites commands for environments that should be stopped.
 
 Source code in `genesis_forge/managers/command/velocity_command.py`
 
 ```
-def resample_command(self, env_ids: list[int]):
+def resample_command(self, env_ids: torch.Tensor):
     """
-    Overwrites commands for environments that should be standing still.
+    Overwrites commands for environments that should be stopped.
     """
     super().resample_command(env_ids)
     if not self.enabled:
         return
 
-    # Set standing environments
+    # Select the stopped environments and zero their commands
     rand_buffer = torch.empty(len(env_ids), device=gs.device).uniform_(0.0, 1.0)
     self._is_stopped_env[env_ids] = rand_buffer <= self.stopped_probability
-    standing_envs_idx = self._is_stopped_env.nonzero(as_tuple=False).flatten()
-    self._command[standing_envs_idx, :] = 0.0
+    stopped_envs_idx = self._is_stopped_env.nonzero(as_tuple=False).flatten()
+    self._command[stopped_envs_idx, :] = 0.0
 ```
 
 ## `reset(env_ids=None)`
 
-One or more environments have been reset
+Resample the commands of the reset environments and redraw the debug visualization.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+The environment resets after the managers have stepped, so the visuals drawn during this step show the robot's pre-reset position and command. Redraw them now so they match the reset state, rather than waiting for the next throttled render.
+
+Source code in `genesis_forge/managers/command/velocity_command.py`
 
 ```
-def reset(self, env_ids: list[int] | None = None):
-    """One or more environments have been reset"""
-    if not self.enabled:
+def reset(self, env_ids: torch.Tensor | None = None):
+    """
+    Resample the commands of the reset environments and redraw the debug visualization.
+
+    The environment resets after the managers have stepped, so the visuals drawn during
+    this step show the robot's pre-reset position and command. Redraw them now so they
+    match the reset state, rather than waiting for the next throttled render.
+    """
+    super().reset(env_ids)
+    if not self.enabled or not self.debug_visualizer or not self.debug_envs_idx:
         return
-    if env_ids is None:
-        env_ids = torch.arange(self.env.num_envs, device=gs.device)
-    self.resample_command(env_ids)
+    if env_ids is None or set(self.debug_envs_idx).intersection(env_ids.tolist()):
+        self._render_debug(force=True)
 ```
 
 ## `set_command(range_key, value, envs_idx=None)`
@@ -5856,7 +6580,7 @@ def set_command(
     self,
     range_key: str,
     value: torch.Tensor,
-    envs_idx: list[int] | None = None,
+    envs_idx: torch.Tensor | Sequence[int] | None = None,
 ):
     """
     Update a command value for selected environments.
@@ -5871,17 +6595,17 @@ def set_command(
 
 ## `step()`
 
-Render the command arrows
+Render the debug visualization
 
 Source code in `genesis_forge/managers/command/velocity_command.py`
 
 ```
 def step(self):
-    """Render the command arrows"""
+    """Render the debug visualization"""
     if not self.enabled:
         return
     super().step()
-    self._render_arrows()
+    self._render_debug()
 ```
 
 ## `use_external_controller(controller)`
@@ -6089,14 +6813,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -6182,13 +6906,13 @@ def update(self, **params: Any) -> None:
 
 Bases: `MdpFn`
 
-The most current step actions.
+The most current step's raw actions. This should be the actions before they've been processed and converted into their target values.
 
 Parameters:
 
-| Name             | Type                    | Description                                                                                    | Default |
-| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------- | ------- |
-| `action_manager` | `PositionActionManager` | The action manager to source actions from. If not provided, actions are read from env.actions. | `None`  |
+| Name             | Type                | Description | Default                                                                                            |
+| ---------------- | ------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `action_manager` | \`BaseActionManager | None\`      | The action manager to source actions from. If not provided, all actions are read from env.actions. |
 
 ### `action_manager = None`
 
@@ -6244,14 +6968,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -6408,14 +7132,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -6578,14 +7302,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -6745,14 +7469,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -6912,14 +7636,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7076,14 +7800,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7240,14 +7964,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7404,14 +8128,209 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `raycaster_distance(*, sensor, reduce='min', normalize=False, max_range=None)`
+
+Bases: `MdpFn`
+
+Distance reading(s) from a raycaster-based sensor (`gs.sensors.Raycaster`, `gs.sensors.Lidar`, or `gs.sensors.DepthCamera`).
+
+With `reduce="min"`, returns the smallest distance across all of the sensor's rays, which approximates a sensor that reports its nearest echo, like an ultrasonic range sensor. With `reduce="flatten"`, returns all ray distances as a flat vector — for example, a depth camera image as an observation.
+
+Parameters:
+
+| Name        | Type                        | Description                                                                                                            | Default                                                                      |
+| ----------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `sensor`    | `Raycaster`                 | The raycaster sensor to read from, as returned by scene.add_sensor().                                                  | *required*                                                                   |
+| `reduce`    | `Literal['min', 'flatten']` | How to reduce the ray distances: "min" for the nearest reading (default), "flatten" for all readings as a flat vector. | `'min'`                                                                      |
+| `normalize` | `bool`                      | Divide the distances by the sensor's max range, scaling them to [0, 1].                                                | `False`                                                                      |
+| `max_range` | \`float                     | None\`                                                                                                                 | The range to normalize by. If not set, it is read from the sensor's options. |
+
+Example::
+
+```
+# In the environment's __init__ (sensors must be added before the scene is built):
+self.ultrasonic = self.scene.add_sensor(
+    gs.sensors.Raycaster(
+        pattern=gs.sensors.SphericalPattern(fov=(15.0, 15.0), n_points=(5, 5)),
+        entity_idx=self.robot.idx,
+        link_idx_local=self.robot.get_link("head").idx_local,
+        max_range=4.0,
+        return_points=False,
+    )
+)
+
+# In config():
+ObservationManager(
+    self,
+    cfg={
+        "ultrasonic": {
+            "fn": observations.raycaster_distance(sensor=self.ultrasonic, normalize=True),
+        },
+    },
+)
+```
+
+Returns:
+
+| Type | Description                                                                         |
+| ---- | ----------------------------------------------------------------------------------- |
+|      | torch.Tensor: Shape (num_envs, 1) for "min", or (num_envs, num_rays) for "flatten". |
+
+### `env`
+
+The environment this function is bound to.
+
+### `max_range = None`
+
+### `normalize = False`
+
+### `reduce = 'min'`
+
+### `sensor`
+
+### `build()`
+
+Source code in `genesis_forge/mdp/observations.py`
+
+```
+def build(self):
+    self._max_range = self.max_range
+    if self._max_range is None:
+        options = getattr(self.sensor, "_options", None)
+        self._max_range = getattr(options, "max_range", None)
+    if self.normalize and self._max_range is None:
+        raise ValueError(
+            "Could not determine the sensor's max range for normalization. "
+            "Set the max_range parameter explicitly."
+        )
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7586,14 +8505,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7756,14 +8675,181 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `randomize_annulus_position(*, radius_range, center=(0.0, 0.0), z=0.0, rotation=(lambda: {'z': (0, 2 * math.pi)})(), zero_velocity=True)`
+
+Bases: `ResetMdpFn`
+
+Place the entity at a random position within a flat ring (annulus) around a center point.
+
+The minimum radius creates a keep-out zone, which is useful for scattering obstacles around a robot without dropping any of them on top of it. Positions are sampled uniformly by area, so they don't cluster near the center.
+
+Parameters:
+
+| Name            | Type                  | Description                                                                                                                             | Default                                                                                                                      |
+| --------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `center`        | `tuple[float, float]` | The X/Y center of the annulus, in the environment's local frame.                                                                        | `(0.0, 0.0)`                                                                                                                 |
+| `radius_range`  | `tuple[float, float]` | The (min, max) distance from the center to place the entity at.                                                                         | *required*                                                                                                                   |
+| `z`             | `float`               | The height to place the entity at.                                                                                                      | `0.0`                                                                                                                        |
+| `rotation`      | \`XYZRotation         | None\`                                                                                                                                  | The X/Y/Z rotation to set the entity to. Defaults to a random rotation around the z-axis. Set to None to not set a rotation. |
+| `zero_velocity` | `bool`                | Whether to zero the velocity of all the entity's dofs. Defaults to True. This is a safety measure after a sudden change in entity pose. | `True`                                                                                                                       |
+
+### `center = (0.0, 0.0)`
+
+### `entity`
+
+The entity this function resets.
+
+Raises:
+
+| Type           | Description                                            |
+| -------------- | ------------------------------------------------------ |
+| `RuntimeError` | If accessed before the manager has bound the function. |
+
+### `env`
+
+The environment this function is bound to.
+
+### `radius_range`
+
+### `rotation = field(default_factory=lambda: {'z': (0, 2 * math.pi)})`
+
+### `z = 0.0`
+
+### `zero_velocity = True`
+
+### `build()`
+
+Source code in `genesis_forge/mdp/reset.py`
+
+```
+def build(self):
+    self._pos_buffer = torch.zeros(
+        (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+    )
+    self._rotation_buffer = torch.zeros(
+        (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+    )
+    self._quat_buffer = torch.zeros(
+        (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+    )
+```
+
+### `context(env, entity=None)`
+
+Store the environment and the entity this function resets.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
+    """Store the environment and the entity this function resets."""
+    super().context(env)
+    object.__setattr__(self, "_entity", entity)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -7916,14 +9002,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -8084,7 +9170,7 @@ Set the rotation quaternion for the given environment ids.
 Source code in `genesis_forge/mdp/reset.py`
 
 ```
-def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
+def define_quat(self, envs_idx: torch.Tensor, rotation: XYZRotation):
     """
     Set the rotation quaternion for the given environment ids.
     """
@@ -8116,14 +9202,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -8277,14 +9363,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -8424,14 +9510,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -8516,6 +9602,10 @@ def update(self, **params: Any) -> None:
 # Rewards
 
 Reward functions for the Genesis Forge environment. Each of these should return a float tensor with the reward value for each environment, in the shape (num_envs,).
+
+## `DEFAULT_TRACKING_SENSITIVITY = 0.25`
+
+The tracking reward sensitivity when there is no command range to derive one from
 
 ## `action_acceleration_l2(*, action_manager=None)`
 
@@ -8602,7 +9692,7 @@ Clear the action history for the specified environments.
 Source code in `genesis_forge/mdp/rewards.py`
 
 ```
-def reset(self, envs_idx):
+def reset(self, envs_idx: torch.Tensor):
     """
     Clear the action history for the specified environments.
     """
@@ -8750,14 +9840,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -8914,14 +10004,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9087,14 +10177,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9248,14 +10338,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9337,7 +10427,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `command_tracking_ang_vel(*, commanded_ang_vel=None, vel_cmd_manager=None, sensitivity=0.25, entity=None, entity_manager=None)`
+## `command_tracking_ang_vel(*, commanded_ang_vel=None, vel_cmd_manager=None, sensitivity=None, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -9345,13 +10435,13 @@ Reward for tracking commanded angular velocity (yaw)
 
 Parameters:
 
-| Name                | Type                     | Description                                                                                                                                 | Default |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `commanded_ang_vel` | `Tensor`                 | The commanded angular velocity in the shape (num_envs, 1)                                                                                   | `None`  |
-| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`  |
-| `sensitivity`       | `float`                  | A lower value means the reward is more sensitive to the error                                                                               | `0.25`  |
-| `entity_manager`    | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`            | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name                | Type                     | Description                                                                                                                                 | Default                                                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commanded_ang_vel` | `Tensor`                 | The commanded angular velocity in the shape (num_envs, 1)                                                                                   | `None`                                                                                                                                                                                                                                                                                |
+| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`                                                                                                                                                                                                                                                                                |
+| `sensitivity`       | \`float                  | None\`                                                                                                                                      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest absolute value of the command range. |
+| `entity_manager`    | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`                                                                                                                                                                                                                                                                                |
+| `entity`            | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`                                                                                                                                                                                                                                                                                |
 
 Returns:
 
@@ -9369,7 +10459,7 @@ Returns:
 
 The environment this function is bound to.
 
-### `sensitivity = 0.25`
+### `sensitivity = None`
 
 ### `vel_cmd_manager = None`
 
@@ -9413,14 +10503,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9502,7 +10592,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `command_tracking_lin_vel(*, command=None, vel_cmd_manager=None, sensitivity=0.25, entity=None, entity_manager=None)`
+## `command_tracking_lin_vel(*, command=None, vel_cmd_manager=None, sensitivity=None, entity=None, entity_manager=None)`
 
 Bases: `MdpFn`
 
@@ -9510,13 +10600,13 @@ Reward for tracking commanded linear velocity (xy axes)
 
 Parameters:
 
-| Name              | Type                     | Description                                                                                                                                 | Default |
-| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `command`         | `Tensor`                 | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                 | `None`  |
-| `vel_cmd_manager` | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`  |
-| `sensitivity`     | `float`                  | A lower value means the reward is more sensitive to the error                                                                               | `0.25`  |
-| `entity_manager`  | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`          | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name              | Type                     | Description                                                                                                                                 | Default                                                                                                                                                                                                                                                                               |
+| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`         | `Tensor`                 | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                 | `None`                                                                                                                                                                                                                                                                                |
+| `vel_cmd_manager` | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`                                                                                                                                                                                                                                                                                |
+| `sensitivity`     | \`float                  | None\`                                                                                                                                      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest absolute value of the command range. |
+| `entity_manager`  | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`                                                                                                                                                                                                                                                                                |
+| `entity`          | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`                                                                                                                                                                                                                                                                                |
 
 Returns:
 
@@ -9534,7 +10624,7 @@ Returns:
 
 The environment this function is bound to.
 
-### `sensitivity = 0.25`
+### `sensitivity = None`
 
 ### `vel_cmd_manager = None`
 
@@ -9578,14 +10668,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9742,14 +10832,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -9898,14 +10988,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10061,14 +11151,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10222,14 +11312,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10396,14 +11486,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10564,14 +11654,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10732,14 +11822,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -10896,14 +11986,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11063,14 +12153,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11210,14 +12300,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11374,14 +12464,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11538,14 +12628,489 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `position_progress(*, position_cmd_manager)`
+
+Bases: `MdpFn`
+
+Reward for closing the distance to the commanded goal position, measured as the speed (m/s) at which the entity is approaching its goal. Moving away is penalized.
+
+Steps that don't have a valid distance to compare against are skipped: the first step of an episode, and any step where the goal was resampled.
+
+Parameters:
+
+| Name                   | Type                     | Description                                             | Default    |
+| ---------------------- | ------------------------ | ------------------------------------------------------- | ---------- |
+| `position_cmd_manager` | `PositionCommandManager` | The position command manager holding the goal position. | *required* |
+
+Returns:
+
+| Type | Description                                                     |
+| ---- | --------------------------------------------------------------- |
+|      | torch.Tensor: Approach speed toward the goal, shape (num_envs,) |
+
+### `env`
+
+The environment this function is bound to.
+
+### `position_cmd_manager`
+
+### `build()`
+
+Source code in `genesis_forge/mdp/rewards.py`
+
+```
+def build(self):
+    self._prev_distance = torch.zeros(self.env.num_envs, device=gs.device)
+    self._has_prev_distance = torch.zeros(
+        self.env.num_envs, dtype=torch.bool, device=gs.device
+    )
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Source code in `genesis_forge/mdp/rewards.py`
+
+```
+def reset(self, envs_idx: torch.Tensor):
+    self._has_prev_distance[envs_idx] = False
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `position_tracking(*, position_cmd_manager, sensitivity=None)`
+
+Bases: `MdpFn`
+
+Reward for being close to the commanded goal position.
+
+This is a dense reward that grows as the entity nears its goal. Pair it with :class:`position_progress` to also reward moving toward the goal, which gives the policy a signal even when it is still far away.
+
+Parameters:
+
+| Name                   | Type                     | Description                                             | Default                                                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `position_cmd_manager` | `PositionCommandManager` | The position command manager holding the goal position. | *required*                                                                                                                                                                                                                                                                                |
+| `sensitivity`          | \`float                  | None\`                                                  | A lower value means the reward is more sensitive to the distance. If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the furthest goal distance in the command range. |
+
+Returns:
+
+| Type | Description                                                                |
+| ---- | -------------------------------------------------------------------------- |
+|      | torch.Tensor: Reward for proximity to the goal position, shape (num_envs,) |
+
+### `env`
+
+The environment this function is bound to.
+
+### `position_cmd_manager`
+
+### `sensitivity = None`
+
+### `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `reached_goal(*, position_cmd_manager, threshold=None)`
+
+Bases: `MdpFn`
+
+Reward for reaching the commanded goal position.
+
+This is a sparse bonus, paid on each step the entity is within the threshold of its goal. When the command manager is configured to resample on reach, this is paid once per goal, since the goal is replaced immediately after the rewards are computed.
+
+Parameters:
+
+| Name                   | Type                     | Description                                             | Default                                                                                                                 |
+| ---------------------- | ------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `position_cmd_manager` | `PositionCommandManager` | The position command manager holding the goal position. | *required*                                                                                                              |
+| `threshold`            | \`float                  | None\`                                                  | The distance (in meters) at which the goal counts as reached. Defaults to the command manager's goal_reached_threshold. |
+
+Returns:
+
+| Type | Description                                                                         |
+| ---- | ----------------------------------------------------------------------------------- |
+|      | torch.Tensor: 1.0 for each environment that has reached its goal, shape (num_envs,) |
+
+### `env`
+
+The environment this function is bound to.
+
+### `position_cmd_manager`
+
+### `threshold = None`
+
+### `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11700,14 +13265,183 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(
+            f"{type(self).__name__} has no param(s) {unknown!r}. "
+        )
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `stopped_dof_velocity_l2(*, vel_cmd_manager, actuator_manager, command_threshold=0.01)`
+
+Bases: `MdpFn`
+
+Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded), using the L2 squared kernel.
+
+When the robot is commanded to stop, its actuators should not be moving. This is especially useful for wheeled robots, where a stopped robot with spinning or twitching wheels is not penalized by the velocity tracking rewards alone.
+
+Parameters:
+
+| Name                | Type                     | Description                                                                                                          | Default    |
+| ------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                         | *required* |
+| `actuator_manager`  | `ActuatorManager`        | The actuator manager to get the DOF velocities from.                                                                 | *required* |
+| `command_threshold` | `float`                  | The command is considered stopped when the norm of all its components (linear xy and angular z) is below this value. | `0.01`     |
+
+Returns:
+
+| Type | Description                                                                              |
+| ---- | ---------------------------------------------------------------------------------------- |
+|      | torch.Tensor: Penalty for joint velocity while the command is stopped, shape (num_envs,) |
+
+### `actuator_manager`
+
+### `command_threshold = 0.01`
+
+### `env`
+
+The environment this function is bound to.
+
+### `vel_cmd_manager`
+
+### `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -11847,14 +13581,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12021,14 +13755,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12188,14 +13922,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12352,14 +14086,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12521,14 +14255,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12687,14 +14421,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -12847,14 +14581,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -13014,14 +14748,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -13180,14 +14914,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -13344,14 +15078,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -13491,14 +15225,14 @@ Called every time one or more environments reset.
 
 Parameters:
 
-| Name       | Type        | Description                      | Default    |
-| ---------- | ----------- | -------------------------------- | ---------- |
-| `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
 
 Source code in `genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def reset(self, envs_idx: list[int]) -> None:
+def reset(self, envs_idx: torch.Tensor) -> None:
     """
     Called every time one or more environments reset.
 
@@ -14271,7 +16005,7 @@ Source code in `genesis_forge/wrappers/wrapper.py`
 ```
 def reset(
     self,
-    env_ids: list[int] | None = None,
+    env_ids: torch.Tensor | Sequence[int] | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data."""
     return self.env.reset(env_ids)

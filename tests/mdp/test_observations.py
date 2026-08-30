@@ -163,6 +163,72 @@ def test_read_imu_concatenates_lin_acc_and_ang_vel(env):
 
 
 """
+raycaster_distance
+"""
+
+
+class FakeRaycasterSensor:
+    def __init__(self, distances, max_range=None):
+        self._distances = distances
+        if max_range is not None:
+            self._options = type("Options", (), {"max_range": max_range})()
+
+    def read(self):
+        return type("Reading", (), {"distances": self._distances})()
+
+
+def test_raycaster_distance_min_reduces_to_nearest_reading(env):
+    distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]], [[1.0, 1.5], [2.5, 3.5]]])
+    fn = observations.raycaster_distance(sensor=FakeRaycasterSensor(distances))
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[0.5], [1.0]]))
+
+
+def test_raycaster_distance_flatten_returns_all_rays(env):
+    distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]]])
+    fn = observations.raycaster_distance(
+        sensor=FakeRaycasterSensor(distances), reduce="flatten"
+    )
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[2.0, 3.0, 0.5, 4.0]]))
+
+
+def test_raycaster_distance_normalizes_by_sensor_max_range(env):
+    distances = torch.tensor([[[2.0, 4.0]]])
+    fn = observations.raycaster_distance(
+        sensor=FakeRaycasterSensor(distances, max_range=4.0), normalize=True
+    )
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[0.5]]))
+
+
+def test_raycaster_distance_explicit_max_range_overrides_sensor(env):
+    distances = torch.tensor([[[1.0]]])
+    fn = observations.raycaster_distance(
+        sensor=FakeRaycasterSensor(distances, max_range=4.0),
+        normalize=True,
+        max_range=2.0,
+    )
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[0.5]]))
+
+
+def test_raycaster_distance_normalize_without_max_range_raises(env):
+    import pytest
+
+    fn = observations.raycaster_distance(
+        sensor=FakeRaycasterSensor(torch.zeros((1, 1))), normalize=True
+    )
+    fn.context(env)
+    with pytest.raises(ValueError, match="max range"):
+        fn.safe_build()
+
+
+"""
 current_actions
 """
 

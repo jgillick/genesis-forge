@@ -115,6 +115,38 @@ def test_build_without_a_with_filter_leaves_with_link_ids_empty(env):
     assert mgr._with_link_ids.numel() == 0
 
 
+def test_build_with_a_list_of_entities_concatenates_their_links(env):
+    """Obstacle avoidance: contacts are filtered against several obstacle entities at once."""
+    env.robot = make_robot()
+    env.scene = FakeScene()
+    obstacles = [
+        FakeEntity([FakeLink("box_1", idx=200, idx_local=0)]),
+        FakeEntity([FakeLink("box_2", idx=201, idx_local=0)]),
+        FakeEntity([FakeLink("box_3", idx=202, idx_local=0)]),
+    ]
+    mgr = ContactManager(env, link_names=[".*_foot"], with_entity=obstacles)
+    mgr.build()
+
+    assert mgr._with_link_ids.tolist() == [200, 201, 202]
+
+
+def test_build_with_an_empty_entity_list_raises(env):
+    """An empty filter would silently match nothing, rather than everything."""
+    env.robot = make_robot()
+    env.scene = FakeScene()
+    with pytest.raises(ValueError, match="empty list"):
+        ContactManager(env, link_names=[".*_foot"], with_entity=[])
+
+
+def test_build_without_link_names_tracks_every_link_of_the_entity(env):
+    env.robot = make_robot()
+    env.scene = FakeScene()
+    mgr = ContactManager(env, with_entity=[FakeEntity([FakeLink("box", 200, 0)])])
+    mgr.build()
+
+    assert mgr.link_ids.tolist() == [100, 101, 102, 103]
+
+
 """
 build() -- buffers
 """

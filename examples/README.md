@@ -9,6 +9,12 @@ This directory contains a series of examples demonstrating how to use Genesis Fo
 5. [Rough Terrain](./rough_terrain/)
 6. [Gait Trainer](./gait_trainer/)
 
+Wheeled robots:
+
+1. [Wheeled robot](./wheeled_robot/) — drive a 4-wheeled car in a commanded direction
+2. [Obstacle avoidance](./wheeled_robot_obstacles/) — add an ultrasonic range sensor and obstacles to avoid
+3. [Goal navigation](./wheeled_robot_goal_nav/) — navigate to a goal position instead of following velocity commands
+
 Advanced examples:
 
 - [Multi-Agent RL (MASQ)](./multi_agent_rl) — use multiple agents (one agent per leg) to train a robot to walk.

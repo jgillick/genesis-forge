@@ -26,8 +26,10 @@ class ContactManager(BaseManager):
     Args:
         env: The environment to track the contact forces for.
         link_names: The names, or name regex patterns, of the entity links to track the contact forces for.
+                    Defaults to all of the entity's links.
         entity: The entity with the links we're tracking. Defaults to `env.robot`.
-        with_entity: Filter the contact forces to only include contacts with this entity.
+        with_entity: Filter the contact forces to only include contacts with this entity,
+                     or with any entity in this list.
         with_links_names: Filter the contact forces to only include contacts with these links.
         track_air_time: Whether to track the air time of the entity link contacts.
         air_time_contact_threshold: When track_air_time is True, this is the threshold for the contact forces to be considered.
@@ -131,14 +133,25 @@ class ContactManager(BaseManager):
                 # ...other managers here...
 
             # ...other operations here...
+
+    Filtering to several entities::
+
+        # Detect the robot hitting any obstacle, anywhere on its body. Filtering by the
+        # obstacles (rather than by link name) keeps the robot's normal contact with the
+        # ground from registering as a collision.
+        self.collision_manager = ContactManager(
+            self,
+            entity=self.robot,
+            with_entity=self.obstacles,
+        )
     """
 
     def __init__(
         self,
         env: GenesisEnv,
-        link_names: list[str],
+        link_names: list[str] | None = None,
         entity: RigidEntity = None,
-        with_entity: RigidEntity = None,
+        with_entity: RigidEntity | list[RigidEntity] = None,
         with_links_names: list[str] | None = None,
         track_air_time: bool = False,
         air_time_contact_threshold: float = 1.0,
@@ -157,6 +170,8 @@ class ContactManager(BaseManager):
         self._with_links_names = with_links_names
         self._with_link_ids = torch.empty(0, device=gs.device)
         self._with_local_link_ids = None
+        if isinstance(with_entity, (list, tuple)) and len(with_entity) == 0:
+            raise ValueError("with_entity cannot be an empty list")
         self._has_with_filter = (
             with_entity is not None or with_links_names is not None
         )
@@ -305,15 +320,23 @@ class ContactManager(BaseManager):
         )
         if not self._link_ids.is_contiguous():
             self._link_ids = self._link_ids.contiguous()
-        if self._with_entity or self._with_links_names:
-            with_entity = (
-                self._with_entity if self._with_entity is not None else self.env.robot
-            )
-            (self._with_link_ids, self._with_local_link_ids) = self._get_links_idx(
-                with_entity, self._with_links_names
-            )
-            if not self._with_link_ids.is_contiguous():
-                self._with_link_ids = self._with_link_ids.contiguous()
+        if self._has_with_filter:
+            with_entities = self._with_entity
+            if with_entities is None:
+                with_entities = [self.env.robot]
+            elif not isinstance(with_entities, (list, tuple)):
+                with_entities = [with_entities]
+
+            with_link_ids = []
+            with_local_link_ids = []
+            for with_entity in with_entities:
+                (link_ids, local_link_ids) = self._get_links_idx(
+                    with_entity, self._with_links_names
+                )
+                with_link_ids.append(link_ids)
+                with_local_link_ids.append(local_link_ids)
+            self._with_link_ids = torch.cat(with_link_ids).contiguous()
+            self._with_local_link_ids = torch.cat(with_local_link_ids)
 
         # Initialize buffers
         link_count = self._link_ids.shape[0]

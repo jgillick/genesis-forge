@@ -21,6 +21,7 @@ from genesis_forge.managers import (
     EntityManager,
     MdpFn,
     PositionActionManager,
+    PositionCommandManager,
     TerrainManager,
     VelocityCommandManager,
 )
@@ -659,6 +660,120 @@ class stopped_dof_velocity_l2(MdpFn):
         # Only penalize when nothing is commanded, linear or angular
         is_stopped = self.vel_cmd_manager.stopped_envs(self.command_threshold)
         return penalty * is_stopped
+
+
+"""
+Position Command Rewards
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class position_tracking(MdpFn):
+    """
+    Reward for being close to the commanded goal position.
+
+    This is a dense reward that grows as the entity nears its goal. Pair it with
+    :class:`position_progress` to also reward moving toward the goal, which gives the
+    policy a signal even when it is still far away.
+
+    Args:
+        position_cmd_manager: The position command manager holding the goal position.
+        sensitivity: A lower value means the reward is more sensitive to the distance.
+                     If not defined, the sensitivity will be derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the
+                     furthest goal distance in the command range.
+
+    Returns:
+        torch.Tensor: Reward for proximity to the goal position, shape (num_envs,)
+    """
+
+    position_cmd_manager: PositionCommandManager
+    sensitivity: float | None = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        distance = self.position_cmd_manager.distance_to_goal
+        return torch.exp(-torch.square(distance) / self._get_sensitivity())
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # The furthest goal that can be sampled from the command manager's current range
+        position_range = self.position_cmd_manager.range
+        max_x = max(abs(v) for v in position_range["x"])
+        max_y = max(abs(v) for v in position_range["y"])
+        return _calculate_tracking_sensitivity(math.hypot(max_x, max_y))
+
+
+@dataclass(kw_only=True, eq=False)
+class position_progress(MdpFn):
+    """
+    Reward for closing the distance to the commanded goal position, measured as the
+    speed (m/s) at which the entity is approaching its goal. Moving away is penalized.
+
+    Steps that don't have a valid distance to compare against are skipped: the first
+    step of an episode, and any step where the goal was resampled.
+
+    Args:
+        position_cmd_manager: The position command manager holding the goal position.
+
+    Returns:
+        torch.Tensor: Approach speed toward the goal, shape (num_envs,)
+    """
+
+    position_cmd_manager: PositionCommandManager
+
+    def build(self):
+        self._prev_distance = torch.zeros(self.env.num_envs, device=gs.device)
+        self._has_prev_distance = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_distance[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        distance = self.position_cmd_manager.distance_to_goal
+
+        # The previous distance was measured against a different goal, so it can't be compared
+        self._has_prev_distance &= ~self.position_cmd_manager.resampled_last_step
+
+        progress = (self._prev_distance - distance) / env.dt
+        progress = progress * self._has_prev_distance
+
+        self._prev_distance[:] = distance
+        self._has_prev_distance[:] = True
+
+        return progress
+
+
+@dataclass(kw_only=True, eq=False)
+class reached_goal(MdpFn):
+    """
+    Reward for reaching the commanded goal position.
+
+    This is a sparse bonus, paid on each step the entity is within the threshold of its
+    goal. When the command manager is configured to resample on reach, this is paid once
+    per goal, since the goal is replaced immediately after the rewards are computed.
+
+    Args:
+        position_cmd_manager: The position command manager holding the goal position.
+        threshold: The distance (in meters) at which the goal counts as reached.
+                   Defaults to the command manager's `goal_reached_threshold`.
+
+    Returns:
+        torch.Tensor: 1.0 for each environment that has reached its goal, shape (num_envs,)
+    """
+
+    position_cmd_manager: PositionCommandManager
+    threshold: float | None = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        threshold = self.threshold
+        if threshold is None:
+            threshold = self.position_cmd_manager.goal_reached_threshold
+        return (self.position_cmd_manager.distance_to_goal < threshold).float()
 
 
 """

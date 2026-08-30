@@ -548,6 +548,164 @@ def test_stopped_dof_velocity_requires_an_actuator_manager(env):
 
 
 """
+Position Command Rewards
+"""
+
+
+class FakePositionCmd:
+    def __init__(self, distance, range=None, goal_reached_threshold=0.15):
+        self.distance_to_goal = distance
+        self.range = range or {"x": (-2.0, 2.0), "y": (-2.0, 2.0)}
+        self.goal_reached_threshold = goal_reached_threshold
+        self.resampled_last_step = torch.zeros(distance.shape, dtype=torch.bool)
+
+
+def test_position_tracking_is_one_at_the_goal(env):
+    fn = rewards.position_tracking(position_cmd_manager=FakePositionCmd(torch.tensor([0.0])))
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-6)
+
+
+def test_position_tracking_decays_with_distance(env):
+    cmd = FakePositionCmd(torch.tensor([0.5]))
+    fn = rewards.position_tracking(position_cmd_manager=cmd, sensitivity=0.25)
+    fn.context(env)
+    fn.safe_build()
+
+    # distance^2 = 0.25, exp(-0.25 / 0.25) = exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_position_tracking_sensitivity_is_derived_from_the_goal_range(env):
+    """Without `sensitivity`, half the furthest goal distance is the 1/e error."""
+    # Furthest goal in the range is hypot(3, 4) = 5, so sensitivity = (0.5 * 5)^2 = 6.25
+    cmd = FakePositionCmd(torch.tensor([2.5]), range={"x": (-3.0, 3.0), "y": (-4.0, 4.0)})
+    fn = rewards.position_tracking(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    # distance^2 = 6.25 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_position_tracking_derived_sensitivity_follows_a_range_change(env):
+    """A curriculum widening the goal range loosens the reward on the next call."""
+    cmd = FakePositionCmd(torch.tensor([2.5]), range={"x": (-3.0, 3.0), "y": (-4.0, 4.0)})
+    fn = rewards.position_tracking(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+    before = fn(env)
+
+    cmd.range["y"] = (-8.0, 8.0)
+
+    assert fn(env) > before
+
+
+def test_reached_goal_uses_the_managers_threshold(env):
+    cmd = FakePositionCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
+    fn = rewards.reached_goal(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, 0.0]))
+
+
+def test_reached_goal_threshold_can_be_overridden(env):
+    cmd = FakePositionCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
+    fn = rewards.reached_goal(position_cmd_manager=cmd, threshold=0.25)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, 1.0]))
+
+
+def test_position_progress_is_zero_on_the_first_step(env):
+    """There's no previous distance to compare the first step against."""
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_position_progress_rewards_closing_the_distance(env):
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)  # first step establishes the previous distance
+    cmd.distance_to_goal = torch.tensor([1.98])  # 0.02m closer over a 0.02s step
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_position_progress_penalizes_moving_away(env):
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.distance_to_goal = torch.tensor([2.02])
+
+    assert torch.allclose(fn(env), torch.tensor([-1.0]), atol=1e-5)
+
+
+def test_position_progress_skips_the_step_the_goal_was_resampled(env):
+    """The distance jumps when the goal moves -- that isn't progress the robot made."""
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([0.1]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)  # robot is at its goal
+    cmd.distance_to_goal = torch.tensor([3.0])  # a new, far goal was sampled
+    cmd.resampled_last_step = torch.tensor([True])
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_position_progress_resumes_after_a_resampled_step(env):
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([0.1]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.distance_to_goal = torch.tensor([3.0])
+    cmd.resampled_last_step = torch.tensor([True])
+    fn(env)
+
+    cmd.resampled_last_step = torch.tensor([False])
+    cmd.distance_to_goal = torch.tensor([2.98])
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_position_progress_is_zero_on_the_step_after_a_reset(env):
+    env.num_envs = 1
+    cmd = FakePositionCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(position_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    fn.reset(torch.tensor([0]))
+    cmd.distance_to_goal = torch.tensor([1.0])  # the robot teleported back to its start
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+"""
 Contacts
 """
 

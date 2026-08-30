@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn.functional as F
 from genesis import gs
 
 from genesis_forge.genesis_env import GenesisEnv
@@ -25,6 +26,7 @@ from genesis_forge.utils import (
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
+    from genesis.engine.sensors.imu import IMUSensor
 
 """
 Entity Observations
@@ -144,6 +146,95 @@ class read_imu(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         value = self.imu.read()
         return torch.cat([value.lin_acc, value.ang_vel], dim=-1)
+
+
+@dataclass(kw_only=True, eq=False)
+class imu_projected_gravity(MdpFn):
+    """
+    Estimates the projected gravity vector from an IMU sensor's accelerometer and
+    gyroscope readings, using a complementary filter.
+
+    Each step, the previous estimate is propagated by the gyro reading (a first-order
+    approximation of rotating the body-frame gravity vector opposite to the measured
+    body rotation) and then pulled towards the accelerometer reading, negated and
+    normalized -- under quasi-static conditions (no significant linear acceleration)
+    an accelerometer measures specific force pointing opposite to gravity. The two are
+    blended by ``correction_gain`` and re-normalized.
+
+    Because the estimate is derived entirely from the IMU's `lin_acc`/`ang_vel`
+    readings, any noise, bias, delay or drift configured on the sensor carries through
+    into the resulting value -- unlike `entity_projected_gravity`, which reads the
+    entity's true orientation directly.
+
+    Args:
+        imu_sensor: The IMU sensor to read from.
+        correction_gain: How strongly the accelerometer corrects the gyro-propagated
+            estimate each step, in (0, 1]. Higher values track the accelerometer more
+            closely (less drift, but more sensitive to non-gravity acceleration);
+            lower values rely more on the gyro propagation (smoother, but drifts
+            without correction).
+
+    Example::
+
+        self.imu = self.scene.add_sensor(
+            gs.sensors.IMU(
+                entity_idx=self.robot.idx,
+                pos_offset=(0.24, 0.0, 0.0),
+                euler_offset=(0.0, 0.0, 0.0),
+                acc_noise=(0.01, 0.01, 0.01),
+                gyro_noise=(0.01, 0.01, 0.01),
+                acc_random_walk=(0.001, 0.001, 0.001),
+                gyro_random_walk=(0.001, 0.001, 0.001),
+                delay=self.dt,
+                jitter=self.dt,
+            )
+        )
+
+        ...
+
+        ObservationManager(
+            self,
+            cfg={
+                "projected_gravity": {
+                    "fn": observations.imu_projected_gravity(
+                        imu_sensor=self.imu,
+                    ),
+                },
+            }
+        )
+
+    Returns:
+        torch.Tensor: Shape `(num_envs, 3)` -- the estimated gravity direction, in the
+            IMU's local frame.
+    """
+
+    imu_sensor: IMUSensor
+    correction_gain: float = 0.02
+
+    def build(self):
+        self._estimate = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._estimate[:, 2] = -1.0
+
+    def reset(self, envs_idx):
+        self._estimate[envs_idx] = 0.0
+        self._estimate[envs_idx, 2] = -1.0
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        reading = self.imu_sensor.read()
+
+        gyro_estimate = self._estimate - env.dt * torch.cross(
+            reading.ang_vel, self._estimate, dim=-1
+        )
+        accel_estimate = -F.normalize(reading.lin_acc, dim=-1)
+
+        blended = (
+            1.0 - self.correction_gain
+        ) * gyro_estimate + self.correction_gain * accel_estimate
+        self._estimate = F.normalize(blended, dim=-1)
+
+        return self._estimate
 
 
 """

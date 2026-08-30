@@ -108,7 +108,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 "position": {
                     "fn": reset.randomize_terrain_position(
                         height_offset=HEIGHT_OFFSET,
-                        terrain_manager=self.terrain_manager,
+                        terrain=self.terrain_manager,
                     ),
                 },
             },

@@ -105,7 +105,9 @@ class BaseActionManager(BaseManager):
         The processed actions for for the current step.
         """
         if self._actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._actions
 
     @property
@@ -114,7 +116,9 @@ class BaseActionManager(BaseManager):
         The actions received from the policy, before being processed.
         """
         if self._raw_actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._raw_actions
 
     @property
@@ -123,7 +127,9 @@ class BaseActionManager(BaseManager):
         The processed actions for for the previous step.
         """
         if self._last_actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._last_actions
 
     """
@@ -188,7 +194,9 @@ class BaseActionManager(BaseManager):
         Get the current actions for the environments.
         """
         if self._actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._actions
 
     def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:

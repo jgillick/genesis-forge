@@ -1,14 +1,15 @@
-from __future__ import annotations
-
 """
 Termination functions for the Genesis environment.
 Each of these should return a boolean tensor indicating which environments should terminate, in the tensor shape (num_envs,).
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+import genesis as gs
 import torch
 
 from genesis_forge.genesis_env import GenesisEnv
@@ -33,7 +34,7 @@ class timeout(MdpFn):
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if env.max_episode_length is None:
-            return torch.zeros(env.num_envs, dtype=torch.bool)
+            return torch.zeros(env.num_envs, dtype=torch.bool, device=gs.device)
         return env.episode_length > env.max_episode_length
 
 

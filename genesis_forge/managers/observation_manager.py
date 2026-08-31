@@ -256,7 +256,9 @@ class ObservationManager(BaseManager):
             The observations for all environments.
         """
         if not self.enabled:
-            return torch.zeros((self.env.num_envs, self._observation_size))
+            return torch.zeros(
+                (self.env.num_envs, self._observation_size), device=gs.device
+            )
 
         buffer = self._history.pop()
         self._perform_observation(buffer, values)

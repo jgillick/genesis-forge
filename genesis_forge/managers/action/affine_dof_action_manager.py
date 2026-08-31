@@ -72,6 +72,13 @@ class AffineDofActionManager(BaseActionManager):
             raise RuntimeError(
                 "AffineDofActionManager: _scale_values, _offset_values, and _clip_values must be set by a subclass's build() before calling process_actions()"
             )
+
+        # Validate actions.
+        if torch.isnan(actions).any():
+            print(f"ERROR: NaN actions received! Actions: {actions}")
+        if torch.isinf(actions).any():
+            print(f"ERROR: Infinite actions received! Actions: {actions}")
+
         actions = actions * self._scale_values + self._offset_values
         actions = torch.clamp(
             actions,

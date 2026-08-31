@@ -200,6 +200,8 @@ class EntityManager(BaseManager):
                 print(f"Error resetting entity with config: '{name}'")
                 raise e # noqa
 
+        self._cached_calcs()
+
     """
     Implementation
     """

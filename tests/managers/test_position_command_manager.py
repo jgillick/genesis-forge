@@ -217,3 +217,73 @@ def test_resampled_last_step_is_cleared_at_the_start_of_the_next_step(env):
     mgr.step()
 
     assert mgr.resampled_last_step.tolist() == [False]
+
+
+"""
+avoid_entities
+"""
+
+
+def test_reset_redraws_goals_that_land_within_the_avoid_margin(env):
+    torch.manual_seed(0)
+    env.num_envs = 20
+    obstacle = FakeEntity(pos=torch.zeros((20, 3)), num_envs=20)
+    mgr = make_manager(
+        env,
+        range={"x": (-1.0, 1.0), "y": (-1.0, 1.0)},
+        avoid_entities=[obstacle],
+        avoid_margin=0.5,
+    )
+
+    mgr.reset()
+
+    dist_from_obstacle = torch.norm(mgr.command - obstacle.get_pos()[:, :2], dim=-1)
+    assert torch.all(dist_from_obstacle >= 0.5)
+
+
+def test_avoid_entities_has_no_effect_when_not_configured(env):
+    """Sanity check: an obstacle sitting exactly on the only reachable goal is not avoided."""
+    env.num_envs = 1
+    mgr = make_manager(env, range={"x": (2.0, 2.0), "y": (0.0, 0.0)})
+
+    mgr.reset()
+
+    assert mgr.command.tolist() == [[2.0, 0.0]]
+
+
+def test_resample_gives_up_after_avoid_max_attempts(env):
+    """A degenerate range that always redraws the same conflicting point must not loop forever."""
+    env.num_envs = 1
+    obstacle = FakeEntity(pos=torch.tensor([[2.0, 0.0, 0.0]]), num_envs=1)
+    mgr = make_manager(
+        env,
+        range={"x": (2.0, 2.0), "y": (0.0, 0.0)},
+        avoid_entities=[obstacle],
+        avoid_margin=0.5,
+        avoid_max_attempts=3,
+    )
+
+    mgr.reset()
+
+    # Every draw lands exactly on the obstacle, so the manager retries avoid_max_attempts
+    # times and then keeps the (still conflicting) last draw rather than looping forever.
+    assert mgr.command.tolist() == [[2.0, 0.0]]
+
+
+def test_avoid_entities_checks_every_configured_entity(env):
+    env.num_envs = 1
+    near_obstacle = FakeEntity(pos=torch.tensor([[2.0, 0.0, 0.0]]), num_envs=1)
+    far_obstacle = FakeEntity(pos=torch.tensor([[-5.0, -5.0, 0.0]]), num_envs=1)
+    mgr = make_manager(
+        env,
+        range={"x": (2.0, 2.0), "y": (0.0, 0.0)},
+        avoid_entities=[far_obstacle, near_obstacle],
+        avoid_margin=0.5,
+        avoid_max_attempts=3,
+    )
+
+    mgr.reset()
+
+    # far_obstacle never conflicts, but near_obstacle does on every draw -- the loop
+    # must keep checking both, not stop after the first entity clears.
+    assert mgr.command.tolist() == [[2.0, 0.0]]

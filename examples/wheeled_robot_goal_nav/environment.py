@@ -28,7 +28,14 @@ OBSTACLE_RADIUS_RANGE = (0.6, 2.5)
 GOAL_RANGE = {"x": (-2.5, 2.5), "y": (-2.5, 2.5)}
 GOAL_REACHED_THRESHOLD = 0.15
 
-WHEEL_VELOCITY_SCALE = 20.0
+GOAL_OBSTACLE_MARGIN = math.hypot(OBSTACLE_SIZE[0], OBSTACLE_SIZE[1]) / 2 + GOAL_REACHED_THRESHOLD
+"""
+Minimum distance a goal must keep from every obstacle's center: the obstacle's own
+half-diagonal (so the goal doesn't land inside its footprint) plus the reach threshold
+(so reaching the goal doesn't require clipping the obstacle).
+"""
+
+WHEEL_VELOCITY_SCALE = 10.0
 """
 Maximum wheel speed, in rad/s, that a full-throttle action commands.
 
@@ -144,7 +151,6 @@ class WheeledRobotGoalNavEnv(ManagedEnvironment):
                 return_points=False,
                 noise=0.003,
                 resolution=0.003,
-                draw_debug=True,
             )
         )
 
@@ -226,6 +232,7 @@ class WheeledRobotGoalNavEnv(ManagedEnvironment):
         self.action_manager = VelocityActionManager(
             self,
             scale=WHEEL_VELOCITY_SCALE,
+            clip=(-WHEEL_VELOCITY_SCALE, WHEEL_VELOCITY_SCALE),
             actuator_manager=self.wheel_motors,
         )
 
@@ -255,6 +262,8 @@ class WheeledRobotGoalNavEnv(ManagedEnvironment):
             range=GOAL_RANGE,
             goal_reached_threshold=GOAL_REACHED_THRESHOLD,
             resample_on_reached=True,
+            avoid_entities=self.obstacles,
+            avoid_margin=GOAL_OBSTACLE_MARGIN,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

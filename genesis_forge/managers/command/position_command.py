@@ -73,6 +73,14 @@ class PositionCommandManager(CommandManager):
         goal_reached_threshold: The distance (in meters) at which the goal counts as reached.
         resample_on_reached: Sample a new goal for an environment when its goal is reached.
         entity: The entity that is navigating to the goal. Defaults to `env.robot`.
+        avoid_entities: Entities whose current XY position a sampled goal must stay at least
+                        `avoid_margin` away from (e.g. scattered obstacles). When a sampled goal
+                        conflicts, it is redrawn, up to `avoid_max_attempts` times. Defaults to
+                        None: goals are sampled from `range` with no avoidance.
+        avoid_margin: The minimum XY distance a goal must keep from every `avoid_entities` position.
+                      Has no effect unless `avoid_entities` is set.
+        avoid_max_attempts: How many times to redraw a conflicting goal before giving up and
+                            keeping the last-drawn (possibly still conflicting) position.
         debug_visualizer: Enable the debug visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
 
@@ -127,6 +135,9 @@ class PositionCommandManager(CommandManager):
         goal_reached_threshold: float = 0.15,
         resample_on_reached: bool = True,
         entity: "RigidEntity | None" = None,
+        avoid_entities: "list[RigidEntity] | None" = None,
+        avoid_margin: float = 0.0,
+        avoid_max_attempts: int = 10,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: PositionDebugVisualizerConfig | None = None,
     ):
@@ -145,6 +156,10 @@ class PositionCommandManager(CommandManager):
         self.goal_reached_threshold = goal_reached_threshold
         self.resample_on_reached = resample_on_reached
         self._entity = entity
+
+        self.avoid_entities = avoid_entities
+        self.avoid_margin = avoid_margin
+        self.avoid_max_attempts = avoid_max_attempts
 
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx: list | None = None
@@ -221,6 +236,8 @@ class PositionCommandManager(CommandManager):
     def resample_command(self, env_ids: torch.Tensor):
         """Sample new goal positions for the given environment ids."""
         super().resample_command(env_ids)
+        if self.avoid_entities:
+            self._resample_away_from_avoid_entities(env_ids)
         self._resampled_last_step[env_ids] = True
 
     def step(self):
@@ -273,6 +290,28 @@ class PositionCommandManager(CommandManager):
     """
     Internal Implementation
     """
+
+    def _resample_away_from_avoid_entities(self, env_ids: torch.Tensor):
+        """
+        Redraw any goal in `env_ids` that landed within `avoid_margin` of an
+        `avoid_entities` position, retrying up to `avoid_max_attempts` times.
+        Environments still in conflict after that keep their last-drawn position.
+        """
+        remaining = env_ids
+        for _ in range(self.avoid_max_attempts):
+            remaining = remaining[self._conflicts_with_avoid_entities(remaining)]
+            if len(remaining) == 0:
+                return
+            super().resample_command(remaining)
+
+    def _conflicts_with_avoid_entities(self, env_ids: torch.Tensor) -> torch.Tensor:
+        """Boolean mask (aligned with `env_ids`) of goals closer than `avoid_margin` to an avoided entity."""
+        goal_xy = self._command[env_ids, :2]
+        conflict = torch.zeros(len(env_ids), dtype=torch.bool, device=gs.device)
+        for entity in self.avoid_entities:
+            dist = torch.norm(goal_xy - entity.get_pos()[env_ids, :2], dim=-1)
+            conflict |= dist < self.avoid_margin
+        return conflict
 
     def build_debug(self):
         """Build the debug visualizer buffers and render throttle"""

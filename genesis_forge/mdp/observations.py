@@ -141,7 +141,7 @@ class read_imu(MdpFn):
         torch.Tensor: Shape `(n_envs, 6)` — `[lin_acc_xyz, ang_vel_xyz]` per env.
     """
 
-    imu: gs.sensors.IMU
+    imu: gs.sensors.IMUSensor
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         value = self.imu.read()
@@ -282,7 +282,7 @@ class raycaster_distance(MdpFn):
         torch.Tensor: Shape `(num_envs, 1)` for "min", or `(num_envs, num_rays)` for "flatten".
     """
 
-    sensor: gs.sensors.Raycaster
+    sensor: gs.sensors.RaycasterSensor
     reduce: Literal["min", "flatten"] = "min"
     normalize: bool = False
     max_range: float | None = None

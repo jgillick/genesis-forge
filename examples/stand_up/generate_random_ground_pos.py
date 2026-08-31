@@ -196,7 +196,7 @@ def build_scene(headless: bool) -> tuple[gs.Scene, object]:
         show_viewer=not headless,
         sim_options=gs.options.SimOptions(dt=DT, substeps=2),
         viewer_options=gs.options.ViewerOptions(
-            max_FPS=int(0.5 / DT),
+            refresh_rate=int(0.5 / DT),
             camera_pos=(2.0, 0.0, 2.5),
             camera_lookat=(0.0, 0.0, 0.5),
             camera_fov=40,

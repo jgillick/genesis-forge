@@ -32,21 +32,20 @@ class MyEnv(ManagedEnvironment):
         # Load your terrain into the manager
         self.terrain_manager = TerrainManager(
             self,
-            terrain_attr="terrain",
+            terrain=self.terrain,
         )
 
         # Place the robot in random places around the flat_terrain subterrain
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "terrain_manager": self.terrain_manager,
-                        "subterrain": "flat_terrain", # Select this subterrain for placement
-                        "height_offset": 0.3, # place the robot this high above the terrain
-                    },
+                    "fn": reset.randomize_terrain_position(
+                        terrain_manager=self.terrain_manager,
+                        subterrain="flat_terrain",  # Select this subterrain for placement
+                        height_offset=0.3,  # place the robot this high above the terrain
+                    ),
                 },
             },
         )
@@ -58,11 +57,10 @@ class MyEnv(ManagedEnvironment):
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
             }
         )

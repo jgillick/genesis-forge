@@ -1,26 +1,15 @@
 from __future__ import annotations
+
 import re
-from torch._tensor import Tensor
-import torch
-import numpy as np
-from gymnasium import spaces
+
 import genesis as gs
-from deprecated import deprecated
+import numpy as np
+import torch
+from gymnasium import spaces
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
-
-deprecated_arg_names = [
-    "joint_names",
-    "default_pos",
-    "pd_kp",
-    "pd_kv",
-    "max_force",
-    "damping",
-    "stiffness",
-    "frictionloss",
-    "noise_scale",
-]
 
 
 class BaseActionManager(BaseManager):
@@ -42,7 +31,6 @@ class BaseActionManager(BaseManager):
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(env, type="action")
         self._raw_actions = None
@@ -55,33 +43,8 @@ class BaseActionManager(BaseManager):
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
         self._dofs: dict[int, str] = {}
-        self._actuator_dof_filter: torch.Tensor = None
+        self._actuator_dof_filter: torch.Tensor | None = None
 
-        # Deprecated actuator parameters
-        deprecated_actuator_args = {
-            key: kwargs[key] for key in deprecated_arg_names if key in kwargs
-        }
-        if len(deprecated_actuator_args) > 0:
-            dep_list = ", ".join(deprecated_actuator_args.keys())
-            if self._actuator_manager is not None:
-                raise ValueError(
-                    f"Cannot set both actuator_manager and deprecated actuator parameters: {dep_list}"
-                )
-            print(
-                f"Actuator arguments are deprecated in the action manager, instead define an ActuatorManager ({dep_list})"
-            )
-            self._actuator_manager = ActuatorManager(
-                env,
-                joint_names=kwargs.get("joint_names", ".*"),
-                default_pos=kwargs.get("default_pos", {".*": 0.0}),
-                kp=kwargs.get("pd_kp", None),
-                kv=kwargs.get("pd_kv", None),
-                max_force=kwargs.get("max_force", None),
-                damping=kwargs.get("damping", None),
-                stiffness=kwargs.get("stiffness", None),
-                frictionloss=kwargs.get("frictionloss", None),
-                default_noise_scale=kwargs.get("noise_scale", 0.0),
-            )
         if self._actuator_manager is None:
             raise ValueError("No ActuatorManager provided.")
 
@@ -94,11 +57,6 @@ class BaseActionManager(BaseManager):
         """
         Get the actuator manager.
         """
-        return self._actuator_manager
-
-    @property
-    @deprecated(version="0.4.0", reason="Use `actuator_manager` instead")
-    def actuators(self) -> ActuatorManager:
         return self._actuator_manager
 
     @property
@@ -147,7 +105,9 @@ class BaseActionManager(BaseManager):
         The processed actions for for the current step.
         """
         if self._actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._actions
 
     @property
@@ -156,16 +116,20 @@ class BaseActionManager(BaseManager):
         The actions received from the policy, before being processed.
         """
         if self._raw_actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._raw_actions
-    
+
     @property
     def last_actions(self) -> torch.Tensor:
         """
         The processed actions for for the previous step.
         """
         if self._last_actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._last_actions
 
     """
@@ -194,7 +158,7 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] = None) -> torch.Tensor:
+    def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -230,7 +194,9 @@ class BaseActionManager(BaseManager):
         Get the current actions for the environments.
         """
         if self._actions is None:
-            return torch.zeros((self.env.num_envs, self.num_actions))
+            return torch.zeros(
+                (self.env.num_envs, self.num_actions), device=gs.device
+            )
         return self._actions
 
     def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
@@ -246,8 +212,9 @@ class BaseActionManager(BaseManager):
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Process the actions and convert them to actuator commands.
-        Override this function if you want to change the action processing logic.
+        Convert the incoming step actions into the values to send to the simulation.
+        Override this function to define how actions are processed -- for example,
+        `AffineDofActionManager` applies a per-DOF scale/offset/clip transform.
 
         Args:
             actions: The incoming step actions to handle.
@@ -255,9 +222,11 @@ class BaseActionManager(BaseManager):
         Returns:
             The processed and converted actions.
         """
-        return actions
+        raise NotImplementedError(
+            "process_actions is not implemented for this action manager."
+        )
 
-    def send_actions_to_simulation(self) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Send the latest processed actions to the actuators in the simulation.
         Override this function to define how the actions are sent to the simulation.
@@ -300,7 +269,7 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
         if self._actions is None:
-            self._actions = torch.empty_like(actions, device=gs.device)
+            self._actions = torch.zeros_like(actions, device=gs.device)
             self._last_actions = torch.zeros_like(actions, device=gs.device)
         self._last_actions[:] = self._actions[:]
 

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import torch
+from typing import TYPE_CHECKING, Any, Protocol
+
 import genesis as gs
+import torch
+from genesis.utils.geom import (
+    inv_quat,
+    transform_by_quat,
+)
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis.utils.geom import (
-    transform_by_quat,
-    inv_quat,
-)
-from genesis_forge.managers.config import ConfigItem, ResetMdpFnClass, ConfigItemDict
-
-from typing import NotRequired, Any, TYPE_CHECKING, Protocol
+from genesis_forge.managers.config import ConfigItem, ConfigItemDict, ResetMdpFn
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -29,13 +30,13 @@ class ResetConfigFn(Protocol):
     Return:
         result: torch.Tensor, shape (n_envs, 1)
     """
-    def __call__(self, env: GenesisEnv, entity: "RigidEntity", env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, env_ids: list[int], *params: Any, **kwargs: Any) -> None: ...
 
 
 class EntityResetConfig(ConfigItemDict):
     """Defines an entity reset item."""
 
-    fn: ResetConfigFn | type[ResetMdpFnClass]
+    fn: ResetConfigFn | ResetMdpFn
     """
     Function, or class function, that will be called on reset.
 
@@ -53,7 +54,7 @@ class EntityManager(BaseManager):
 
     Args:
         env: The environment instance.
-        entity_attr: The attribute name of the environment that the entity is stored in.
+        entity: The entity to manage.
         on_reset: The reset configuration for the entity.
 
     Example::
@@ -65,15 +66,14 @@ class EntityManager(BaseManager):
             def config(self):
                 self.entity_manager = EntityManager(
                     self,
-                    entity_attr="robot",
+                    entity=self.robot,
                     on_reset={
                         "position": {
-                            "fn": reset.randomize_terrain_position,
-                            "params": {
-                                "terrain_manager": self.terrain_manager,
-                                "subterrain": self._target_terrain,
-                                "height_offset": 0.15,
-                            },
+                            "fn": reset.randomize_terrain_position(
+                                terrain_manager=self.terrain_manager,
+                                subterrain=self._target_terrain,
+                                height_offset=0.15,
+                            ),
                         },
                     },
                 )
@@ -82,18 +82,17 @@ class EntityManager(BaseManager):
     def __init__(
         self,
         env: GenesisEnv,
-        entity_attr: str,
-        on_reset: dict[str, EntityResetConfig] = {},
+        entity: RigidEntity,
+        on_reset: dict[str, EntityResetConfig] | None = None,
     ):
         super().__init__(env, type="entity")
         if hasattr(env, "add_entity_manager"):
             env.add_entity_manager(self)
 
-        self.entity: RigidEntity | None = None
-        self.on_reset = on_reset
-        self._entity_attr = entity_attr
+        self.entity: RigidEntity = entity
 
         # Wrap config items
+        on_reset = on_reset if on_reset is not None else {}
         self.on_reset: dict[str, ConfigItem] = {}
         for name, cfg in on_reset.items():
             self.on_reset[name] = ConfigItem(cfg, env)
@@ -109,6 +108,11 @@ class EntityManager(BaseManager):
             (env.num_envs, 4), device=gs.device, dtype=gs.tc_float
         )
         self._inv_base_quat = torch.zeros_like(self._base_quat)
+        self._linear_velocity = torch.zeros(
+            (env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._angular_velocity = torch.zeros_like(self._linear_velocity)
+        self._projected_gravity = torch.zeros_like(self._linear_velocity)
 
     """
     Properties
@@ -142,20 +146,23 @@ class EntityManager(BaseManager):
     def get_projected_gravity(self) -> torch.Tensor:
         """
         The projected gravity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self._global_gravity, self._inv_base_quat)
+        return self._projected_gravity
 
     def get_linear_velocity(self) -> torch.Tensor:
         """
         The linear velocity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self.entity.get_vel(), self._inv_base_quat)
+        return self._linear_velocity
 
     def get_angular_velocity(self) -> torch.Tensor:
         """
         The angular velocity of the entity's base link, in the entity's local frame.
+        Cached once per step -- see `_cached_calcs()`.
         """
-        return transform_by_quat(self.entity.get_ang(), self._inv_base_quat)
+        return self._angular_velocity
 
     """
     Operations.
@@ -165,7 +172,6 @@ class EntityManager(BaseManager):
         """
         Build the entity manager.
         """
-        self.entity = getattr(self.env, self._entity_attr)
         self._cached_calcs()
 
         # Build reset function classes
@@ -189,10 +195,12 @@ class EntityManager(BaseManager):
 
         for name, cfg in self.on_reset.items():
             try:
-                cfg.execute(envs_idx)
+                cfg.execute(envs_idx=envs_idx)
             except Exception as e:
                 print(f"Error resetting entity with config: '{name}'")
-                raise e
+                raise e # noqa
+
+        self._cached_calcs()
 
     """
     Implementation
@@ -205,3 +213,12 @@ class EntityManager(BaseManager):
         self._base_pos[:] = self.entity.get_pos()
         self._base_quat[:] = self.entity.get_quat()
         self._inv_base_quat = inv_quat(self._base_quat)
+        self._linear_velocity[:] = transform_by_quat(
+            self.entity.get_vel(), self._inv_base_quat
+        )
+        self._angular_velocity[:] = transform_by_quat(
+            self.entity.get_ang(), self._inv_base_quat
+        )
+        self._projected_gravity[:] = transform_by_quat(
+            self._global_gravity, self._inv_base_quat
+        )

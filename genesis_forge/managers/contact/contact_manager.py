@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import math
 import re
-import torch
+from typing import TYPE_CHECKING
+
 import genesis as gs
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.managers.contact.config import (
-    ContactDebugVisualizerConfig,
     DEFAULT_VISUALIZER_CONFIG,
+    ContactDebugVisualizerConfig,
 )
 from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -26,8 +26,8 @@ class ContactManager(BaseManager):
     Args:
         env: The environment to track the contact forces for.
         link_names: The names, or name regex patterns, of the entity links to track the contact forces for.
-        entity_attr: The environment attribute which contains the entity with the links we're tracking. Defaults to `robot`.
-        with_entity_attr: Filter the contact forces to only include contacts with the entity assigned to this environment attribute.
+        entity: The entity with the links we're tracking. Defaults to `env.robot`.
+        with_entity: Filter the contact forces to only include contacts with this entity.
         with_links_names: Filter the contact forces to only include contacts with these links.
         track_air_time: Whether to track the air time of the entity link contacts.
         air_time_contact_threshold: When track_air_time is True, this is the threshold for the contact forces to be considered.
@@ -123,9 +123,9 @@ class ContactManager(BaseManager):
                 # Track all contacts between the robot's feet and the terrain
                 self.contact_manager = ContactManager(
                     self,
-                    entity_attr="robot",
+                    entity=self.robot,
                     link_names=[".*_foot"],
-                    with_entity_attr="terrain",
+                    with_entity=self.terrain,
                 )
 
                 # ...other managers here...
@@ -137,9 +137,9 @@ class ContactManager(BaseManager):
         self,
         env: GenesisEnv,
         link_names: list[str],
-        entity_attr: str = "robot",
-        with_entity_attr: str = None,
-        with_links_names: list[str] = None,
+        entity: RigidEntity = None,
+        with_entity: RigidEntity = None,
+        with_links_names: list[str] | None = None,
         track_air_time: bool = False,
         air_time_contact_threshold: float = 1.0,
         debug_visualizer: bool = False,
@@ -150,15 +150,15 @@ class ContactManager(BaseManager):
         self._link_names = link_names
         self._air_time_contact_threshold = air_time_contact_threshold
         self._track_air_time = track_air_time
-        self._entity_attr = entity_attr
+        self._entity = entity if entity is not None else env.robot
         self._link_ids = None
         self._local_link_ids = None
-        self._with_entity_attr = with_entity_attr
+        self._with_entity = with_entity
         self._with_links_names = with_links_names
         self._with_link_ids = torch.empty(0, device=gs.device)
         self._with_local_link_ids = None
         self._has_with_filter = (
-            with_entity_attr is not None or with_links_names is not None
+            with_entity is not None or with_links_names is not None
         )
 
         self.debug_visualizer = debug_visualizer
@@ -301,18 +301,16 @@ class ContactManager(BaseManager):
 
         # Get the link indices
         (self._link_ids, self._local_link_ids) = self._get_links_idx(
-            self._entity_attr, self._link_names
+            self._entity, self._link_names
         )
         if not self._link_ids.is_contiguous():
             self._link_ids = self._link_ids.contiguous()
-        if self._with_entity_attr or self._with_links_names:
-            with_entity_attr = (
-                self._with_entity_attr
-                if self._with_entity_attr is not None
-                else "robot"
+        if self._with_entity or self._with_links_names:
+            with_entity = (
+                self._with_entity if self._with_entity is not None else self.env.robot
             )
             (self._with_link_ids, self._with_local_link_ids) = self._get_links_idx(
-                with_entity_attr, self._with_links_names
+                with_entity, self._with_links_names
             )
             if not self._with_link_ids.is_contiguous():
                 self._with_link_ids = self._with_link_ids.contiguous()
@@ -363,20 +361,18 @@ class ContactManager(BaseManager):
     """
 
     def _get_links_idx(
-        self, entity_attr: str, names: list[str] = None
+        self, entity: RigidEntity, names: list[str] | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Find the link indices for the given link names or regular expressions.
 
         Args:
-            entity_attr: The attribute name of the robot entity to find the links in.
+            entity: The entity to find the links in.
             names: The names, or name regex patterns, of the links to find.
 
-        Returns: 
+        Returns:
             Tuple of global and local link index tensors.
         """
-        entity = self.env.__getattribute__(entity_attr)
-
         ids = []
         local_ids = []
 
@@ -396,7 +392,7 @@ class ContactManager(BaseManager):
                 if not found:
                     names = [link.name for link in entity.links]
                     raise RuntimeError(
-                        f"Link '{pattern}' not found in entity '{self._entity_attr}'.\nAvailable links: {names}"
+                        f"Link '{pattern}' not found in entity '{entity}'.\nAvailable links: {names}"
                     )
 
         return (
@@ -541,10 +537,10 @@ class ContactManager(BaseManager):
 
     def __repr__(self):
         attrs = [f"link_names={self._link_names}"]
-        if self._entity_attr:
-            attrs.append(f"entity_attr={self._entity_attr}")
-        if self._with_entity_attr:
-            attrs.append(f"with_entity_attr={self._with_entity_attr}")
+        if self._entity:
+            attrs.append(f"entity={self._entity}")
+        if self._with_entity:
+            attrs.append(f"with_entity={self._with_entity}")
         if self._with_links_names:
             attrs.append(f"with_links_names={self._with_links_names}")
         if self._track_air_time:

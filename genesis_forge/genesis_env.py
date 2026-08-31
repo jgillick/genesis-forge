@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import math
-import torch
+from typing import TYPE_CHECKING, Any, Literal
+
 import genesis as gs
+import torch
 from gymnasium import spaces
-from typing import Any, Literal, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -216,7 +218,7 @@ class GenesisEnv:
 
     def reset(
         self,
-        env_ids: list[int] = None,
+        env_ids: list[int] | None = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
         Reset one or more environments.
@@ -230,6 +232,8 @@ class GenesisEnv:
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=gs.device)
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
         # Initial reset, set buffers
         if self.step_count == 0 and self.action_space is not None:
@@ -298,4 +302,3 @@ class GenesisEnv:
 
     def close(self):
         """Close the environment."""
-        pass

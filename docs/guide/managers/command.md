@@ -57,6 +57,7 @@ When `debug_visualizer` is `True`, arrows will be displayed above your robot sho
 - **Blue Arrow**: Actual robot velocity (world frame)
 
 !!! warning "Caution"
+
     The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
 
     It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.
@@ -69,7 +70,7 @@ Include periods where the robot should stand still:
 VelocityCommandManager(
     self,
     range={...},
-    standing_probability=0.2,  # 20% chance of zero command
+    stopped_probability=0.2,  # 20% chance of zero command
 )
 ```
 
@@ -84,13 +85,15 @@ RewardManager(
     self,
     cfg={
         "track_lin_vel": {
-            "fn": rewards.command_tracking_lin_vel,
-            "params": {"vel_cmd_manager": self.velocity_command},
+            "fn": rewards.command_tracking_lin_vel(
+                vel_cmd_manager=self.velocity_command,
+            ),
             "weight": 2.0,
         },
         "track_ang_vel": {
-            "fn": rewards.command_tracking_ang_vel,
-            "params": {"vel_cmd_manager": self.velocity_command},
+            "fn": rewards.command_tracking_ang_vel(
+                vel_cmd_manager=self.velocity_command,
+            ),
             "weight": 1.0,
         },
     },

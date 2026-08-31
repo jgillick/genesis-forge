@@ -1,10 +1,12 @@
 from __future__ import annotations
-import torch
-from tensordict import TensorDict
-from typing import Any, Union, Optional
-import genesis as gs
+
 from importlib import metadata
+from typing import Any
+
+import genesis as gs
+import torch
 from rsl_rl.env import VecEnv
+from tensordict import TensorDict
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.wrappers.wrapper import Wrapper
@@ -29,16 +31,16 @@ class RslRlWrapper(Wrapper, VecEnv):
 
     can_be_wrapped = False
 
-    def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object = {}):
+    def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object | None = None):
         super().__init__(env)
 
         self.rsl3 = False
-        self.cfg = cfg
+        self.cfg = cfg if cfg is not None else {}
         try:
             major_version = int(metadata.version("rsl-rl-lib").split(".")[0])
             if major_version >= 3:
                 self.rsl3 = True
-        except:
+        except: # noqa
             pass
 
     @property
@@ -103,7 +105,7 @@ class RslRlWrapper(Wrapper, VecEnv):
         return obs, extras
 
     def _add_observations_to_extras(
-        self, obs: torch.Tensor, extras: Optional[dict[str, Any]]
+        self, obs: torch.Tensor, extras: dict[str, Any] | None
     ):
         """
         Add the observations to the extras dictionary.
@@ -117,8 +119,8 @@ class RslRlWrapper(Wrapper, VecEnv):
         return extras
 
     def _format_obs_group(
-        self, obs: torch.Tensor, extras: Optional[dict[str, Any]]
-    ) -> Union[torch.Tensor, TensorDict]:
+        self, obs: torch.Tensor, extras: dict[str, Any] | None
+    ) -> torch.Tensor | TensorDict:
         """
         If we're using rsl_rl 3.0+, put the observations into a TensorDict
         """

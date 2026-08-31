@@ -1,18 +1,16 @@
 from __future__ import annotations
-import re
+
 import torch
-import genesis as gs
-from typing import Any, TypeVar
+
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers.action.base import BaseActionManager
-from genesis_forge.values import ensure_dof_pattern
+from genesis_forge.managers.action.affine_dof_action_manager import (
+    AffineDofActionManager,
+)
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.values import ensure_dof_pattern
 
 
-T = TypeVar("T")
-
-
-class PositionActionManager(BaseActionManager):
+class PositionActionManager(AffineDofActionManager):
     """
     Converts actions to DOF positions, using affine transformations (scale and offset).
 
@@ -31,10 +29,9 @@ class PositionActionManager(BaseActionManager):
         offset: Offset factor for the action.
         use_default_offset: Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.
         clip: Clip the action values to the range. If omitted, the action values will automatically be clipped to the joint limits.
-        soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint 
-                                 of each joint's limits to establish a safety region within the limits. 
+        soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint
+                                 of each joint's limits to establish a safety region within the limits.
                                  Defaults to 1.0.
-        quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
 
@@ -112,29 +109,25 @@ class PositionActionManager(BaseActionManager):
         actuator_joints: list[str] | str = ".*",
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
-        clip: tuple[float, float] | dict[str, tuple[float, float]] = None,
+        clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         use_default_offset: bool = True,
-        quiet_action_errors: bool = False,
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(
             env,
             delay_step=delay_step,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
-            **kwargs,
         )
         self._offset_cfg = ensure_dof_pattern(offset)
         self._scale_cfg = ensure_dof_pattern(scale)
         self._clip_cfg = ensure_dof_pattern(clip)
         self._soft_limit_scale_factor = soft_limit_scale_factor
-        self._quiet_action_errors = quiet_action_errors
         self._enabled_dof = None
         self._use_default_offset = use_default_offset
 
-        self._dofs_pos_buffer: torch.Tensor = None
+        self._dofs_pos_buffer: torch.Tensor | None = None
 
         if use_default_offset and offset != 0.0:
             raise ValueError("Cannot set both use_default_offset and offset")
@@ -184,74 +177,9 @@ class PositionActionManager(BaseActionManager):
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
 
-    def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
-        """
-        Convert the actions to position commands, and clamp them to the limits.
-
-        Args:
-            actions: The incoming step actions to handle.
-
-        Returns:
-            The actions as position commands.
-        """
-        # Validate actions
-        if not self._quiet_action_errors:
-            if torch.isnan(actions).any():
-                print(f"ERROR: NaN actions received! Actions: {actions}")
-            if torch.isinf(actions).any():
-                print(f"ERROR: Infinite actions received! Actions: {actions}")
-
-        # Process actions
-        actions = actions * self._scale_values + self._offset_values
-        actions = torch.clamp(
-            actions,
-            min=self._clip_values[:, 0],
-            max=self._clip_values[:, 1],
-        )
-        return actions
-
     def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Sends the actions as position commands to the actuators in the simulation.
         """
         actions = self.get_actions()
         self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
-
-    """
-    Internal methods
-    """
-
-    def _get_dof_value_tensor(
-        self,
-        values: float | dict,
-        default_value: T = 0.0,
-        output: torch.Tensor | list[Any] | None = None,
-    ) -> torch.Tensor:
-        """
-         Given a DofValue dict, loop over the entries, and set the value to the DOF indices (from the actuator) that match the pattern.
-
-        Args:
-            values: The DOF value to convert (for example: `{".*": 50}`).
-
-        Returns:
-            A list of values for the DOF indices.
-            For example, for 4 DOFs: [50, 50, 50, 50]
-        """
-        is_set = [False] * self.num_actions
-        dof_names = list(self.dofs.keys())
-        if output is None:
-            output = torch.zeros(
-                self.num_actions, device=gs.device, dtype=gs.tc_float
-            ).fill_(default_value)
-        for pattern, value in values.items():
-            found = False
-            for i, name in enumerate[str](dof_names):
-                if not is_set[i] and re.match(f"^{pattern}$", name):
-                    if isinstance(value, (list, tuple)):
-                        value = torch.tensor(value, device=gs.device)
-                    is_set[i] = True
-                    output[i] = value
-                    found = True
-            if not found:
-                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
-        return output

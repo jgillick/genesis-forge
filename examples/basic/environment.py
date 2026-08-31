@@ -2,20 +2,19 @@
 Simplified Go2 Locomotion Environment using managers to handle everything.
 """
 
-import torch
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
-
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
@@ -54,7 +53,7 @@ class Go2BasicEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
+                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -102,16 +101,15 @@ class Go2BasicEnv(ManagedEnvironment):
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
             },
         )
@@ -153,45 +151,35 @@ class Go2BasicEnv(ManagedEnvironment):
             cfg={
                 "base_height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                    },
+                    "fn": rewards.base_height(target_height=0.3, entity=self.robot),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "command": self.target_command[:, :2],
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        command=self.target_command[:, :2],
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.2,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "commanded_ang_vel": self.target_command[:, 2],
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        commanded_ang_vel=self.target_command[:, 2],
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "similar_to_default": {
                     "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
             },
         )
@@ -204,16 +192,15 @@ class Go2BasicEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 10.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=10.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
             },
         )
@@ -242,7 +229,7 @@ class Go2BasicEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

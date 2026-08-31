@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import torch
-import numpy as np
-from gymnasium import spaces
+from typing import Any, NotRequired, Protocol
+
 import genesis as gs
-from typing import NotRequired, Protocol, Any
+import numpy as np
+import torch
+from gymnasium import spaces
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import ObservationConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, ObservationConfigItem
+
 
 class ObservationFn(Protocol):
     def __call__(self, env: GenesisEnv, *params: Any, **kwargs: Any) -> torch.Tensor: ...
@@ -154,8 +157,8 @@ class ObservationManager(BaseManager):
 
         # Wrap config items
         self.cfg: dict[str, ObservationConfigItem] = {}
-        for name, cfg in cfg.items():
-            self.cfg[name] = ObservationConfigItem(cfg, env)
+        for cfg_name, item in cfg.items():
+            self.cfg[cfg_name] = ObservationConfigItem(item, env)
 
     """
     Properties
@@ -213,13 +216,33 @@ class ObservationManager(BaseManager):
             device=gs.device,
         )
 
+    def reset(self, envs_idx: list[int] | None = None):
+        """
+        Reset any stateful observation functions and clear the stacked
+        observation history for the given environments.
+
+        Args:
+            envs_idx: The environment ids being reset. All environments, if None.
+        """
+        if envs_idx is None:
+            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+
+        # Reset observation functions
+        for cfg in self.cfg.values():
+            cfg.reset(envs_idx)
+
+        # Clear stacked history so a fresh episode doesn't observe the previous
+        # episode's final states.
+        for buffer in self._history:
+            buffer[envs_idx] = 0.0
+
     def get_observations(
         self, values: dict[str, float | torch.Tensor] | None = None
     ) -> torch.Tensor:
         """
         Generate current observations for all environments.
 
-        Optionally, you can provide the observation values directly as a dictionary of values, and 
+        Optionally, you can provide the observation values directly as a dictionary of values, and
         this method will return the formatted/scaled (without noise) tensor for the policy.
         This is useful for manual deployments or troubleshooting.
 
@@ -233,7 +256,9 @@ class ObservationManager(BaseManager):
             The observations for all environments.
         """
         if not self.enabled:
-            return torch.zeros((self.env.num_envs, self._observation_size))
+            return torch.zeros(
+                (self.env.num_envs, self._observation_size), device=gs.device
+            )
 
         buffer = self._history.pop()
         self._perform_observation(buffer, values)
@@ -259,13 +284,13 @@ class ObservationManager(BaseManager):
             try:
                 cfg.build()
                 assert callable(cfg.fn), f"Observation function {name} is not callable"
-                value = cfg.fn(env=self.env, **cfg.params)
+                value = cfg.execute()
                 value_size = value.shape[-1]
                 if value_size > 0:
                     size += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e
+                raise e # noqa
         return size
 
     def _perform_observation(
@@ -284,27 +309,28 @@ class ObservationManager(BaseManager):
         for name, cfg in self.cfg.items():
             try:
                 # Get values
-                params = cfg.params
                 if override_values is not None:
                     if name not in override_values:
                         raise ValueError(f"Value '{name}' not found in override values")
                     value = override_values[name]
                     if not isinstance(value, torch.Tensor):
                         value = torch.tensor(value, device=gs.device)
+                    if value.dim() == 0:
+                        value = value.expand(self.env.num_envs, 1).clone()
                 else:
-                    value = cfg.fn(env=self.env, **params)
+                    value = cfg.execute()
 
                 # Apply scale
                 scale = cfg.scale
                 if scale is not None and scale != 1.0:
-                    value *= scale
+                    value = value * scale
 
                 # Add noise, if the value is not an override
                 if not has_overrides:
                     noise = cfg.noise or self.noise
                     if noise is not None and noise != 0.0:
                         noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
-                        value += noise_value
+                        value = value + noise_value
 
                 # Copy directly into output buffer
                 value_size = value.shape[-1]
@@ -313,5 +339,5 @@ class ObservationManager(BaseManager):
                     offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e
+                raise e # noqa
         return output

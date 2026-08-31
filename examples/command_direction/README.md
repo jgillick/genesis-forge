@@ -17,7 +17,7 @@ def config(self):
             "lin_vel_y": [-1.0, 1.0],
             "ang_vel_z": [-1.0, 1.0],
         },
-        standing_probability=0.05,
+        stopped_probability=0.05,
         resample_time_sec=5.0,
         debug_visualizer=True,
         debug_visualizer_cfg={
@@ -32,19 +32,17 @@ def config(self):
         cfg={
             "tracking_lin_vel": {
                 "weight": 1.0,
-                "fn": rewards.command_tracking_lin_vel,
-                "params": {
-                    "vel_cmd_manager": self.velocity_command,
-                    "entity_manager": self.robot_manager,
-                },
+                "fn": rewards.command_tracking_lin_vel(
+                    vel_cmd_manager=self.velocity_command,
+                    entity_manager=self.robot_manager,
+                ),
             },
             "tracking_ang_vel": {
                 "weight": 0.2,
-                "fn": rewards.command_tracking_ang_vel,
-                "params": {
-                    "vel_cmd_manager": self.velocity_command,
-                    "entity_manager": self.robot_manager,
-                },
+                "fn": rewards.command_tracking_ang_vel(
+                    vel_cmd_manager=self.velocity_command,
+                    entity_manager=self.robot_manager,
+                ),
             },
             # ... other rewards ...
         },
@@ -114,7 +112,7 @@ You can use a game controller (Xbox, PlayStation, Nintendo Switch Pro, Logitech 
 
 Simply connect your gamepad and run:
 
-****
+---
 
 ```shell
 # With uv

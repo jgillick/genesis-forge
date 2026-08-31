@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
-import torch
-import genesis as gs
-from genesis.utils.geom import (
-    transform_by_quat,
-    inv_quat,
-)
 from typing import TYPE_CHECKING
+
+import genesis as gs
+import torch
+from genesis.utils.geom import (
+    inv_quat,
+    transform_by_quat,
+)
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity

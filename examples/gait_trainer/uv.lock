@@ -841,10 +841,9 @@ wheels = [
 
 [[package]]
 name = "genesis-forge"
-version = "0.5.0"
+version = "1.0.0"
 source = { directory = "../../" }
 dependencies = [
-    { name = "deprecated" },
     { name = "genesis-world" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -857,8 +856,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deprecated" },
-    { name = "genesis-world", specifier = "~=1.0.0" },
+    { name = "genesis-world", specifier = ">=1.0.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
     { name = "pysdl2-dll" },
@@ -867,6 +865,9 @@ requires-dist = [
     { name = "torch", specifier = ">=2.10.0" },
     { name = "twine", specifier = ">=6.2.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "genesis-forge-gait-trainer-example"

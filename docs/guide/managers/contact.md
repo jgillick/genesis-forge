@@ -1,8 +1,5 @@
 # Contact Manager
 
-!!! tip "Important"
-    The contact manager requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+.
-
 The Contact Manager tracks collisions and contacts between your robot and the environment. It's essential for detecting foot contacts, illegal collisions, and computing contact-based rewards or terminations.
 
 ## Basic Usage
@@ -15,9 +12,9 @@ class MyEnv(ManagedEnvironment):
         # Detect the body hitting the ground
         self.contact_manager = ContactManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             sensor_links=["body"],
-            with_entity_attr="terrain"
+            with_entity=self.terrain,
         )
 
         # Terminate when the body touches the floor with more than 10N
@@ -26,11 +23,10 @@ class MyEnv(ManagedEnvironment):
             logging_enabled=True,
             term_cfg={
                 "body_contact": {
-                    "fn": terminations.contact_force,
-                    "params": {
-                        "threshold": 10.0,
-                        "contact_manager": self.contact_manager,
-                    },
+                    "fn": terminations.contact_force(
+                        threshold=10.0,
+                        contact_manager=self.contact_manager,
+                    ),
                 },
             },
         )
@@ -54,12 +50,13 @@ RewardManager(
     cfg={
         "foot_air_time": {
             "weight": 1.0,
-            "fn": rewards.feet_air_time,
-            "params": {
-                "time_threshold": 0.5, # Target air-time, in seconds
-                "contact_manager": self.foot_contact_manager,
-                "vel_cmd_manager": self.velocity_command, # reduces the penalty if the the velocity command is close to zero
-            },
+            "fn": rewards.feet_air_time(
+                time_threshold=0.5, # Target air-time, in seconds
+                contact_manager=self.foot_contact_manager,
+
+                # Reduce the penalty if the velocity command is close to zero
+                vel_cmd_manager=self.velocity_command,
+            ),
         },
     }
 )
@@ -76,8 +73,8 @@ class MyEnv(ManagedEnvironment):
         # Detect the body links colliding with other body liks
         self.contact_manager = ContactManager(
             self,
-            entity_attr="robot",
-            with_entity_attr="robot"
+            entity=self.robot,
+            with_entity=self.robot,
         )
 
         RewardManager(
@@ -85,11 +82,10 @@ class MyEnv(ManagedEnvironment):
             cfg={
                 "self_contact": {
                     "weight": -1.0,
-                    "fn": rewards.contact_force,
-                    "params": {
-                        "threshold": 1.0, # Only collisions that are above 1.0N
-                        "contact_manager": self.self_contact,
-                    },
+                    "fn": rewards.contact_force(
+                        threshold=1.0, # Only collisions that are above 1.0N
+                        contact_manager=self.self_contact,
+                    ),
                 },
             },
         )
@@ -108,9 +104,9 @@ To visualize which contacts are being registered, you can enable debugging, with
 ```python
 self.contact_manager = ContactManager(
     self,
-    entity_attr="robot",
+    entity=self.robot,
     sensor_links=["body"],
-    with_entity_attr="terrain"
+    with_entity=self.terrain,
     debug_visualizer=True,
     debug_visualizer_cfg={
         "envs_idx": [0],
@@ -119,6 +115,7 @@ self.contact_manager = ContactManager(
 ```
 
 !!! warning "Caution"
+
     This can slow down the simulation since the debug spheres need to be calculated and rendered for each environment on every step.
 
     It's recommended to only enable them for a small number of environments at a time with the `envs_idx` configuration setting.

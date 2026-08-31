@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genesis-forge"
-version = "0.5.3"
+version = "1.0.0"
 authors = [{ name = "Jeremy Gillick" }]
 description = "A robotics RL training framework for Genesis inspired by Isaac Lab and Gymnasium."
 readme = "README.md"
@@ -12,13 +12,13 @@ requires-python = ">=3.10"
 dependencies = [
   "genesis-world>=1.0.0",
   "gymnasium",
-  "deprecated",
   "pysdl2",
   "pysdl2-dll",
+  "rsl-rl-lib",
   "skrl[torch]",
   "torch>=2.10.0",
   "tensordict",
-  "twine>=6.2.0",
+  "deprecated>=1.3.1",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -33,3 +33,17 @@ Issues = "https://github.com/jgillick/genesis-forge/issues"
 
 [tool.hatch.build.targets.sdist]
 exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.4",
+    "twine>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Raised by the `genesis` package's own imports, not by genesis-forge code.
+    "ignore:`torch.jit.script` is deprecated.*:DeprecationWarning",
+    "ignore:Using SDL2 binaries from pysdl2-dll.*:UserWarning",
+]

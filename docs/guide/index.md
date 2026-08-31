@@ -18,22 +18,19 @@ self.reward_manager = RewardManager(
     cfg={
         "base_height_target": {
             "weight": -50.0,
-            "fn": rewards.base_height,
-            "params": {
-                "target_height": 0.3,
-            },
+            "fn": rewards.base_height(target_height=0.3),
         },
         "lin_vel_z": {
             "weight": -1.0,
-            "fn": rewards.lin_vel_z_l2,
+            "fn": rewards.lin_vel_z_l2(),
         },
         "action_rate": {
             "weight": -0.005,
-            "fn": rewards.action_rate_l2,
+            "fn": rewards.action_rate_l2(),
         },
         "similar_to_default": {
             "weight": -0.1,
-            "fn": rewards.dof_similar_to_default,
+            "fn": rewards.dof_similar_to_default(),
         },
     },
 )
@@ -84,8 +81,7 @@ class MyFirstEnv(ManagedEnvironment):
                 # Maintain target height
                 "base_height": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {"target_height": 0.3},
+                    "fn": rewards.base_height(target_height=0.3),
                 },
                 # ...
             },

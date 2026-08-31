@@ -6,12 +6,11 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn as nn
 from gymnasium import spaces
-
 from skrl.models.torch import Model
 from skrl.models.torch.deterministic import DeterministicMixin
 from skrl.models.torch.gaussian import GaussianMixin
+from torch import nn
 
 
 class MasqGaussianPolicy(GaussianMixin, Model):

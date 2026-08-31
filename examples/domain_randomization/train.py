@@ -1,17 +1,18 @@
-import os
-import copy
-import torch
-import shutil
-import pickle
 import argparse
-import genesis as gs
+import copy
+import os
+import pickle
+import shutil
 
-from genesis_forge.wrappers import (
-    VideoWrapper,
-    RslRlWrapper,
-)
+import genesis as gs
+import torch
 from environment import Go2CommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import (
+    RslRlWrapper,
+    VideoWrapper,
+)
 
 EXPERIMENT_NAME = "go2-randomization"
 
@@ -85,10 +86,8 @@ def main():
 
     # Load training configuration and save snapshot of training configs
     cfg = training_cfg()
-    pickle.dump(
-        [cfg],
-        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
-    )
+    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
+        pickle.dump([cfg], f)
 
     # Create environment
     env = Go2CommandDirectionEnv(num_envs=args.num_envs, headless=True)

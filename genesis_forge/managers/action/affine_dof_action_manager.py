@@ -7,7 +7,11 @@ import genesis as gs
 import torch
 
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers.action.base import BaseActionManager
+from genesis_forge.managers.action.base import (
+    BaseActionManager,
+    DeploymentActionConfig,
+    to_nominal_array,
+)
 from genesis_forge.managers.actuator import ActuatorManager
 
 T = TypeVar("T")
@@ -35,6 +39,12 @@ class AffineDofActionManager(BaseActionManager):
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
     """
+
+    deploy_type: str = "affine_dof"
+    """Stable name recorded in a deployment bundle so the robot can find this
+    manager's decoder. Subclasses override it to say what their values *mean*
+    (positions vs velocities), which is what a robot operator needs to know --
+    the arithmetic is identical either way."""
 
     def __init__(
         self,
@@ -86,6 +96,60 @@ class AffineDofActionManager(BaseActionManager):
             max=self._clip_values[:, 1],
         )
         return actions
+
+    """
+    Deployment
+    """
+
+    def get_deployment_config(self) -> DeploymentActionConfig:
+        """Export the affine decode: scale, offset, and the clip bounds.
+
+        Shared by every affine manager, so `PositionActionManager`,
+        `VelocityActionManager`, and any future affine subclass are deployable
+        without writing anything new -- they differ only in `deploy_type` and in
+        the values their `build()` resolved.
+        """
+        if (
+            self._scale_values is None
+            or self._offset_values is None
+            or self._clip_values is None
+        ):
+            raise RuntimeError(
+                f"{type(self).__name__} has not been built, so its decode parameters "
+                f"are unknown. Build the environment before exporting."
+            )
+
+        clip = self._clip_values.detach()
+        if clip.ndim == 2:  # (num_joints, 2) -- bounds shared across environments
+            clip_low, clip_high = clip[:, 0], clip[:, 1]
+        else:  # (num_envs, 2, num_joints) -- per-environment bounds
+            clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
+
+        def nominal(tensor, name):
+            return to_nominal_array(
+                tensor,
+                name=name,
+                num_joints=self.num_actions,
+                num_envs=self.env.num_envs,
+                manager_name=type(self).__name__,
+            )
+
+        config: dict[str, Any] = {
+            "scale": nominal(self._scale_values, "scale"),
+            "offset": nominal(self._offset_values, "offset"),
+        }
+
+        # An unbounded side (every value infinite, as VelocityActionManager defaults
+        # to) is simply omitted: the runtime treats a missing bound as no clip, and
+        # infinities have no portable JSON representation.
+        low = nominal(clip_low, "clip lower bound")
+        high = nominal(clip_high, "clip upper bound")
+        if any(value != float("-inf") for value in low):
+            config["post_clip_low"] = low
+        if any(value != float("inf") for value in high):
+            config["post_clip_high"] = high
+
+        return DeploymentActionConfig(deploy_type=self.deploy_type, config=config)
 
     """
     Internal methods

@@ -417,6 +417,17 @@ class ManagedEnvironment(GenesisEnv):
         # Otherwise, concatenate the observation manager spaces
         return torch.cat(parts, dim=-1)
 
+    @property
+    def action_ranges(self) -> list[tuple[int, int]]:
+        """Each action manager's ``(start, end)`` slice of the action vector.
+
+        Indices line up with ``managers["action"]`` in registration order, which is
+        the same order :meth:`step` slices the incoming actions in. Deployment
+        export records these so a robot can route the policy's output to the right
+        decoder.
+        """
+        return list(self._action_ranges)
+
     """
     Internal methods
     """

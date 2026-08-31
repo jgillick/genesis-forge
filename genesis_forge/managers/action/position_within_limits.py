@@ -8,6 +8,7 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.values import ensure_dof_pattern
 
+from .base import DeploymentActionConfig, to_nominal_array
 from .position_action_manager import PositionActionManager
 
 
@@ -71,6 +72,8 @@ class PositionWithinLimitsActionManager(PositionActionManager):
 
     """
 
+    deploy_type: str = "position_within_limits"
+
     def __init__(
         self,
         env: GenesisEnv,
@@ -119,6 +122,38 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actions = actions.clamp(-1.0, 1.0)
         actions = actions * self._scale + self._offset
         return actions
+
+    """
+    Deployment
+    """
+
+    def get_deployment_config(self) -> DeploymentActionConfig:
+        """Export this manager's decode: pre-clip to [-1, 1], then map into limits.
+
+        Overrides :class:`PositionActionManager` deliberately. This manager
+        inherits the parent's ``build()`` -- so ``_scale_values``, ``_offset_values``
+        and ``_clip_values`` all exist -- but its ``process_actions`` ignores them
+        in favour of ``_scale``/``_offset`` and applies no post-clip. Exporting the
+        parent's parameters would describe a decode this manager never performs.
+        """
+
+        def nominal(tensor, name):
+            return to_nominal_array(
+                tensor,
+                name=name,
+                num_joints=self.num_actions,
+                num_envs=self.env.num_envs,
+                manager_name=type(self).__name__,
+            )
+
+        return DeploymentActionConfig(
+            deploy_type=self.deploy_type,
+            config={
+                "pre_clip": [-1.0, 1.0],
+                "scale": nominal(self._scale, "scale"),
+                "offset": nominal(self._offset, "offset"),
+            },
+        )
 
     """
     Internal methods

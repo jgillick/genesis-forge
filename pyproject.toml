@@ -10,6 +10,7 @@ description = "A robotics RL training framework for Genesis inspired by Isaac La
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "genesis-forge-deploy",
   "genesis-world>=1.0.0",
   "gymnasium",
   "pysdl2",
@@ -47,3 +48,9 @@ filterwarnings = [
     "ignore:`torch.jit.script` is deprecated.*:DeprecationWarning",
     "ignore:Using SDL2 binaries from pysdl2-dll.*:UserWarning",
 ]
+
+[tool.uv.workspace]
+members = ["deploy"]
+
+[tool.uv.sources]
+genesis-forge-deploy = { workspace = true }

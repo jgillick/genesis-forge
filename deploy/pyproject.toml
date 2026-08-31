@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "genesis-forge-deploy"
+version = "1.0.0"
+authors = [{ name = "Jeremy Gillick" }]
+description = "Simulation-free runtime for deploying Genesis Forge policies to real robots."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+license = "Apache-2.0"
+
+[project.optional-dependencies]
+onnx = ["onnxruntime>=1.17"]
+
+[project.urls]
+Homepage = "https://github.com/jgillick/genesis-forge"
+Issues = "https://github.com/jgillick/genesis-forge/issues"

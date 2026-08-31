@@ -53,6 +53,8 @@ class VelocityActionManager(AffineDofActionManager):
                 )
     """
 
+    deploy_type: str = "velocity"
+
     def __init__(
         self,
         env: GenesisEnv,

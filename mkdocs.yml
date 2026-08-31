@@ -46,6 +46,12 @@ markdown_extensions:
   - toc:
       permalink: true
 
+# Planning artifacts live under docs/ by convention but are not published
+# documentation -- without this they would ship to the docs site unlinked.
+exclude_docs: |
+  brainstorms/
+  plans/
+
 plugins:
   - search
   - llmstxt:
@@ -70,6 +76,8 @@ plugins:
           - api/mdp/*.md
         Wrappers:
           - api/wrappers/*.md
+        Deployment:
+          - api/deployment/*.md
         Other:
           - api/other/*.md
   - mkdocstrings:
@@ -105,6 +113,7 @@ nav:
       - Reward: guide/managers/reward.md
       - Termination: guide/managers/termination.md
       - Terrain: guide/managers/terrain.md
+    - 🤖 Deployment: guide/deployment.md
   - API Reference:
     - api/index.md
     - Environments:
@@ -141,5 +150,10 @@ nav:
       - RSL-RL: api/wrappers/rsl_rl.md
       - SKRL: api/wrappers/skrl.md
       - Video: api/wrappers/video.md
+    - Deployment:
+      - api/deployment/index.md
+      - export: api/deployment/export.md
+      - Parity: api/deployment/parity.md
+      - Contract: api/deployment/contract.md
     - Other:
       - Gamepad: api/other/gamepad.md

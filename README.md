@@ -19,6 +19,7 @@ Today, modern robots learn to balance, walk, and manipulate objects using [Reinf
 - 💥 Contact manager - Comprehensive contact/collision detection and reward/termination functions
 - 🎬 Video Wrapper - Automatically records videos at regular intervals during training
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.
+- 🤖 Deployment export - Move a trained policy to a real robot without hand-recreating the observation and action pipelines
 - And more...
 
 Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest/)
@@ -42,6 +43,16 @@ Before installing Genesis Forge, ensure you have:
 ```shell
 pip install genesis-forge
 ```
+
+To run a trained policy on a robot, install only the simulation-free runtime -- it
+depends on numpy alone, so it fits on a Raspberry Pi or Jetson:
+
+```shell
+pip install genesis-forge-deploy
+```
+
+See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/)
+for the full walkthrough.
 
 ## Example
 

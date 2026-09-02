@@ -33,21 +33,82 @@ from genesis_forge.deployment import export
 env = MyEnv(num_envs=1)
 env.build()
 
-export(env, "./my_policy", checkpoint="logs/my_run/model_500.pt")
+bundle = export(env, "./my_policy", policy_path="policy.onnx")
+print(bundle.describe())
 ```
 
-This writes a **bundle** — a directory holding:
+`export()` returns the bundle it wrote, carrying the manifest and golden samples in
+memory — so describing or checking what you just exported reads nothing back off
+disk, and never unpacks the archive.
+
+It writes `my_policy.gfb`, a **bundle**, holding:
 
 ```
-my_policy/
-  manifest.json   # the deployment contract, human readable
-  golden.npz      # recorded input/output pairs, for an on-robot smoke test
-  policy.onnx     # your exported policy, if you passed one
+manifest.json     # the deployment contract, human readable
+golden.npz        # recorded input/output pairs, for an on-robot smoke test
+policy.onnx       # your exported policy, if you passed one
+policy.onnx.data  # its weights, when the export put them in a separate file
 ```
+
+Re-exporting replaces a bundle already at that path, since doing it after every
+training run is the normal thing to do. It will only ever replace a bundle, though:
+a path holding anything else is refused, so a mistyped destination cannot cost you
+a file.
 
 The policy keeps whatever extension you handed it, and the manifest records what
 kind of file it is — `policy.pt` and `format: "torchscript"` if that is what you
 exported. Nothing here requires ONNX.
+
+A policy is not always one file. ONNX keeps tensors above a size threshold in a
+companion file, so `policy.onnx` can be a small skeleton whose weights live beside
+it; OpenVINO always splits into `.xml` and `.bin`. Hand over everything the export
+produced:
+
+```python
+export(env, "./my_policy", policy_path=["policy.onnx", "policy.onnx.data"])
+```
+
+The first entry is the one the runtime loads, and gets renamed to `policy.<ext>`.
+The rest keep their own names, because a graph refers to its companions by the
+filename recorded inside it.
+
+Genesis Forge does not try to work out which files belong together — the naming
+differs per format, and a wrong guess produces a bundle whose policy loads on your
+machine, where the companion is still next door, and fails on the robot. Verifying
+the *bundled* policy, as below, is what catches a file left behind.
+
+### One file instead of a folder
+
+By default a bundle is written as a single `my_policy.gfb` file — one thing to
+`scp`, and a transfer that either arrives whole or fails, rather than a folder that
+can arrive missing a file and look fine until the robot loads it.
+
+While you are working, a plain directory is easier to poke at — you can read
+`manifest.json` straight out of it:
+
+```python
+export(env, "./my_policy", policy_path="policy.onnx", archive=False)
+```
+
+`load_bundle` reads either form, so nothing in your control loop changes:
+
+```python
+bundle = load_bundle("./my_policy.gfb")
+```
+
+An archive is unpacked beside itself into `.my_policy/` and reused on later loads,
+so the files sit in one predictable place for as long as anything needs them —
+`bundle.policy_path` stays valid, and nothing disappears from under a running
+robot. Replacing the archive unpacks it again: the bundle you just deployed is
+never masked by the one that was there before.
+
+A `.gfb` is a zip. `unzip my_policy.gfb` works if you would rather unpack it
+yourself and load the directory, and the format is recognised by content rather
+than by name, so a bundle renamed to `.zip` still loads. Expect the archive to be
+about the same size as the directory — the bulk is model weights and `golden.npz`,
+both of which are already dense — so this is about handling, not space. And note
+that keeping both the archive and its extraction roughly doubles the disk it uses,
+which is worth knowing on a small SD card.
 
 ### The parity gate
 
@@ -80,6 +141,50 @@ equally strong:
   frames on the robot is still yours to get right, and `bundle.describe()` prints the
   units it recorded to help.
 
+### Recording where the bundle came from
+
+Every bundle carries a `provenance` block. The exporter stamps what it can measure
+for itself — when the export ran, and the Genesis Forge and torch versions it ran
+under. Everything else depends on how you train, so you state it rather than the
+library guessing:
+
+```python
+export(
+    env,
+    "./my_policy",
+    policy_path="policy.onnx",
+    additional_provenance={
+        "checkpoint": "logs/my_run/model_500.pt",
+        "framework": "rsl_rl",
+        "framework_version": "5.4.2",
+    },
+)
+```
+
+```json
+"provenance": {
+  "exported_at": "2026-08-27T18:02:27+00:00",
+  "genesis_forge_version": "1.0.0",
+  "torch_version": "2.13.0",
+  "additional": {
+    "checkpoint": "logs/my_run/model_500.pt",
+    "framework": "rsl_rl",
+    "framework_version": "5.4.2"
+  }
+}
+```
+
+Your entries stay under `additional` rather than being merged in, so a reader can
+tell a version the tooling observed from a value a person typed — and so a key of
+yours can never quietly overwrite one of the measured ones.
+
+`checkpoint`, `framework` and `framework_version` are the conventional keys and are
+worth recording; beyond those the field is open, and a git commit, a robot serial,
+or a dataset version are all reasonable things to put there. Values must survive the
+trip to JSON — strings, numbers, bools, and lists or dicts of those. Paths are
+converted for you; anything else that cannot be written is rejected up front, before
+the parity gate runs.
+
 ## Running on the robot
 
 Install just the runtime:
@@ -101,11 +206,10 @@ print(bundle.describe())
 Bundle: my_policy
   control rate: 50.0 Hz (dt=0.02)
   observation vector: 45 values (15 per tick x 3 history)
-  sensor values you supply each tick:
+  values you supply each tick:
     - robot_ang_vel (3 values) in rad/s, scaled by 0.25 -- Body-frame angular velocity
     - dof_pos (12 values) in rad -- Joint positions relative to the default pose
-  values you feed back from the decoder:
-    - actions (12 values), from action_decoder.last_target_actions_by_manager["action_manager"]
+    - actions (12 values) -- Previous policy output
   joint targets produced (12):
     - [position] FL_hip, FL_thigh, FL_calf, ...
 ```
@@ -125,8 +229,8 @@ while True:
     observation = observation_assembler.assemble({
         "robot_ang_vel": imu.gyro,        # rad/s, body frame
         "dof_pos": joints.positions,      # rad, relative to default pose
-        # bundle.describe() prints this line verbatim -- copy it.
-        "actions": action_decoder.last_target_actions_by_manager["action_manager"],
+        # This one is not a sensor -- see "Feeding the policy's output back" below.
+        "actions": action_decoder.last_raw_actions,
     })
 
     targets = action_decoder.decode(policy(observation))
@@ -137,30 +241,29 @@ while True:
     sleep_until_next_tick(bundle.manifest.dt)
 ```
 
-That `"actions"` entry is the policy's own previous output fed back in — a common
-input in locomotion policies. You read it off the decoder rather than off a sensor.
-`bundle.describe()` tells you which entries work that way and which decoder property
-to use, and the assembler raises if you leave one out.
+### Feeding the policy's output back
 
-You do not annotate any of this. `current_actions()` is an MDP function, so export
-reads its source straight off the object and records where the value comes from.
+That `"actions"` entry is not a sensor reading — it is the policy's own previous
+output fed back in, a common input in locomotion policies. You read it off the
+decoder instead of off your hardware, and pass it exactly like any other value.
 
-Write the feedback as a lambda instead and export cannot see inside it, so the entry
-is listed as an ordinary sensor input with no hint about where to get it. That is
-the safe default rather than a guess — and a good reason to reach for
-`current_actions()`.
+The bundle does not mark these entries out, because nothing about *supplying* them
+differs: every entry in `bundle.describe()` is a value you pass each tick. What
+differs is where you get it, and that follows from how you wrote the observation in
+training:
 
-It also tells apart the two feedback shapes, which is worth knowing because they hold
-different numbers:
+| In training | On the robot |
+|---|---|
+| `current_actions()` | `action_decoder.last_raw_actions` |
+| `current_actions(action_manager=mgr)` | `action_decoder.last_raw_actions_by_manager["<name>"]` |
 
-| In training | Feeds back | On the robot |
-|---|---|---|
-| `current_actions()` | the whole raw policy vector | `action_decoder.last_raw_actions` |
-| `current_actions(action_manager=mgr)` | that manager's raw policy output | `action_decoder.last_raw_actions_by_manager[...]` |
+The per-manager form matters once you have more than one action manager, since the
+flat property holds the whole policy vector. The manager name is the attribute you
+assigned it to in `config()`, and `bundle.describe()` lists those under the joint
+targets.
 
-The per-manager forms are used whenever an entry belongs to a specific manager, since
-the flat properties hold the entire policy vector — which is the same thing only when
-you have exactly one action manager.
+If you leave one out, the assembler raises and names it — it never quietly feeds
+zeros — so a forgotten feedback wire fails on the bench rather than on the robot.
 
 A few things the runtime does for you:
 
@@ -173,10 +276,9 @@ A few things the runtime does for you:
   policy consumes.
 - **It refuses bad output.** If the policy emits `NaN` or infinity, the decoder raises
   rather than passing it to your motors.
-- **Feedback values are explicit, not magic.** If your observation config feeds
-  actions back in, you pass `action_decoder.last_target_actions` (or `last_raw_actions`)
-  yourself. Nothing is filled in behind your back, so a feedback wire you forget
-  raises immediately instead of quietly feeding zeros forever.
+- **Nothing is filled in behind your back.** Every entry is supplied by you,
+  including the ones fed back from the decoder. A wire you forget raises
+  immediately instead of quietly feeding zeros forever.
 
 ### Match the control rate and gains
 
@@ -264,35 +366,52 @@ for ONNX.
 
 ### Verifying the exported policy
 
-Pass the exported file to `export()` along with the torch policy it came from, and
-the parity gate extends across the exported file too:
+Genesis Forge packages the policy file and records what format it is, but it does
+not open it. Confirming the exported file still computes what the trained policy
+computes is yours to do, in the same script that exported it — that code already
+knows which framework produced the file and how to run it.
+
+It is worth doing. An observation normalizer that silently failed to make it into
+the graph is the classic sim-to-real failure, and no other check would see it.
+
+`export()` hands back the bundle it wrote, with everything you need already in
+memory: `golden["observations"]` holds the vectors the parity gate ran on, which are
+exactly the right inputs to compare against.
+
+Check the copy *inside the bundle*, not the file you passed in. That is the artifact
+going to the robot, and it is the only way to notice a companion file you forgot to
+list — the original graph would load perfectly, with its weights still sitting beside
+it. `bundle.unpacked()` gives you the contents in a temporary directory and clears it
+afterwards, so nothing is left next to your archive:
 
 ```python
-export(env, "./my_policy", policy_path="policy.onnx", reference_policy=policy)
+import numpy as np, onnxruntime, torch
+
+bundle = export(env, "./my_policy", policy_path="policy.onnx")
+
+with bundle.unpacked() as directory:
+    session = onnxruntime.InferenceSession(
+        str(directory / bundle.policy_file), providers=["CPUExecutionProvider"]
+    )
+    name = session.get_inputs()[0].name
+
+    for observation in bundle.golden["observations"]:
+        batched = observation[None, :].astype("float32")
+        exported = np.asarray(session.run(None, {name: batched})[0]).ravel()
+        with torch.no_grad():
+            reference = policy(torch.from_numpy(batched)).cpu().numpy().ravel()
+        assert np.allclose(exported, reference, rtol=1e-4, atol=1e-5), "graph differs"
 ```
 
-This works for both ONNX and TorchScript — the file's format is inferred from its
-extension, and the matching validator runs. It is worth doing. A normalizer that
-silently failed to make it into the exported file is the classic sim-to-real failure,
-and it is invisible to every other check.
+Compare **relatively**, not with a fixed absolute bound. Exporting reorders
+floating-point accumulation, and that drift grows with how large your actions are —
+a policy emitting wheel velocities around 50 drifts roughly fifty times further than
+one emitting joint angles around 1, for exactly the same graph. On a trained
+wheeled-robot policy the drift measures ~3e-05, while the *closest* wrong checkpoint
+diverges by at least 2e-01, so real faults sit orders of magnitude clear of rounding.
 
-The bound here is **relative** to the size of your actions, not absolute. Exporting
-reorders floating-point accumulation, so two runtimes running the same graph differ
-by an amount that grows with activation magnitude — a policy emitting wheel
-velocities around 50 drifts far further than one emitting joint angles around 1. On a
-trained wheeled-robot policy that drift measures ~3e-05, while the *closest* wrong
-checkpoint diverges by at least 2e-01. Real faults are orders of magnitude clear of
-rounding, which is what makes the check worth trusting.
-
-Any other format is still packaged, and the export tells you it went in unverified:
-
-```
-note: policy.mnn was packaged but not verified against the trained policy
-```
-
-Validating a format the library does not know is on you — load it yourself and
-compare against `golden.npz`, which holds the observations and the errors the parity
-run measured.
+`examples/wheeled_robot/deploy.py` does this end to end, including the error message
+worth printing when it fails.
 
 ## Installing on a Pi or Jetson
 

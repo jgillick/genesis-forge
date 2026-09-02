@@ -5,9 +5,10 @@ order, same per-entry scaling, same newest-first history stacking -- minus the
 simulator lookups and minus the training noise. The parity gate on the export
 side proves the two agree before a bundle is ever written.
 
-Every entry is supplied by the caller, including the ones that echo the pipeline's
-own previous output (read those off the decoder). Nothing is filled in silently:
-a feedback wire you forget raises, rather than quietly reading zeros forever.
+Every entry is supplied by the caller. Most come from sensors; an entry that echoes
+the policy's own previous output is read off the decoder and passed in exactly the
+same way. Nothing is filled in silently: a value you forget raises, rather than
+quietly reading zeros forever.
 """
 
 from __future__ import annotations
@@ -70,23 +71,8 @@ class ObservationAssembler:
 
     @property
     def inputs(self) -> tuple[ObservationEntry, ...]:
-        """Everything you pass to :meth:`assemble` each tick.
-
-        The union of :attr:`sensor_inputs` and :attr:`pipeline_state_inputs` --
-        the two differ only in where you read the value from, not in whether you
-        have to supply it.
-        """
+        """Everything you pass to :meth:`assemble` each tick, in vector order."""
         return self._layout.entries
-
-    @property
-    def sensor_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries that come from real sensors."""
-        return self._layout.sensor_inputs
-
-    @property
-    def pipeline_state_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries fed back from the decoder's previous output."""
-        return self._layout.pipeline_state_inputs
 
     @property
     def output_size(self) -> int:
@@ -145,12 +131,8 @@ class ObservationAssembler:
 
     def describe_inputs(self) -> str:
         """Human-readable listing of everything the caller must supply."""
-        lines = ["Sensor values to supply each tick:"]
-        lines.extend(f"  - {entry.describe()}" for entry in self.sensor_inputs)
-        fed_back = self.pipeline_state_inputs
-        if fed_back:
-            lines.append("Values to feed back from the decoder:")
-            lines.extend(f"  - {entry.describe()}" for entry in fed_back)
+        lines = ["Values to supply each tick:"]
+        lines.extend(f"  - {entry.describe()}" for entry in self.inputs)
         return "\n".join(lines)
 
     """
@@ -176,13 +158,6 @@ class ObservationAssembler:
         return raw
 
     def _missing_value_message(self, entry: ObservationEntry) -> str:
-        """Say what is missing -- and for fed-back entries, where to get it."""
-        if entry.is_pipeline_state:
-            return (
-                f"Missing observation value '{entry.name}'. It echoes the policy's "
-                f"own previous output rather than a sensor -- pass "
-                f"{entry.decoder_source}."
-            )
         return (
             f"Missing observation value '{entry.name}'. This layout requires: "
             f"{', '.join(item.name for item in self.inputs)}."

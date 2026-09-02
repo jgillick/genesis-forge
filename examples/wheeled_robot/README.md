@@ -105,23 +105,24 @@ uv run ./deploy.py
 python ./deploy.py
 ```
 
-This writes `./deploy_bundle/` containing a readable `manifest.json`, the policy as
-`policy.onnx`, and recorded input/output pairs for an on-robot smoke test. Before
-writing anything it runs the deployment code against the live training pipeline and
-refuses to produce a bundle if the two disagree.
+This writes `./deploy_bundle.gfb` — a single file holding a readable
+`manifest.json`, the policy as `policy.onnx` (plus the companion file its weights
+live in), and recorded input/output pairs for an on-robot smoke test. Before writing
+anything it runs the deployment code against the live training pipeline and refuses
+to produce a bundle if the two disagree, then checks the packaged ONNX graph against
+the policy it came from.
 
 The script prints exactly what to wire up on the robot:
 
 ```
-Bundle: ./deploy_bundle
+Bundle: ./.deploy_bundle
   control rate: 50.0 Hz (dt=0.02)
   observation vector: 18 values (18 per tick x 1 history)
-  sensor values you supply each tick:
+  values you supply each tick:
     - velocity_cmd (3 values)
     - angle_velocity (3 values)
     ...
-  values you feed back from the decoder:
-    - actions (3 values), from action_decoder.last_raw_actions
+    - actions (3 values)
   joint targets produced (3):
     - [velocity] base_back_wheel_joint, base_right_wheel_joint, base_left_wheel_joint
 ```
@@ -129,8 +130,8 @@ Bundle: ./deploy_bundle
 Note the `[velocity]` tag: this robot's action manager produces wheel *velocities*,
 so those targets go to a velocity command rather than a position one.
 
-Copy the folder to the robot and install just the runtime — it needs numpy only, no
-simulator:
+Copy that one file to the robot and install just the runtime — it needs numpy only,
+no simulator:
 
 ```shell
 pip install genesis-forge-deploy[onnx]

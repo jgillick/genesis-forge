@@ -86,7 +86,7 @@ def check_parity(
     report = ParityReport(ticks=ticks)
 
     golden_observations: list[np.ndarray] = []
-    golden_policy_inputs: list[np.ndarray] = []
+    golden_supplied_values: list[np.ndarray] = []
     golden_actions: list[np.ndarray] = []
     golden_targets: list[np.ndarray] = []
 
@@ -147,7 +147,7 @@ def check_parity(
                 )
 
             golden_observations.append(numpy_obs)
-            golden_policy_inputs.append(
+            golden_supplied_values.append(
                 np.concatenate(
                     [observation_values[name] for name in sorted(observation_values)]
                 )
@@ -162,8 +162,8 @@ def check_parity(
         "raw_actions": np.asarray(golden_actions, dtype=np.float32),
         "joint_targets": np.asarray(golden_targets, dtype=np.float32),
     }
-    if golden_policy_inputs and golden_policy_inputs[0].size:
-        report.golden["sensor_inputs"] = np.asarray(
-            golden_policy_inputs, dtype=np.float32
+    if golden_supplied_values and golden_supplied_values[0].size:
+        report.golden["supplied_values"] = np.asarray(
+            golden_supplied_values, dtype=np.float32
         )
     return report

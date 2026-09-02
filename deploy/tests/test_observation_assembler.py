@@ -10,9 +10,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from genesis_forge_deploy import (
-    SOURCE_PIPELINE_STATE,
-    STAGE_RAW_ACTIONS,
-    STAGE_TARGET_ACTIONS,
     ObservationAssembler,
     ObservationEntry,
     ObservationError,
@@ -153,49 +150,24 @@ def test_reset_clears_history_back_to_zeros():
     np.testing.assert_allclose(assembler.assemble({"value": 9.0}), [9.0, 0.0])
 
 
-"""Entries fed back from the decoder (R15)
+"""Entries that echo the policy's own previous output (R15)
 
-These echo the pipeline's own previous output rather than a sensor. The caller
-still passes them explicitly -- reading them off the decoder -- so a forgotten
-feedback wire raises instead of silently feeding zeros forever.
+The bundle does not mark these out -- they are ordinary inputs, passed the same
+way as a sensor reading, just read off the decoder instead. What matters is that
+the caller passes them at all, so a forgotten feedback wire raises instead of
+silently feeding zeros forever.
 """
 
 
-def raw_actions_layout() -> ObservationLayout:
+def fed_back_layout() -> ObservationLayout:
     return layout(
         ObservationEntry(name="gyro", size=2),
-        ObservationEntry(
-            name="actions",
-            size=2,
-            source=SOURCE_PIPELINE_STATE,
-            pipeline_stage=STAGE_RAW_ACTIONS,
-        ),
+        ObservationEntry(name="actions", size=2),
     )
-
-
-def target_actions_layout() -> ObservationLayout:
-    return layout(
-        ObservationEntry(name="gyro", size=2),
-        ObservationEntry(
-            name="joint_targets",
-            size=2,
-            source=SOURCE_PIPELINE_STATE,
-            pipeline_stage=STAGE_TARGET_ACTIONS,
-            action_manager="action_manager",
-        ),
-    )
-
-
-def test_fed_back_entries_are_listed_among_the_inputs():
-    assembler = ObservationAssembler(raw_actions_layout())
-
-    assert [entry.name for entry in assembler.inputs] == ["gyro", "actions"]
-    assert [entry.name for entry in assembler.sensor_inputs] == ["gyro"]
-    assert [entry.name for entry in assembler.pipeline_state_inputs] == ["actions"]
 
 
 def test_a_fed_back_value_is_placed_like_any_other_entry():
-    assembler = ObservationAssembler(raw_actions_layout())
+    assembler = ObservationAssembler(fed_back_layout())
 
     obs = assembler.assemble({"gyro": [1.0, 2.0], "actions": [0.5, -0.5]})
 
@@ -204,40 +176,14 @@ def test_a_fed_back_value_is_placed_like_any_other_entry():
 
 def test_forgetting_the_feedback_wire_raises_rather_than_reading_zeros():
     """The whole point of passing it explicitly: omitting it is loud, not silent."""
-    assembler = ObservationAssembler(raw_actions_layout())
+    assembler = ObservationAssembler(fed_back_layout())
 
     with pytest.raises(ObservationError) as error:
         assembler.assemble({"gyro": [1.0, 2.0]})
 
     message = str(error.value)
     assert "actions" in message
-    assert "action_decoder.last_raw_actions" in message
-
-
-def test_a_target_actions_entry_names_the_right_decoder_property():
-    """Raw vs target is the easy thing to get wrong, so the error says which."""
-    assembler = ObservationAssembler(target_actions_layout())
-
-    with pytest.raises(ObservationError) as error:
-        assembler.assemble({"gyro": [0.0, 0.0]})
-
-    assert "action_decoder.last_target_actions" in str(error.value)
-
-
-def test_scaling_applies_to_fed_back_entries_too():
-    assembler = ObservationAssembler(
-        layout(
-            ObservationEntry(
-                name="actions",
-                size=2,
-                scale=0.5,
-                source=SOURCE_PIPELINE_STATE,
-                pipeline_stage=STAGE_RAW_ACTIONS,
-            )
-        )
-    )
-
-    np.testing.assert_allclose(assembler.assemble({"actions": [2.0, 4.0]}), [1.0, 2.0])
+    assert "gyro, actions" in message  # the full set is listed, so nothing is guessed
 
 
 """Error paths"""
@@ -277,15 +223,6 @@ def test_unknown_name_is_rejected_with_the_valid_names():
     assert "gyro" in message
 
 
-def test_supplying_a_fed_back_entry_is_simply_accepted():
-    """It is an ordinary input now; passing it is the correct thing to do."""
-    assembler = ObservationAssembler(raw_actions_layout())
-
-    obs = assembler.assemble({"gyro": [0.0, 0.0], "actions": [1.0, 1.0]})
-
-    np.testing.assert_allclose(obs, [0.0, 0.0, 1.0, 1.0])
-
-
 def test_a_superfluous_name_is_rejected_even_though_it_is_harmless():
     """A stray key cannot corrupt the vector, but it means the loop has drifted
     from the bundle -- so it is reported rather than quietly ignored."""
@@ -311,13 +248,11 @@ def test_non_numeric_value_is_reported_with_the_entry_name():
 """Listings (R5)"""
 
 
-def test_describe_inputs_separates_sensors_from_fed_back_values():
-    assembler = ObservationAssembler(raw_actions_layout())
+def test_describe_inputs_lists_every_value_to_supply():
+    assembler = ObservationAssembler(fed_back_layout())
 
     text = assembler.describe_inputs()
 
-    assert "Sensor values" in text
+    assert "Values to supply each tick" in text
     assert "gyro" in text
-    # Fed-back entries are listed separately and name where to read them.
-    assert "feed back from the decoder" in text
-    assert "action_decoder.last_raw_actions" in text
+    assert "actions" in text

@@ -13,6 +13,10 @@ and ``test_bundle.py`` asserts it in a clean subprocess.
 
 from __future__ import annotations
 
+import tempfile
+import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +24,7 @@ from typing import Any
 import numpy as np
 
 from .actions import ActionDecoder
+from .archive import ensure_extracted, is_archive
 from .constants import GOLDEN_FILENAME, MANIFEST_FILENAME
 from .errors import MalformedBundleError
 from .manifest import Manifest
@@ -28,18 +33,65 @@ from .observations import ObservationAssembler
 
 @dataclass(frozen=True)
 class Bundle:
-    """A loaded deployment bundle: the manifest plus the files beside it."""
+    """A deployment bundle: the manifest, and wherever its files are.
+
+    ``path`` is a directory when the bundle is unpacked, and an archive file when
+    it is not -- which is what :func:`~genesis_forge.deployment.export` hands back
+    after writing one. The manifest and the golden samples are held in memory
+    either way, so describing a bundle never unpacks it.
+    """
 
     manifest: Manifest
     path: Path
     golden: dict[str, np.ndarray] | None = None
 
     @property
-    def policy_path(self) -> Path | None:
-        """Absolute path to the exported policy, when the bundle carries one."""
-        if self.manifest.policy is None or self.manifest.policy.file is None:
+    def is_archive(self) -> bool:
+        """True when the files are still packed into a single file."""
+        return not self.path.is_dir()
+
+    @property
+    def policy_file(self) -> str | None:
+        """Name of the exported policy inside the bundle, if it carries one."""
+        if self.manifest.policy is None:
             return None
-        return self.path / self.manifest.policy.file
+        return self.manifest.policy.file
+
+    @property
+    def policy_path(self) -> Path | None:
+        """Absolute path to the exported policy, when the bundle carries one.
+
+        Raises:
+            MalformedBundleError: The bundle is still an archive, so its files
+                are not on disk. Use :meth:`unpacked` to get at them, or load the
+                archive with ``load_bundle`` for a directory that persists.
+        """
+        if self.policy_file is None:
+            return None
+        if self.is_archive:
+            raise MalformedBundleError(
+                f"'{self.path.name}' is an archive, so its policy is not a file on "
+                f"disk yet. Use `with bundle.unpacked() as directory:` to work with "
+                f"the contents, or load_bundle() to unpack it beside itself."
+            )
+        return self.path / self.policy_file
+
+    @contextmanager
+    def unpacked(self) -> Iterator[Path]:
+        """Yield a directory holding this bundle's files.
+
+        Already-unpacked bundles yield their own directory and nothing is copied.
+        An archive is unpacked to a temporary directory that is removed on the way
+        out, which is what you want on a training machine -- checking what you just
+        exported should not leave anything behind.
+        """
+        if not self.is_archive:
+            yield self.path
+            return
+        with tempfile.TemporaryDirectory(prefix="genesis-forge-bundle-") as scratch:
+            with zipfile.ZipFile(self.path) as archive:
+                archive.extractall(scratch)
+            yield Path(scratch)
 
     def create_observation_assembler(self, **kwargs: Any) -> Any:
         """Build a new :class:`ObservationAssembler` for this bundle.
@@ -68,20 +120,16 @@ class Bundle:
                 f"  observation vector: {layout.total_size} values "
                 f"({layout.single_size} per tick x {layout.history_length} history)"
             ),
-            "  sensor values you supply each tick:",
+            "  values you supply each tick:",
         ]
-        lines.extend(f"    - {entry.describe()}" for entry in layout.sensor_inputs)
-        fed_back = layout.pipeline_state_inputs
-        if fed_back:
-            lines.append("  values you feed back from the decoder:")
-            lines.extend(f"    - {entry.describe()}" for entry in fed_back)
+        lines.extend(f"    - {entry.describe()}" for entry in layout.entries)
         lines.append(f"  joint targets produced ({self.manifest.num_actions}):")
         for spec in sorted(self.manifest.actions, key=lambda item: item.slice_start):
             joints = ", ".join(spec.joint_names)
             lines.append(f"    - [{spec.deploy_type}] {joints}")
-        if self.policy_path is not None:
+        if self.policy_file is not None:
             policy_format = self.manifest.policy.format or "unknown format"
-            lines.append(f"  policy: {self.policy_path.name} ({policy_format})")
+            lines.append(f"  policy: {self.policy_file} ({policy_format})")
         return "\n".join(lines)
 
 
@@ -96,25 +144,32 @@ def load_manifest(path: str | Path) -> Manifest:
 
 
 def load_bundle(path: str | Path, *, load_golden: bool = True) -> Bundle:
-    """Load a deployment bundle directory.
+    """Load a deployment bundle.
 
     Args:
-        path: The bundle directory written by ``genesis_forge.deployment.export``.
+        path: A bundle directory, or an archive holding one. An archive is
+            unpacked beside itself into ``.<name>/`` and reused on later loads,
+            so the files stay in one predictable place for as long as anything
+            needs them. Replacing the archive unpacks it again.
         load_golden: Read ``golden.npz`` when present. Set False to skip the
             recorded smoke-test samples.
 
     Returns:
-        The loaded :class:`Bundle`.
+        The loaded :class:`Bundle`. Its :attr:`~Bundle.path` is the directory the
+        files were read from, which for an archive is where they were unpacked.
 
     Raises:
         SchemaVersionError: The bundle was written by an incompatible version.
-        MalformedBundleError: The bundle is missing something required.
+        MalformedBundleError: The bundle is missing something required, or an
+            archive could not be unpacked.
     """
     bundle_path = Path(path)
+    if is_archive(bundle_path):
+        bundle_path = ensure_extracted(bundle_path)
     if not bundle_path.is_dir():
         raise MalformedBundleError(
-            f"'{bundle_path}' is not a bundle directory. Expected a folder containing "
-            f"{MANIFEST_FILENAME}."
+            f"'{bundle_path}' is not a bundle directory or archive. Expected a "
+            f"folder containing {MANIFEST_FILENAME}, or a single-file bundle."
         )
 
     manifest = load_manifest(bundle_path)

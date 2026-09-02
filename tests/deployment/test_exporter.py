@@ -5,11 +5,12 @@ runtime, and that a failed export leaves nothing behind.
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
-from genesis_forge_deploy import load_bundle
+from genesis_forge_deploy import MalformedBundleError, load_bundle
 
 from genesis_forge.deployment import ExportError, ParityError, export
 from genesis_forge.managers import (
@@ -17,7 +18,6 @@ from genesis_forge.managers import (
     PositionActionManager,
     PositionWithinLimitsActionManager,
 )
-from genesis_forge.mdp.observations import current_actions
 
 """
 A successful export
@@ -25,7 +25,7 @@ A successful export
 
 
 def test_export_writes_a_loadable_bundle(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     bundle = load_bundle(path)
 
@@ -35,7 +35,7 @@ def test_export_writes_a_loadable_bundle(deployable_env, tmp_path):
 
 
 def test_export_records_the_decode_parameters(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     spec = load_bundle(path).manifest.actions[0]
 
@@ -46,7 +46,7 @@ def test_export_records_the_decode_parameters(deployable_env, tmp_path):
 
 
 def test_export_records_the_observation_layout(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     layout = load_bundle(path).manifest.observations
 
@@ -56,7 +56,7 @@ def test_export_records_the_observation_layout(deployable_env, tmp_path):
 
 
 def test_export_records_actuator_values(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     actuators = load_bundle(path).manifest.actuators
 
@@ -64,21 +64,19 @@ def test_export_records_actuator_values(deployable_env, tmp_path):
     np.testing.assert_allclose(actuators[0].values["kp"], [50.0, 50.0, 50.0])
 
 
-def test_export_stamps_provenance(deployable_env, tmp_path):
-    path = export(
-        deployable_env, tmp_path / "bundle", checkpoint="logs/model_100.pt", verbose=False
-    )
+def test_export_stamps_what_it_can_measure_itself(deployable_env, tmp_path):
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     provenance = load_bundle(path).manifest.provenance
 
     assert provenance.exported_at is not None
     assert provenance.genesis_forge_version is not None
     assert provenance.torch_version is not None
-    assert provenance.checkpoint == "logs/model_100.pt"
+    assert provenance.additional == {}
 
 
 def test_export_ships_golden_samples(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", parity_ticks=5, verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", parity_ticks=5, verbose=False).path
 
     bundle = load_bundle(path)
 
@@ -87,7 +85,7 @@ def test_export_ships_golden_samples(deployable_env, tmp_path):
 
 
 def test_the_manifest_is_readable_json(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", archive=False, verbose=False).path
 
     data = json.loads((path / "manifest.json").read_text())
 
@@ -119,7 +117,7 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
     manager = deployable_env.observation_manager
     action_manager = deployable_env.action_manager
 
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
     bundle = load_bundle(path)
     assembler = bundle.create_observation_assembler()
     decoder = bundle.create_action_decoder()
@@ -152,7 +150,7 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
 
 def test_golden_samples_replay_through_the_loaded_runtime(deployable_env, tmp_path):
     """The on-robot smoke test: recorded actions must decode to recorded targets."""
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", verbose=False).path
     bundle = load_bundle(path)
     decoder = bundle.create_action_decoder()
 
@@ -192,7 +190,9 @@ def test_a_parity_failure_aborts_before_writing_anything(
 def test_a_failed_export_leaves_an_existing_bundle_intact(
     deployable_env, tmp_path, monkeypatch
 ):
-    destination = export(deployable_env, tmp_path / "bundle", verbose=False)
+    destination = export(
+        deployable_env, tmp_path / "bundle", archive=False, verbose=False
+    ).path
     original_manifest = (destination / "manifest.json").read_text()
 
     original = deployable_env.action_manager.get_deployment_config
@@ -271,7 +271,7 @@ def test_the_policy_manager_is_chosen_over_a_critic(make_env, tmp_path):
     )
     critic.build()
 
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
+    bundle = export(env, tmp_path / "bundle", verbose=False)
 
     # Only the policy pipeline is deployable; the critic reads privileged state.
     assert [entry.name for entry in bundle.manifest.observations.entries] == [
@@ -280,19 +280,21 @@ def test_the_policy_manager_is_chosen_over_a_critic(make_env, tmp_path):
     ]
 
 
-def test_an_existing_destination_is_refused_without_overwrite(deployable_env, tmp_path):
-    destination = export(deployable_env, tmp_path / "bundle", verbose=False)
+def test_an_existing_destination_is_refused_when_overwrite_is_off(
+    deployable_env, tmp_path
+):
+    destination = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     with pytest.raises(ExportError) as error:
-        export(deployable_env, destination, verbose=False)
+        export(deployable_env, destination, overwrite=False, verbose=False)
 
     assert "overwrite" in str(error.value)
 
 
 def test_overwrite_replaces_the_bundle(deployable_env, tmp_path):
-    destination = export(deployable_env, tmp_path / "bundle", verbose=False)
+    destination = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
-    again = export(deployable_env, destination, overwrite=True, verbose=False)
+    again = export(deployable_env, destination, overwrite=True, verbose=False).path
 
     assert again == destination
     assert load_bundle(again).manifest.num_actions == 3
@@ -314,7 +316,7 @@ def test_a_supplied_policy_file_is_copied_into_the_bundle(deployable_env, tmp_pa
     policy = tmp_path / "policy.onnx"
     policy.write_bytes(b"stand-in for an exported graph")
 
-    path = export(deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False)
+    path = export(deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False).path
 
     bundle = load_bundle(path)
     assert bundle.policy_path is not None
@@ -343,7 +345,7 @@ def test_two_action_managers_are_captured_with_their_slices(make_env, tmp_path):
     )
     env.build()
 
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
+    bundle = export(env, tmp_path / "bundle", verbose=False)
     specs = {spec.name: spec for spec in bundle.manifest.actions}
 
     assert (specs["hips"].slice_start, specs["hips"].slice_end) == (0, 2)
@@ -351,195 +353,6 @@ def test_two_action_managers_are_captured_with_their_slices(make_env, tmp_path):
     assert specs["hips"].deploy_type == "position"
     assert specs["knees"].deploy_type == "position_within_limits"
     assert bundle.manifest.joint_names == ("FL_hip", "FR_hip", "FL_knee")
-
-
-"""
-Auto-detected pipeline-state observations (R15)
-"""
-
-
-def test_current_actions_without_a_manager_is_marked_raw(make_env, tmp_path):
-    env = make_env()
-    manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": current_actions()},
-        },
-    )
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    env.actions = torch.zeros((env.num_envs, 3))
-    manager.build()
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("actions")
-
-    assert entry.is_pipeline_state
-    assert entry.pipeline_stage == "raw_actions"
-    # Still caller-supplied, but listed as fed-back rather than as a sensor.
-    assert "actions" not in [
-        item.name for item in bundle.manifest.observations.sensor_inputs
-    ]
-
-
-def test_current_actions_with_a_manager_reads_that_managers_raw_slice(
-    make_env, tmp_path
-):
-    """`current_actions(action_manager=...)` returns that manager's *raw* slice.
-
-    Distinct from a lambda calling `get_actions()`, which returns the decoded
-    targets. Feeding back the wrong one is silent on hardware, so the bundle
-    records which and the listing says exactly where to read it.
-    """
-    env = make_env()
-    manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": current_actions(action_manager=env.action_manager)},
-        },
-    )
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    manager.build()
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("actions")
-
-    assert entry.pipeline_stage == "raw_actions"
-    assert entry.action_manager == "action_manager"
-    assert (
-        entry.decoder_source
-        == 'action_decoder.last_raw_actions_by_manager["action_manager"]'
-    )
-
-
-def test_only_the_inspectable_form_is_recognised(make_env, tmp_path):
-    """Side by side: the MDP function is understood, the lambda is not.
-
-    Both read the pipeline's own output, but only one says so in a way export can
-    see -- which is the argument for reaching for current_actions().
-    """
-    env = make_env()
-    manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "recognised": {"fn": current_actions(action_manager=env.action_manager)},
-            "opaque": {"fn": lambda env: env.action_manager.get_actions()},
-        },
-    )
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    manager.build()
-
-    layout = load_bundle(export(env, tmp_path / "bundle", verbose=False)).manifest.observations
-
-    assert layout.entry("recognised").pipeline_stage == "raw_actions"
-    assert layout.entry("recognised").action_manager == "action_manager"
-    # The lambda is indistinguishable from a sensor reading, so it is left as one.
-    assert not layout.entry("opaque").is_pipeline_state
-
-
-"""
-Detecting action feedback (R15)
-
-``current_actions`` is an MdpFn instance, so export can see what it reads straight
-off the object. A lambda's body cannot be inspected, so it is treated as an
-ordinary sensor input -- the safe default, and a nudge toward the MDP function.
-"""
-
-
-def observation_env(make_env, cfg, *, actions=None):
-    """Attach a custom observation config to an otherwise standard environment.
-
-    ``actions`` seeds ``env.actions``; the real GenesisEnv has it allocated by the
-    time observations are built, while the test double starts it as None.
-    """
-    env = make_env()
-    if actions is not None:
-        env.actions = actions
-    manager = ObservationManager(env, cfg=cfg)
-    env.managers["observation"] = [manager]
-    env.observation_manager = manager
-    manager.build()
-    return env
-
-
-def test_a_lambda_is_treated_as_a_sensor_input(make_env, tmp_path):
-    """Export will not guess at a body it cannot read, so it claims nothing."""
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": lambda env: env.action_manager.get_actions()},
-        },
-    )
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("actions")
-
-    assert not entry.is_pipeline_state
-    assert entry.decoder_source == ""
-
-
-def test_ordinary_sensor_entries_are_left_alone(make_env, tmp_path):
-    env = observation_env(
-        make_env, {"gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))}}
-    )
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-
-    assert not bundle.manifest.observations.entry("gyro").is_pipeline_state
-
-
-def test_detection_identifies_which_manager_with_several_registered(tmp_path):
-    from tests.deployment.conftest import FakeActuatorManager, FakeManagedEnv
-
-    env = FakeManagedEnv()
-    env.actuator_manager = FakeActuatorManager(num_envs=env.num_envs)
-    env.managers["actuator"].append(env.actuator_manager)
-    env.hips = PositionActionManager(
-        env, actuator_manager=env.actuator_manager, actuator_joints=[".*_hip"]
-    )
-    env.knees = PositionActionManager(
-        env, actuator_manager=env.actuator_manager, actuator_joints=[".*_knee"]
-    )
-    env.observation_manager = ObservationManager(
-        env,
-        cfg={
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "knee_actions": {"fn": current_actions(action_manager=env.knees)},
-        },
-    )
-    env.build()
-
-    bundle = load_bundle(export(env, tmp_path / "bundle", verbose=False))
-    entry = bundle.manifest.observations.entry("knee_actions")
-
-    assert entry.pipeline_stage == "raw_actions"
-    assert entry.action_manager == "knees"
-    assert entry.decoder_source == 'action_decoder.last_raw_actions_by_manager["knees"]'
-
-
-def test_reading_from_an_unregistered_action_manager_is_refused(make_env, tmp_path):
-    """A manager belonging to some other environment cannot be reproduced."""
-    stranger = make_env().action_manager
-
-    env = observation_env(
-        make_env,
-        {
-            "gyro": {"fn": lambda env: torch.ones((env.num_envs, 3))},
-            "actions": {"fn": current_actions(action_manager=stranger)},
-        },
-    )
-
-    with pytest.raises(ExportError) as error:
-        export(env, tmp_path / "bundle", verbose=False)
-
-    assert "actions" in str(error.value)
-    assert "not registered" in str(error.value)
 
 
 """
@@ -560,7 +373,7 @@ def test_a_torchscript_policy_keeps_its_extension(deployable_env, tmp_path):
 
     path = export(
         deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    )
+    ).path
 
     bundle = load_bundle(path)
     assert bundle.policy_path.name == "policy.pt"
@@ -573,44 +386,18 @@ def test_an_onnx_policy_is_recorded_as_onnx(deployable_env, tmp_path):
 
     path = export(
         deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    )
+    ).path
 
     bundle = load_bundle(path)
     assert bundle.policy_path.name == "policy.onnx"
     assert bundle.manifest.policy.format == "onnx"
 
 
-def test_a_mislabelled_policy_is_refused(deployable_env, tmp_path):
-    """An .onnx file that is really a torch archive never reaches the bundle."""
-    mislabelled = tmp_path / "trained.onnx"
-    torch.jit.save(
-        torch.jit.trace(torch.nn.Linear(4, 2).eval(), torch.zeros(1, 4)),
-        str(mislabelled),
-    )
-    destination = tmp_path / "bundle"
-
-    with pytest.raises(ParityError) as error:
-        export(deployable_env, destination, policy_path=mislabelled, verbose=False)
-
-    assert "torch archive" in str(error.value)
-    assert not destination.exists()
-
-
-def test_an_unverified_policy_is_flagged_in_the_summary(deployable_env, tmp_path, capsys):
-    policy = a_torchscript_policy(tmp_path)
-
-    export(deployable_env, tmp_path / "bundle", policy_path=policy)
-
-    output = capsys.readouterr().out
-    assert "not verified" in output
-    assert "reference_policy" in output
-
-
 def test_describe_reports_the_policy_format(deployable_env, tmp_path):
     policy = a_torchscript_policy(tmp_path)
     path = export(
         deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    )
+    ).path
 
     summary = load_bundle(path).describe()
 
@@ -626,74 +413,420 @@ policy rather than being declared separately.
 """
 
 
-def test_the_training_framework_is_taken_from_the_reference_policy(
+def test_additional_provenance_is_recorded_verbatim(deployable_env, tmp_path):
+    """What the developer states is kept apart from what the exporter measured."""
+    path = export(
+        deployable_env,
+        tmp_path / "bundle",
+        additional_provenance={
+            "checkpoint": "logs/my_run/model_500.pt",
+            "framework": "rsl_rl",
+            "framework_version": "5.4.2",
+        },
+        verbose=False,
+    ).path
+
+    provenance = load_bundle(path).manifest.provenance
+
+    assert provenance.additional == {
+        "checkpoint": "logs/my_run/model_500.pt",
+        "framework": "rsl_rl",
+        "framework_version": "5.4.2",
+    }
+    assert provenance.genesis_forge_version  # still measured, not supplied
+
+
+def test_a_path_is_converted_rather_than_refused(deployable_env, tmp_path):
+    """A checkpoint path is the common case, and str() loses nothing."""
+    path = export(
+        deployable_env,
+        tmp_path / "bundle",
+        additional_provenance={"checkpoint": Path("logs/my_run/model_500.pt")},
+        verbose=False,
+    ).path
+
+    assert load_bundle(path).manifest.provenance.additional["checkpoint"] == str(
+        Path("logs/my_run/model_500.pt")
+    )
+
+
+def test_a_value_that_cannot_be_written_is_refused_before_the_gate_runs(
     deployable_env, tmp_path
 ):
-    # The framework is read off the policy's defining module, which is how a real
-    # rsl_rl export is identified (its wrapper lives in rsl_rl.models.mlp_model).
-    class FrameworkPolicy(torch.nn.Module):
-        def forward(self, observations):
-            return observations[:, :2]
+    """Failing at write time would waste the parity run and confuse the cause."""
+    destination = tmp_path / "bundle"
 
-    FrameworkPolicy.__module__ = "rsl_rl.models.mlp_model"
+    with pytest.raises(ExportError) as error:
+        export(
+            deployable_env,
+            destination,
+            additional_provenance={"weights": torch.ones(3)},
+            verbose=False,
+        )
+
+    message = str(error.value)
+    assert "weights" in message
+    assert "Tensor" in message
+    assert not destination.exists()
+
+
+def test_a_non_string_key_is_refused(deployable_env, tmp_path):
+    with pytest.raises(ExportError) as error:
+        export(
+            deployable_env,
+            tmp_path / "bundle",
+            additional_provenance={42: "nope"},
+            verbose=False,
+        )
+
+    assert "keys must be strings" in str(error.value)
+
+
+"""
+Policies that are more than one file
+
+ONNX keeps tensors above a size threshold in a companion file, and OpenVINO always
+splits into two. Which files belong together is the caller's to state -- the naming
+differs per format, and guessing produced a bundle whose policy could not load.
+"""
+
+
+def test_a_listed_companion_is_copied_under_its_own_name(deployable_env, tmp_path):
+    """The entry point is renamed; companions are not, since graphs refer to them."""
+    graph = tmp_path / "trained.onnx"
+    graph.write_bytes(b"\x08\x07 graph")
+    weights = tmp_path / "trained.onnx.data"
+    weights.write_bytes(b"the weights")
 
     path = export(
         deployable_env,
         tmp_path / "bundle",
-        reference_policy=FrameworkPolicy(),
+        policy_path=[graph, weights],
+        archive=False,
         verbose=False,
-    )
+    ).path
 
-    provenance = load_bundle(path).manifest.provenance
-    assert provenance.policy_framework == "rsl_rl"
+    assert (path / "policy.onnx").read_bytes() == b"\x08\x07 graph"
+    assert (path / "trained.onnx.data").read_bytes() == b"the weights"
+    assert load_bundle(path).manifest.policy.file == "policy.onnx"
 
 
-def test_provenance_still_records_versions_without_a_reference_policy(
+def test_a_two_file_format_the_library_knows_nothing_about_works(
     deployable_env, tmp_path
 ):
-    """Exporting the contract alone stays useful -- only the framework is unknown."""
-    path = export(deployable_env, tmp_path / "bundle", verbose=False)
+    """OpenVINO splits into .xml and .bin -- no naming convention connects them."""
+    xml = tmp_path / "trained.xml"
+    xml.write_text("<net/>")
+    binary = tmp_path / "trained.bin"
+    binary.write_bytes(b"weights")
 
-    provenance = load_bundle(path).manifest.provenance
-    assert provenance.policy_framework is None
-    assert provenance.torch_version
-    assert provenance.exported_at
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=[xml, binary], archive=False, verbose=False
+    ).path
+
+    assert (path / "policy.xml").read_text() == "<net/>"
+    assert (path / "trained.bin").read_bytes() == b"weights"
+    # An extension the library has no name for is recorded as unknown, not refused.
+    assert load_bundle(path).manifest.policy.format is None
 
 
-def test_the_framework_version_survives_a_renamed_distribution(
-    deployable_env, tmp_path, monkeypatch
+def test_a_file_beside_the_policy_is_not_swept_in(deployable_env, tmp_path):
+    """Only what the caller listed is packaged -- no guessing from filenames."""
+    graph = tmp_path / "trained.onnx"
+    graph.write_bytes(b"graph")
+    (tmp_path / "trained.onnx.data").write_bytes(b"not listed")
+
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=graph, archive=False, verbose=False
+    ).path
+
+    assert sorted(item.name for item in path.iterdir()) == [
+        "golden.npz",
+        "manifest.json",
+        "policy.onnx",
+    ]
+
+
+def test_a_listed_file_that_is_missing_aborts_the_export(deployable_env, tmp_path):
+    graph = tmp_path / "trained.onnx"
+    graph.write_bytes(b"graph")
+    destination = tmp_path / "bundle"
+
+    with pytest.raises(ExportError) as error:
+        export(
+            deployable_env,
+            destination,
+            policy_path=[graph, tmp_path / "gone.data"],
+            verbose=False,
+        )
+
+    assert "gone.data" in str(error.value)
+    assert not destination.exists()
+
+
+def test_an_empty_policy_list_is_refused(deployable_env, tmp_path):
+    """Almost certainly a mistake, and silently exporting nothing would hide it."""
+    with pytest.raises(ExportError) as error:
+        export(deployable_env, tmp_path / "bundle", policy_path=[], verbose=False)
+
+    assert "empty list" in str(error.value)
+
+
+def test_files_that_would_share_a_name_in_the_bundle_are_refused(
+    deployable_env, tmp_path
 ):
-    """rsl_rl installs as rsl-rl-lib, so the import name alone finds no version."""
-    import importlib.metadata
+    graph = tmp_path / "trained.onnx"
+    graph.write_bytes(b"graph")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    clash = nested / "policy.onnx"
+    clash.write_bytes(b"would overwrite the entry point")
 
-    class FrameworkPolicy(torch.nn.Module):
-        def forward(self, observations):
-            return observations[:, :2]
+    with pytest.raises(ExportError) as error:
+        export(
+            deployable_env,
+            tmp_path / "bundle",
+            policy_path=[graph, clash],
+            verbose=False,
+        )
 
-    FrameworkPolicy.__module__ = "rsl_rl.models.mlp_model"
+    assert "policy.onnx" in str(error.value)
 
-    monkeypatch.setattr(
-        importlib.metadata, "packages_distributions",
-        lambda: {"rsl_rl": ["rsl-rl-lib"]},
+
+def test_a_self_contained_policy_copies_nothing_extra(deployable_env, tmp_path):
+    source = tmp_path / "trained.pt"
+    torch.jit.save(
+        torch.jit.trace(torch.nn.Linear(4, 2).eval(), torch.zeros(1, 4)), str(source)
     )
-    monkeypatch.setattr(
-        importlib.metadata, "version",
-        lambda name: "5.4.2" if name == "rsl-rl-lib" else _no_such_package(name),
+
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=source, archive=False, verbose=False
+    ).path
+
+    assert sorted(item.name for item in path.iterdir()) == [
+        "golden.npz",
+        "manifest.json",
+        "policy.pt",
+    ]
+
+
+"""
+Bundles written as a single file
+
+An archive is the same bundle in one artifact -- what you copy to a robot. The
+runtime reads either form, so nothing downstream needs to know which it was given.
+"""
+
+
+def test_an_archive_round_trips_through_the_runtime(deployable_env, tmp_path):
+    source = tmp_path / "trained.pt"
+    torch.jit.save(
+        torch.jit.trace(torch.nn.Linear(4, 2).eval(), torch.zeros(1, 4)), str(source)
     )
 
     path = export(
         deployable_env,
-        tmp_path / "bundle",
-        reference_policy=FrameworkPolicy(),
+        tmp_path / "my_policy",
+        policy_path=source,
+        archive=True,
         verbose=False,
+    ).path
+
+    assert path == tmp_path / "my_policy.gfb"
+    assert path.is_file()
+
+    bundle = load_bundle(path)
+    assert bundle.manifest.num_actions == 3
+    assert bundle.policy_path.read_bytes() == source.read_bytes()
+    assert bundle.golden is not None
+
+
+def test_an_archive_holds_exactly_what_the_directory_would(deployable_env, tmp_path):
+    import zipfile
+
+    directory = export(
+        deployable_env, tmp_path / "as_dir", archive=False, verbose=False
+    ).path
+    packed = export(deployable_env, tmp_path / "as_zip", archive=True, verbose=False).path
+
+    with zipfile.ZipFile(packed) as archive:
+        assert sorted(archive.namelist()) == sorted(
+            item.name for item in directory.iterdir()
+        )
+
+
+def test_an_existing_directory_is_not_replaced_by_an_archive(deployable_env, tmp_path):
+    """Two different things sharing a name is a mistake worth stopping."""
+    clash = tmp_path / "my_policy.gfb"
+    clash.mkdir()
+
+    with pytest.raises(ExportError) as error:
+        export(
+            deployable_env, clash, archive=True, overwrite=True, verbose=False
+        )
+
+    assert "is a directory" in str(error.value)
+
+
+def test_a_path_that_already_has_a_suffix_is_left_alone(deployable_env, tmp_path):
+    path = export(
+        deployable_env, tmp_path / "policy.zip", archive=True, verbose=False
+    ).path
+
+    assert path == tmp_path / "policy.zip"
+    assert load_bundle(path).manifest.num_actions == 3
+
+
+"""
+Defaults
+
+An archive, replacing whatever bundle was there before: re-exporting after a
+training run is the normal thing to do, and the result is the thing you ship.
+"""
+
+
+def test_the_default_is_a_single_archive(deployable_env, tmp_path):
+    path = export(deployable_env, tmp_path / "my_policy", verbose=False).path
+
+    assert path == tmp_path / "my_policy.gfb"
+    assert path.is_file()
+    assert load_bundle(path).manifest.num_actions == 3
+
+
+def test_re_exporting_replaces_the_previous_bundle_without_asking(
+    deployable_env, tmp_path
+):
+    first = export(deployable_env, tmp_path / "my_policy", verbose=False).path
+    before = first.stat().st_mtime_ns
+
+    again = export(deployable_env, tmp_path / "my_policy", verbose=False).path
+
+    assert again == first
+    assert again.stat().st_mtime_ns != before
+    assert load_bundle(again).manifest.num_actions == 3
+
+
+def test_a_file_that_is_not_a_bundle_is_never_overwritten(deployable_env, tmp_path):
+    """Overwriting is the default, so a mistyped destination must not cost work."""
+    precious = tmp_path / "results.gfb"
+    precious.write_text("a year of experiments")
+
+    with pytest.raises(ExportError) as error:
+        export(deployable_env, precious, verbose=False)
+
+    assert "not a deployment bundle" in str(error.value)
+    assert precious.read_text() == "a year of experiments"
+
+
+def test_a_directory_that_is_not_a_bundle_is_never_overwritten(
+    deployable_env, tmp_path
+):
+    precious = tmp_path / "results"
+    precious.mkdir()
+    (precious / "data.csv").write_text("a year of experiments")
+
+    with pytest.raises(ExportError) as error:
+        export(deployable_env, precious, archive=False, verbose=False)
+
+    assert "not a deployment bundle" in str(error.value)
+    assert (precious / "data.csv").read_text() == "a year of experiments"
+
+
+def test_an_existing_bundle_is_recognised_and_replaced(deployable_env, tmp_path):
+    """The guard must not get in the way of the case it exists to allow."""
+    directory = export(
+        deployable_env, tmp_path / "as_dir", archive=False, verbose=False
+    ).path
+    archive = export(deployable_env, tmp_path / "as_zip", verbose=False).path
+
+    export(deployable_env, directory, archive=False, verbose=False)
+    export(deployable_env, archive, verbose=False)
+
+    assert load_bundle(directory).manifest.num_actions == 3
+    assert load_bundle(archive).manifest.num_actions == 3
+
+
+"""
+What export hands back
+
+A Bundle, carrying the manifest and golden samples it just built. Describing or
+checking what you exported should not read the bundle back off disk, and on the
+common path -- an archive -- should not unpack it either.
+"""
+
+
+def test_export_returns_a_usable_bundle_without_reading_anything_back(
+    deployable_env, tmp_path
+):
+    bundle = export(deployable_env, tmp_path / "my_policy", verbose=False)
+
+    assert bundle.path == tmp_path / "my_policy.gfb"
+    assert bundle.manifest.num_actions == 3
+    assert bundle.golden["observations"].shape[0] == 6
+
+
+def test_describing_an_archive_does_not_unpack_it(deployable_env, tmp_path):
+    """The complaint this fixes: a stray directory appearing next to the artifact."""
+    source = tmp_path / "trained.onnx"
+    source.write_bytes(b"\x08\x07 graph")
+    bundle = export(
+        deployable_env, tmp_path / "my_policy", policy_path=source, verbose=False
     )
 
-    provenance = load_bundle(path).manifest.provenance
-    assert provenance.policy_framework == "rsl_rl"
-    assert provenance.policy_framework_version == "5.4.2"
+    summary = bundle.describe()
+
+    assert "policy.onnx (onnx)" in summary
+    assert sorted(item.name for item in tmp_path.iterdir()) == [
+        "my_policy.gfb",
+        "trained.onnx",
+    ]
 
 
-def _no_such_package(name):
-    from importlib.metadata import PackageNotFoundError
+def test_the_policy_of_an_unopened_archive_says_how_to_get_at_it(
+    deployable_env, tmp_path
+):
+    source = tmp_path / "trained.onnx"
+    source.write_bytes(b"graph")
+    bundle = export(
+        deployable_env, tmp_path / "my_policy", policy_path=source, verbose=False
+    )
 
-    raise PackageNotFoundError(name)
+    with pytest.raises(MalformedBundleError) as error:
+        _ = bundle.policy_path
+
+    assert "unpacked()" in str(error.value)
+
+
+def test_unpacked_yields_the_contents_and_cleans_up_after_itself(
+    deployable_env, tmp_path
+):
+    source = tmp_path / "trained.onnx"
+    source.write_bytes(b"\x08\x07 graph")
+    bundle = export(
+        deployable_env, tmp_path / "my_policy", policy_path=source, verbose=False
+    )
+
+    with bundle.unpacked() as directory:
+        assert (directory / "policy.onnx").read_bytes() == b"\x08\x07 graph"
+        assert (directory / "manifest.json").is_file()
+        scratch = directory
+
+    assert not scratch.exists()
+    assert sorted(item.name for item in tmp_path.iterdir()) == [
+        "my_policy.gfb",
+        "trained.onnx",
+    ]
+
+
+def test_unpacked_on_a_directory_bundle_hands_back_the_directory_itself(
+    deployable_env, tmp_path
+):
+    """Nothing is copied when the files are already sitting there."""
+    bundle = export(
+        deployable_env, tmp_path / "my_policy", archive=False, verbose=False
+    )
+
+    with bundle.unpacked() as directory:
+        assert directory == bundle.path
+
+    assert directory.is_dir()  # still there afterwards

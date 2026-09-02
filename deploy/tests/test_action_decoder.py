@@ -588,8 +588,6 @@ def test_target_actions_are_also_available_per_manager():
 def test_the_feedback_loop_reads_off_the_decoder():
     """The documented control-loop shape, end to end."""
     from genesis_forge_deploy import (
-        SOURCE_PIPELINE_STATE,
-        STAGE_TARGET_ACTIONS,
         ObservationAssembler,
         ObservationEntry,
         ObservationLayout,
@@ -598,13 +596,7 @@ def test_the_feedback_loop_reads_off_the_decoder():
     layout = ObservationLayout(
         entries=(
             ObservationEntry(name="gyro", size=3),
-            ObservationEntry(
-                name="actions",
-                size=3,
-                source=SOURCE_PIPELINE_STATE,
-                pipeline_stage=STAGE_TARGET_ACTIONS,
-                action_manager="action_manager",
-            ),
+            ObservationEntry(name="actions", size=3),
         )
     )
     assembler = ObservationAssembler(layout)
@@ -624,49 +616,22 @@ def test_the_feedback_loop_reads_off_the_decoder():
     np.testing.assert_allclose(second, [0.0, 0.0, 0.0, 1.0, 2.0, 0.0])
 
 
-def test_every_pipeline_stage_names_real_decoder_properties():
-    """Guard the string coupling between the schema and this class.
+def test_the_decoder_exposes_every_property_the_docs_tell_users_to_read():
+    """Guard the coupling between this class and the wiring instructions.
 
-    ObservationEntry.decoder_source builds a property name by interpolation --
-    ``decoder.last_{stage}`` or ``decoder.last_{stage}_by_manager[...]`` -- and the
-    assembler's missing-value error repeats it verbatim. A stage the decoder does
-    not actually expose would send someone looking for an attribute that isn't
-    there, on a robot, while they are already unsure what to wire. Renaming either
-    side without the other breaks that silently, since the messages are plain
-    strings.
+    The deployment guide and the examples tell people to pass
+    ``action_decoder.last_raw_actions`` and friends into the assembler. Those are
+    plain strings in prose now, so renaming a property here would send someone
+    looking for an attribute that does not exist -- on a robot, while they are
+    already unsure what to wire.
     """
-    from genesis_forge_deploy import STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS
-
-    for stage in (STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS):
-        for attribute in (f"last_{stage}", f"last_{stage}_by_manager"):
-            assert hasattr(ActionDecoder, attribute), (
-                f"Pipeline stage '{stage}' points at ActionDecoder.{attribute}, "
-                f"which does not exist -- but the runtime tells users to read it."
-            )
-
-
-def test_the_decoder_source_expression_actually_evaluates():
-    """Stronger still: the exact string handed to users must run."""
-    from genesis_forge_deploy import (
-        SOURCE_PIPELINE_STATE,
-        STAGE_RAW_ACTIONS,
-        STAGE_TARGET_ACTIONS,
-        ObservationEntry,
-    )
-
-    action_decoder = ActionDecoder((position_spec(),))
-    action_decoder.decode([1.0, 1.0, 1.0])
-
-    for stage in (STAGE_RAW_ACTIONS, STAGE_TARGET_ACTIONS):
-        for manager in (None, "action_manager"):
-            entry = ObservationEntry(
-                name="actions",
-                size=3,
-                source=SOURCE_PIPELINE_STATE,
-                pipeline_stage=stage,
-                action_manager=manager,
-            )
-            # The name bound here is the one the docs tell users to use, so this
-            # fails if describe()'s prefix and the documented variable drift apart.
-            value = eval(entry.decoder_source, {"action_decoder": action_decoder})
-            assert len(value) == 3, entry.decoder_source
+    for attribute in (
+        "last_raw_actions",
+        "last_target_actions",
+        "last_raw_actions_by_manager",
+        "last_target_actions_by_manager",
+    ):
+        assert hasattr(ActionDecoder, attribute), (
+            f"ActionDecoder.{attribute} is documented as the value to feed back, "
+            f"but no longer exists."
+        )

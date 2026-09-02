@@ -15,8 +15,6 @@ import numpy as np
 import pytest
 from genesis_forge_deploy import (
     SCHEMA_VERSION,
-    SOURCE_PIPELINE_STATE,
-    STAGE_RAW_ACTIONS,
     ActionManagerSpec,
     ActuatorSpec,
     MalformedBundleError,
@@ -294,20 +292,6 @@ def test_joint_count_must_match_slice_width(tmp_path):
     assert "mismatched" in str(error.value)
 
 
-def test_pipeline_state_entry_requires_a_known_stage(tmp_path):
-    path = write_bundle(tmp_path)
-    manifest_file = path / "manifest.json"
-    data = json.loads(manifest_file.read_text())
-    data["observations"]["entries"][1]["source"] = SOURCE_PIPELINE_STATE
-    data["observations"]["entries"][1]["pipeline_stage"] = "something_invented"
-    manifest_file.write_text(json.dumps(data))
-
-    with pytest.raises(MalformedBundleError) as error:
-        load_bundle(path)
-
-    assert "dof_pos" in str(error.value)
-
-
 def test_unsupported_history_order_is_rejected(tmp_path):
     path = write_bundle(tmp_path)
     manifest_file = path / "manifest.json"
@@ -376,23 +360,16 @@ def test_golden_samples_can_be_skipped(tmp_path):
 """Listings"""
 
 
-def test_the_layout_separates_sensor_inputs_from_fed_back_ones():
-    """Both are caller-supplied; the split says where to read each value from."""
+def test_the_layout_lists_its_entries_in_vector_order():
     layout = ObservationLayout(
         entries=(
             ObservationEntry(name="gyro", size=3),
-            ObservationEntry(
-                name="actions",
-                size=2,
-                source=SOURCE_PIPELINE_STATE,
-                pipeline_stage=STAGE_RAW_ACTIONS,
-            ),
+            ObservationEntry(name="actions", size=2),
         )
     )
 
     assert [entry.name for entry in layout.entries] == ["gyro", "actions"]
-    assert [entry.name for entry in layout.sensor_inputs] == ["gyro"]
-    assert [entry.name for entry in layout.pipeline_state_inputs] == ["actions"]
+    assert layout.single_size == 5
 
 
 def test_describe_lists_what_to_wire(tmp_path):
@@ -430,18 +407,3 @@ def test_importing_the_runtime_does_not_pull_in_torch_or_genesis():
     assert result.stdout.strip() == "", f"heavy modules leaked in: {result.stdout.strip()}"
 
 
-def test_a_target_actions_entry_must_name_its_manager(tmp_path):
-    """Without a manager the runtime would fill zeros instead of decoded targets."""
-    path = write_bundle(tmp_path)
-    manifest_file = path / "manifest.json"
-    data = json.loads(manifest_file.read_text())
-    data["observations"]["entries"][1].update(
-        {"source": SOURCE_PIPELINE_STATE, "pipeline_stage": "target_actions"}
-    )
-    manifest_file.write_text(json.dumps(data))
-
-    with pytest.raises(MalformedBundleError) as error:
-        load_bundle(path)
-
-    assert "dof_pos" in str(error.value)
-    assert "which action manager" in str(error.value)

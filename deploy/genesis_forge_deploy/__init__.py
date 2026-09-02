@@ -44,6 +44,8 @@ from .action_schema import ActionManagerSpec, ActuatorSpec
 from .actions import ActionDecoder, DecodedActions
 from .bundle import Bundle, load_bundle, load_manifest, save_bundle
 from .constants import (
+    ARCHIVE_SUFFIX,
+    EXTRACT_MARKER,
     GOLDEN_FILENAME,
     HISTORY_NEWEST_FIRST,
     MANIFEST_FILENAME,
@@ -52,10 +54,6 @@ from .constants import (
     POLICY_FORMAT_TORCHSCRIPT,
     POLICY_STEM,
     SCHEMA_VERSION,
-    SOURCE_PIPELINE_STATE,
-    SOURCE_SENSOR,
-    STAGE_RAW_ACTIONS,
-    STAGE_TARGET_ACTIONS,
 )
 from .decoders import AffineDecoder, ManagerDecoder
 from .errors import (
@@ -72,6 +70,8 @@ from .observations import ObservationAssembler
 __version__ = "1.0.0"
 
 __all__ = [
+    "ARCHIVE_SUFFIX",
+    "EXTRACT_MARKER",
     "GOLDEN_FILENAME",
     "HISTORY_NEWEST_FIRST",
     "MANIFEST_FILENAME",
@@ -80,10 +80,6 @@ __all__ = [
     "POLICY_FORMAT_TORCHSCRIPT",
     "POLICY_STEM",
     "SCHEMA_VERSION",
-    "SOURCE_PIPELINE_STATE",
-    "SOURCE_SENSOR",
-    "STAGE_RAW_ACTIONS",
-    "STAGE_TARGET_ACTIONS",
     "ActionDecoder",
     "ActionManagerSpec",
     "ActuatorSpec",

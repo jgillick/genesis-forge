@@ -1,8 +1,12 @@
 """How the policy's observation vector is laid out.
 
 The half of the manifest that :mod:`genesis_forge_deploy.observations` consumes:
-what each slot holds, how wide it is, what it is scaled by, and -- for values that
-echo the pipeline's own output -- where on the decoder to read it from.
+what each slot holds, how wide it is, and what it is scaled by.
+
+Every slot is an input you supply each tick. Most come from sensors; some echo the
+policy's own previous output, which you read off the decoder. The bundle does not
+distinguish them -- from the assembler's side they are passed in the same way, and
+the deployment guide covers which of your entries is which.
 """
 
 from __future__ import annotations
@@ -10,13 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .constants import (
-    HISTORY_NEWEST_FIRST,
-    SOURCE_PIPELINE_STATE,
-    SOURCE_SENSOR,
-    STAGE_RAW_ACTIONS,
-    STAGE_TARGET_ACTIONS,
-)
+from .constants import HISTORY_NEWEST_FIRST
 from .errors import MalformedBundleError
 from .serialization import require
 
@@ -30,30 +28,6 @@ class ObservationEntry:
     scale: float = 1.0
     description: str | None = None
     units: str | None = None
-    source: str = SOURCE_SENSOR
-    pipeline_stage: str | None = None
-    action_manager: str | None = None
-
-    @property
-    def is_pipeline_state(self) -> bool:
-        """True when this entry echoes the pipeline's own output, not a sensor."""
-        return self.source == SOURCE_PIPELINE_STATE
-
-    @property
-    def decoder_source(self) -> str:
-        """The decoder expression to read this entry's value from, verbatim.
-
-        Empty for sensor inputs. When the entry belongs to a specific action
-        manager the per-manager form is used, because the flat properties hold the
-        whole policy vector -- which only coincides with one manager's slice when
-        there is exactly one manager.
-        """
-        if not self.is_pipeline_state:
-            return ""
-        attribute = f"last_{self.pipeline_stage}"
-        if self.action_manager:
-            return f'action_decoder.{attribute}_by_manager["{self.action_manager}"]'
-        return f"action_decoder.{attribute}"
 
     def describe(self) -> str:
         """One-line human summary, used by the listings and the wiring stub."""
@@ -62,8 +36,6 @@ class ObservationEntry:
             parts.append(f"in {self.units}")
         if self.scale != 1.0:
             parts.append(f"scaled by {self.scale}")
-        if self.is_pipeline_state:
-            parts.append(f"from {self.decoder_source}")
         summary = ", ".join(parts)
         if self.description:
             summary = f"{summary} -- {self.description}"
@@ -78,30 +50,7 @@ class ObservationEntry:
             scale=float(data.get("scale", 1.0)),
             description=data.get("description"),
             units=data.get("units"),
-            source=data.get("source", SOURCE_SENSOR),
-            pipeline_stage=data.get("pipeline_stage"),
-            action_manager=data.get("action_manager"),
         )
-        if entry.source not in (SOURCE_SENSOR, SOURCE_PIPELINE_STATE):
-            raise MalformedBundleError(
-                f"Observation entry '{name}' has unknown source '{entry.source}'. "
-                f"Expected '{SOURCE_SENSOR}' or '{SOURCE_PIPELINE_STATE}'."
-            )
-        if entry.is_pipeline_state and entry.pipeline_stage not in (
-            STAGE_RAW_ACTIONS,
-            STAGE_TARGET_ACTIONS,
-        ):
-            raise MalformedBundleError(
-                f"Observation entry '{name}' is marked pipeline state but its stage is "
-                f"'{entry.pipeline_stage}'. Expected '{STAGE_RAW_ACTIONS}' or "
-                f"'{STAGE_TARGET_ACTIONS}'."
-            )
-        if entry.pipeline_stage == STAGE_TARGET_ACTIONS and not entry.action_manager:
-            raise MalformedBundleError(
-                f"Observation entry '{name}' echoes target actions but does not say "
-                f"which action manager they come from, so the runtime cannot tell you "
-                f"where to read them. Re-export with a current version of Genesis Forge."
-            )
         return entry
 
     def to_dict(self) -> dict[str, Any]:
@@ -110,12 +59,6 @@ class ObservationEntry:
             data["description"] = self.description
         if self.units is not None:
             data["units"] = self.units
-        if self.source != SOURCE_SENSOR:
-            data["source"] = self.source
-        if self.pipeline_stage is not None:
-            data["pipeline_stage"] = self.pipeline_stage
-        if self.action_manager is not None:
-            data["action_manager"] = self.action_manager
         return data
 
 
@@ -136,16 +79,6 @@ class ObservationLayout:
     def total_size(self) -> int:
         """Width of the full vector handed to the policy."""
         return self.single_size * self.history_length
-
-    @property
-    def sensor_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries that come from real sensors."""
-        return tuple(entry for entry in self.entries if not entry.is_pipeline_state)
-
-    @property
-    def pipeline_state_inputs(self) -> tuple[ObservationEntry, ...]:
-        """Entries fed back from the decoder's previous output."""
-        return tuple(entry for entry in self.entries if entry.is_pipeline_state)
 
     def entry(self, name: str) -> ObservationEntry:
         for entry in self.entries:

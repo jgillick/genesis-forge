@@ -8,7 +8,7 @@ before any of it reaches a robot.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .action_schema import ActionManagerSpec, ActuatorSpec
@@ -64,39 +64,46 @@ class PolicySpec:
 
 @dataclass(frozen=True)
 class Provenance:
-    """Where this bundle came from -- the first thing to check when debugging."""
+    """Where this bundle came from -- the first thing to check when debugging.
+
+    The top-level fields are measured by the exporter itself. Anything the
+    developer chose to record sits under :attr:`additional`, so a reader can tell
+    a fact the tooling observed from a claim a human typed.
+    """
 
     exported_at: str | None = None
     genesis_forge_version: str | None = None
     torch_version: str | None = None
-    policy_framework: str | None = None
-    policy_framework_version: str | None = None
-    checkpoint: str | None = None
+    additional: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Provenance:
+        additional = data.get("additional") or {}
+        if not isinstance(additional, dict):
+            raise MalformedBundleError(
+                f"'provenance.additional' must be an object, got "
+                f"{type(additional).__name__}."
+            )
         return cls(
             exported_at=data.get("exported_at"),
             genesis_forge_version=data.get("genesis_forge_version"),
             torch_version=data.get("torch_version"),
-            policy_framework=data.get("policy_framework"),
-            policy_framework_version=data.get("policy_framework_version"),
-            checkpoint=data.get("checkpoint"),
+            additional=dict(additional),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             key: value
             for key, value in {
                 "exported_at": self.exported_at,
                 "genesis_forge_version": self.genesis_forge_version,
                 "torch_version": self.torch_version,
-                "policy_framework": self.policy_framework,
-                "policy_framework_version": self.policy_framework_version,
-                "checkpoint": self.checkpoint,
             }.items()
             if value is not None
         }
+        if self.additional:
+            data["additional"] = dict(self.additional)
+        return data
 
 
 @dataclass(frozen=True)

@@ -14767,23 +14767,26 @@ The parity gate is not optional. Before anything is written, the numpy deploymen
 
 Parameters:
 
-| Name               | Type   | Description                                                                                                                                                                                                                                            | Default                           |
-| ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| `env`              | `Any`  | A built :class:~genesis_forge.ManagedEnvironment.                                                                                                                                                                                                      | *required*                        |
-| `path`             | \`str  | Path\`                                                                                                                                                                                                                                                 | Directory to write the bundle to. |
-| `policy_path`      | \`str  | Path                                                                                                                                                                                                                                                   | None\`                            |
-| `reference_policy` | `Any`  | The trained policy still live in memory -- a torch callable -- for the exported file to be checked against. That check is what catches a dropped observation normalizer, or a stale file from a previous run. ONNX and TorchScript are both supported. | `None`                            |
-| `checkpoint`       | \`str  | Path                                                                                                                                                                                                                                                   | None\`                            |
-| `parity_ticks`     | `int`  | How many sequential ticks the parity gate compares.                                                                                                                                                                                                    | `6`                               |
-| `seed`             | `int`  | Seed for the parity inputs, so a failure reproduces.                                                                                                                                                                                                   | `0`                               |
-| `overwrite`        | `bool` | Replace an existing bundle directory.                                                                                                                                                                                                                  | `False`                           |
-| `verbose`          | `bool` | Print a short summary of what was written.                                                                                                                                                                                                             | `True`                            |
+| Name                    | Type             | Description                                                                                                                                                                                                                                                                               | Default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`                   | `Any`            | A built :class:~genesis_forge.ManagedEnvironment.                                                                                                                                                                                                                                         | *required*                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `path`                  | \`str            | Path\`                                                                                                                                                                                                                                                                                    | Directory to write the bundle to.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `policy_path`           | \`str            | Path                                                                                                                                                                                                                                                                                      | Sequence\[str                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `additional_provenance` | \`dict[str, Any] | None\`                                                                                                                                                                                                                                                                                    | Anything you want recorded about where this bundle came from, written to provenance.additional in the manifest. The exporter stamps what it can measure itself -- the export time and the Genesis Forge and torch versions -- but everything else depends on how you train, so it is yours to state rather than the library's to guess. The conventional keys are checkpoint, framework and framework_version; any JSON-friendly key is accepted:: additional_provenance={ "checkpoint": "logs/my_run/model_500.pt", "framework": "rsl_rl", "framework_version": "5.4.2", } |
+| `archive`               | `bool`           | Write the bundle as a single .gfb file, the default, since that is what you copy to a robot -- one artifact, and a transfer that either arrives whole or not at all. Pass False for a plain directory, which is easier to poke at while you are working. load_bundle reads either.        | `True`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `parity_ticks`          | `int`            | How many sequential ticks the parity gate compares.                                                                                                                                                                                                                                       | `6`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `seed`                  | `int`            | Seed for the parity inputs, so a failure reproduces.                                                                                                                                                                                                                                      | `0`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `overwrite`             | `bool`           | Replace a bundle already at this path, which is the default: re-exporting after every training run is the normal thing to do. Whatever is there must itself be a bundle -- a path holding anything else is refused however this is set, so a mistyped destination cannot cost you a file. | `True`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `verbose`               | `bool`           | Print a short summary of what was written.                                                                                                                                                                                                                                                | `True`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Returns:
 
-| Type   | Description           |
-| ------ | --------------------- |
-| `Path` | The bundle directory. |
+| Name  | Type     | Description                                                              |
+| ----- | -------- | ------------------------------------------------------------------------ |
+| `The` | `Bundle` | class:~genesis_forge_deploy.Bundle that was written. Its manifest        |
+|       | `Bundle` | and golden samples are already in memory, so describing or checking what |
+|       | `Bundle` | you just exported does not read the bundle back -- bundle.path is        |
+|       | `Bundle` | where it landed.                                                         |
 
 Raises:
 
@@ -14799,7 +14802,9 @@ from genesis_forge.deployment import export
 
 env = MyEnv(num_envs=1)
 env.build()
-export(env, "./my_policy", policy_path="policy.onnx")
+
+bundle = export(env, "./my_policy", policy_path="policy.onnx")
+print(bundle.describe())
 ```
 
 Source code in `genesis_forge/deployment/exporter.py`
@@ -14809,14 +14814,14 @@ def export(
     env: Any,
     path: str | Path,
     *,
-    policy_path: str | Path | None = None,
-    reference_policy: Any = None,
-    checkpoint: str | Path | None = None,
+    policy_path: str | Path | Sequence[str | Path] | None = None,
+    additional_provenance: dict[str, Any] | None = None,
+    archive: bool = True,
     parity_ticks: int = 6,
     seed: int = 0,
-    overwrite: bool = False,
+    overwrite: bool = True,
     verbose: bool = True,
-) -> Path:
+) -> Bundle:
     """Capture a built environment into a deployment bundle.
 
     Writes a directory holding ``manifest.json`` (the readable deployment
@@ -14830,22 +14835,55 @@ def export(
     Args:
         env: A built :class:`~genesis_forge.ManagedEnvironment`.
         path: Directory to write the bundle to.
-        policy_path: An exported policy to copy into the bundle. ONNX is the
+        policy_path: The exported policy to copy into the bundle. ONNX is the
             documented path, but TorchScript (or anything else you load
             yourself) works too -- the bundle records the format rather than
             requiring one.
-        reference_policy: The trained policy still live in memory -- a torch
-            callable -- for the exported file to be checked against. That check
-            is what catches a dropped observation normalizer, or a stale file
-            from a previous run. ONNX and TorchScript are both supported.
-        checkpoint: Path to the trained checkpoint, recorded as provenance.
+
+            Pass a list when the export produced more than one file, as ONNX
+            does once the weights exceed its inline threshold and as OpenVINO
+            always does. The first entry is the one the runtime loads; the rest
+            are copied beside it under their own names, since a graph refers to
+            its companions by filename::
+
+                policy_path=["policy.onnx", "policy.onnx.data"]
+
+            Checking that what landed in the bundle still matches the policy it
+            came from is yours to do, in the script that exports it; the
+            deployment guide shows how, and it is what catches a companion file
+            left behind.
+        additional_provenance: Anything you want recorded about where this bundle
+            came from, written to ``provenance.additional`` in the manifest. The
+            exporter stamps what it can measure itself -- the export time and the
+            Genesis Forge and torch versions -- but everything else depends on how
+            you train, so it is yours to state rather than the library's to guess.
+            The conventional keys are ``checkpoint``, ``framework`` and
+            ``framework_version``; any JSON-friendly key is accepted::
+
+                additional_provenance={
+                    "checkpoint": "logs/my_run/model_500.pt",
+                    "framework": "rsl_rl",
+                    "framework_version": "5.4.2",
+                }
+        archive: Write the bundle as a single ``.gfb`` file, the default, since
+            that is what you copy to a robot -- one artifact, and a transfer that
+            either arrives whole or not at all. Pass False for a plain directory,
+            which is easier to poke at while you are working. ``load_bundle``
+            reads either.
         parity_ticks: How many sequential ticks the parity gate compares.
         seed: Seed for the parity inputs, so a failure reproduces.
-        overwrite: Replace an existing bundle directory.
+        overwrite: Replace a bundle already at this path, which is the default:
+            re-exporting after every training run is the normal thing to do.
+            Whatever is there must itself be a bundle -- a path holding anything
+            else is refused however this is set, so a mistyped destination cannot
+            cost you a file.
         verbose: Print a short summary of what was written.
 
     Returns:
-        The bundle directory.
+        The :class:`~genesis_forge_deploy.Bundle` that was written. Its manifest
+        and golden samples are already in memory, so describing or checking what
+        you just exported does not read the bundle back -- ``bundle.path`` is
+        where it landed.
 
     Raises:
         ExportError: The environment cannot be exported as configured, or the
@@ -14859,48 +14897,51 @@ def export(
 
         env = MyEnv(num_envs=1)
         env.build()
-        export(env, "./my_policy", policy_path="policy.onnx")
+
+        bundle = export(env, "./my_policy", policy_path="policy.onnx")
+        print(bundle.describe())
     """
+    # Checked first: a value that cannot be written should fail now, not after
+    # the parity gate has run.
+    additional_provenance = clean_additional(additional_provenance)
+
     destination = Path(path)
+    if archive and not destination.suffix:
+        destination = destination.with_suffix(ARCHIVE_SUFFIX)
     if destination.exists():
         if not overwrite:
             raise ExportError(
                 f"'{destination}' already exists. Pass overwrite=True to replace it."
             )
-        if not destination.is_dir():
+        if archive and destination.is_dir():
+            raise ExportError(
+                f"'{destination}' exists and is a directory, so it will not be "
+                f"replaced with an archive. Remove it, or export to another path."
+            )
+        if not archive and not destination.is_dir():
             raise ExportError(f"'{destination}' exists and is not a directory.")
+        _refuse_unless_a_bundle(destination)
 
-    policy_source = Path(policy_path) if policy_path else None
+    policy_sources = _policy_sources(policy_path)
     policy_file = None
     policy_format = None
-    if policy_source is not None:
-        if not policy_source.is_file():
-            raise ExportError(f"No policy file at '{policy_source}'.")
-        # Keep the file's own extension: a bundle must not claim to hold an ONNX
-        # graph when it holds a TorchScript module.
-        policy_file = f"{POLICY_STEM}{policy_source.suffix}"
-        policy_format = infer_policy_format(policy_source)
+    if policy_sources:
+        # Keep the entry point's own extension: a bundle must not claim to hold
+        # an ONNX graph when it holds a TorchScript module.
+        entry_point = policy_sources[0]
+        policy_file = f"{POLICY_STEM}{entry_point.suffix}"
+        policy_format = _POLICY_FORMATS.get(entry_point.suffix.lower())
+        _check_names_do_not_collide(policy_file, policy_sources)
 
     capture = capture_environment(
         env,
-        checkpoint=str(checkpoint) if checkpoint else None,
+        additional_provenance=additional_provenance,
         policy_file=policy_file,
         policy_format=policy_format,
-        reference_policy=reference_policy,
     )
 
     # The gate. Raises ParityError before anything reaches disk.
     report = check_parity(capture, ticks=parity_ticks, seed=seed)
-
-    if policy_source is not None and reference_policy is not None:
-        worst = validate_policy(
-            policy_source,
-            reference_policy,
-            report.golden["observations"],
-            policy_format=policy_format,
-            input_name=capture.manifest.policy.input_name,
-        )
-        report.golden["policy_max_error"] = _as_array(worst)
 
     # Build the bundle somewhere temporary, then move it into place, so a failure
     # part-way through cannot leave a half-written bundle looking usable.
@@ -14908,22 +14949,31 @@ def export(
         staged = save_bundle(
             Path(staging) / "bundle", capture.manifest, golden=report.golden
         )
-        if policy_source is not None:
-            shutil.copy2(policy_source, staged / policy_file)
+        if policy_sources:
+            shutil.copy2(policy_sources[0], staged / policy_file)
+            # Companions keep their own names: a graph refers to them by the
+            # filename recorded inside it, so renaming one breaks the reference.
+            for companion in policy_sources[1:]:
+                shutil.copy2(companion, staged / companion.name)
 
-        if destination.exists():
-            shutil.rmtree(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(staged), str(destination))
+        if archive:
+            # Built somewhere temporary and moved into place, so an interrupted
+            # export cannot leave a half-written archive looking loadable.
+            packed = Path(staging) / f"bundle{ARCHIVE_SUFFIX}"
+            _write_archive(staged, packed)
+            if destination.exists():
+                destination.unlink()
+            shutil.move(str(packed), str(destination))
+        else:
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.move(str(staged), str(destination))
 
+    bundle = Bundle(manifest=capture.manifest, path=destination, golden=report.golden)
     if verbose:
         _report(destination, capture, report)
-        if policy_source is not None and reference_policy is None:
-            print(
-                f"  note: {policy_file} was packaged but not verified against the "
-                f"trained policy -- pass reference_policy= to check it"
-            )
-    return destination
+    return bundle
 ```
 
 # Parity
@@ -14993,7 +15043,7 @@ def check_parity(
     report = ParityReport(ticks=ticks)
 
     golden_observations: list[np.ndarray] = []
-    golden_policy_inputs: list[np.ndarray] = []
+    golden_supplied_values: list[np.ndarray] = []
     golden_actions: list[np.ndarray] = []
     golden_targets: list[np.ndarray] = []
 
@@ -15054,7 +15104,7 @@ def check_parity(
                 )
 
             golden_observations.append(numpy_obs)
-            golden_policy_inputs.append(
+            golden_supplied_values.append(
                 np.concatenate(
                     [observation_values[name] for name in sorted(observation_values)]
                 )
@@ -15069,9 +15119,9 @@ def check_parity(
         "raw_actions": np.asarray(golden_actions, dtype=np.float32),
         "joint_targets": np.asarray(golden_targets, dtype=np.float32),
     }
-    if golden_policy_inputs and golden_policy_inputs[0].size:
-        report.golden["sensor_inputs"] = np.asarray(
-            golden_policy_inputs, dtype=np.float32
+    if golden_supplied_values and golden_supplied_values[0].size:
+        report.golden["supplied_values"] = np.asarray(
+            golden_supplied_values, dtype=np.float32
         )
     return report
 ```
@@ -15099,230 +15149,6 @@ def summary(self) -> str:
         f"parity over {self.ticks} tick(s) -- observations within "
         f"{self.max_observation_error:.2e}"
         + (f"; actions {actions}" if actions else "")
-    )
-```
-
-## Verifying an exported policy file
-
-Verify an exported policy against the one it came from, whatever its format.
-
-Parameters:
-
-| Name               | Type      | Description                                                                                                                                                 | Default                                                    |
-| ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `policy_path`      | \`str     | Path\`                                                                                                                                                      | The exported policy file.                                  |
-| `reference_policy` | `Any`     | What to check the file against -- the trained policy itself, as a torch callable taking a float32 tensor and returning actions.                             | *required*                                                 |
-| `observations`     | `ndarray` | Observation vectors to compare on, shaped (ticks, size).                                                                                                    | *required*                                                 |
-| `policy_format`    | \`str     | None\`                                                                                                                                                      | Override the format instead of inferring it from the file. |
-| `input_name`       | `str`     | The ONNX graph's input name. Ignored for other formats.                                                                                                     | `'obs'`                                                    |
-| `rtol`             | `float`   | Relative tolerance, applied against the reference action. This is the one that matters -- the drift between runtimes scales with how large the actions are. | `POLICY_RTOL`                                              |
-| `atol`             | `float`   | Absolute tolerance, which only takes over near zero.                                                                                                        | `POLICY_ATOL`                                              |
-
-Returns:
-
-| Type    | Description                               |
-| ------- | ----------------------------------------- |
-| `float` | The largest absolute difference observed. |
-
-Raises:
-
-| Type          | Description                                        |
-| ------------- | -------------------------------------------------- |
-| `ParityError` | The two disagreed, or the format has no validator. |
-
-Source code in `genesis_forge/deployment/policy_parity.py`
-
-```
-def validate_policy(
-    policy_path: str | Path,
-    reference_policy: Any,
-    observations: np.ndarray,
-    *,
-    policy_format: str | None = None,
-    input_name: str = "obs",
-    rtol: float = POLICY_RTOL,
-    atol: float = POLICY_ATOL,
-) -> float:
-    """Verify an exported policy against the one it came from, whatever its format.
-
-    Args:
-        policy_path: The exported policy file.
-        reference_policy: What to check the file against -- the trained policy
-            itself, as a torch callable taking a float32 tensor and returning
-            actions.
-        observations: Observation vectors to compare on, shaped ``(ticks, size)``.
-        policy_format: Override the format instead of inferring it from the file.
-        input_name: The ONNX graph's input name. Ignored for other formats.
-        rtol: Relative tolerance, applied against the reference action. This is
-            the one that matters -- the drift between runtimes scales with how
-            large the actions are.
-        atol: Absolute tolerance, which only takes over near zero.
-
-    Returns:
-        The largest absolute difference observed.
-
-    Raises:
-        ParityError: The two disagreed, or the format has no validator.
-    """
-    resolved = policy_format or infer_policy_format(policy_path)
-
-    if resolved == "onnx":
-        return validate_onnx_policy(
-            policy_path,
-            reference_policy,
-            observations,
-            input_name=input_name,
-            rtol=rtol,
-            atol=atol,
-        )
-    if resolved == "torchscript":
-        return validate_torchscript_policy(
-            policy_path, reference_policy, observations, rtol=rtol, atol=atol
-        )
-    raise ParityError(
-        f"No validator for policy format '{resolved}'. The file is still packaged "
-        f"into the bundle -- omit the trained policy to skip this check, or pass "
-        f"policy_format= if the format was mis-detected."
-    )
-```
-
-Work out what kind of policy file this is.
-
-Uses the extension, then checks the file's own bytes for a contradiction -- a `.onnx` file that is really a torch archive is a mislabelling worth catching at export time rather than on the robot.
-
-Parameters:
-
-| Name          | Type  | Description | Default                   |
-| ------------- | ----- | ----------- | ------------------------- |
-| `policy_path` | \`str | Path\`      | The exported policy file. |
-
-Returns:
-
-| Type  | Description                                                            |
-| ----- | ---------------------------------------------------------------------- |
-| `str` | The format name, or "unknown" for an extension we do not recognise     |
-| `str` | (which is fine: the bundle records it and the runtime never loads it). |
-
-Raises:
-
-| Type          | Description                                     |
-| ------------- | ----------------------------------------------- |
-| `ParityError` | The extension and the file's contents disagree. |
-
-Source code in `genesis_forge/deployment/policy_parity.py`
-
-```
-def infer_policy_format(policy_path: str | Path) -> str:
-    """Work out what kind of policy file this is.
-
-    Uses the extension, then checks the file's own bytes for a contradiction --
-    a ``.onnx`` file that is really a torch archive is a mislabelling worth
-    catching at export time rather than on the robot.
-
-    Args:
-        policy_path: The exported policy file.
-
-    Returns:
-        The format name, or ``"unknown"`` for an extension we do not recognise
-        (which is fine: the bundle records it and the runtime never loads it).
-
-    Raises:
-        ParityError: The extension and the file's contents disagree.
-    """
-    path = Path(policy_path)
-    declared = _EXTENSION_FORMATS.get(path.suffix.lower(), "unknown")
-
-    with path.open("rb") as handle:
-        looks_like_archive = handle.read(4) == _ZIP_MAGIC
-
-    if declared == "onnx" and looks_like_archive:
-        raise ParityError(
-            f"'{path.name}' has an .onnx extension but its contents are a torch "
-            f"archive, not an ONNX graph. Export it with "
-            f"runner.export_policy_to_onnx(...), or give the file its real "
-            f"extension so the bundle records what it actually holds."
-        )
-    if declared == "torchscript" and not looks_like_archive:
-        raise ParityError(
-            f"'{path.name}' looks like a TorchScript file by extension, but its "
-            f"contents are not a torch archive. Check that the export completed."
-        )
-    return declared
-```
-
-Compare an ONNX graph under onnxruntime against the trained torch policy.
-
-Source code in `genesis_forge/deployment/policy_parity.py`
-
-```
-def validate_onnx_policy(
-    policy_path: str | Path,
-    reference_policy: Any,
-    observations: np.ndarray,
-    *,
-    input_name: str = "obs",
-    rtol: float = POLICY_RTOL,
-    atol: float = POLICY_ATOL,
-) -> float:
-    """Compare an ONNX graph under onnxruntime against the trained torch policy."""
-    try:
-        import onnxruntime
-    except ImportError as error:  # pragma: no cover - depends on the environment
-        raise ParityError(
-            "onnxruntime is required to verify an exported ONNX policy. Install it "
-            "with `pip install onnxruntime`, or export without a policy file."
-        ) from error
-
-    session = onnxruntime.InferenceSession(
-        str(policy_path), providers=["CPUExecutionProvider"]
-    )
-
-    def run(batched: np.ndarray) -> np.ndarray:
-        return np.asarray(session.run(None, {input_name: batched})[0]).ravel()
-
-    return _compare(
-        run, reference_policy, observations, rtol=rtol, atol=atol, kind="ONNX graph"
-    )
-```
-
-Compare a TorchScript module against the trained torch policy.
-
-Source code in `genesis_forge/deployment/policy_parity.py`
-
-```
-def validate_torchscript_policy(
-    policy_path: str | Path,
-    reference_policy: Any,
-    observations: np.ndarray,
-    *,
-    rtol: float = POLICY_RTOL,
-    atol: float = POLICY_ATOL,
-) -> float:
-    """Compare a TorchScript module against the trained torch policy."""
-    try:
-        module = torch.jit.load(str(policy_path), map_location="cpu")
-    except Exception as error:
-        raise ParityError(
-            f"Could not load '{Path(policy_path).name}' as TorchScript: {error}"
-        ) from error
-    module.eval()
-
-    def run(batched: np.ndarray) -> np.ndarray:
-        # The module is loaded onto the CPU, so pin its input there too -- training
-        # may well have left torch's default device pointing at the GPU.
-        with torch.no_grad():
-            output = module(
-                torch.as_tensor(batched, dtype=torch.float32, device="cpu")
-            )
-        return output.detach().cpu().numpy().ravel()
-
-    return _compare(
-        run,
-        reference_policy,
-        observations,
-        rtol=rtol,
-        atol=atol,
-        kind="TorchScript module",
     )
 ```
 # Other

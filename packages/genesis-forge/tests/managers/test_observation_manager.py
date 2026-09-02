@@ -205,6 +205,84 @@ def test_zero_noise_is_a_noop(env):
 
 
 """
+Scaling and noise must not reach back into the values they were given
+
+Both are applied to a value the manager did not create. An observation function may
+hand back a buffer it keeps rather than a fresh tensor -- ``current_actions`` returns
+``env.actions`` itself -- and the override path is handed the caller's own tensor. In
+place, either would corrupt its source: silently, every step, compounding.
+"""
+
+
+def returns_a_kept_buffer(buffer):
+    """An observation function that hands back a buffer it holds on to."""
+
+    def fn(env):
+        return buffer
+
+    return fn
+
+
+def test_scale_does_not_mutate_the_buffer_a_function_returned(env):
+    buffer = torch.ones((env.num_envs, 1))
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "scale": 0.5}}
+    )
+    mgr.build()
+
+    result = mgr.get_observations()
+
+    assert torch.equal(result, torch.full((env.num_envs, 1), 0.5))
+    assert torch.equal(buffer, torch.ones((env.num_envs, 1))), (
+        "scaling reached back into the function's own buffer"
+    )
+
+
+def test_noise_does_not_mutate_the_buffer_a_function_returned(env):
+    buffer = torch.zeros((env.num_envs, 1))
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "noise": 5.0}}
+    )
+    mgr.build()
+
+    mgr.get_observations()
+
+    assert torch.equal(buffer, torch.zeros((env.num_envs, 1))), (
+        "noise reached back into the function's own buffer"
+    )
+
+
+def test_scaling_a_kept_buffer_does_not_compound_across_steps(env):
+    """The failure this prevents: a scale re-applied to its own output every step."""
+    buffer = torch.ones((env.num_envs, 1))
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "scale": 0.5}}
+    )
+    mgr.build()
+
+    for _ in range(5):
+        result = mgr.get_observations()
+
+    assert torch.equal(result, torch.full((env.num_envs, 1), 0.5)), (
+        "the observation decayed over five steps instead of staying constant"
+    )
+
+
+def test_scale_does_not_mutate_a_supplied_override_tensor(env):
+    """The deployment parity harness feeds values in through this path."""
+    mgr = ObservationManager(env, cfg={"a": {"fn": const, "scale": 0.25}})
+    mgr.build()
+    supplied = torch.ones((env.num_envs, 1))
+
+    result = mgr.get_observations(values={"a": supplied})
+
+    assert torch.equal(result, torch.full((env.num_envs, 1), 0.25))
+    assert torch.equal(supplied, torch.ones((env.num_envs, 1))), (
+        "scaling reached back into the caller's tensor"
+    )
+
+
+"""
 get_observations(values=...) -- override path for manual deployment/debugging
 """
 

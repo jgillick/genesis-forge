@@ -1,4 +1,4 @@
-# Deployment
+# Deploy to your robot
 
 Once a policy is trained, getting it onto a real robot means reproducing two
 pipelines exactly as training built them:
@@ -15,10 +15,10 @@ runtime that replays them.
 
 ## The two pieces
 
-| Package | Where it runs | Depends on |
-|---------|---------------|------------|
-| `genesis-forge` | Your training machine | Genesis, torch, the RL framework |
-| `genesis-forge-deploy` | The robot | numpy (plus `onnxruntime` if you use it) |
+| Package                 | Where it runs         | Depends on                               |
+| ----------------------- | --------------------- | ---------------------------------------- |
+| `genesis-forge`         | Your training machine | Genesis, torch, the RL framework         |
+| `genesis-forge-runtime` | The robot             | numpy (plus `onnxruntime` if you use it) |
 
 The robot never installs the simulator. That is the point of the split: a Raspberry
 Pi has no business downloading a physics engine.
@@ -75,7 +75,7 @@ filename recorded inside it.
 Genesis Forge does not try to work out which files belong together — the naming
 differs per format, and a wrong guess produces a bundle whose policy loads on your
 machine, where the companion is still next door, and fails on the robot. Verifying
-the *bundled* policy, as below, is what catches a file left behind.
+the _bundled_ policy, as below, is what catches a file left behind.
 
 ### One file instead of a folder
 
@@ -135,7 +135,7 @@ equally strong:
   order cannot drift apart unnoticed.
 - **Observation assembly is verified as far as the layout.** The gate feeds both
   sides the same values, so it proves the ordering, per-entry scaling, and history
-  stacking match. It does *not* run your observation functions — supplying the
+  stacking match. It does _not_ run your observation functions — supplying the
   values is what bypasses them — so it cannot tell you that the `dof_pos` your robot
   reads means the same thing as the `dof_pos` training computed. Matching units and
   frames on the robot is still yours to get right, and `bundle.describe()` prints the
@@ -190,13 +190,13 @@ the parity gate runs.
 Install just the runtime:
 
 ```bash
-pip install genesis-forge-deploy
+pip install genesis-forge-runtime
 ```
 
 Copy the bundle over, and ask it what to wire up:
 
 ```python
-from genesis_forge_deploy import load_bundle
+from genesis_forge_runtime import load_bundle
 
 bundle = load_bundle("./my_policy")
 print(bundle.describe())
@@ -218,7 +218,7 @@ Then the control loop:
 
 ```python
 import numpy as np
-from genesis_forge_deploy import load_bundle
+from genesis_forge_runtime import load_bundle
 
 bundle = load_bundle("./my_policy")
 observation_assembler = bundle.create_observation_assembler()
@@ -247,14 +247,14 @@ That `"actions"` entry is not a sensor reading — it is the policy's own previo
 output fed back in, a common input in locomotion policies. You read it off the
 decoder instead of off your hardware, and pass it exactly like any other value.
 
-The bundle does not mark these entries out, because nothing about *supplying* them
+The bundle does not mark these entries out, because nothing about _supplying_ them
 differs: every entry in `bundle.describe()` is a value you pass each tick. What
 differs is where you get it, and that follows from how you wrote the observation in
 training:
 
-| In training | On the robot |
-|---|---|
-| `current_actions()` | `action_decoder.last_raw_actions` |
+| In training                           | On the robot                                           |
+| ------------------------------------- | ------------------------------------------------------ |
+| `current_actions()`                   | `action_decoder.last_raw_actions`                      |
 | `current_actions(action_manager=mgr)` | `action_decoder.last_raw_actions_by_manager["<name>"]` |
 
 The per-manager form matters once you have more than one action manager, since the
@@ -314,7 +314,7 @@ ONNX with `onnxruntime` is the usual choice on a Pi or Jetson, because it instal
 without pulling in torch:
 
 ```bash
-pip install genesis-forge-deploy[onnx]
+pip install genesis-forge-runtime[onnx]
 ```
 
 ```python
@@ -378,7 +378,7 @@ the graph is the classic sim-to-real failure, and no other check would see it.
 memory: `golden["observations"]` holds the vectors the parity gate ran on, which are
 exactly the right inputs to compare against.
 
-Check the copy *inside the bundle*, not the file you passed in. That is the artifact
+Check the copy _inside the bundle_, not the file you passed in. That is the artifact
 going to the robot, and it is the only way to notice a companion file you forgot to
 list — the original graph would load perfectly, with its weights still sitting beside
 it. `bundle.unpacked()` gives you the contents in a temporary directory and clears it
@@ -407,7 +407,7 @@ Compare **relatively**, not with a fixed absolute bound. Exporting reorders
 floating-point accumulation, and that drift grows with how large your actions are —
 a policy emitting wheel velocities around 50 drifts roughly fifty times further than
 one emitting joint angles around 1, for exactly the same graph. On a trained
-wheeled-robot policy the drift measures ~3e-05, while the *closest* wrong checkpoint
+wheeled-robot policy the drift measures ~3e-05, while the _closest_ wrong checkpoint
 diverges by at least 2e-01, so real faults sit orders of magnitude clear of rounding.
 
 `examples/wheeled_robot/deploy.py` does this end to end, including the error message
@@ -426,16 +426,16 @@ worth printing when it fails.
 Every built-in action manager is deployable out of the box. The bundle records which
 one produced each target, because that determines what you do with the number:
 
-| Manager | `deploy_type` | Targets are |
-|---------|---------------|-------------|
-| `PositionActionManager` | `position` | Joint positions |
+| Manager                             | `deploy_type`            | Targets are                                      |
+| ----------------------------------- | ------------------------ | ------------------------------------------------ |
+| `PositionActionManager`             | `position`               | Joint positions                                  |
 | `PositionWithinLimitsActionManager` | `position_within_limits` | Joint positions, mapped into each joint's limits |
-| `VelocityActionManager` | `velocity` | Joint/wheel velocities |
+| `VelocityActionManager`             | `velocity`               | Joint/wheel velocities                           |
 
 The first two go to a position command, the third to a velocity command — the
 arithmetic that produces them is identical, which is exactly why the bundle names the
 type rather than leaving you to infer it. `targets.by_joint` is keyed by joint name
-either way; what the *value* means is what changes, so check the type before wiring
+either way; what the _value_ means is what changes, so check the type before wiring
 it to a motor call:
 
 ```python
@@ -471,7 +471,7 @@ And on the robot, in a module that imports without torch:
 
 ```python
 import numpy as np
-from genesis_forge_deploy import ManagerDecoder
+from genesis_forge_runtime import ManagerDecoder
 
 class CartesianImpedanceDecoder(ManagerDecoder):
     def decode(self, actions):
@@ -488,9 +488,9 @@ decoder against your `process_actions` like any other, so the two cannot drift a
 unnoticed.
 
 !!! note "This contract is provisional"
-    The deployment contract has not yet been through a real hardware deployment. It
-    may change once it has. The bundle carries a `schema_version` so an out-of-date
-    bundle fails loudly rather than misbehaving.
+The deployment contract has not yet been through a real hardware deployment. It
+may change once it has. The bundle carries a `schema_version` so an out-of-date
+bundle fails loudly rather than misbehaving.
 
 ## Trust model
 

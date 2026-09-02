@@ -88,7 +88,7 @@ class MyEnv(GenesisEnv):
         return obs
 ```
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def __init__(
@@ -197,7 +197,7 @@ Returns this environment, not a wrapped version of it.
 
 Builds the environment before the first step. The Genesis scene and all the scene entities must be added before calling this method.
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def build(self) -> None:
@@ -215,7 +215,7 @@ def build(self) -> None:
 
 Close the environment.
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def close(self):
@@ -243,7 +243,7 @@ def get_observations(self) -> torch.Tensor:
 )
 ```
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def get_observations(self) -> torch.Tensor:
@@ -291,7 +291,7 @@ Returns:
 | ------------------------------- | ----------------------------------------------------------------- |
 | `tuple[Tensor, dict[str, Any]]` | A batch of observations and info from the vectorized environment. |
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def reset(
@@ -367,7 +367,7 @@ Returns:
 | ----- | ------------------------------------ |
 | `int` | The maximum episode length in steps. |
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def set_max_episode_length(self, max_episode_length_sec: int) -> int:
@@ -401,7 +401,7 @@ Returns:
 | ------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tuple[Tensor, Tensor, Tensor, Tensor, dict[str, Any]]` | Batch of (observations, rewards, terminations, truncations, info/extras) |
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def step(
@@ -518,7 +518,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def __init__(
@@ -669,7 +669,7 @@ Returns this environment, not a wrapped version of it.
 
 Build the action managers and combine the action spaces.
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def _build_action_managers(self):
@@ -708,7 +708,7 @@ Build observation managers and set :attr:`observation_space`.
 
 If any manager is named `"policy"`, use that manager's space only. Otherwise concatenate all managers in registration order (same layout as :meth:`get_observations`).
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def _build_observation_managers(self) -> None:
@@ -764,7 +764,7 @@ Parameters:
 | `manager_type` | `ManagerType` | The type of manager to add. | *required* |
 | `manager`      | `BaseManager` | The manager to add.         | *required* |
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def add_manager(self, manager_type: ManagerType, manager: BaseManager):
@@ -794,7 +794,7 @@ def add_manager(self, manager_type: ManagerType, manager: BaseManager):
 
 Builds the environment before the first step. The Genesis scene and all the scene entities must be added before calling this method.
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def build(self):
@@ -829,7 +829,7 @@ def build(self):
 
 Close the environment.
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def close(self):
@@ -858,7 +858,7 @@ def config(self):
     )
 ```
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def config(self):
@@ -889,7 +889,7 @@ Returns the current observations for this step.
 
 Named observations are stored in `extras["observations"]`. If a manager named `"policy"` exists, only its tensor is returned; otherwise all managers are concatenated in registration order.
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def get_observations(self) -> torch.Tensor:
@@ -938,7 +938,7 @@ Returns:
 | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tuple[Tensor, dict[str, Any]]` | A batch of observations (if env_ids is None) and an info dictionary from the vectorized environment. |
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def reset(
@@ -1003,7 +1003,7 @@ Returns:
 | ----- | ------------------------------------ |
 | `int` | The maximum episode length in steps. |
 
-Source code in `genesis_forge/genesis_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/genesis_env.py`
 
 ```
 def set_max_episode_length(self, max_episode_length_sec: int) -> int:
@@ -1037,7 +1037,7 @@ Returns:
 | ------------------------------------------------------- | ------------------------------------------------------------------- |
 | `tuple[Tensor, Tensor, Tensor, Tensor, dict[str, Any]]` | Batch of (observations, rewards, terminations, truncations, extras) |
 
-Source code in `genesis_forge/managed_env.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managed_env.py`
 
 ```
 def step(
@@ -1159,7 +1159,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def __init__(
@@ -1243,7 +1243,7 @@ Get the number of configured DOFs.
 
 Builds the manager and initialized all the buffers.
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def build(self):
@@ -1320,7 +1320,7 @@ Parameters:
 | `position` | `Tensor`    | The position to set the DOFs to. The indices of this tensor should match the configured DOFs (see: dofs_names and dofs_idx properties). | *required*                                                                                   |
 | `dofs_idx` | \`list[int] | None\`                                                                                                                                  | The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def control_dofs_position(
@@ -1349,7 +1349,7 @@ Parameters:
 | `velocity` | `Tensor`    | The velocity to set the DOFs to. The indices of this tensor should match the configured DOFs (see: dofs_names and dofs_idx properties). | *required*                                                                                   |
 | `dofs_idx` | \`list[int] | None\`                                                                                                                                  | The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def control_dofs_velocity(
@@ -1382,7 +1382,7 @@ Returns:
 | `dict[str, Any]` | randomized during training (recorded so the difference is visible    |
 | `dict[str, Any]` | rather than silently flattened).                                     |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_deployment_values(self) -> dict[str, Any]:
@@ -1446,7 +1446,7 @@ Returns:
 | `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
 |         | `Tensor` | The force experienced by the enabled DOFs. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_control_force(
@@ -1497,7 +1497,7 @@ Returns:
 | `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
 |         | `Tensor` | The force experienced by the enabled DOFs. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_force(
@@ -1546,7 +1546,7 @@ Returns:
 | `lower_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The lower limit of the positional limits for the entity's dofs. |
 | `upper_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The upper limit of the positional limits for the entity's dofs. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_limits(
@@ -1585,7 +1585,7 @@ Raises:
 | ------------ | --------------------------------------------------------- |
 | `ValueError` | If max_force was not configured on this actuator manager. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_max_force(self) -> torch.Tensor:
@@ -1628,7 +1628,7 @@ Returns:
 | `position` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) |
 |            | `Tensor` | The position of the enabled DOFs.    |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_position(
@@ -1672,7 +1672,7 @@ Returns:
 | `velocity` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) |
 |            | `Tensor` | The velocity of the enabled DOFs.    |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def get_dofs_velocity(
@@ -1707,7 +1707,7 @@ def get_dofs_velocity(
 
 Reset the DOF positions.
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def reset(
@@ -1777,7 +1777,7 @@ Parameters:
 | `position` | `Tensor`    | The position to set the DOFs to. The indices of this tensor should match the configured DOFs (see: dofs_names and dofs_idx properties). | *required*                                                                                   |
 | `dofs_idx` | \`list[int] | None\`                                                                                                                                  | The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used. |
 
-Source code in `genesis_forge/managers/actuator/actuator_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
 def set_dofs_position(
@@ -1799,7 +1799,7 @@ def set_dofs_position(
 
 Called when the environment is stepped
 
-Source code in `genesis_forge/managers/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/base.py`
 
 ```
 def step(self):
@@ -1930,7 +1930,7 @@ class MyEnv(ManagedEnvironment):
     # ...other operations here...
 ```
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def __init__(
@@ -2034,7 +2034,7 @@ The local link indices for the target links.
 
 Initialize link indices and buffers.
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def build(self):
@@ -2104,7 +2104,7 @@ Returns:
 | -------- | ----------------------------------------------------------------------------- |
 | `Tensor` | The contact forces for the target links. Shape is (n_envs, n_target_links, 3) |
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def get_contact_forces(self, link_idx: int | list[int]) -> torch.Tensor:
@@ -2151,7 +2151,7 @@ Raises:
 | -------------- | --------------------------------------------------- |
 | `RuntimeError` | If the manager is not configured to track air time. |
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def has_broken_contact(
@@ -2211,7 +2211,7 @@ Raises:
 | -------------- | --------------------------------------------------- |
 | `RuntimeError` | If the manager is not configured to track air time. |
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def has_made_contact(self, dt: float, time_margin: float = 1.0e-8) -> torch.Tensor:
@@ -2247,7 +2247,7 @@ def has_made_contact(self, dt: float, time_margin: float = 1.0e-8) -> torch.Tens
 
 ## `reset(envs_idx=None)`
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -2268,7 +2268,7 @@ def reset(self, envs_idx: list[int] | None = None):
 
 ## `step()`
 
-Source code in `genesis_forge/managers/contact/contact_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/contact/contact_manager.py`
 
 ```
 def step(self):
@@ -2318,7 +2318,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def __init__(
@@ -2383,7 +2383,7 @@ The inverse of the entity's base link quaternion.
 
 Build the entity manager.
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def build(self):
@@ -2401,7 +2401,7 @@ def build(self):
 
 The angular velocity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def get_angular_velocity(self) -> torch.Tensor:
@@ -2416,7 +2416,7 @@ def get_angular_velocity(self) -> torch.Tensor:
 
 The linear velocity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def get_linear_velocity(self) -> torch.Tensor:
@@ -2431,7 +2431,7 @@ def get_linear_velocity(self) -> torch.Tensor:
 
 The projected gravity of the entity's base link, in the entity's local frame. Cached once per step -- see `_cached_calcs()`.
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def get_projected_gravity(self) -> torch.Tensor:
@@ -2446,7 +2446,7 @@ def get_projected_gravity(self) -> torch.Tensor:
 
 Call all reset functions
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -2470,7 +2470,7 @@ def reset(self, envs_idx: list[int] | None = None):
 
 Run some common shared calculations at each step.
 
-Source code in `genesis_forge/managers/entity_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/entity_manager.py`
 
 ```
 def step(self):
@@ -2499,7 +2499,7 @@ value = NoisyValue(10.0, noise=2.0)
 # So the final value will be between 8.0 and 12.0
 ```
 
-Source code in `genesis_forge/managers/actuator/noisy_value.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/actuator/noisy_value.py`
 
 ```
 def __init__(
@@ -2626,7 +2626,7 @@ class MyEnv(GenesisEnv):
         return obs, info
 ```
 
-Source code in `genesis_forge/managers/observation_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/observation_manager.py`
 
 ```
 def __init__(
@@ -2678,7 +2678,7 @@ The observation space.
 
 Determine the observation space and setup the buffers.
 
-Source code in `genesis_forge/managers/observation_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/observation_manager.py`
 
 ```
 def build(self):
@@ -2730,7 +2730,7 @@ Returns:
 | ---------------- | ----------------------------------------------------------- |
 | `dict[str, Any]` | Plain data matching the bundle's observation layout schema. |
 
-Source code in `genesis_forge/managers/observation_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/observation_manager.py`
 
 ```
 def get_deployment_layout(self) -> dict[str, Any]:
@@ -2798,7 +2798,7 @@ Returns:
 | -------- | -------------------------------------- |
 | `Tensor` | The observations for all environments. |
 
-Source code in `genesis_forge/managers/observation_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/observation_manager.py`
 
 ```
 def get_observations(
@@ -2847,7 +2847,7 @@ Parameters:
 | ---------- | ----------- | ----------- | ----------------------------------------------------------- |
 | `envs_idx` | \`list[int] | None\`      | The environment ids being reset. All environments, if None. |
 
-Source code in `genesis_forge/managers/observation_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/observation_manager.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -2875,7 +2875,7 @@ def reset(self, envs_idx: list[int] | None = None):
 
 Called when the environment is stepped
 
-Source code in `genesis_forge/managers/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/base.py`
 
 ```
 def step(self):
@@ -2954,7 +2954,7 @@ class MyEnv(GenesisEnv):
         return obs, info
 ```
 
-Source code in `genesis_forge/managers/reward_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/reward_manager.py`
 
 ```
 def __init__(
@@ -3013,7 +3013,7 @@ The rewards calculated for the most recent step. Shape is (num_envs,).
 
 Build any config item function classes.
 
-Source code in `genesis_forge/managers/reward_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/reward_manager.py`
 
 ```
 def build(self):
@@ -3041,7 +3041,7 @@ Returns:
 | ------- | ------------------------------------------------------------ |
 | `float` | The last mean reward for an episode for a given reward name. |
 
-Source code in `genesis_forge/managers/reward_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/reward_manager.py`
 
 ```
 def last_episode_mean_reward(self, name: str, before_weight: bool = True) -> float:
@@ -3066,7 +3066,7 @@ def last_episode_mean_reward(self, name: str, before_weight: bool = True) -> flo
 
 Log the reward mean values at the end of the episode
 
-Source code in `genesis_forge/managers/reward_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/reward_manager.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -3112,7 +3112,7 @@ Returns:
 | -------- | ------------------------------------------------------- |
 | `Tensor` | The rewards for the environments. Shape is (num_envs,). |
 
-Source code in `genesis_forge/managers/reward_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/reward_manager.py`
 
 ```
 def step(self) -> torch.Tensor:
@@ -3228,7 +3228,7 @@ class MyEnv(GenesisEnv):
         return obs, info
 ```
 
-Source code in `genesis_forge/managers/termination_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/termination_manager.py`
 
 ```
 def __init__(
@@ -3284,7 +3284,7 @@ The truncation signals for the environments. Shape is (num_envs,).
 
 Build any config item function classes.
 
-Source code in `genesis_forge/managers/termination_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/termination_manager.py`
 
 ```
 def build(self):
@@ -3305,7 +3305,7 @@ Parameters:
 | ---------- | ----------- | ----------- | ----------------------------------------------------------- |
 | `envs_idx` | \`list[int] | None\`      | The environment ids being reset. All environments, if None. |
 
-Source code in `genesis_forge/managers/termination_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/termination_manager.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -3332,7 +3332,7 @@ Returns:
 | `Tensor` | terminated - The termination signals for the environments. Shape is (num_envs,). |
 | `Tensor` | truncated - The truncation signals for the environments. Shape is (num_envs,).   |
 
-Source code in `genesis_forge/managers/termination_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/termination_manager.py`
 
 ```
 def step(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -3426,7 +3426,7 @@ class MyEnv(ManagedEnvironment):
         self.robot.set_pos(pos, envs_idx=envs_idx)
 ```
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def __init__(
@@ -3457,7 +3457,7 @@ def __init__(
 
 Cache the terrain height field
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def build(self):
@@ -3484,7 +3484,7 @@ Returns:
 | -------- | ----------------------------------- |
 | `Tensor` | The position tensor of shape (1, 3) |
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def generate_random_env_pos(
@@ -3549,7 +3549,7 @@ Returns:
 | -------- | -------------------------------------- |
 | `Tensor` | The positions tensor of shape (num, 3) |
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def generate_random_positions(
@@ -3635,7 +3635,7 @@ def generate_random_positions(
 
 Get the bounds of the terrain, or subterrain
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def get_bounds(
@@ -3666,7 +3666,7 @@ Returns:
 | -------- | ---------------------------------------------- |
 | `Tensor` | Heights in the torch.Tensor of shape (n_envs,) |
 
-Source code in `genesis_forge/managers/terrain_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/terrain_manager.py`
 
 ```
 def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -3721,7 +3721,7 @@ def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 One or more environments have been reset
 
-Source code in `genesis_forge/managers/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/base.py`
 
 ```
 def reset(self, envs_idx: list[int] | None = None):
@@ -3732,7 +3732,7 @@ def reset(self, envs_idx: list[int] | None = None):
 
 Called when the environment is stepped
 
-Source code in `genesis_forge/managers/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/base.py`
 
 ```
 def step(self):
@@ -3837,7 +3837,7 @@ class MyEnv(GenesisEnv):
         # ...do other reset things...
 ```
 
-Source code in `genesis_forge/managers/action/position_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_action_manager.py`
 
 ```
 def __init__(
@@ -3923,7 +3923,7 @@ The actions received from the policy, before being processed.
 
 Builds the manager and initialized all the buffers.
 
-Source code in `genesis_forge/managers/action/position_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_action_manager.py`
 
 ```
 def build(self):
@@ -3961,7 +3961,7 @@ def build(self):
 
 Get the current target actions for the environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
@@ -3977,7 +3977,7 @@ def get_actions(self) -> torch.Tensor:
 
 Get the latest actions for an environment as a dictionary of DOF names and values.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
@@ -3998,7 +3998,7 @@ Export the affine decode: scale, offset, and the clip bounds.
 
 Shared by every affine manager, so `PositionActionManager`, `VelocityActionManager`, and any future affine subclass are deployable without writing anything new -- they differ only in `deploy_type` and in the values their `build()` resolved.
 
-Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/affine_dof_action_manager.py`
 
 ```
 def get_deployment_config(self) -> DeploymentActionConfig:
@@ -4069,7 +4069,7 @@ Returns:
 | `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
 |         | `Tensor` | The force experienced by the enabled DOFs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
@@ -4100,7 +4100,7 @@ Returns:
 | `lower_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The lower limit of the positional limits for the entity's dofs. |
 | `upper_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The upper limit of the positional limits for the entity's dofs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -4126,7 +4126,7 @@ Returns:
 | ---------- | -------- | --------------------------------------------------------------------------------------------- |
 | `position` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) The position of the DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_position(self) ->  torch.Tensor:
@@ -4157,7 +4157,7 @@ Returns:
 | `velocity` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)                             |
 |            | `Tensor` | The velocity of the enabled DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
@@ -4192,7 +4192,7 @@ Returns:
 | -------- | ------------------------------------ |
 | `Tensor` | The processed and converted actions. |
 
-Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/affine_dof_action_manager.py`
 
 ```
 def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -4223,7 +4223,7 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
 
 Reset environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def reset(self, envs_idx: list[int] | None):
@@ -4243,7 +4243,7 @@ def reset(self, envs_idx: list[int] | None):
 
 Sends the actions as position commands to the actuators in the simulation.
 
-Source code in `genesis_forge/managers/action/position_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_action_manager.py`
 
 ```
 def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
@@ -4258,7 +4258,7 @@ def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
 
 Handle actions received in this step.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def step(self, actions: torch.Tensor) -> None:
@@ -4347,7 +4347,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-Source code in `genesis_forge/managers/action/position_within_limits.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_within_limits.py`
 
 ```
 def __init__(
@@ -4421,7 +4421,7 @@ The actions received from the policy, before being processed.
 
 Builds the manager and initialized all the buffers.
 
-Source code in `genesis_forge/managers/action/position_within_limits.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_within_limits.py`
 
 ```
 def build(self):
@@ -4441,7 +4441,7 @@ def build(self):
 
 Get the current target actions for the environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
@@ -4457,7 +4457,7 @@ def get_actions(self) -> torch.Tensor:
 
 Get the latest actions for an environment as a dictionary of DOF names and values.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
@@ -4478,7 +4478,7 @@ Export this manager's decode: pre-clip to [-1, 1], then map into limits.
 
 Overrides :class:`PositionActionManager` deliberately. This manager inherits the parent's `build()` -- so `_scale_values`, `_offset_values` and `_clip_values` all exist -- but its `process_actions` ignores them in favour of `_scale`/`_offset` and applies no post-clip. Exporting the parent's parameters would describe a decode this manager never performs.
 
-Source code in `genesis_forge/managers/action/position_within_limits.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_within_limits.py`
 
 ```
 def get_deployment_config(self) -> DeploymentActionConfig:
@@ -4527,7 +4527,7 @@ Returns:
 | `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
 |         | `Tensor` | The force experienced by the enabled DOFs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
@@ -4558,7 +4558,7 @@ Returns:
 | `lower_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The lower limit of the positional limits for the entity's dofs. |
 | `upper_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The upper limit of the positional limits for the entity's dofs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -4584,7 +4584,7 @@ Returns:
 | ---------- | -------- | --------------------------------------------------------------------------------------------- |
 | `position` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) The position of the DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_position(self) ->  torch.Tensor:
@@ -4615,7 +4615,7 @@ Returns:
 | `velocity` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)                             |
 |            | `Tensor` | The velocity of the enabled DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
@@ -4650,7 +4650,7 @@ Returns:
 | -------- | --------------------------------- |
 | `Tensor` | The actions as position commands. |
 
-Source code in `genesis_forge/managers/action/position_within_limits.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_within_limits.py`
 
 ```
 def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -4673,7 +4673,7 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
 
 Reset environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def reset(self, envs_idx: list[int] | None):
@@ -4693,7 +4693,7 @@ def reset(self, envs_idx: list[int] | None):
 
 Sends the actions as position commands to the actuators in the simulation.
 
-Source code in `genesis_forge/managers/action/position_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/position_action_manager.py`
 
 ```
 def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
@@ -4708,7 +4708,7 @@ def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
 
 Handle actions received in this step.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def step(self, actions: torch.Tensor) -> None:
@@ -4776,7 +4776,7 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/velocity_action_manager.py`
 
 ```
 def __init__(
@@ -4848,7 +4848,7 @@ The actions received from the policy, before being processed.
 
 Builds the manager and initializes all the buffers.
 
-Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/velocity_action_manager.py`
 
 ```
 def build(self):
@@ -4887,7 +4887,7 @@ def build(self):
 
 Get the current target actions for the environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions(self) -> torch.Tensor:
@@ -4903,7 +4903,7 @@ def get_actions(self) -> torch.Tensor:
 
 Get the latest actions for an environment as a dictionary of DOF names and values.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
@@ -4924,7 +4924,7 @@ Export the affine decode: scale, offset, and the clip bounds.
 
 Shared by every affine manager, so `PositionActionManager`, `VelocityActionManager`, and any future affine subclass are deployable without writing anything new -- they differ only in `deploy_type` and in the values their `build()` resolved.
 
-Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/affine_dof_action_manager.py`
 
 ```
 def get_deployment_config(self) -> DeploymentActionConfig:
@@ -4995,7 +4995,7 @@ Returns:
 | `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)       |
 |         | `Tensor` | The force experienced by the enabled DOFs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
@@ -5026,7 +5026,7 @@ Returns:
 | `lower_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The lower limit of the positional limits for the entity's dofs. |
 | `upper_limit` | `Tensor` | torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs) The upper limit of the positional limits for the entity's dofs. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -5052,7 +5052,7 @@ Returns:
 | ---------- | -------- | --------------------------------------------------------------------------------------------- |
 | `position` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs) The position of the DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_position(self) ->  torch.Tensor:
@@ -5083,7 +5083,7 @@ Returns:
 | `velocity` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)                             |
 |            | `Tensor` | The velocity of the enabled DOFs managed by this action manager. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
@@ -5118,7 +5118,7 @@ Returns:
 | -------- | ------------------------------------ |
 | `Tensor` | The processed and converted actions. |
 
-Source code in `genesis_forge/managers/action/affine_dof_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/affine_dof_action_manager.py`
 
 ```
 def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -5149,7 +5149,7 @@ def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
 
 Reset environments.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def reset(self, envs_idx: list[int] | None):
@@ -5169,7 +5169,7 @@ def reset(self, envs_idx: list[int] | None):
 
 Sends the actions as velocity commands to the actuators in the simulation.
 
-Source code in `genesis_forge/managers/action/velocity_action_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/velocity_action_manager.py`
 
 ```
 def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
@@ -5183,7 +5183,7 @@ def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
 
 Handle actions received in this step.
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def step(self, actions: torch.Tensor) -> None:
@@ -5260,7 +5260,7 @@ class MyEnv(GenesisEnv):
         )
 ```
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def __init__(
@@ -5306,7 +5306,7 @@ The time interval (in seconds) between changing the command for each environment
 
 Called when the scene is built
 
-Source code in `genesis_forge/managers/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/base.py`
 
 ```
 def build(self):
@@ -5317,7 +5317,7 @@ def build(self):
 
 If the range is a dict, get the command values for the given key.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def get_command(self, range_key: str) -> torch.Tensor:
@@ -5333,7 +5333,7 @@ def get_command(self, range_key: str) -> torch.Tensor:
 
 If the range is a dict, get the command index for the given key.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def get_command_idx(self, key: str) -> int:
@@ -5373,7 +5373,7 @@ Parameters:
 | `increment` | \`float | tuple[float, float]\`                      | The amount to increment the min & max range values by (+/-). If this is a tuple, it will be: (min_increment, max_increment). If this is a single float, it will be applied to both min and max as (-increment, +increment). |
 | `limit`     | \`float | tuple[float, float]                        | None\`                                                                                                                                                                                                                      |
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def increment_range(
@@ -5437,7 +5437,7 @@ def increment_range(
 
 Function that returns the current command for each environment.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def observation(self, env: GenesisEnv) -> torch.Tensor:
@@ -5449,7 +5449,7 @@ def observation(self, env: GenesisEnv) -> torch.Tensor:
 
 Create a new command for the given environment ids.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def resample_command(self, env_ids: list[int]):
@@ -5472,7 +5472,7 @@ def resample_command(self, env_ids: list[int]):
 
 One or more environments have been reset
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def reset(self, env_ids: list[int] | None = None):
@@ -5488,7 +5488,7 @@ def reset(self, env_ids: list[int] | None = None):
 
 Update a command value for selected environments.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def set_command(
@@ -5512,7 +5512,7 @@ def set_command(
 
 Resample the command if necessary
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def step(self):
@@ -5565,7 +5565,7 @@ env.build()
 env.command_manager.use_external_controller(gamepad_controller)
 ```
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def use_external_controller(self, controller: Callable[[int], CommandRange]):
@@ -5671,7 +5671,7 @@ env.height_command.use_gamepad(
     })
 ```
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def use_gamepad(
@@ -5846,7 +5846,7 @@ class MyEnv(GenesisEnv):
         )
 ```
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 @deprecated_params(
@@ -5918,7 +5918,7 @@ A tensor which has the "standing" state (1 or 0) of all the environments. If the
 
 Build the velocity command manager
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 def build(self):
@@ -5931,7 +5931,7 @@ def build(self):
 
 Build the debug components of the velocity command manager
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 def build_debug(self):
@@ -5974,7 +5974,7 @@ def build_debug(self):
 
 If the range is a dict, get the command values for the given key.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def get_command(self, range_key: str) -> torch.Tensor:
@@ -5990,7 +5990,7 @@ def get_command(self, range_key: str) -> torch.Tensor:
 
 If the range is a dict, get the command index for the given key.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def get_command_idx(self, key: str) -> int:
@@ -6030,7 +6030,7 @@ Parameters:
 | `increment` | \`float | tuple[float, float]\`                      | The amount to increment the min & max range values by (+/-). If this is a tuple, it will be: (min_increment, max_increment). If this is a single float, it will be applied to both min and max as (-increment, +increment). |
 | `limit`     | \`float | tuple[float, float]                        | None\`                                                                                                                                                                                                                      |
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def increment_range(
@@ -6094,7 +6094,7 @@ def increment_range(
 
 Function that returns the current command for each environment.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def observation(self, env: GenesisEnv) -> torch.Tensor:
@@ -6106,7 +6106,7 @@ def observation(self, env: GenesisEnv) -> torch.Tensor:
 
 Overwrites commands for environments that should be standing still.
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 def resample_command(self, env_ids: list[int]):
@@ -6128,7 +6128,7 @@ def resample_command(self, env_ids: list[int]):
 
 One or more environments have been reset
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def reset(self, env_ids: list[int] | None = None):
@@ -6144,7 +6144,7 @@ def reset(self, env_ids: list[int] | None = None):
 
 Update a command value for selected environments.
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def set_command(
@@ -6168,7 +6168,7 @@ def set_command(
 
 Render the command arrows
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 def step(self):
@@ -6216,7 +6216,7 @@ env.build()
 env.command_manager.use_external_controller(gamepad_controller)
 ```
 
-Source code in `genesis_forge/managers/command/command_manager.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/command_manager.py`
 
 ```
 def use_external_controller(self, controller: Callable[[int], CommandRange]):
@@ -6268,7 +6268,7 @@ Parameters:
 | `lin_vel_y_axis` | `int`     | Map this gamepad axis index to the linear velocity in the y-direction.  | `0`        |
 | `ang_vel_z_axis` | `int`     | Map this gamepad axis index to the angular velocity in the z-direction. | `2`        |
 
-Source code in `genesis_forge/managers/command/velocity_command.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/command/velocity_command.py`
 
 ```
 def use_gamepad(
@@ -6342,7 +6342,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -6363,7 +6363,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -6388,7 +6388,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -6404,7 +6404,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -6438,7 +6438,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -6497,7 +6497,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -6518,7 +6518,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -6543,7 +6543,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -6559,7 +6559,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -6593,7 +6593,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -6661,7 +6661,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -6682,7 +6682,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -6707,7 +6707,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -6723,7 +6723,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -6757,7 +6757,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -6831,7 +6831,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -6852,7 +6852,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -6877,7 +6877,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -6893,7 +6893,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -6927,7 +6927,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -6998,7 +6998,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7019,7 +7019,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7044,7 +7044,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7060,7 +7060,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7094,7 +7094,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -7165,7 +7165,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7186,7 +7186,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7211,7 +7211,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7227,7 +7227,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7261,7 +7261,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -7329,7 +7329,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7350,7 +7350,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7375,7 +7375,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7391,7 +7391,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7425,7 +7425,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -7493,7 +7493,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7514,7 +7514,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7539,7 +7539,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7555,7 +7555,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7589,7 +7589,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -7657,7 +7657,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7678,7 +7678,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7703,7 +7703,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7719,7 +7719,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7753,7 +7753,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -7839,7 +7839,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -7860,7 +7860,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -7885,7 +7885,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -7901,7 +7901,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -7935,7 +7935,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8014,7 +8014,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/reset.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/reset.py`
 
 ```
 def build(self):
@@ -8036,7 +8036,7 @@ def build(self):
 
 Store the environment and the entity this function resets.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
@@ -8055,7 +8055,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -8071,7 +8071,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8105,7 +8105,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8175,7 +8175,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/reset.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/reset.py`
 
 ```
 def build(self):
@@ -8196,7 +8196,7 @@ def build(self):
 
 Store the environment and the entity this function resets.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
@@ -8215,7 +8215,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -8231,7 +8231,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8265,7 +8265,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8344,7 +8344,7 @@ The environment this function is bound to.
 
 Initialize the buffers
 
-Source code in `genesis_forge/mdp/reset.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/reset.py`
 
 ```
 def build(self):
@@ -8363,7 +8363,7 @@ def build(self):
 
 Store the environment and the entity this function resets.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
@@ -8376,7 +8376,7 @@ def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
 
 Set the rotation quaternion for the given environment ids.
 
-Source code in `genesis_forge/mdp/reset.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/reset.py`
 
 ```
 def define_quat(self, envs_idx: list[int], rotation: XYZRotation):
@@ -8415,7 +8415,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -8431,7 +8431,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8465,7 +8465,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8540,7 +8540,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -8557,7 +8557,7 @@ def build(self) -> None:
 
 Store the environment and the entity this function resets.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
@@ -8576,7 +8576,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -8592,7 +8592,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8626,7 +8626,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8687,7 +8687,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -8704,7 +8704,7 @@ def build(self) -> None:
 
 Store the environment and the entity this function resets.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv, entity: RigidEntity = None) -> None:
@@ -8723,7 +8723,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -8739,7 +8739,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8773,7 +8773,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -8856,7 +8856,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
@@ -8875,7 +8875,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -8894,7 +8894,7 @@ def context(self, env: GenesisEnv) -> None:
 
 Clear the action history for the specified environments.
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def reset(self, envs_idx):
@@ -8912,7 +8912,7 @@ def reset(self, envs_idx):
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -8946,7 +8946,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9003,7 +9003,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -9024,7 +9024,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9049,7 +9049,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9065,7 +9065,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9099,7 +9099,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9167,7 +9167,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -9188,7 +9188,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9213,7 +9213,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9229,7 +9229,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9263,7 +9263,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9340,7 +9340,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -9361,7 +9361,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9386,7 +9386,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9402,7 +9402,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9436,7 +9436,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9501,7 +9501,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -9522,7 +9522,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9547,7 +9547,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9563,7 +9563,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9597,7 +9597,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9670,7 +9670,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
@@ -9687,7 +9687,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9712,7 +9712,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9728,7 +9728,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9762,7 +9762,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9835,7 +9835,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
@@ -9852,7 +9852,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -9877,7 +9877,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -9893,7 +9893,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -9927,7 +9927,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -9995,7 +9995,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -10016,7 +10016,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10041,7 +10041,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10057,7 +10057,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10091,7 +10091,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10154,7 +10154,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
@@ -10172,7 +10172,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10197,7 +10197,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10213,7 +10213,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10247,7 +10247,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10314,7 +10314,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -10335,7 +10335,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10360,7 +10360,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10376,7 +10376,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10410,7 +10410,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10475,7 +10475,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -10496,7 +10496,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10521,7 +10521,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10537,7 +10537,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10571,7 +10571,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10649,7 +10649,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -10670,7 +10670,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10695,7 +10695,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10711,7 +10711,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10745,7 +10745,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10817,7 +10817,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -10838,7 +10838,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -10863,7 +10863,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -10879,7 +10879,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -10913,7 +10913,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -10985,7 +10985,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11006,7 +11006,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11031,7 +11031,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11047,7 +11047,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11081,7 +11081,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11149,7 +11149,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11170,7 +11170,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11195,7 +11195,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11211,7 +11211,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11245,7 +11245,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11316,7 +11316,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11337,7 +11337,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11362,7 +11362,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11378,7 +11378,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11412,7 +11412,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11463,7 +11463,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11484,7 +11484,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11509,7 +11509,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11525,7 +11525,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11559,7 +11559,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11627,7 +11627,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11648,7 +11648,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11673,7 +11673,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11689,7 +11689,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11723,7 +11723,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11791,7 +11791,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -11812,7 +11812,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11837,7 +11837,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -11853,7 +11853,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -11887,7 +11887,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -11957,7 +11957,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/rewards.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
@@ -11974,7 +11974,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -11999,7 +11999,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12015,7 +12015,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12049,7 +12049,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12100,7 +12100,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12121,7 +12121,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12146,7 +12146,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12162,7 +12162,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12196,7 +12196,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12274,7 +12274,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12295,7 +12295,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12320,7 +12320,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12336,7 +12336,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12370,7 +12370,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12441,7 +12441,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12462,7 +12462,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12487,7 +12487,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12503,7 +12503,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12537,7 +12537,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12605,7 +12605,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12626,7 +12626,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12651,7 +12651,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12667,7 +12667,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12701,7 +12701,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12774,7 +12774,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12795,7 +12795,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12820,7 +12820,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -12836,7 +12836,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -12870,7 +12870,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -12940,7 +12940,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -12961,7 +12961,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -12986,7 +12986,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13002,7 +13002,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13036,7 +13036,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13103,7 +13103,7 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `genesis_forge/mdp/terminations.py`
+Source code in `packages/genesis-forge/src/genesis_forge/mdp/terminations.py`
 
 ```
 def build(self):
@@ -13121,7 +13121,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -13146,7 +13146,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13162,7 +13162,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13196,7 +13196,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13267,7 +13267,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -13288,7 +13288,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -13313,7 +13313,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13329,7 +13329,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13363,7 +13363,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13433,7 +13433,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -13454,7 +13454,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -13479,7 +13479,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13495,7 +13495,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13529,7 +13529,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13597,7 +13597,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -13618,7 +13618,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -13643,7 +13643,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13659,7 +13659,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13693,7 +13693,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13744,7 +13744,7 @@ Build/rebuild any state or buffers necessary for the function call.
 
 Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def build(self) -> None:
@@ -13765,7 +13765,7 @@ Called by the manager during the environment build phase.
 
 Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def context(self, env: GenesisEnv) -> None:
@@ -13790,7 +13790,7 @@ Parameters:
 | ---------- | ----------- | -------------------------------- | ---------- |
 | `envs_idx` | `list[int]` | The environment ids being reset. | *required* |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def reset(self, envs_idx: list[int]) -> None:
@@ -13806,7 +13806,7 @@ def reset(self, envs_idx: list[int]) -> None:
 
 Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def safe_build(self) -> None:
@@ -13840,7 +13840,7 @@ Raises:
 | ---------------- | ---------------------------------- |
 | `AttributeError` | If a name is not a declared param. |
 
-Source code in `genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/config/mdp_fn.py`
 
 ```
 def update(self, **params: Any) -> None:
@@ -13930,7 +13930,7 @@ Parameters:
 | `env` | \`GenesisEnv | Wrapper\`   | The environment to wrap. |
 | `cfg` | \`dict       | object      | None\`                   |
 
-Source code in `genesis_forge/wrappers/rsl_rl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/rsl_rl.py`
 
 ```
 def __init__(self, env: GenesisEnv | Wrapper, cfg: dict | object | None = None):
@@ -14006,7 +14006,7 @@ This will be the bare :class:`ManagedEnvironment` or :class:`GenesisEnv` environ
 
 Builds the scene and other supporting components necessary for the training environment. This assumes that the scene has already been constructed and assigned to the .scene attribute.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def build(self) -> None:
@@ -14021,7 +14021,7 @@ def build(self) -> None:
 
 Closes the wrapper and :attr:`env`.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def close(self):
@@ -14033,7 +14033,7 @@ def close(self):
 
 Returns observations as well as an extras dictionary with the observations added to the `extras["observations"]["critic"]` key.
 
-Source code in `genesis_forge/wrappers/rsl_rl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/rsl_rl.py`
 
 ```
 def get_observations(self):
@@ -14056,7 +14056,7 @@ def get_observations(self):
 
 Converts observations into a TensorDict for rsl_rl 3.0+
 
-Source code in `genesis_forge/wrappers/rsl_rl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/rsl_rl.py`
 
 ```
 def reset(self):
@@ -14072,7 +14072,7 @@ def reset(self):
 
 Returns a single "dones" tensor, instead of the terminated and truncated tensors (via `terminated | truncated`). Add the truncated tensor to the extras dictionary as "time_outs".
 
-Source code in `genesis_forge/wrappers/rsl_rl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/rsl_rl.py`
 
 ```
 def step(
@@ -14110,7 +14110,7 @@ A wrapper that makes your genesis forge environment compatible with the skrl tra
 
 Initialize the logging wrapper with the function to use for data logging.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def __init__(self, env: "GenesisEnv | Wrapper"):
@@ -14176,7 +14176,7 @@ This will be the bare :class:`ManagedEnvironment` or :class:`GenesisEnv` environ
 
 Build the environment
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def build(self) -> None:
@@ -14188,7 +14188,7 @@ def build(self) -> None:
 
 Close the environment
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def close(self) -> None:
@@ -14200,7 +14200,7 @@ def close(self) -> None:
 
 Uses the :meth:`get_observations` of the :attr:`env` that can be overwritten to change the returned data.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def get_observations(self) -> torch.Tensor:
@@ -14212,7 +14212,7 @@ def get_observations(self) -> torch.Tensor:
 
 Not implemented for Genesis Forge environments.
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def render(self, *args, **kwargs) -> Any:
@@ -14237,7 +14237,7 @@ Returns:
 | ------- | -------------------- | --------------------------------- |
 | `tuple` | `tuple[Tensor, Any]` | Observation (tensor), info (dict) |
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def reset(self) -> tuple[torch.Tensor, Any]:
@@ -14262,7 +14262,7 @@ Returns:
 | -------- | -------------------- |
 | `Tensor` | State (torch.Tensor) |
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def state(self) -> torch.Tensor:
@@ -14290,7 +14290,7 @@ Returns:
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `tuple[Tensor, Tensor, Tensor, Tensor, Any]` | tuple of tensors and a dict: Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict) |
 
-Source code in `genesis_forge/wrappers/skrl.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/skrl.py`
 
 ```
 def step(
@@ -14378,7 +14378,7 @@ env = VideoWrapper(
 )
 ```
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def __init__(
@@ -14484,7 +14484,7 @@ The number of steps that will be recorded for each video.
 
 Load the camera from the environment.
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def build(self) -> None:
@@ -14504,7 +14504,7 @@ def build(self) -> None:
 
 Finish recording on close
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def close(self):
@@ -14518,7 +14518,7 @@ def close(self):
 
 Stop recording and save the video.
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def finish_recording(self):
@@ -14549,7 +14549,7 @@ def finish_recording(self):
 
 Uses the :meth:`get_observations` of the :attr:`env` that can be overwritten to change the returned data.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def get_observations(self) -> torch.Tensor:
@@ -14561,7 +14561,7 @@ def get_observations(self) -> torch.Tensor:
 
 Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data.
 
-Source code in `genesis_forge/wrappers/wrapper.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/wrapper.py`
 
 ```
 def reset(
@@ -14576,7 +14576,7 @@ def reset(
 
 Start recording a video.
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def start_recording(self):
@@ -14601,7 +14601,7 @@ def start_recording(self):
 
 Record a video image at each step.
 
-Source code in `genesis_forge/wrappers/video.py`
+Source code in `packages/genesis-forge/src/genesis_forge/wrappers/video.py`
 
 ```
 def step(
@@ -14644,7 +14644,7 @@ def step(
 
 Exporting a trained environment for a real robot, and the simulation-free runtime that replays it. See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html) for the end-to-end walkthrough.
 
-The training-side API lives in `genesis_forge.deployment`; the robot-side runtime is the separate `genesis-forge-deploy` package.
+The training-side API lives in `genesis_forge.deployment`; the robot-side runtime is the separate `genesis-forge-runtime` package.
 
 # Deployment Contract
 
@@ -14694,7 +14694,7 @@ Raises:
 | ------------ | --------------------------------------------------------------------------------------------------- |
 | `ValueError` | The values differ across parallel environments, or the shape is not one this reduction understands. |
 
-Source code in `genesis_forge/managers/action/base.py`
+Source code in `packages/genesis-forge/src/genesis_forge/managers/action/base.py`
 
 ```
 def to_nominal_array(
@@ -14783,7 +14783,7 @@ Returns:
 
 | Name  | Type     | Description                                                              |
 | ----- | -------- | ------------------------------------------------------------------------ |
-| `The` | `Bundle` | class:~genesis_forge_deploy.Bundle that was written. Its manifest        |
+| `The` | `Bundle` | class:~genesis_forge_runtime.Bundle that was written. Its manifest       |
 |       | `Bundle` | and golden samples are already in memory, so describing or checking what |
 |       | `Bundle` | you just exported does not read the bundle back -- bundle.path is        |
 |       | `Bundle` | where it landed.                                                         |
@@ -14807,7 +14807,7 @@ bundle = export(env, "./my_policy", policy_path="policy.onnx")
 print(bundle.describe())
 ```
 
-Source code in `genesis_forge/deployment/exporter.py`
+Source code in `packages/genesis-forge/src/genesis_forge/deployment/exporter.py`
 
 ```
 def export(
@@ -14880,7 +14880,7 @@ def export(
         verbose: Print a short summary of what was written.
 
     Returns:
-        The :class:`~genesis_forge_deploy.Bundle` that was written. Its manifest
+        The :class:`~genesis_forge_runtime.Bundle` that was written. Its manifest
         and golden samples are already in memory, so describing or checking what
         you just exported does not read the bundle back -- ``bundle.path`` is
         where it landed.
@@ -15004,7 +15004,7 @@ Raises:
 | ------------- | ------------------------------------------------------------- |
 | `ParityError` | The two pipelines disagreed. The message names the component. |
 
-Source code in `genesis_forge/deployment/parity.py`
+Source code in `packages/genesis-forge/src/genesis_forge/deployment/parity.py`
 
 ```
 def check_parity(
@@ -15138,7 +15138,7 @@ What the parity run compared, and the worst disagreement it saw.
 
 ## `summary()`
 
-Source code in `genesis_forge/deployment/parity.py`
+Source code in `packages/genesis-forge/src/genesis_forge/deployment/parity.py`
 
 ```
 def summary(self) -> str:
@@ -15177,7 +15177,7 @@ Parameters:
 | ------- | ------ | -------------------------------- | ------- |
 | `debug` | `bool` | If True, print debug information | `False` |
 
-Source code in `genesis_forge/gamepads/gamepad.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/gamepad.py`
 
 ```
 def __init__(self, debug: bool = False):
@@ -15231,7 +15231,7 @@ Returns:
 | ------- | ----------------------------------------------------------------------- |
 | `float` | The axis value in range [-1.0, 1.0] for sticks, [0.0, 1.0] for triggers |
 
-Source code in `genesis_forge/gamepads/gamepad.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/gamepad.py`
 
 ```
 def axis(self, index: int) -> float:
@@ -15260,7 +15260,7 @@ Returns:
 | ----------- | ---------------------------------------------------------- |
 | `list[str]` | List of button names (lowercase, e.g., 'a', 'b', 'x', 'y') |
 
-Source code in `genesis_forge/gamepads/gamepad.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/gamepad.py`
 
 ```
 def buttons(self) -> list[str]:
@@ -15278,7 +15278,7 @@ def buttons(self) -> list[str]:
 
 Stop reading gamepad input.
 
-Source code in `genesis_forge/gamepads/gamepad.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/gamepad.py`
 
 ```
 def stop(self) -> None:
@@ -15317,7 +15317,7 @@ thread.start()
 loop.stop()
 ```
 
-Source code in `genesis_forge/gamepads/sdl2.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/sdl2.py`
 
 ```
 def __init__(
@@ -15342,7 +15342,7 @@ def __init__(
 
 ## `run()`
 
-Source code in `genesis_forge/gamepads/sdl2.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/sdl2.py`
 
 ```
 def run(self) -> None:
@@ -15366,7 +15366,7 @@ def run(self) -> None:
 
 ## `stop()`
 
-Source code in `genesis_forge/gamepads/sdl2.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/sdl2.py`
 
 ```
 def stop(self) -> None:
@@ -15389,7 +15389,7 @@ Gamepad input abstraction shared across backends.
 
 ## `value = None`
 
-Source code in `genesis_forge/gamepads/sdl2.py`
+Source code in `packages/genesis-forge/src/genesis_forge/gamepads/sdl2.py`
 
 ```
 def controller_key_from_event(

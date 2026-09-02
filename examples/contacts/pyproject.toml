@@ -11,4 +11,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-genesis-forge = { path = "../../" }
+genesis-forge = { path = "../../packages/genesis-forge" }

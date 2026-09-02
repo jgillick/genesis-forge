@@ -134,7 +134,7 @@ Copy that one file to the robot and install just the runtime — it needs numpy 
 no simulator:
 
 ```shell
-pip install genesis-forge-deploy[onnx]
+pip install genesis-forge-runtime[onnx]
 ```
 
 See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/)

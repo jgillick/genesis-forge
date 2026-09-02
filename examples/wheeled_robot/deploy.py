@@ -2,7 +2,7 @@
 
 Produces a deployment bundle -- the observation and action pipelines captured from
 the built environment, plus the policy as ONNX -- that the simulation-free
-``genesis-forge-deploy`` runtime replays on the robot::
+``genesis-forge-runtime`` runtime replays on the robot::
 
     uv run python deploy.py                  # after training
 
@@ -189,7 +189,7 @@ def main():
     print(bundle.describe())
     print()
     print(f"Copy {bundle.path.name} to the robot, then: "
-          f"pip install genesis-forge-deploy[onnx]")
+          f"pip install genesis-forge-runtime[onnx]")
 
 
 if __name__ == "__main__":

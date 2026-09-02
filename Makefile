@@ -6,7 +6,7 @@ clean:
 	rm -rf dist/ build/ *.egg-info/
 
 lint:
-	uv run ruff check genesis_forge examples tests deploy
+	uv run ruff check .
 
 test:
 	uv run pytest -v

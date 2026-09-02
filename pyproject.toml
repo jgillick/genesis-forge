@@ -1,56 +1,37 @@
-[build-system]
-requires = ["hatchling >= 1.26"]
-build-backend = "hatchling.build"
+# Workspace root. Not a distribution itself -- both published packages live under
+# packages/, each with its own pyproject, source tree, and tests.
+#
+#   packages/genesis-forge/          the training framework
+#   packages/genesis-forge-runtime/  the simulation-free robot runtime
+#
+# They are released in lockstep at the same version; see the dependency pin in
+# packages/genesis-forge/pyproject.toml for why.
 
-[project]
-name = "genesis-forge"
-version = "1.0.0"
-authors = [{ name = "Jeremy Gillick" }]
-description = "A robotics RL training framework for Genesis inspired by Isaac Lab and Gymnasium."
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-  "genesis-forge-deploy",
-  "genesis-world>=1.0.0",
-  "gymnasium",
-  "pysdl2",
-  "pysdl2-dll",
-  "rsl-rl-lib",
-  "skrl[torch]",
-  "torch>=2.10.0",
-  "tensordict",
-  "deprecated>=1.3.1",
-]
-classifiers = [
-  "Programming Language :: Python :: 3",
-  "Operating System :: OS Independent",
-]
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[project.urls]
-Homepage = "https://github.com/jgillick/genesis-forge"
-Issues = "https://github.com/jgillick/genesis-forge/issues"
-
-[tool.hatch.build.targets.sdist]
-exclude = ["Makefile", "docs/", ".readthedocs.yaml", "*.mp4", "*.xcf"]
+[tool.uv.sources]
+genesis-forge = { workspace = true }
+genesis-forge-runtime = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "genesis-forge",
+    "genesis-forge-runtime",
     "pytest>=9.1.1",
     "ruff>=0.16.4",
     "twine>=7.0.0",
 ]
 
+[tool.ruff]
+# Where first-party code lives, so import sorting keeps knowing which packages
+# are ours now that both sit behind a src/ directory.
+src = ["packages/genesis-forge/src", "packages/genesis-forge-runtime/src"]
+
 [tool.pytest.ini_options]
+testpaths = ["packages/genesis-forge/tests", "packages/genesis-forge-runtime/tests"]
 filterwarnings = [
     # Raised by the `genesis` package's own imports, not by genesis-forge code.
     "ignore:`torch.jit.script` is deprecated.*:DeprecationWarning",
     "ignore:Using SDL2 binaries from pysdl2-dll.*:UserWarning",
 ]
-
-[tool.uv.workspace]
-members = ["deploy"]
-
-[tool.uv.sources]
-genesis-forge-deploy = { workspace = true }

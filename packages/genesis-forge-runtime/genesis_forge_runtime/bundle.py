@@ -93,7 +93,7 @@ class Bundle:
                 archive.extractall(scratch)
             yield Path(scratch)
 
-    def create_observation_assembler(self, **kwargs: Any) -> Any:
+    def create_observation_assembler(self, **kwargs: Any) -> ObservationAssembler:
         """Build a new :class:`ObservationAssembler` for this bundle.
 
         Each call returns a fresh assembler with its own zero-filled history, so
@@ -102,7 +102,7 @@ class Bundle:
         """
         return ObservationAssembler(self.manifest.observations, **kwargs)
 
-    def create_action_decoder(self, **kwargs: Any) -> Any:
+    def create_action_decoder(self, **kwargs: Any) -> ActionDecoder:
         """Build a new :class:`ActionDecoder` for this bundle.
 
         Each call returns a fresh decoder with its own remembered actions and

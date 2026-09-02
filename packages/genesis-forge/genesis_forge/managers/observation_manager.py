@@ -38,6 +38,27 @@ class ObservationConfig(ConfigItemDict):
     """Units this observation is expressed in (for example ``"rad/s"``), recorded into
     the deployment bundle. Wrong units are a classic sim-to-real failure, and naming
     them here is the cheapest guard against it."""
+def _deployable_scale(name: str, scale: Any) -> float:
+    """A scale a bundle can carry, or a clear refusal.
+
+    The manifest holds one number per entry. Scaling in `_perform_observation` is
+    a plain multiply, so a tensor or a per-dimension list works there and would
+    reach here intact -- and `float()` would raise something unhelpful about
+    sequences rather than saying what to do about it.
+    """
+    if scale is None:
+        return 1.0
+    try:
+        return float(scale)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"Observation '{name}' has a per-element scale ({type(scale).__name__}), "
+            f"which a bundle cannot express -- the manifest records one scale per "
+            f"entry. Fold the per-element factors into the observation function and "
+            f"leave the entry's scale a single number, or split the entry."
+        ) from error
+
+
 class ObservationManager(BaseManager):
     """
     Defines the observations and observation space for the environment.
@@ -314,7 +335,7 @@ class ObservationManager(BaseManager):
             entry: dict[str, Any] = {
                 "name": name,
                 "size": size,
-                "scale": float(cfg.scale) if cfg.scale is not None else 1.0,
+                "scale": _deployable_scale(name, cfg.scale),
             }
             if cfg.description:
                 entry["description"] = cfg.description

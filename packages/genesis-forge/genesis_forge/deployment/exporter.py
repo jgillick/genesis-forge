@@ -33,11 +33,13 @@ from .provenance import clean_additional
 #: operator can see what the bundle carries; nothing here loads or checks it.
 _POLICY_FORMATS = {
     ".onnx": POLICY_FORMAT_ONNX,
-    ".pt": POLICY_FORMAT_TORCHSCRIPT,
-    ".pth": POLICY_FORMAT_TORCHSCRIPT,
     ".jit": POLICY_FORMAT_TORCHSCRIPT,
     ".ts": POLICY_FORMAT_TORCHSCRIPT,
 }
+#: Deliberately absent: .pt and .pth. Both are far more often a plain state_dict
+#: than a scripted module, and recording "torchscript" for a file torch.jit.load
+#: would reject is worse than recording nothing. Those export with no format,
+#: which describe() shows as "unknown format".
 
 
 def export(
@@ -188,13 +190,12 @@ def export(
 
         destination.parent.mkdir(parents=True, exist_ok=True)
         if archive:
-            # Built somewhere temporary and moved into place, so an interrupted
-            # export cannot leave a half-written archive looking loadable.
-            packed = Path(staging) / f"bundle{ARCHIVE_SUFFIX}"
+            # Staged beside the destination, not in the system temp directory, so
+            # the move is a rename within one filesystem and an interrupted export
+            # cannot leave a half-written archive looking loadable.
+            packed = destination.with_name(f"{destination.name}.writing")
             _write_archive(staged, packed)
-            if destination.exists():
-                destination.unlink()
-            shutil.move(str(packed), str(destination))
+            packed.replace(destination)
         else:
             if destination.exists():
                 shutil.rmtree(destination)

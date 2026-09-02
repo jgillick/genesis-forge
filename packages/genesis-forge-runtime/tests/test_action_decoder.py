@@ -636,3 +636,64 @@ def test_the_decoder_exposes_every_property_the_docs_tell_users_to_read():
             f"ActionDecoder.{attribute} is documented as the value to feed back, "
             f"but no longer exists."
         )
+
+
+"""
+Per-manager raw actions under a trained delay
+
+A manager records its raw actions *after* taking them off its delay buffer, so
+`current_actions(action_manager=...)` observes the delayed value during training.
+The decoder has to record the same thing, or a policy trained on that feedback is
+fed something it never saw.
+"""
+
+
+def delayed_spec(delay_step=2):
+    spec = position_spec()
+    return ActionManagerSpec(
+        name=spec.name,
+        deploy_type=spec.deploy_type,
+        joint_names=spec.joint_names,
+        slice_start=spec.slice_start,
+        slice_end=spec.slice_end,
+        config=spec.config,
+        delay_step=delay_step,
+    )
+
+
+def test_per_manager_raw_actions_follow_the_delay_when_it_is_applied():
+    decoder = ActionDecoder((delayed_spec(),), apply_delay=True)
+
+    decoder.decode([1.0, 1.0, 1.0])
+    first = decoder.last_raw_actions_by_manager["action_manager"]
+    decoder.decode([2.0, 2.0, 2.0])
+    second = decoder.last_raw_actions_by_manager["action_manager"]
+
+    # A delay of two means the first two ticks still emit the zero-filled buffer.
+    np.testing.assert_allclose(first, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(second, [0.0, 0.0, 0.0])
+
+    decoder.decode([3.0, 3.0, 3.0])
+    np.testing.assert_allclose(
+        decoder.last_raw_actions_by_manager["action_manager"], [1.0, 1.0, 1.0]
+    )
+
+
+def test_the_flat_raw_actions_stay_undelayed():
+    """`current_actions()` with no manager reads env.actions, which is undelayed."""
+    decoder = ActionDecoder((delayed_spec(),), apply_delay=True)
+
+    decoder.decode([1.0, 1.0, 1.0])
+
+    np.testing.assert_allclose(decoder.last_raw_actions, [1.0, 1.0, 1.0])
+
+
+def test_without_the_delay_applied_both_views_agree():
+    decoder = ActionDecoder((delayed_spec(),), apply_delay=False)
+
+    decoder.decode([1.0, 1.0, 1.0])
+
+    np.testing.assert_allclose(
+        decoder.last_raw_actions_by_manager["action_manager"], [1.0, 1.0, 1.0]
+    )
+    np.testing.assert_allclose(decoder.last_raw_actions, [1.0, 1.0, 1.0])

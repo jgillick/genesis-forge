@@ -115,7 +115,7 @@ class Manifest:
     actions: tuple[ActionManagerSpec, ...]
     actuators: tuple[ActuatorSpec, ...] = ()
     policy: PolicySpec | None = None
-    provenance: Provenance = Provenance()
+    provenance: Provenance = field(default_factory=Provenance)
     schema_version: int = SCHEMA_VERSION
 
     @property

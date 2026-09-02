@@ -42,7 +42,7 @@ class ObservationAssembler:
         obs = observation_assembler.assemble({
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
-            "actions": action_decoder.last_target_actions,
+            "actions": action_decoder.last_raw_actions,
         })
     """
 
@@ -101,8 +101,9 @@ class ObservationAssembler:
         Args:
             values: One entry per name in :attr:`inputs`. Sensor readings
                 come from your hardware; entries that echo the pipeline's own output
-                come from the decoder (``action_decoder.last_target_actions`` or
-                ``action_decoder.last_raw_actions``). Values may be scalars, sequences, or
+                come from the decoder -- ``action_decoder.last_raw_actions`` for
+                the built-in ``current_actions`` observation. Values may be
+                scalars, sequences, or
                 numpy arrays; each is flattened and must match the declared size.
 
         Returns:
@@ -148,6 +149,16 @@ class ObservationAssembler:
             raise ObservationError(
                 f"Observation '{entry.name}' expects {entry.size} value(s), got "
                 f"{raw.size}."
+            )
+        if not np.all(np.isfinite(raw)):
+            # A dead IMU reads NaN. Caught here it names the sensor; carried into
+            # the policy it surfaces one step later as "policy produced NaN",
+            # which says nothing about where it came from.
+            bad = np.flatnonzero(~np.isfinite(raw))
+            raise ObservationError(
+                f"Observation '{entry.name}' has non-finite value(s) at "
+                f"index/indices {bad.tolist()}: {raw[bad].tolist()}. A sensor is "
+                f"probably not reporting."
             )
 
         if entry.scale != 1.0:

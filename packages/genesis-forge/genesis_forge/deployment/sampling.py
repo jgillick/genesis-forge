@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import genesis as gs
 import numpy as np
 import torch
 
@@ -91,9 +92,14 @@ def torch_observations(
             # Zero-width entries are skipped by the training pipeline but must
             # still be present in the override dict.
             values = np.zeros(0, dtype=np.float32)
-        # A fresh tensor per call: the training override path scales in place.
+        # On gs.device, where the manager's own buffers live. The copy into the
+        # output buffer would convert a CPU tensor anyway, but relying on that
+        # would leave the one path that does not convert -- action decoding --
+        # as the only place a device mismatch shows up.
         overrides[name] = torch.as_tensor(
-            np.tile(values, (capture.num_envs, 1)), dtype=torch.float32
+            np.tile(values, (capture.num_envs, 1)),
+            dtype=torch.float32,
+            device=gs.device,
         )
 
     observations = capture.observation_manager.get_observations(values=overrides)

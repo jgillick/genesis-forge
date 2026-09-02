@@ -118,30 +118,41 @@ class ActionDecoder:
     def last_target_actions(self) -> np.ndarray:
         """The decoded joint targets from the previous decode.
 
-        Zeros before the first decode. Pass this to
-        :meth:`ObservationAssembler.assemble` for an observation entry that echoes
-        an action manager's decoded output -- which is what the built-in
-        ``current_actions(action_manager=...)`` feeds during training.
+        Zeros before the first decode.
+
+        Note this is *not* what the built-in ``current_actions`` observation feeds
+        back -- that one is raw policy output at both of its call shapes, so use
+        :attr:`last_raw_actions` or :attr:`last_raw_actions_by_manager`. This
+        property is for an observation that genuinely echoes decoded targets,
+        which you would have written yourself.
         """
         return self._last_target_actions.copy()
 
     @property
     def last_target_actions_by_manager(self) -> dict[str, np.ndarray]:
-        """Per-manager view of :attr:`last_target_actions`, for multi-manager robots."""
+        """Per-manager view of :attr:`last_target_actions`, for multi-manager robots.
+
+        As with :attr:`last_target_actions`, this is decoded output -- not what
+        ``current_actions`` feeds back.
+        """
         return {name: values.copy() for name, values in self._last_by_manager.items()}
 
     @property
     def last_raw_actions_by_manager(self) -> dict[str, np.ndarray]:
-        """Per-manager slices of :attr:`last_raw_actions`.
+        """What each manager last consumed, before its own decode.
 
-        ``current_actions(action_manager=...)`` feeds back one manager's raw slice
-        during training, which is the whole policy vector only when a single manager
-        is registered.
+        This is what ``current_actions(action_manager=...)`` feeds back during
+        training, and it is the whole policy vector only when a single manager is
+        registered.
+
+        With ``apply_delay`` on and a manager trained with a ``delay_step``, this
+        is the delayed value -- which is what training saw, because a manager
+        records its raw actions after taking them off its delay buffer. With the
+        delay left off, it is the value you just passed in, and a policy trained
+        on delayed feedback will see something training never showed it. See
+        :attr:`trained_delay_steps`.
         """
-        return {
-            spec.name: self._last_raw_actions[spec.slice_start : spec.slice_end].copy()
-            for spec in self._specs
-        }
+        return {name: value.copy() for name, value in self._last_raw_by_manager.items()}
 
     @property
     def trained_delay_steps(self) -> dict[str, int]:
@@ -159,6 +170,10 @@ class ActionDecoder:
         self._last_raw_actions = np.zeros(self.num_actions, dtype=self._dtype)
         self._last_target_actions = np.zeros(self.num_actions, dtype=self._dtype)
         self._last_by_manager = {
+            spec.name: np.zeros(spec.num_actions, dtype=self._dtype)
+            for spec in self._specs
+        }
+        self._last_raw_by_manager = {
             spec.name: np.zeros(spec.num_actions, dtype=self._dtype)
             for spec in self._specs
         }
@@ -200,20 +215,29 @@ class ActionDecoder:
             )
 
         by_manager: dict[str, np.ndarray] = {}
+        raw_by_manager: dict[str, np.ndarray] = {}
         pieces: list[np.ndarray] = []
         for spec, decoder in zip(self._specs, self._decoders, strict=True):
             chunk = values[spec.slice_start : spec.slice_end]
+            # After the delay, not before: this is what the manager consumed, and
+            # what training's own raw_actions held for it. Identical to the slice
+            # when no delay is applied.
             chunk = self._apply_delay_to(spec, chunk)
+            raw_by_manager[spec.name] = chunk.copy()
             decoded = decoder.decode(chunk)
             by_manager[spec.name] = decoded
             pieces.append(decoded)
 
+        # copy() on the single-manager path: concatenate already returns a fresh
+        # array, and without it `targets` and `by_manager[name]` would be the same
+        # buffer, so writing through one would silently change the other.
         targets = (
-            pieces[0] if len(pieces) == 1 else np.concatenate(pieces)
+            pieces[0].copy() if len(pieces) == 1 else np.concatenate(pieces)
         ).astype(self._dtype, copy=False)
 
         self._last_raw_actions = values.copy()
         self._last_target_actions = targets.copy()
+        self._last_raw_by_manager = raw_by_manager
         self._last_by_manager = {
             name: chunk.copy() for name, chunk in by_manager.items()
         }

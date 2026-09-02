@@ -187,7 +187,7 @@ def _capture_actions(
                 "joint_names": list(manager.dofs.keys()),
                 "config": contract.config,
                 "decoder_import_path": contract.decoder_import_path,
-                "delay_step": int(getattr(manager, "_delay_step", 0) or 0),
+                "delay_step": manager.delay_step,
             }
         )
         resolved[name] = manager
@@ -223,7 +223,21 @@ def _capture_observations(
             f"anyway -- a robot has no way to supply those values.)"
         )
 
-    layout = chosen.get_deployment_layout()
+    if not getattr(chosen, "enabled", True):
+        raise ExportError(
+            f"Observation manager '{chosen.name}' is disabled, so training feeds "
+            f"the policy zeros rather than the layout it describes. Exporting it "
+            f"would produce a bundle the robot fills in for real. Enable it and "
+            f"re-export."
+        )
+
+    try:
+        layout = chosen.get_deployment_layout()
+    except ValueError as error:
+        raise ExportError(
+            f"Observation manager '{chosen.name}' cannot be described in a bundle. "
+            f"{error}"
+        ) from error
     return chosen, layout, list(chosen.cfg.keys())
 
 

@@ -13,6 +13,7 @@ running the bundle it had before.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -87,35 +88,36 @@ def ensure_extracted(archive: Path) -> Path:
         if not marker.is_file():
             raise MalformedBundleError(
                 f"'{destination}' already exists but was not unpacked from an "
-                f"archive, so it will not be overwritten. Move it aside, or unpack "
-                f"'{archive.name}' yourself and load that directory instead."
+                f"archive, so it will not be overwritten -- it may be someone's "
+                f"work. If you know it came from '{archive.name}', deleting it is "
+                f"safe and the next load will unpack it again."
             )
         if marker.read_text().strip() == expected:
             return destination
-        _empty(destination)
 
+    # Unpack somewhere else first, then swap it in. A robot can lose power
+    # part-way through; that must leave either the previous extraction or nothing
+    # at all, never a half-filled directory with no marker -- which would look
+    # like a directory somebody else made, and be refused from then on.
+    staging = destination.with_name(f"{destination.name}.unpacking")
     try:
-        destination.mkdir(parents=True, exist_ok=True)
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True)
         with zipfile.ZipFile(archive) as zipped:
             # extractall keeps every member inside the target directory, so a
             # crafted path cannot escape it.
-            zipped.extractall(destination)
-        marker.write_text(expected)
+            zipped.extractall(staging)
+        (staging / EXTRACT_MARKER).write_text(expected)
+
+        if destination.exists():
+            shutil.rmtree(destination)
+        staging.rename(destination)
     except OSError as error:
+        shutil.rmtree(staging, ignore_errors=True)
         raise MalformedBundleError(
             f"Could not unpack '{archive.name}' into '{destination}' ({error}). "
             f"Unpack it yourself somewhere writable and load that directory."
         ) from error
 
     return destination
-
-
-def _empty(directory: Path) -> None:
-    """Clear a stale extraction, leaving the directory itself in place."""
-    import shutil
-
-    for item in directory.iterdir():
-        if item.is_dir() and not item.is_symlink():
-            shutil.rmtree(item)
-        else:
-            item.unlink()

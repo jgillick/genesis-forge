@@ -257,3 +257,18 @@ def test_describe_inputs_lists_every_value_to_supply():
     assert "Values to supply each tick" in text
     assert "gyro" in text
     assert "actions" in text
+
+
+def test_a_non_finite_sensor_reading_is_refused_with_the_sensor_named():
+    """A dead IMU should fail here, not one step later inside the policy."""
+    assembler = ObservationAssembler(simple_layout())
+
+    with pytest.raises(ObservationError) as error:
+        assembler.assemble(
+            {"gyro": [1.0, float("nan"), 3.0], "dof_pos": [1.0, 2.0]}
+        )
+
+    message = str(error.value)
+    assert "gyro" in message
+    assert "non-finite" in message
+    assert "[1]" in message  # says which element

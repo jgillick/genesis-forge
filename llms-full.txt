@@ -2763,7 +2763,7 @@ def get_deployment_layout(self) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "name": name,
             "size": size,
-            "scale": float(cfg.scale) if cfg.scale is not None else 1.0,
+            "scale": _deployable_scale(name, cfg.scale),
         }
         if cfg.description:
             entry["description"] = cfg.description
@@ -3891,6 +3891,12 @@ Get the actuator manager.
 
 Return the default DOF positions.
 
+## `delay_step`
+
+How many steps the policy's actions are held before being applied.
+
+Part of the deployment surface: a bundle records it so the robot can reproduce the delay, or knowingly leave it to the real hardware.
+
 ## `deploy_type = 'position'`
 
 ## `dofs`
@@ -3916,6 +3922,8 @@ Get the number of actions.
 ## `raw_actions`
 
 The actions received from the policy, before being processed.
+
+Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
 
 ## `type = type`
 
@@ -4389,6 +4397,12 @@ Get the actuator manager.
 
 Return the default DOF positions.
 
+## `delay_step`
+
+How many steps the policy's actions are held before being applied.
+
+Part of the deployment surface: a bundle records it so the robot can reproduce the delay, or knowingly leave it to the real hardware.
+
 ## `deploy_type = 'position_within_limits'`
 
 ## `dofs`
@@ -4414,6 +4428,8 @@ Get the number of actions.
 ## `raw_actions`
 
 The actions received from the policy, before being processed.
+
+Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
 
 ## `type = type`
 
@@ -4816,6 +4832,12 @@ An index filter for the actuator DOF buffer values.
 
 Get the actuator manager.
 
+## `delay_step`
+
+How many steps the policy's actions are held before being applied.
+
+Part of the deployment surface: a bundle records it so the robot can reproduce the delay, or knowingly leave it to the real hardware.
+
 ## `deploy_type = 'velocity'`
 
 ## `dofs`
@@ -4841,6 +4863,8 @@ Get the number of actions.
 ## `raw_actions`
 
 The actions received from the policy, before being processed.
+
+Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
 
 ## `type = type`
 
@@ -14958,13 +14982,12 @@ def export(
 
         destination.parent.mkdir(parents=True, exist_ok=True)
         if archive:
-            # Built somewhere temporary and moved into place, so an interrupted
-            # export cannot leave a half-written archive looking loadable.
-            packed = Path(staging) / f"bundle{ARCHIVE_SUFFIX}"
+            # Staged beside the destination, not in the system temp directory, so
+            # the move is a rename within one filesystem and an interrupted export
+            # cannot leave a half-written archive looking loadable.
+            packed = destination.with_name(f"{destination.name}.writing")
             _write_archive(staged, packed)
-            if destination.exists():
-                destination.unlink()
-            shutil.move(str(packed), str(destination))
+            packed.replace(destination)
         else:
             if destination.exists():
                 shutil.rmtree(destination)
@@ -15043,7 +15066,6 @@ def check_parity(
     report = ParityReport(ticks=ticks)
 
     golden_observations: list[np.ndarray] = []
-    golden_supplied_values: list[np.ndarray] = []
     golden_actions: list[np.ndarray] = []
     golden_targets: list[np.ndarray] = []
 
@@ -15081,8 +15103,12 @@ def check_parity(
             for spec in manifest.actions:
                 manager = capture.action_managers[spec.name]
                 chunk = raw_actions[spec.slice_start : spec.slice_end]
+                # On gs.device, not the CPU: a manager's buffers were placed
+                # there at build time, and process_actions indexes against them.
                 torch_chunk = torch.as_tensor(
-                    np.tile(chunk, (capture.num_envs, 1)), dtype=torch.float32
+                    np.tile(chunk, (capture.num_envs, 1)),
+                    dtype=torch.float32,
+                    device=gs.device,
                 )
                 torch_targets = manager.process_actions(torch_chunk).detach()[0]
                 numpy_targets = decoded.by_manager[spec.name]
@@ -15104,13 +15130,6 @@ def check_parity(
                 )
 
             golden_observations.append(numpy_obs)
-            golden_supplied_values.append(
-                np.concatenate(
-                    [observation_values[name] for name in sorted(observation_values)]
-                )
-                if observation_values
-                else np.zeros(0, dtype=np.float32)
-            )
             golden_actions.append(raw_actions)
             golden_targets.append(decoded.targets)
 
@@ -15119,10 +15138,6 @@ def check_parity(
         "raw_actions": np.asarray(golden_actions, dtype=np.float32),
         "joint_targets": np.asarray(golden_targets, dtype=np.float32),
     }
-    if golden_supplied_values and golden_supplied_values[0].size:
-        report.golden["supplied_values"] = np.asarray(
-            golden_supplied_values, dtype=np.float32
-        )
     return report
 ```
 

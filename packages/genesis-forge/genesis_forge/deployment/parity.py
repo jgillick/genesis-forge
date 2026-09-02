@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import genesis as gs
 import numpy as np
 import torch
 
@@ -87,7 +88,6 @@ def check_parity(
     report = ParityReport(ticks=ticks)
 
     golden_observations: list[np.ndarray] = []
-    golden_supplied_values: list[np.ndarray] = []
     golden_actions: list[np.ndarray] = []
     golden_targets: list[np.ndarray] = []
 
@@ -125,8 +125,12 @@ def check_parity(
             for spec in manifest.actions:
                 manager = capture.action_managers[spec.name]
                 chunk = raw_actions[spec.slice_start : spec.slice_end]
+                # On gs.device, not the CPU: a manager's buffers were placed
+                # there at build time, and process_actions indexes against them.
                 torch_chunk = torch.as_tensor(
-                    np.tile(chunk, (capture.num_envs, 1)), dtype=torch.float32
+                    np.tile(chunk, (capture.num_envs, 1)),
+                    dtype=torch.float32,
+                    device=gs.device,
                 )
                 torch_targets = manager.process_actions(torch_chunk).detach()[0]
                 numpy_targets = decoded.by_manager[spec.name]
@@ -148,13 +152,6 @@ def check_parity(
                 )
 
             golden_observations.append(numpy_obs)
-            golden_supplied_values.append(
-                np.concatenate(
-                    [observation_values[name] for name in sorted(observation_values)]
-                )
-                if observation_values
-                else np.zeros(0, dtype=np.float32)
-            )
             golden_actions.append(raw_actions)
             golden_targets.append(decoded.targets)
 
@@ -163,8 +160,4 @@ def check_parity(
         "raw_actions": np.asarray(golden_actions, dtype=np.float32),
         "joint_targets": np.asarray(golden_targets, dtype=np.float32),
     }
-    if golden_supplied_values and golden_supplied_values[0].size:
-        report.golden["supplied_values"] = np.asarray(
-            golden_supplied_values, dtype=np.float32
-        )
     return report

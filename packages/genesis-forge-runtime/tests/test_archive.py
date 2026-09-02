@@ -161,3 +161,54 @@ def test_the_fingerprint_is_read_from_the_central_directory(tmp_path):
 
     assert fingerprint(archive) != fingerprint(padded)
     assert fingerprint(archive) == fingerprint(archive)
+
+
+"""
+Surviving an interrupted unpack
+
+A robot can lose power mid-extraction. What must never happen is a half-filled
+directory with no marker: that is indistinguishable from a directory somebody else
+made, so it would be refused from then on and the bundle would be stuck.
+"""
+
+
+def test_a_crash_during_extraction_leaves_the_previous_copy_intact(tmp_path, monkeypatch):
+    import zipfile as zipfile_module
+
+    archive = an_archive(tmp_path)
+    good = load_bundle(archive)
+    fingerprint_before = (good.path / EXTRACT_MARKER).read_text()
+
+    # A new bundle at the same path, whose extraction dies part-way through.
+    pack(write_bundle(tmp_path / "src2", make_manifest(dt=0.01)), archive)
+
+    def die(self, path):
+        raise OSError("power lost")
+
+    monkeypatch.setattr(zipfile_module.ZipFile, "extractall", die)
+    with pytest.raises(MalformedBundleError):
+        load_bundle(archive)
+    monkeypatch.undo()
+
+    # The old extraction is untouched, and the next load recovers to the new one.
+    assert (good.path / EXTRACT_MARKER).read_text() == fingerprint_before
+    assert load_bundle(archive).manifest.dt == pytest.approx(0.01)
+
+
+def test_a_crash_leaves_no_directory_without_a_marker(tmp_path, monkeypatch):
+    """The state that used to be unrecoverable is never written at all."""
+    import zipfile as zipfile_module
+
+    archive = an_archive(tmp_path)
+    destination = extract_dir_for(archive)
+
+    def die(self, path):
+        raise OSError("power lost")
+
+    monkeypatch.setattr(zipfile_module.ZipFile, "extractall", die)
+    with pytest.raises(MalformedBundleError):
+        load_bundle(archive)
+    monkeypatch.undo()
+
+    assert not destination.exists(), "left a directory the next load would refuse"
+    assert load_bundle(archive).manifest.dt == pytest.approx(0.02)

@@ -18,7 +18,7 @@ Typical robot-side use::
     while True:
         obs = observation_assembler.assemble({
             "robot_ang_vel": gyro,
-            "actions": action_decoder.last_target_actions_by_manager["action_manager"],
+            "actions": action_decoder.last_raw_actions_by_manager["action_manager"],
         })
         targets = action_decoder.decode(policy(obs))
         send_to_motors(targets.by_joint)

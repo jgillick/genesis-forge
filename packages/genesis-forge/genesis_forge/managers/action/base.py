@@ -201,10 +201,18 @@ class BaseActionManager(BaseManager):
     def raw_actions(self) -> torch.Tensor:
         """
         The actions received from the policy, before being processed.
+
+        Note this is what the manager *consumed* this step: with a `delay_step`,
+        it is the action taken off the delay buffer, not the one just received.
         """
         if self._raw_actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions))
         return self._raw_actions
+
+    @property
+    def delay_step(self) -> int:
+        """How many steps the policy's actions are held before being applied."""
+        return int(self._delay_step or 0)
 
     @property
     def last_actions(self) -> torch.Tensor:
@@ -219,7 +227,7 @@ class BaseActionManager(BaseManager):
     DOF convenience wrappers
     """
 
-    def get_dofs_position(self) ->  torch.Tensor:
+    def get_dofs_position(self) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
 
@@ -241,7 +249,9 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
+    def get_dofs_velocity(
+        self, clip: tuple[float, float] | None = None
+    ) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -286,9 +296,7 @@ class BaseActionManager(BaseManager):
         """
         return {
             name: value.item()
-            for name, value in zip(
-                self.dofs.keys(), self._actions[env_idx, :]
-            )
+            for name, value in zip(self.dofs.keys(), self._actions[env_idx, :])
         }
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:

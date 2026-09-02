@@ -56,8 +56,10 @@ a path holding anything else is refused, so a mistyped destination cannot cost y
 a file.
 
 The policy keeps whatever extension you handed it, and the manifest records what
-kind of file it is — `policy.pt` and `format: "torchscript"` if that is what you
-exported. Nothing here requires ONNX.
+kind of file it is when the extension says so unambiguously — `format: "onnx"` for
+a `.onnx`. A `.pt` is left unrecorded, because it is more often a plain
+`state_dict` than a scripted module and a wrong label is worse than none. Nothing
+here requires ONNX; the runtime never loads the policy for you either way.
 
 A policy is not always one file. ONNX keeps tensors above a size threshold in a
 companion file, so `policy.onnx` can be a small skeleton whose weights live beside
@@ -264,6 +266,23 @@ targets.
 
 If you leave one out, the assembler raises and names it — it never quietly feeds
 zeros — so a forgotten feedback wire fails on the bench rather than on the robot.
+
+!!! warning "If your action manager has a `delay_step`"
+    A manager records its raw actions *after* taking them off its delay buffer, so
+    `current_actions(action_manager=mgr)` observed the **delayed** action during
+    training. On the robot the decoder does the same — but only when you construct
+    it with `apply_delay=True`:
+
+    ```python
+    action_decoder = bundle.create_action_decoder(apply_delay=True)
+    ```
+
+    Left off (the default, because real hardware supplies its own latency), the
+    feedback is the action you just passed in, and the policy sees something
+    training never showed it. `bundle.manifest.actions[i].delay_step` tells you
+    whether this applies; `decoder.trained_delay_steps` reports it at runtime.
+    Note this affects only the per-manager form — plain `current_actions()` reads
+    `env.actions`, which is undelayed on both sides.
 
 A few things the runtime does for you:
 

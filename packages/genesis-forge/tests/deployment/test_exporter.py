@@ -368,7 +368,11 @@ def a_torchscript_policy(tmp_path):
 
 
 def test_a_torchscript_policy_keeps_its_extension(deployable_env, tmp_path):
-    """The bundle must not rename a torch archive to policy.onnx."""
+    """The bundle must not rename a torch archive to policy.onnx.
+
+    Its format stays unrecorded: a .pt is more often a state_dict than a scripted
+    module, and guessing wrong is worse than saying nothing.
+    """
     policy = a_torchscript_policy(tmp_path)
 
     path = export(
@@ -377,7 +381,7 @@ def test_a_torchscript_policy_keeps_its_extension(deployable_env, tmp_path):
 
     bundle = load_bundle(path)
     assert bundle.policy_path.name == "policy.pt"
-    assert bundle.manifest.policy.format == "torchscript"
+    assert bundle.manifest.policy.format is None
 
 
 def test_an_onnx_policy_is_recorded_as_onnx(deployable_env, tmp_path):
@@ -394,23 +398,23 @@ def test_an_onnx_policy_is_recorded_as_onnx(deployable_env, tmp_path):
 
 
 def test_describe_reports_the_policy_format(deployable_env, tmp_path):
-    policy = a_torchscript_policy(tmp_path)
-    path = export(
+    policy = tmp_path / "trained.onnx"
+    policy.write_bytes(b"\x08\x07 graph")
+    bundle = export(
         deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    ).path
+    )
 
-    summary = load_bundle(path).describe()
-
-    assert "policy.pt (torchscript)" in summary
+    assert "policy.onnx (onnx)" in bundle.describe()
 
 
-"""
-Provenance
+def test_an_ambiguous_extension_is_described_as_unknown(deployable_env, tmp_path):
+    """Better than telling an operator it holds something it may not."""
+    policy = a_torchscript_policy(tmp_path)
+    bundle = export(
+        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
+    )
 
-Which export produced the bundle a robot is running is the first question asked
-when it misbehaves, so the training framework is identified from the reference
-policy rather than being declared separately.
-"""
+    assert "policy.pt (unknown format)" in bundle.describe()
 
 
 def test_additional_provenance_is_recorded_verbatim(deployable_env, tmp_path):
@@ -830,3 +834,25 @@ def test_unpacked_on_a_directory_bundle_hands_back_the_directory_itself(
         assert directory == bundle.path
 
     assert directory.is_dir()  # still there afterwards
+
+
+def test_a_disabled_observation_manager_is_refused(deployable_env, tmp_path):
+    """Training feeds zeros through a disabled manager; the bundle would not."""
+    deployable_env.observation_manager.enabled = False
+
+    with pytest.raises(ExportError) as error:
+        export(deployable_env, tmp_path / "bundle", verbose=False)
+
+    assert "disabled" in str(error.value)
+
+
+def test_a_per_element_scale_is_refused_with_a_usable_message(deployable_env, tmp_path):
+    """The manifest holds one scale per entry; a list would silently not fit."""
+    deployable_env.observation_manager.cfg["gyro"].scale = [1.0, 2.0, 3.0]
+
+    with pytest.raises(ExportError) as error:
+        export(deployable_env, tmp_path / "bundle", verbose=False)
+
+    message = str(error.value)
+    assert "per-element scale" in message
+    assert "gyro" in message

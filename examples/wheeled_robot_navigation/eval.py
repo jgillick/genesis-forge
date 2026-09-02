@@ -6,12 +6,12 @@ import sys
 
 import genesis as gs
 import torch
-from environment import WheeledRobotObstaclesEnv
+from environment import WheeledRobotNavigationEnv
 from rsl_rl.runners import OnPolicyRunner
 
 from genesis_forge.wrappers import RslRlWrapper
 
-EXPERIMENT_NAME = "wheeled-robot-obstacles"
+EXPERIMENT_NAME = "wheeled-robot-navigation"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
@@ -52,7 +52,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = WheeledRobotObstaclesEnv(num_envs=1, headless=False)
+    env = WheeledRobotNavigationEnv(num_envs=1, headless=False)
     env = RslRlWrapper(env)
     env.build()
 

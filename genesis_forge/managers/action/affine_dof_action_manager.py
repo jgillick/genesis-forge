@@ -32,6 +32,7 @@ class AffineDofActionManager(BaseActionManager):
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         actuator_joints: Which joints of the actuator manager that this action manager will control.
                          These can be full names or regular expressions.
+        action_groups: Drive several joints from a single action. See `BaseActionManager`.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
     """
@@ -41,12 +42,14 @@ class AffineDofActionManager(BaseActionManager):
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
+        action_groups: list[list[str] | str] | None = None,
         delay_step: int = 0,
     ):
         super().__init__(
             env,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
+            action_groups=action_groups,
             delay_step=delay_step,
         )
         self._scale_values: torch.Tensor | None = None
@@ -109,11 +112,11 @@ class AffineDofActionManager(BaseActionManager):
             A list of values for the DOF indices.
             For example, for 4 DOFs: [50, 50, 50, 50]
         """
-        is_set = [False] * self.num_actions
+        is_set = [False] * self.num_dofs
         dof_names = list(self.dofs.keys())
         if output is None:
             output = torch.zeros(
-                self.num_actions, device=gs.device, dtype=gs.tc_float
+                self.num_dofs, device=gs.device, dtype=gs.tc_float
             ).fill_(default_value)
         for pattern, value in values.items():
             found = False

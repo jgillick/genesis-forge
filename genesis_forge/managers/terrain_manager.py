@@ -82,6 +82,11 @@ class TerrainManager(BaseManager):
         """Cache the terrain height field"""
         self._map_terrain()
 
+    @property
+    def terrain(self) -> RigidEntity:
+        """The terrain entity this manager describes."""
+        return self._terrain
+
     def get_bounds(
         self, subterrain: str | None = None
     ) -> tuple[float, float, float, float]:

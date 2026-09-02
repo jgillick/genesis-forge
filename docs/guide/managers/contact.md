@@ -121,7 +121,7 @@ class MyEnv(ManagedEnvironment):
 
 Leaving `link_names` unset tracks all of the entity's links.
 
-See [examples/wheeled_robot_obstacles](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_obstacles) for this in a full environment.
+See [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation) for this in a full environment.
 
 ## Contact Visualization
 

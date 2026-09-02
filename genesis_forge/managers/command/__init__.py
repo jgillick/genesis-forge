@@ -1,9 +1,9 @@
 from .command_manager import CommandManager
-from .position_command import PositionCommandManager
+from .pose_2d_command import Pose2dCommand
 from .velocity_command import VelocityCommandManager
 
 __all__ = [
     "CommandManager",
-    "PositionCommandManager",
+    "Pose2dCommand",
     "VelocityCommandManager",
 ]

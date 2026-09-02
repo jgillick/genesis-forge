@@ -560,3 +560,88 @@ def test_delay_buffer_holds_a_copy_of_the_actions(env):
 
     mgr.step(torch.zeros((env.num_envs, 2)))
     assert torch.equal(mgr.actions, torch.full((env.num_envs, 2), 0.1))
+
+
+"""
+BaseActionManager -- action groups
+"""
+
+
+def test_action_groups_give_one_action_per_group(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        action_groups=[["FL_hip", "FL_knee"], ["FR_hip"]],
+    )
+    mgr.build()
+
+    # Three DOFs, but the policy only supplies two values
+    assert mgr.num_dofs == 3
+    assert mgr.num_actions == 2
+    assert mgr.action_space.shape == (2,)
+
+
+def test_action_groups_send_one_action_to_every_dof_in_the_group(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        action_groups=[["FL_hip", "FL_knee"], ["FR_hip"]],
+    )
+    mgr.build()
+
+    mgr.step(torch.tensor([[0.5, -0.5]] * env.num_envs))
+
+    # The first action drives both FL joints, the second drives FR on its own
+    assert torch.allclose(
+        mgr.actions, torch.tensor([[0.5, 0.5, -0.5]] * env.num_envs)
+    )
+
+
+def test_action_groups_accept_regular_expressions(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env,
+        actuator_manager=actuator,
+        action_groups=["FL_.*", "FR_.*"],
+    )
+    mgr.build()
+
+    mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
+
+    assert torch.allclose(
+        mgr.actions, torch.tensor([[1.0, 1.0, 2.0]] * env.num_envs)
+    )
+
+
+def test_action_groups_reject_a_joint_left_out_of_every_group(env):
+    """Silently leaving a joint undriven would be a very quiet bug."""
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env, actuator_manager=actuator, action_groups=[["FL_hip", "FL_knee"]]
+    )
+
+    with pytest.raises(ValueError, match="not in any action group"):
+        mgr.build()
+
+
+def test_action_groups_reject_a_joint_in_two_groups(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(
+        env, actuator_manager=actuator, action_groups=["FL_.*", ".*_hip"]
+    )
+
+    with pytest.raises(ValueError, match="more than one action group"):
+        mgr.build()
+
+
+def test_without_action_groups_every_dof_keeps_its_own_action(env):
+    actuator = make_actuator_manager()
+    mgr = VelocityActionManager(env, actuator_manager=actuator)
+    mgr.build()
+
+    assert mgr.num_actions == mgr.num_dofs == 3
+
+    mgr.step(torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs))
+    assert torch.allclose(mgr.actions, torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs))

@@ -21,6 +21,13 @@ class BaseActionManager(BaseManager):
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         actuator_joints: Which joints of the actuator manager that this action manager will control.
                          These can be full names or regular expressions.
+        action_groups: Drive several joints from a single action, given as a list of groups,
+                       where each group is the joint names (or regular expressions) that one
+                       action controls. Use this when the joints are mechanically tied
+                       together and steering them apart is meaningless -- the wheels down one
+                       side of a skid-steer robot, for example, where one action per side
+                       matches how the robot actually moves. Every controlled joint must
+                       appear in exactly one group. Defaults to None: one action per joint.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
     """
@@ -30,6 +37,7 @@ class BaseActionManager(BaseManager):
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
+        action_groups: list[list[str] | str] | None = None,
         delay_step: int = 0,
     ):
         super().__init__(env, type="action")
@@ -42,6 +50,8 @@ class BaseActionManager(BaseManager):
         self._actuator_joints = (
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
+        self._action_groups = action_groups
+        self._dof_action_idx: torch.Tensor | None = None
         self._dofs: dict[int, str] = {}
         self._actuator_dof_filter: torch.Tensor = None
 
@@ -62,7 +72,18 @@ class BaseActionManager(BaseManager):
     @property
     def num_actions(self) -> int:
         """
-        Get the number of actions.
+        The number of values the policy provides for this manager on each step. This is
+        one per controlled DOF, unless `action_groups` ties several DOFs to one action.
+        """
+        if self._action_groups is not None:
+            return len(self._action_groups)
+        return self.num_dofs
+
+    @property
+    def num_dofs(self) -> int:
+        """
+        The number of DOFs this manager drives. The same as `num_actions` unless
+        `action_groups` is used.
         """
         return len(self.dofs_idx)
 
@@ -106,7 +127,7 @@ class BaseActionManager(BaseManager):
         """
         if self._actions is None:
             return torch.zeros(
-                (self.env.num_envs, self.num_actions), device=gs.device
+                (self.env.num_envs, self.num_dofs), device=gs.device
             )
         return self._actions
 
@@ -128,7 +149,7 @@ class BaseActionManager(BaseManager):
         """
         if self._last_actions is None:
             return torch.zeros(
-                (self.env.num_envs, self.num_actions), device=gs.device
+                (self.env.num_envs, self.num_dofs), device=gs.device
             )
         return self._last_actions
 
@@ -197,7 +218,7 @@ class BaseActionManager(BaseManager):
         """
         if self._actions is None:
             return torch.zeros(
-                (self.env.num_envs, self.num_actions), device=gs.device
+                (self.env.num_envs, self.num_dofs), device=gs.device
             )
         return self._actions
 
@@ -257,12 +278,61 @@ class BaseActionManager(BaseManager):
             index_filter, device=gs.device, dtype=gs.tc_int
         )
 
+        self._build_action_groups()
+
         # Seed the action delay buffer with zero actions, so the first `delay_step`
         # steps send no-op actions while the real ones are still queued
         self._action_delay_buffer = [
             torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
             for _ in range(self._delay_step)
         ]
+
+    def _build_action_groups(self):
+        """
+        Work out which action drives each controlled DOF, so a step's actions can be
+        handed out to the DOFs they belong to.
+
+        The result is one action index per DOF, in the manager's DOF order, which turns
+        the hand-out into a single lookup.
+        """
+        if self._action_groups is None:
+            return
+
+        dof_names = list(self._dofs.keys())
+        action_of_dof: list[int | None] = [None] * len(dof_names)
+
+        for action_idx, group in enumerate(self._action_groups):
+            patterns = [group] if isinstance(group, str) else group
+            for pattern in patterns:
+                for dof_idx, name in enumerate(dof_names):
+                    if name != pattern and not re.match(f"^{pattern}$", name):
+                        continue
+                    if action_of_dof[dof_idx] is not None:
+                        raise ValueError(
+                            f"Joint '{name}' is in more than one action group. Each joint "
+                            "must be driven by exactly one action."
+                        )
+                    action_of_dof[dof_idx] = action_idx
+
+        ungrouped = [name for name, a in zip(dof_names, action_of_dof) if a is None]
+        if ungrouped:
+            raise ValueError(
+                f"These joints are not in any action group, so nothing would drive them: "
+                f"{ungrouped}. Every controlled joint must appear in exactly one group."
+            )
+
+        self._dof_action_idx = torch.tensor(
+            action_of_dof, device=gs.device, dtype=torch.long
+        )
+
+    def _actions_for_dofs(self, actions: torch.Tensor) -> torch.Tensor:
+        """
+        Hand each DOF the action that drives it, shape (num_envs, num_dofs). Without
+        `action_groups` every DOF has its own action already, and this is a no-op.
+        """
+        if self._dof_action_idx is None:
+            return actions
+        return actions[:, self._dof_action_idx]
 
     def step(self, actions: torch.Tensor) -> None:
         """
@@ -273,16 +343,20 @@ class BaseActionManager(BaseManager):
             self._action_delay_buffer.insert(0, actions.clone())
             actions = self._action_delay_buffer.pop()
 
-        # Copy the actions into the manager buffers
+        # Copy the actions into the manager buffer
+        self._raw_actions = actions
+
+        # Hand each DOF the action driving it, which is every action unless the manager
+        # groups several DOFs onto one
+        dof_actions = self._actions_for_dofs(actions)
+
         if self._actions is None:
-            self._raw_actions = torch.zeros_like(actions, device=gs.device)
-            self._actions = torch.zeros_like(actions, device=gs.device)
-            self._last_actions = torch.zeros_like(actions, device=gs.device)
-        self._raw_actions[:] = actions
+            self._actions = torch.zeros_like(dof_actions, device=gs.device)
+            self._last_actions = torch.zeros_like(dof_actions, device=gs.device)
         self._last_actions[:] = self._actions[:]
 
         # Process the actions
-        self._actions[:] = self.process_actions(self._raw_actions[:])
+        self._actions[:] = self.process_actions(dof_actions)
 
         return self._actions
 

@@ -179,10 +179,22 @@ class FakeRaycasterSensor:
 
 def test_raycaster_distance_min_reduces_to_nearest_reading(env):
     distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]], [[1.0, 1.5], [2.5, 3.5]]])
-    fn = observations.raycaster_distance(sensor=FakeRaycasterSensor(distances))
+    fn = observations.raycaster_distance(
+        sensor=FakeRaycasterSensor(distances), reduce="min"
+    )
     fn.context(env)
     fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[0.5], [1.0]]))
+
+
+def test_raycaster_distance_defaults_to_keeping_every_ray(env):
+    """The lossy reduction is opt-in: a default that quietly discards which direction a
+    reading came from is very hard to notice from the outside."""
+    distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]]])
+    fn = observations.raycaster_distance(sensor=FakeRaycasterSensor(distances))
+    fn.context(env)
+    fn.safe_build()
+    assert torch.equal(fn(env), torch.tensor([[2.0, 3.0, 0.5, 4.0]]))
 
 
 def test_raycaster_distance_flatten_returns_all_rays(env):
@@ -198,7 +210,9 @@ def test_raycaster_distance_flatten_returns_all_rays(env):
 def test_raycaster_distance_normalizes_by_sensor_max_range(env):
     distances = torch.tensor([[[2.0, 4.0]]])
     fn = observations.raycaster_distance(
-        sensor=FakeRaycasterSensor(distances, max_range=4.0), normalize=True
+        sensor=FakeRaycasterSensor(distances, max_range=4.0),
+        reduce="min",
+        normalize=True,
     )
     fn.context(env)
     fn.safe_build()

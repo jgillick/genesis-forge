@@ -1,4 +1,7 @@
+import math
+
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
@@ -59,7 +62,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="./model/Freenove4WD_platform.xml",
+                file="./model/Freenove4WD.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
@@ -117,6 +120,22 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             self,
             scale=5.0,
             actuator_manager=self.wheel_motors,
+        )
+
+        ##
+        # Head servos
+        self.head_sevos = ActuatorManager(
+            self,
+            joint_names=[
+                "servo-2",  # left/right
+                "servo_horn-1",  # up/down
+            ],
+            default_pos={
+                "servo-2": 0.0,  # facing straight ahead
+                "servo_horn-1": 0.0,
+            },
+            kp=8.0,
+            kv=0.4,
         )
 
         ##
@@ -224,3 +243,10 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 },
             },
         )
+
+    def step(self, actions: torch.Tensor):
+        # Keep the head from drooping by keeping the servos at position 0.0
+        # This is purely cosmetic, and does not affect the training at all
+        self.head_sevos.control_dofs_position(torch.zeros((self.num_envs, 2), device=gs.device))
+
+        return super().step(actions)

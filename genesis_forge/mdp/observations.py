@@ -243,15 +243,26 @@ class raycaster_distance(MdpFn):
     Distance reading(s) from a raycaster-based sensor (`gs.sensors.Raycaster`, `gs.sensors.Lidar`,
     or `gs.sensors.DepthCamera`).
 
-    With ``reduce="min"``, returns the smallest distance across all of the sensor's rays,
-    which approximates a sensor that reports its nearest echo, like an ultrasonic range sensor.
-    With ``reduce="flatten"``, returns all ray distances as a flat vector — for example, a
-    depth camera image as an observation.
+    With ``reduce="flatten"`` (the default), returns every ray distance as a flat vector,
+    keeping which direction each reading came from — what a lidar, depth camera, or any
+    multi-ray pattern is for.
+
+    With ``reduce="min"``, returns only the smallest distance across all of the sensor's
+    rays, which models a sensor that reports a single nearest echo, like an ultrasonic
+    range finder.
+
+    !!! warning "``min`` throws away direction"
+        A single nearest distance says *something is this far away* without saying where
+        it is. A policy given only that cannot tell an obstacle dead ahead from one just
+        off to the side, so it cannot know which way to steer around it. Use ``min`` when
+        the real sensor genuinely reports one number, and expect to give the policy some
+        other way to work out direction -- an aimable sensor, more sensors, or a history
+        of readings to infer it from.
 
     Args:
         sensor: The raycaster sensor to read from, as returned by `scene.add_sensor()`.
-        reduce: How to reduce the ray distances: "min" for the nearest reading (default),
-                "flatten" for all readings as a flat vector.
+        reduce: How to reduce the ray distances: "flatten" (default) for every reading as a
+                flat vector, "min" for the nearest reading alone.
         normalize: Divide the distances by the sensor's max range, scaling them to [0, 1].
         max_range: The range to normalize by. If not set, it is read from the sensor's options.
 
@@ -273,7 +284,9 @@ class raycaster_distance(MdpFn):
             self,
             cfg={
                 "ultrasonic": {
-                    "fn": observations.raycaster_distance(sensor=self.ultrasonic, normalize=True),
+                    "fn": observations.raycaster_distance(
+                        sensor=self.ultrasonic, reduce="min", normalize=True
+                    ),
                 },
             },
         )
@@ -283,7 +296,7 @@ class raycaster_distance(MdpFn):
     """
 
     sensor: gs.sensors.RaycasterSensor
-    reduce: Literal["min", "flatten"] = "min"
+    reduce: Literal["min", "flatten"] = "flatten"
     normalize: bool = False
     max_range: float | None = None
 

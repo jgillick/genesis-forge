@@ -130,7 +130,7 @@ nav:
         - api/managers/command/index.md
         - CommandManager: api/managers/command/command.md
         - VelocityCommandManager: api/managers/command/velocity.md
-        - PositionCommandManager: api/managers/command/position.md
+        - Pose2dCommand: api/managers/command/pose_2d.md
     - MDP:
       - api/mdp/index.md
       - Observations: api/mdp/observations.md

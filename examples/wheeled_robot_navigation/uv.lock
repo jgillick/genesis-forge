@@ -819,12 +819,13 @@ dev = [
 ]
 
 [[package]]
-name = "genesis-forge-wheeled-robot-obstacles-example"
+name = "genesis-forge-wheeled-robot-navigation-example"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "genesis-forge" },
     { name = "rsl-rl-lib" },
+    { name = "setuptools" },
     { name = "tensorboard" },
 ]
 
@@ -832,6 +833,7 @@ dependencies = [
 requires-dist = [
     { name = "genesis-forge", directory = "../../" },
     { name = "rsl-rl-lib", specifier = "~=5.0" },
+    { name = "setuptools", specifier = ">=84.0.0" },
     { name = "tensorboard" },
 ]
 

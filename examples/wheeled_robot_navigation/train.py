@@ -6,7 +6,7 @@ import shutil
 
 import genesis as gs
 import torch
-from environment import WheeledRobotGoalNavEnv
+from environment import WheeledRobotNavigationEnv
 from rsl_rl.runners import OnPolicyRunner
 
 from genesis_forge.wrappers import (
@@ -14,7 +14,7 @@ from genesis_forge.wrappers import (
     VideoWrapper,
 )
 
-EXPERIMENT_NAME = "wheeled-robot-goal-nav"
+EXPERIMENT_NAME = "wheeled-robot-navigation"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=2048)
@@ -30,7 +30,7 @@ def training_cfg():
             "class_name": "PPO",
             "clip_param": 0.2,
             "desired_kl": 0.01,
-            "entropy_coef": 0.01,
+            "entropy_coef": 0.002,
             "gamma": 0.99,
             "lam": 0.95,
             "learning_rate": 0.001,
@@ -44,8 +44,11 @@ def training_cfg():
             "symmetry_cfg": None,
         },
         "actor": {
-            "class_name": "MLPModel",
-            "hidden_dims": [512, 256, 128],
+            # "class_name": "MLPModel",
+            "class_name": "RNNModel",
+            "rnn_type": "gru",
+            "rnn_hidden_dim": 256,
+            "hidden_dims": [256, 128],
             "activation": "elu",
             "obs_normalization": False,
             "distribution_cfg": {
@@ -54,13 +57,16 @@ def training_cfg():
             },
         },
         "critic": {
-            "class_name": "MLPModel",
-            "hidden_dims": [512, 256, 128],
+            # "class_name": "MLPModel",
+            "class_name": "RNNModel",
+            "rnn_type": "gru",
+            "rnn_hidden_dim": 256,
+            "hidden_dims": [256, 128],
             "activation": "elu",
             "obs_normalization": False,
         },
         "seed": 1,
-        "num_steps_per_env": 24,
+        "num_steps_per_env": 48,
         "save_interval": 100,
         "obs_groups": {"actor": ["policy"], "critic": ["policy"]},
     }
@@ -90,12 +96,12 @@ def main():
         pickle.dump([cfg], f)
 
     # Create environment
-    env = WheeledRobotGoalNavEnv(num_envs=args.num_envs, headless=True)
+    env = WheeledRobotNavigationEnv(num_envs=args.num_envs, headless=True)
 
     # Record videos in regular intervals
     env = VideoWrapper(
         env,
-        video_length_sec=12,
+        video_length_sec=30,
         out_dir=os.path.join(log_path, "videos"),
         episode_trigger=lambda episode_id: episode_id % 2 == 0,
     )

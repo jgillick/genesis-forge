@@ -129,7 +129,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         Define the position limits for the DOFs
         """
         lower, upper = self.get_dofs_limits()
-        is_set = [False] * self.num_actions
+        is_set = [False] * self.num_dofs
         dof_names = list[str](self.dofs.keys())
         for pattern, value in self._limit_cfg.items():
             found = False

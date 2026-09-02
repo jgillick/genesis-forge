@@ -28,6 +28,9 @@ class VelocityActionManager(AffineDofActionManager):
         actuator_manager: The actuator manager which is used to setup and control the DOF joints.
         actuator_joints: Which joints of the actuator manager that this action manager will control.
                          These can be full names or regular expressions.
+        action_groups: Drive several joints from a single action, for joints that are
+                       mechanically tied together -- the wheels down one side of a
+                       skid-steer robot, for example. See `BaseActionManager`.
         scale: How much to scale the action.
         offset: Offset factor for the action.
         delay_step: The number of steps to delay the actions for.
@@ -59,6 +62,7 @@ class VelocityActionManager(AffineDofActionManager):
         clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
+        action_groups: list[list[str] | str] | None = None,
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
         delay_step: int = 0,
@@ -68,6 +72,7 @@ class VelocityActionManager(AffineDofActionManager):
             delay_step=delay_step,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
+            action_groups=action_groups,
         )
         self._clip_cfg = ensure_dof_pattern(clip if clip is not None else {})
         self._scale_cfg = ensure_dof_pattern(scale)
@@ -87,7 +92,7 @@ class VelocityActionManager(AffineDofActionManager):
         if self._clip_cfg is not None:
             # Default clip values to +/-inf (unbounded)
             self._clip_values = torch.full(
-                (self.num_actions, 2), float("inf"), device=gs.device, dtype=gs.tc_float
+                (self.num_dofs, 2), float("inf"), device=gs.device, dtype=gs.tc_float
             )
             self._clip_values[:, 0] = float("-inf")
 

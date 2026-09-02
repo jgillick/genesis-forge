@@ -16,12 +16,13 @@ from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
+    BaseActionManager,
     CommandManager,
     ContactManager,
     EntityManager,
     MdpFn,
+    Pose2dCommand,
     PositionActionManager,
-    PositionCommandManager,
     TerrainManager,
     VelocityCommandManager,
 )
@@ -308,16 +309,48 @@ class action_rate_l2(MdpFn):
     """
     Penalize the rate of change of the actions using L2 squared kernel.
 
+    Args:
+        action_manager: Only count the actions belonging to this action manager, instead of
+                        every action the policy produces. Use this when part of the robot is
+                        *meant* to keep moving -- a sensor being swept around to look for
+                        obstacles, say -- where penalizing its changes works against the
+                        behavior you are trying to get. Defaults to None: every action counts.
+
     Returns:
-        torch.Tensor: Penalty for changes in actions
+        torch.Tensor: Penalty for changes in actions, shape (num_envs,)
     """
 
+    action_manager: BaseActionManager = None
+
+    def build(self):
+        self._action_slice = slice(None)
+        if self.action_manager is not None:
+            self._action_slice = self._find_action_slice()
+
+    def _find_action_slice(self) -> slice:
+        """
+        Which part of the environment's action vector belongs to `action_manager`.
+
+        The environment hands each action manager its own slice of the policy's output,
+        in the order the managers were created, so the slice is found by counting past
+        the managers created before this one.
+        """
+        start = 0
+        for manager in self.env.managers["action"]:
+            if manager is self.action_manager:
+                return slice(start, start + manager.num_actions)
+            start += manager.num_actions
+        raise ValueError(
+            "The action_manager passed to action_rate_l2 is not registered with this "
+            "environment, so there is no way to tell which actions belong to it."
+        )
+
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        actions = env.actions
         last_actions = env.last_actions
         if last_actions is None:
-            return torch.zeros_like(actions, device=gs.device)
-        return torch.sum(torch.square(last_actions - actions), dim=1)
+            return torch.zeros(env.num_envs, device=gs.device)
+        change = last_actions[:, self._action_slice] - env.actions[:, self._action_slice]
+        return torch.sum(torch.square(change), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -663,7 +696,7 @@ class stopped_dof_velocity_l2(MdpFn):
 
 
 """
-Position Command Rewards
+Pose Command Rewards
 """
 
 
@@ -676,8 +709,17 @@ class position_tracking(MdpFn):
     :class:`position_progress` to also reward moving toward the goal, which gives the
     policy a signal even when it is still far away.
 
+    !!! warning "Not for goals that are replaced on arrival"
+        This pays every step for *being* near the goal, so an entity can earn it by
+        parking just outside the reach threshold. If the command manager replaces the
+        goal on arrival (`resample_on_reached`), that parking spot can easily be worth
+        more than arriving -- the entity keeps the reward instead of trading it for one
+        bonus and a goal that jumps out of reach. In that setup prefer
+        :class:`position_progress`, which pays for closing the distance and so pays an
+        entity that stands still exactly nothing.
+
     Args:
-        position_cmd_manager: The position command manager holding the goal position.
+        pose_cmd_manager: The pose command manager holding the goal position.
         sensitivity: A lower value means the reward is more sensitive to the distance.
                      If not defined, the sensitivity will be derived from the command manager's range on every step
                      using the formulation: (0.5 * max_command) ** 2, where max_command is the
@@ -687,11 +729,11 @@ class position_tracking(MdpFn):
         torch.Tensor: Reward for proximity to the goal position, shape (num_envs,)
     """
 
-    position_cmd_manager: PositionCommandManager
+    pose_cmd_manager: Pose2dCommand
     sensitivity: float | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        distance = self.position_cmd_manager.distance_to_goal
+        distance = self.pose_cmd_manager.distance_to_goal
         return torch.exp(-torch.square(distance) / self._get_sensitivity())
 
     def _get_sensitivity(self) -> float:
@@ -700,10 +742,75 @@ class position_tracking(MdpFn):
             return self.sensitivity
 
         # The furthest goal that can be sampled from the command manager's current range
-        position_range = self.position_cmd_manager.range
+        position_range = self.pose_cmd_manager.range
         max_x = max(abs(v) for v in position_range["x"])
         max_y = max(abs(v) for v in position_range["y"])
         return _calculate_tracking_sensitivity(math.hypot(max_x, max_y))
+
+
+@dataclass(kw_only=True, eq=False)
+class heading_tracking(MdpFn):
+    """
+    Reward for facing the direction the goal pose asks for, as the entity comes in to land.
+
+    The reward fades out with distance from the goal, so it is only really worth earning
+    on the final approach. Without that fade, facing the right way pays just as well from
+    across the map as it does at the goal, and the cheapest way to collect it is to stop
+    and turn on the spot instead of driving on -- which fights the rewards for closing
+    the distance. Fading it out means the only way to collect the heading reward is to
+    get to the goal first, and the entity is encouraged to arrive already lined up.
+
+    !!! warning "Not for goals that are replaced on arrival"
+        The fade limits *where* this can be collected from, but it still pays every step
+        for *being* lined up, so an entity can park near the goal and hold the reward
+        rather than arrive. Where the goal is replaced on arrival
+        (`resample_on_reached`), prefer :class:`heading_progress`, which pays for turning
+        toward the goal heading and so pays an entity that stands still nothing at all.
+
+    Args:
+        pose_cmd_manager: The pose command manager holding the goal heading.
+        sensitivity: A lower value means the reward is more sensitive to the heading error.
+                     If not defined, it is derived the same way as :class:`position_tracking`,
+                     from the furthest the entity could ever be from the goal heading.
+        matters_within: The distance (in meters) from the goal over which the heading starts
+                        to matter. Defaults to three times the command manager's
+                        `goal_reached_threshold`: near enough to the goal that the entity is
+                        lining up to arrive, rather than still travelling.
+
+    Returns:
+        torch.Tensor: Reward for facing the goal heading near the goal, shape (num_envs,)
+    """
+
+    pose_cmd_manager: Pose2dCommand
+    sensitivity: float | None = None
+    matters_within: float | None = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        heading_error = self.pose_cmd_manager.heading_error
+        facing_the_right_way = torch.exp(
+            -torch.square(heading_error) / self._get_sensitivity()
+        )
+
+        # Fade the reward out with distance, so heading only pays near the goal
+        distance = self.pose_cmd_manager.distance_to_goal
+        nearness = torch.exp(-torch.square(distance) / self._get_fade_distance() ** 2)
+
+        return facing_the_right_way * nearness
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # However the heading is commanded, the entity is never more than half a turn
+        # away from it, since it turns whichever way is closer
+        return _calculate_tracking_sensitivity(math.pi)
+
+    def _get_fade_distance(self) -> float:
+        """Get or calculate the distance over which the heading reward fades out"""
+        if self.matters_within is not None:
+            return self.matters_within
+        return 3.0 * self.pose_cmd_manager.goal_reached_threshold
 
 
 @dataclass(kw_only=True, eq=False)
@@ -716,13 +823,13 @@ class position_progress(MdpFn):
     step of an episode, and any step where the goal was resampled.
 
     Args:
-        position_cmd_manager: The position command manager holding the goal position.
+        pose_cmd_manager: The pose command manager holding the goal position.
 
     Returns:
         torch.Tensor: Approach speed toward the goal, shape (num_envs,)
     """
 
-    position_cmd_manager: PositionCommandManager
+    pose_cmd_manager: Pose2dCommand
 
     def build(self):
         self._prev_distance = torch.zeros(self.env.num_envs, device=gs.device)
@@ -734,10 +841,10 @@ class position_progress(MdpFn):
         self._has_prev_distance[envs_idx] = False
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        distance = self.position_cmd_manager.distance_to_goal
+        distance = self.pose_cmd_manager.distance_to_goal
 
         # The previous distance was measured against a different goal, so it can't be compared
-        self._has_prev_distance &= ~self.position_cmd_manager.resampled_last_step
+        self._has_prev_distance &= ~self.pose_cmd_manager.resampled_last_step
 
         progress = (self._prev_distance - distance) / env.dt
         progress = progress * self._has_prev_distance
@@ -746,6 +853,87 @@ class position_progress(MdpFn):
         self._has_prev_distance[:] = True
 
         return progress
+
+
+@dataclass(kw_only=True, eq=False)
+class heading_progress(MdpFn):
+    """
+    Reward for turning the right way, measured as the speed (rad/s) at which the entity
+    is closing the angle. Turning the wrong way is penalized.
+
+    This is the heading counterpart to :class:`position_progress`, and like it, pays for
+    *changing* rather than for *being*: an entity sitting still earns exactly nothing,
+    however well it is lined up. Over a whole goal it can only ever add up to the angle
+    it started with, so there is no way to farm it by turning back and forth.
+
+    Which angle counts depends on `lines_up_within`. By default it is always the goal
+    heading -- the way to face on arrival. That is the natural choice for something that
+    can travel in one direction while facing another, like a legged or omnidirectional
+    robot. Anything that has to point where it is going, like a car or a differential
+    drive robot, cannot chase the goal heading from far away without driving sideways to
+    reach the goal, which it physically cannot do. Setting `lines_up_within` makes the
+    reward ask for the bearing while there is still ground to cover, and hand over to the
+    goal heading on the final approach.
+
+    Steps that don't have a previous angle to compare against are skipped: the first step
+    of an episode, and any step where the goal was resampled.
+
+    Args:
+        pose_cmd_manager: The pose command manager holding the goal pose.
+        lines_up_within: How close to the goal (in meters) the entity should stop steering
+                         toward the goal and start lining up with the goal heading. The
+                         changeover is gradual, so the reward doesn't jump as the entity
+                         closes in. Defaults to None: the goal heading is asked for at
+                         every distance.
+
+    Returns:
+        torch.Tensor: Turning speed toward the angle being asked for, shape (num_envs,)
+    """
+
+    pose_cmd_manager: Pose2dCommand
+    lines_up_within: float | None = None
+
+    def build(self):
+        self._prev_error = torch.zeros(self.env.num_envs, device=gs.device)
+        self._has_prev_error = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_error[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        error = self._tracked_error()
+
+        # The previous error was measured against a different goal, so it can't be compared
+        self._has_prev_error &= ~self.pose_cmd_manager.resampled_last_step
+
+        progress = (self._prev_error - error) / env.dt
+        progress = progress * self._has_prev_error
+
+        self._prev_error[:] = error
+        self._has_prev_error[:] = True
+
+        return progress
+
+    def _tracked_error(self) -> torch.Tensor:
+        """
+        The angle the entity is being asked to close, in radians.
+
+        With `lines_up_within` set, that is the bearing to the goal while the entity is
+        still travelling, becoming the goal heading as it arrives. The two are mixed
+        rather than switched between, so the reward changes smoothly on the way in.
+        """
+        heading_error = self.pose_cmd_manager.heading_error.abs()
+        if self.lines_up_within is None:
+            return heading_error
+
+        bearing_error = self.pose_cmd_manager.bearing_error.abs()
+        distance = self.pose_cmd_manager.distance_to_goal
+
+        # 1 at the goal, fading to 0 well beyond `lines_up_within`
+        lining_up = torch.exp(-torch.square(distance) / self.lines_up_within**2)
+        return lining_up * heading_error + (1.0 - lining_up) * bearing_error
 
 
 @dataclass(kw_only=True, eq=False)
@@ -758,22 +946,76 @@ class reached_goal(MdpFn):
     per goal, since the goal is replaced immediately after the rewards are computed.
 
     Args:
-        position_cmd_manager: The position command manager holding the goal position.
-        threshold: The distance (in meters) at which the goal counts as reached.
-                   Defaults to the command manager's `goal_reached_threshold`.
+        pose_cmd_manager: The pose command manager holding the goal pose.
+        threshold: Pay the bonus within this distance (in meters) of the goal, ignoring the
+                   goal heading. Defaults to None: the bonus is paid whenever the command
+                   manager itself counts the goal as reached, which is also when it hands
+                   out a new one.
 
     Returns:
         torch.Tensor: 1.0 for each environment that has reached its goal, shape (num_envs,)
     """
 
-    position_cmd_manager: PositionCommandManager
+    pose_cmd_manager: Pose2dCommand
     threshold: float | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        threshold = self.threshold
-        if threshold is None:
-            threshold = self.position_cmd_manager.goal_reached_threshold
-        return (self.position_cmd_manager.distance_to_goal < threshold).float()
+        if self.threshold is None:
+            return self.pose_cmd_manager.goal_reached.float()
+        return (self.pose_cmd_manager.distance_to_goal < self.threshold).float()
+
+
+@dataclass(kw_only=True, eq=False)
+class keep_clear(MdpFn):
+    """
+    Penalty for crowding the things the entity is supposed to drive around, growing from
+    nothing at `clearance` to its full value on contact.
+
+    A collision termination only tells the entity it got something wrong once it is too
+    late to do anything about it. This gives it a gradient to follow on the way in, so it
+    can learn to leave room rather than only to regret not having done so.
+
+    Only the nearest obstacle counts. Threading a gap between two obstacles is no worse
+    than passing one at the same distance -- what matters is the closest thing, not how
+    many things are around.
+
+    !!! note "This deliberately reads the true distance, not a sensor"
+        The penalty uses the actual positions from the simulation, which a real robot
+        could not know. That is fine and usual for a reward -- rewards are free to use
+        information the observation withholds -- but it does mean the entity is being
+        asked to avoid things it may not be able to see. If it is crashing into obstacles
+        that never enter its sensor's view, the fix is the observation, not this.
+
+    Args:
+        entities: The entities to keep clear of.
+        clearance: The distance (in meters, centre to centre) at which the penalty starts.
+        entity: The entity being kept clear of them. Defaults to `env.robot`.
+        entity_manager: The entity manager for the above, which is slightly faster than
+                        passing `entity`.
+
+    Returns:
+        torch.Tensor: 0.0 when further than `clearance` from everything, rising toward 1.0
+                      as the nearest obstacle is approached, shape (num_envs,)
+    """
+
+    entities: list[RigidEntity] = None
+    clearance: float = 0.5
+    entity: RigidEntity = None
+    entity_manager: EntityManager = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.entity_manager is not None:
+            me = self.entity_manager.entity
+        else:
+            me = self.entity if self.entity is not None else env.robot
+        my_xy = me.get_pos()[:, :2]
+
+        crowding = torch.zeros(env.num_envs, device=gs.device)
+        for obstacle in self.entities:
+            distance = torch.norm(obstacle.get_pos()[:, :2] - my_xy, dim=-1)
+            # 0 at `clearance` and beyond, rising to 1 as the distance closes to nothing
+            crowding = torch.maximum(crowding, 1.0 - (distance / self.clearance))
+        return crowding.clamp(min=0.0)
 
 
 """

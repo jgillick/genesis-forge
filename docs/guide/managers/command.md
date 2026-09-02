@@ -136,20 +136,22 @@ env.velocity_command.use_gamepad(gamepad)
 # Run policy...
 ```
 
-## Position Command Manager
+## Pose Command Manager
 
-`PositionCommandManager` commands a goal *position* rather than a velocity. Use it for navigation tasks, where the policy is told where to end up and has to choose its own heading and speed to get there.
+`Pose2dCommand` commands a goal *pose* rather than a velocity: a point to drive to, and the direction to be facing once there. Use it for navigation tasks, where the policy is told where to end up and has to choose its own route and speed to get there.
 
 ```python
-from genesis_forge.managers.command import PositionCommandManager
+import math
+from genesis_forge.managers.command import Pose2dCommand
 
 class MyEnv(ManagedEnvironment):
     def config(self):
-        self.position_command = PositionCommandManager(
+        self.pose_command = Pose2dCommand(
             self,
             range={
                 "x": (-2.5, 2.5),
                 "y": (-2.5, 2.5),
+                "heading": (-math.pi, math.pi),
             },
             goal_reached_threshold=0.15,  # how close counts as arrived
             resample_on_reached=True,     # reaching a goal earns a new one
@@ -157,24 +159,36 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
+The position and the heading are drawn independently, so the goal heading is not simply the direction the robot happened to approach from — it has to both get there and turn to face the right way. This is what a real arrival often needs: backing into a charging dock, or pulling up to a shelf facing it.
+
 Goals are sampled in the environment's local frame, and a new one is drawn whenever the environment resets, whenever the goal is reached (with `resample_on_reached`), and on a timer if you set `resample_time_sec`. Left unset, `resample_time_sec` means a goal never expires — the robot keeps working at it until it arrives or the episode ends.
 
-### Using Position Commands in Observations
+By default a goal counts as reached on position alone, whichever way the robot ends up facing. Set `heading_reached_threshold` if the robot must also be lined up before it has arrived.
 
-The observation is the vector from the robot to its goal, rotated into the **robot's own frame**, so those two numbers carry both the direction to turn and the distance remaining:
+### Keeping goals clear of the scene
+
+A goal is never placed on top of anything else in the scene. Every entity — the obstacles, the robot itself, anything else that was added — gets a circle of clear space around it, sized from its own footprint plus the reach threshold. If a drawn goal lands inside one of those circles it is drawn again.
+
+This is automatic and there is nothing to configure. It is also why a fresh goal never starts out already reached: the robot's own footprint is one of the things goals are kept clear of.
+
+### Using Pose Commands in Observations
+
+The observation is the goal from the robot's own point of view, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to turn to face the goal heading).
+
+The goal vector alone would locate the goal, but it mixes up *how far* with *which way* — a few centimeters out it is a tiny vector, so the steering signal fades exactly where steering has to be most precise. Reporting distance and bearing separately keeps the direction at full strength all the way in.
 
 ```python
 ObservationManager(
     self,
     cfg={
-        "goal_vec": {"fn": self.position_command.observation},
+        "goal_pose": {"fn": self.pose_command.observation},
     },
 )
 ```
 
-### Using Position Commands in Rewards
+### Using Pose Commands in Rewards
 
-Goal-reaching usually wants both a reward for *being* at the goal and one for *getting closer*, since the first is nearly flat when the robot starts far away:
+Goal-reaching usually wants both a reward for *being* at the goal and one for *getting closer*, since the first is nearly flat when the robot starts far away. Add `heading_tracking` if you also care which way the robot is facing:
 
 ```python
 from genesis_forge.mdp import rewards
@@ -185,21 +199,28 @@ RewardManager(
         # Strongest at the goal: makes the robot settle there rather than drive past
         "position_tracking": {
             "fn": rewards.position_tracking(
-                position_cmd_manager=self.position_command,
+                pose_cmd_manager=self.pose_command,
             ),
             "weight": 1.0,
         },
         # Pays for closing the distance at any range: gets the robot moving
         "position_progress": {
             "fn": rewards.position_progress(
-                position_cmd_manager=self.position_command,
+                pose_cmd_manager=self.pose_command,
             ),
             "weight": 1.0,
+        },
+        # Turning toward the heading the goal asks for
+        "heading_progress": {
+            "fn": rewards.heading_progress(
+                pose_cmd_manager=self.pose_command,
+            ),
+            "weight": 0.5,
         },
         # A bonus for arriving
         "reached_goal": {
             "fn": rewards.reached_goal(
-                position_cmd_manager=self.position_command,
+                pose_cmd_manager=self.pose_command,
             ),
             "weight": 10.0,
         },
@@ -209,9 +230,15 @@ RewardManager(
 
 Like the velocity tracking rewards, `position_tracking` derives its sensitivity from the command range, so widening the range in a curriculum loosens the reward to match.
 
-The manager also exposes `distance_to_goal` and `goal_reached` for writing your own reward or termination functions.
+`heading_progress` asks for the goal heading at every distance by default, which suits a robot that can travel one way while facing another — a legged or omnidirectional robot. A robot that has to point where it is going cannot chase the goal heading from far away without driving sideways to reach the goal, so set `lines_up_within` to have it steer toward the goal while there is ground to cover and line up with the goal heading only on the final approach.
 
-See [examples/wheeled_robot_goal_nav](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_goal_nav) for a full navigation environment.
+`position_progress` and `heading_progress` pay for *changing* rather than for *being*: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead. `position_tracking` and `heading_tracking` are the "being there" versions, and are the better choice when the goal is *not* replaced on arrival; their docstrings carry the warning.
+
+If you don't care which way the robot faces, simply leave out the heading reward; the heading is still drawn and observed, but nothing scores it.
+
+The manager also exposes `distance_to_goal`, `heading_error`, and `goal_reached` for writing your own reward or termination functions.
+
+See [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation) for a full navigation environment.
 
 ## Custom Command Manager
 

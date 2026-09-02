@@ -384,14 +384,14 @@ class ObservationManager(BaseManager):
                 # Apply scale
                 scale = cfg.scale
                 if scale is not None and scale != 1.0:
-                    value *= scale
+                    value = value * scale
 
                 # Add noise, if the value is not an override
                 if not has_overrides:
                     noise = cfg.noise or self.noise
                     if noise is not None and noise != 0.0:
                         noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
-                        value += noise_value
+                        value = value + noise_value
 
                 # Copy directly into output buffer
                 value_size = value.shape[-1]

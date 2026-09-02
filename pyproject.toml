@@ -25,8 +25,8 @@ dev = [
 
 [tool.ruff]
 # Where first-party code lives, so import sorting keeps knowing which packages
-# are ours now that both sit behind a src/ directory.
-src = ["packages/genesis-forge/src", "packages/genesis-forge-runtime/src"]
+# are ours rather than treating them as third-party.
+src = ["packages/genesis-forge", "packages/genesis-forge-runtime"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages/genesis-forge/tests", "packages/genesis-forge-runtime/tests"]

@@ -36,7 +36,7 @@ Homepage = "https://github.com/jgillick/genesis-forge"
 Issues = "https://github.com/jgillick/genesis-forge/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/genesis_forge"]
+packages = ["genesis_forge"]
 
 [tool.uv.sources]
 genesis-forge-runtime = { workspace = true }

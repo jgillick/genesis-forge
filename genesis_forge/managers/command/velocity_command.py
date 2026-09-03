@@ -1,5 +1,4 @@
 import math
-from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
@@ -405,31 +404,34 @@ class VelocityCommandManager(CommandManager):
             actual_ang_vel = self.env.robot.get_ang()[:, 2].cpu().numpy()
 
         for i in self.debug_envs_idx:
-            # Commanded linear velocity: an arrow, or a ball when no linear velocity is commanded
-            if has_lin_cmd[i]:
-                self._draw_arrow(origin[i], commanded_vec[i], commanded_color)
-            else:
-                self._draw_stopped_ball(origin[i])
+            try:
+                # Commanded linear velocity: an arrow, or a ball when no linear velocity is commanded
+                if has_lin_cmd[i]:
+                    self._draw_arrow(origin[i], commanded_vec[i], commanded_color)
+                else:
+                    self._draw_stopped_ball(origin[i])
 
-            # Actual linear velocity
-            self._draw_arrow(origin[i], actual_vec[i], actual_color)
+                # Actual linear velocity
+                self._draw_arrow(origin[i], actual_vec[i], actual_color)
 
-            # Commanded and actual angular velocity
-            if self._ang_arc_enabled:
-                self._draw_ang_vel_arc(
-                    origin[i],
-                    commanded_ang_vel[i],
-                    arc_anchor[i],
-                    self._commanded_arc_radius,
-                    commanded_color,
-                )
-                self._draw_ang_vel_arc(
-                    origin[i],
-                    actual_ang_vel[i],
-                    arc_anchor[i],
-                    self._actual_arc_radius,
-                    actual_color,
-                )
+                # Commanded and actual angular velocity
+                if self._ang_arc_enabled:
+                    self._draw_ang_vel_arc(
+                        origin[i],
+                        commanded_ang_vel[i],
+                        arc_anchor[i],
+                        self._commanded_arc_radius,
+                        commanded_color,
+                    )
+                    self._draw_ang_vel_arc(
+                        origin[i],
+                        actual_ang_vel[i],
+                        arc_anchor[i],
+                        self._actual_arc_radius,
+                        actual_color,
+                    )
+            except Exception as e:  # noqa
+                print(f"Error drawing debug visuals in VelocityCommandManager: {e}")
 
     def _debug_origin(self) -> torch.Tensor:
         """
@@ -494,20 +496,19 @@ class VelocityCommandManager(CommandManager):
         if length == 0.0:
             return
         mesh = arrow_mesh(length, self._debug_cfg("arrow_radius"), color=color)
-        self._add_debug_object(
-            self.env.scene.draw_debug_mesh,
-            mesh,
-            T=z_aligned_pose(origin.cpu().numpy(), vec_np),
+        node = self.env.scene.draw_debug_mesh(
+            mesh, T=z_aligned_pose(origin.cpu().numpy(), vec_np)
         )
+        self._debug_nodes.append(node)
 
     def _draw_stopped_ball(self, origin: torch.Tensor):
         """Draw the ball that shows no linear velocity is commanded"""
-        self._add_debug_object(
-            self.env.scene.draw_debug_sphere,
+        node = self.env.scene.draw_debug_sphere(
             pos=origin.cpu().numpy(),
             radius=self._debug_cfg("stopped_ball_radius"),
             color=self._debug_cfg("stopped_color"),
         )
+        self._debug_nodes.append(node)
 
     def _draw_ang_vel_arc(
         self,
@@ -535,24 +536,10 @@ class VelocityCommandManager(CommandManager):
         mesh = arc_arrow_mesh(
             arc_radius, sweep, self._debug_cfg("ang_arc_tube_radius"), color=color
         )
-        self._add_debug_object(
-            self.env.scene.draw_debug_mesh,
-            mesh,
-            T=yaw_pose(origin.cpu().numpy(), anchor_angle),
+        node = self.env.scene.draw_debug_mesh(
+            mesh, T=yaw_pose(origin.cpu().numpy(), anchor_angle)
         )
-
-    def _add_debug_object(self, draw_fn: Callable, *args, **kwargs):
-        """
-        Call one of the scene's `draw_debug_*` functions and keep the node it returns, so
-        the object is removed on the next render
-        """
-        try:
-            node = draw_fn(*args, **kwargs)
-        except Exception as e:  # noqa
-            print(f"Error adding debug visualizing in VelocityCommandManager: {e}")
-            return
-        if node:
-            self._debug_nodes.append(node)
+        self._debug_nodes.append(node)
 
     def _clear_debug_objects(self):
         """Remove all debug objects drawn by the previous render"""

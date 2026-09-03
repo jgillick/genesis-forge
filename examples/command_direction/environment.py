@@ -41,7 +41,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=0.5 / self.dt,
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -76,7 +75,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.0, -1.5, 1.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -135,9 +134,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,

@@ -42,6 +42,5 @@ class BaseManager:
     def step(self):
         """Called when the environment is stepped"""
 
-    def reset(self, envs_idx:
-              torch.Tensor | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """One or more environments have been reset"""

@@ -285,31 +285,62 @@ def test_velocity_command_keeps_the_sampled_value_when_never_standing(env):
 def test_stopped_envs_reflects_which_envs_were_marked_standing(env):
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
     mgr.resample_command([0, 1, 2, 3])
-    assert mgr.stopped_envs.tolist() == [True, True, True, True]
+    assert mgr.stopped_envs().tolist() == [True, True, True, True]
 
 
 def test_stopped_envs_is_false_for_every_env_when_never_standing(env):
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
     mgr.resample_command([0, 1, 2, 3])
-    assert mgr.stopped_envs.tolist() == [False, False, False, False]
+    assert mgr.stopped_envs().tolist() == [False, False, False, False]
 
 
-def test_stopped_envs_defaults_to_false_before_any_resample(env):
+def test_stopped_envs_is_true_before_any_resample(env):
+    """Before any resample the command buffer is all zeros: no movement is commanded."""
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
-    assert mgr.stopped_envs.tolist() == [False, False, False, False]
+    assert mgr.stopped_envs().tolist() == [True, True, True, True]
 
 
 def test_stopped_envs_only_updates_the_resampled_envs(env):
-    """A partial resample must not touch other envs' standing state."""
-    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
-    mgr.resample_command([0, 2])
-    assert mgr.stopped_envs.tolist() == [True, False, True, False]
-
-    # Now resample the remaining envs with stopped_probability=0.0 -- envs 0 and 2
-    # must keep their earlier "standing" state since they aren't in this call.
-    mgr.stopped_probability = 0.0
+    """A partial resample must not touch other envs' commands or stopped state."""
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
     mgr.resample_command([1, 3])
-    assert mgr.stopped_envs.tolist() == [True, False, True, False]
+    assert mgr.stopped_envs().tolist() == [True, False, True, False]
+
+    # Now resample envs 0 and 2 with stopped_probability=1.0 -- envs 1 and 3
+    # must keep their earlier commands since they aren't in this call.
+    mgr.stopped_probability = 1.0
+    mgr.resample_command([0, 2])
+    assert mgr.stopped_envs().tolist() == [True, False, True, False]
+
+
+def test_stopped_envs_is_true_when_the_range_samples_to_zero(env):
+    """An env whose command samples to zero is stopped, even without stopped_probability."""
+    zero_range = {
+        "lin_vel_x": (0.0, 0.0),
+        "lin_vel_y": (0.0, 0.0),
+        "ang_vel_z": (0.0, 0.0),
+    }
+    mgr = VelocityCommandManager(env, range=zero_range, stopped_probability=0.0)
+    mgr.resample_command([0, 1, 2, 3])
+    assert mgr.stopped_envs().tolist() == [True, True, True, True]
+
+
+def test_stopped_envs_with_zero_threshold_matches_only_exactly_zero_commands(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
+    mgr.resample_command([0, 1])  # envs 2 and 3 keep their zero command
+    assert mgr.stopped_envs(threshold=0.0).tolist() == [False, False, True, True]
+
+
+def test_stopped_envs_is_false_while_only_angular_velocity_is_commanded(env):
+    """Turning in place is not stopped: the angular command counts as movement."""
+    turn_range = {
+        "lin_vel_x": (0.0, 0.0),
+        "lin_vel_y": (0.0, 0.0),
+        "ang_vel_z": (3.0, 3.0),
+    }
+    mgr = VelocityCommandManager(env, range=turn_range, stopped_probability=0.0)
+    mgr.resample_command([0, 1, 2, 3])
+    assert mgr.stopped_envs().tolist() == [False, False, False, False]
 
 
 """
@@ -339,7 +370,7 @@ def test_deprecated_standing_envs_property_warns_and_matches_stopped_envs(env):
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)
     mgr.resample_command([0, 1, 2, 3])
     with pytest.warns(DeprecationWarning, match="stopped_envs"):
-        assert mgr.standing_envs.tolist() == mgr.stopped_envs.tolist()
+        assert mgr.standing_envs.tolist() == mgr.stopped_envs().tolist()
 
 
 def test_build_without_debug_visualizer_is_a_noop(env):

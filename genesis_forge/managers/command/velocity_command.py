@@ -192,10 +192,6 @@ class VelocityCommandManager(CommandManager):
         )
         self._debug_nodes: list = []
 
-        self._is_stopped_env = torch.zeros(
-            env.num_envs, dtype=torch.bool, device=gs.device
-        )
-
     """
     Properties
     """
@@ -211,17 +207,9 @@ class VelocityCommandManager(CommandManager):
         CommandManager.range.fset(self, range)
 
     @property
-    def stopped_envs(self):
-        """
-        A tensor which has the "stopped" state (1 or 0) of all the environments.
-        If the state is 1, the command has no movement commanded, linear or angular.
-        """
-        return self._is_stopped_env
-
-    @property
-    @deprecated("Use 'stopped_envs' instead")
+    @deprecated("Use 'stopped_envs()' instead")
     def standing_envs(self):
-        return self.stopped_envs
+        return self.stopped_envs()
 
     @property
     @deprecated("Use 'stopped_probability' instead")
@@ -232,6 +220,26 @@ class VelocityCommandManager(CommandManager):
     @deprecated("Use 'stopped_probability' instead")
     def standing_probability(self, value: float) -> None:
         self.stopped_probability = value
+
+    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
+        """
+        The environments whose command is effectively stopped: no movement commanded,
+        linear or angular.
+
+        An environment counts as stopped when the norm of its full command (linear xy
+        and angular z) is below ``threshold`` — whether the environment was selected by
+        ``stopped_probability`` or its command is near zero for any other reason
+        (sampling, a curriculum range, a centered gamepad stick).
+
+        Args:
+            threshold: The command is considered stopped when the norm of all its
+                       components does not exceed this value. Pass 0.0 to match
+                       only exactly-zero commands.
+
+        Returns:
+            Boolean tensor, shape (num_envs,)
+        """
+        return torch.norm(self.command, dim=1) <= threshold
 
     """
     Lifecycle Operations
@@ -245,11 +253,12 @@ class VelocityCommandManager(CommandManager):
         if not self.enabled:
             return
 
-        # Select the stopped environments and zero their commands
-        rand_buffer = torch.empty(len(env_ids), device=gs.device).uniform_(0.0, 1.0)
-        self._is_stopped_env[env_ids] = rand_buffer <= self.stopped_probability
-        stopped_envs_idx = self._is_stopped_env.nonzero(as_tuple=False).flatten()
-        self._command[stopped_envs_idx, :] = 0.0
+        # Select the stopped environments and zero their commands.
+        # torch.rand samples [0, 1), so `<` makes probability 0.0 never stop an
+        # environment and 1.0 always stop it.
+        env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=gs.device)
+        stopped = torch.rand(len(env_ids), device=gs.device) < self.stopped_probability
+        self._command[env_ids[stopped], :] = 0.0
 
     def build(self):
         """Build the velocity command manager"""

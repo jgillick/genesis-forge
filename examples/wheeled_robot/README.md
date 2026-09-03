@@ -10,20 +10,17 @@ The velocity action manager setup looks like this:
 def config(self):
     # ...
 
-    self.actuator_manager = ActuatorManager(
+    self.wheel_motors = ActuatorManager(
         self,
         joint_names=[
-            "wheel1",
-            "wheel2",
-            "wheel3",
-            "wheel4"
+            "TT_Motor-[1-4]_axel",
         ],
         kv=1.0,
     )
     self.action_manager = VelocityActionManager(
         self,
         scale=5.0,
-        actuator_manager=self.actuator_manager,
+        actuator_manager=self.wheel_motors,
     )
 ```
 

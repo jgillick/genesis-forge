@@ -654,8 +654,7 @@ class stopped_dof_velocity_l2(MdpFn):
         penalty = torch.sum(torch.square(dof_vel), dim=1)
 
         # Only penalize when nothing is commanded, linear or angular
-        command = self.vel_cmd_manager.command
-        is_stopped = torch.norm(command, dim=1) < self.command_threshold
+        is_stopped = self.vel_cmd_manager.stopped_envs(self.command_threshold)
         return penalty * is_stopped
 
 

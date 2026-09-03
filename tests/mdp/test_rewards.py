@@ -47,6 +47,9 @@ class FakeVelCmd:
             "ang_vel_z": (-1.0, 1.0),
         }
 
+    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
+        return torch.norm(self.command, dim=1) <= threshold
+
 
 class FakeContactManager:
     def __init__(self, contacts):

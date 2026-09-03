@@ -968,8 +968,8 @@ class reached_goal(MdpFn):
 @dataclass(kw_only=True, eq=False)
 class keep_clear(MdpFn):
     """
-    Penalty for crowding the things the entity is supposed to drive around, growing from
-    nothing at `clearance` to its full value on contact.
+    Penalty for crowding the things the entity is supposed to keep away from, or move around.
+    The penalty growing from nothing at `clearance` to its full value on contact.
 
     A collision termination only tells the entity it got something wrong once it is too
     late to do anything about it. This gives it a gradient to follow on the way in, so it
@@ -980,6 +980,7 @@ class keep_clear(MdpFn):
     many things are around.
 
     !!! note "This deliberately reads the true distance, not a sensor"
+
         The penalty uses the actual positions from the simulation, which a real robot
         could not know. That is fine and usual for a reward -- rewards are free to use
         information the observation withholds -- but it does mean the entity is being
@@ -991,31 +992,50 @@ class keep_clear(MdpFn):
         clearance: The distance (in meters, centre to centre) at which the penalty starts.
         entity: The entity being kept clear of them. Defaults to `env.robot`.
         entity_manager: The entity manager for the above, which is slightly faster than
-                        passing `entity`.
+                        passing `entity` since it reads a position cached once per step
+                        instead of querying the simulator.
 
     Returns:
         torch.Tensor: 0.0 when further than `clearance` from everything, rising toward 1.0
                       as the nearest obstacle is approached, shape (num_envs,)
     """
 
-    entities: list[RigidEntity] = None
+    entities: list[RigidEntity]
     clearance: float = 0.5
     entity: RigidEntity = None
     entity_manager: EntityManager = None
 
-    def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if self.entity_manager is not None:
-            me = self.entity_manager.entity
-        else:
-            me = self.entity if self.entity is not None else env.robot
-        my_xy = me.get_pos()[:, :2]
+    def build(self):
+        if (
+            self.entity is None
+            and self.entity_manager is None
+            and self.env.robot is None
+        ):
+            raise ValueError(
+                "keep_clear: no entity to compute the reward for -- pass entity or "
+                "entity_manager, or set env.robot"
+            )
 
-        crowding = torch.zeros(env.num_envs, device=gs.device)
-        for obstacle in self.entities:
-            distance = torch.norm(obstacle.get_pos()[:, :2] - my_xy, dim=-1)
-            # 0 at `clearance` and beyond, rising to 1 as the distance closes to nothing
-            crowding = torch.maximum(crowding, 1.0 - (distance / self.clearance))
-        return crowding.clamp(min=0.0)
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if not self.entities:
+            return torch.zeros(env.num_envs, device=gs.device)
+
+        if self.entity_manager is not None:
+            entity_xy = self.entity_manager.base_pos[:, :2]
+        else:
+            entity = self.entity if self.entity is not None else env.robot
+            entity_xy = entity.get_pos()[:, :2]
+
+        # Stack every obstacle's position into one tensor so the distance to all of
+        # them, and the nearest one, are each a single reduction.
+        obstacles_xy = torch.stack(
+            [obstacle.get_pos()[:, :2] for obstacle in self.entities], dim=0
+        )
+        distance = torch.norm(obstacles_xy - entity_xy, dim=-1)
+        nearest_distance = distance.min(dim=0).values
+
+        # 0 at `clearance` and beyond, rising to 1 as the nearest obstacle closes to nothing
+        return (1.0 - nearest_distance / self.clearance).clamp(min=0.0)
 
 
 """

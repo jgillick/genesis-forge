@@ -18,7 +18,7 @@ EXPERIMENT_NAME = "wheeled-robot-navigation"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=2048)
-parser.add_argument("--max_iterations", type=int, default=600)
+parser.add_argument("--max_iterations", type=int, default=350)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -44,7 +44,6 @@ def training_cfg():
             "symmetry_cfg": None,
         },
         "actor": {
-            # "class_name": "MLPModel",
             "class_name": "RNNModel",
             "rnn_type": "gru",
             "rnn_hidden_dim": 256,
@@ -57,7 +56,6 @@ def training_cfg():
             },
         },
         "critic": {
-            # "class_name": "MLPModel",
             "class_name": "RNNModel",
             "rnn_type": "gru",
             "rnn_hidden_dim": 256,

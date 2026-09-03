@@ -1,6 +1,7 @@
 from typing import Any
 
 import torch
+from deprecated import deprecated
 from gymnasium import spaces
 from skrl.envs.wrappers.torch.base import Wrapper as SkrlWrapper
 
@@ -76,3 +77,10 @@ class SkrlEnvWrapper(SkrlWrapper, GenesisWrapper):
     def build(self) -> None:
         """Build the environment"""
         self._env.build()
+
+
+@deprecated(reason="Use SkrlEnvWrapper")
+class SkrlEnvWapper(SkrlEnvWrapper):
+    """
+    Deprecated alias of :class:`SkrlEnvWrapper`.
+    """

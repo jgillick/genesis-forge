@@ -1,4 +1,5 @@
 import math
+import warnings
 from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
@@ -62,6 +63,18 @@ class VelocityDebugVisualizerConfig(TypedDict):
 
     ang_arc_max_sweep: NotRequired[float]
     """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
+
+    standing_color: NotRequired[tuple[float, float, float, float]]
+    """Deprecated: use `stopped_color` instead"""
+
+    standing_ball_radius: NotRequired[float]
+    """Deprecated: use `stopped_ball_radius` instead"""
+
+
+_DEPRECATED_VISUALIZER_KEYS = {
+    "standing_color": "stopped_color",
+    "standing_ball_radius": "stopped_ball_radius",
+}
 
 
 DEFAULT_VISUALIZER_CONFIG = {
@@ -181,7 +194,7 @@ class VelocityCommandManager(CommandManager):
         self.stopped_probability = stopped_probability or standing_probability
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx: list | None = None
-        self.visualizer_cfg = (
+        self.visualizer_cfg = self._convert_deprecated_visualizer_keys(
             debug_visualizer_cfg if debug_visualizer_cfg is not None else {}
         )
         self._debug_nodes: list = []
@@ -362,6 +375,28 @@ class VelocityCommandManager(CommandManager):
     """
     Internal Implementation
     """
+
+    def _convert_deprecated_visualizer_keys(
+        self, cfg: VelocityDebugVisualizerConfig
+    ) -> VelocityDebugVisualizerConfig:
+        """
+        Convert deprecated debug visualizer config keys to their replacements, with a
+        deprecation warning. The config is read with `.get()`, so without this an old
+        key would silently fall back to the default value.
+        """
+        if not any(key in cfg for key in _DEPRECATED_VISUALIZER_KEYS):
+            return cfg
+        # Work on a copy so popping keys doesn't mutate the caller's config dict
+        converted: dict[str, object] = dict(cfg)
+        for old_key, new_key in _DEPRECATED_VISUALIZER_KEYS.items():
+            if old_key in converted:
+                warnings.warn(
+                    f"The '{old_key}' debug visualizer config key is deprecated; use '{new_key}' instead",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
+                converted.setdefault(new_key, converted.pop(old_key))
+        return cast(VelocityDebugVisualizerConfig, converted)
 
     def _debug_cfg(self, key: str):
         """A debug visualizer config value, or its default when not configured"""

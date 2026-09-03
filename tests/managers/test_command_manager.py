@@ -7,6 +7,8 @@ min/max (e.g. (2.0, 2.0)) wherever a sampled value needs to be deterministic,
 since resample_command draws from `torch.uniform_(min, max)`.
 """
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -20,6 +22,47 @@ class FakeGamepad:
 
     def axis(self, index: int) -> float:
         return self._axis_values[index]
+
+
+class FakeScene:
+    """Records the debug draw calls made by the velocity debug visualizer."""
+
+    def __init__(self, num_envs: int):
+        self.envs_offset = np.zeros((num_envs, 3))
+        self.vis_options = None
+        self.mesh_calls: list = []
+        self.cleared: list = []
+
+    def draw_debug_sphere(self, pos, radius, color):
+        return ("sphere", tuple(pos))
+
+    def draw_debug_mesh(self, mesh):
+        self.mesh_calls.append(mesh)
+        return ("mesh", len(self.mesh_calls))
+
+    def clear_debug_object(self, node):
+        self.cleared.append(node)
+
+
+class FakeRobot:
+    """A stationary robot at the origin with an identity orientation."""
+
+    def __init__(self, num_envs: int):
+        self.num_envs = num_envs
+
+    def get_quat(self) -> torch.Tensor:
+        quat = torch.zeros(self.num_envs, 4)
+        quat[:, 0] = 1.0  # (w, x, y, z)
+        return quat
+
+    def get_pos(self) -> torch.Tensor:
+        return torch.zeros(self.num_envs, 3)
+
+    def get_vel(self) -> torch.Tensor:
+        return torch.zeros(self.num_envs, 3)
+
+    def get_ang(self) -> torch.Tensor:
+        return torch.zeros(self.num_envs, 3)
 
 
 """
@@ -468,3 +511,137 @@ def test_debug_arrow_and_arc_are_drawn_with_draw_debug_mesh(env):
     # A zero vector draws nothing
     mgr._draw_arrow(origin, torch.zeros(3), (0.0, 0.5, 0.0, 1.0))
     assert len(calls) == 2
+
+
+"""
+VelocityCommandManager -- deprecated standing_* debug visualizer config keys
+"""
+
+
+def test_deprecated_standing_color_key_warns_and_maps_to_stopped_color(env):
+    with pytest.warns(DeprecationWarning, match="stopped_color"):
+        mgr = VelocityCommandManager(
+            env,
+            range=VELOCITY_RANGE,
+            debug_visualizer_cfg={"standing_color": (1.0, 1.0, 0.0, 1.0)},
+        )
+    assert mgr._debug_cfg("stopped_color") == (1.0, 1.0, 0.0, 1.0)
+    assert "standing_color" not in mgr.visualizer_cfg
+
+
+def test_deprecated_standing_ball_radius_key_warns_and_maps_to_stopped_ball_radius(env):
+    with pytest.warns(DeprecationWarning, match="stopped_ball_radius"):
+        mgr = VelocityCommandManager(
+            env,
+            range=VELOCITY_RANGE,
+            debug_visualizer_cfg={"standing_ball_radius": 0.1},
+        )
+    assert mgr._debug_cfg("stopped_ball_radius") == 0.1
+
+
+def test_stopped_key_wins_when_both_old_and_new_keys_are_given(env):
+    with pytest.warns(DeprecationWarning, match="stopped_ball_radius"):
+        mgr = VelocityCommandManager(
+            env,
+            range=VELOCITY_RANGE,
+            debug_visualizer_cfg={
+                "standing_ball_radius": 0.1,
+                "stopped_ball_radius": 0.2,
+            },
+        )
+    assert mgr._debug_cfg("stopped_ball_radius") == 0.2
+
+
+def test_deprecated_key_conversion_does_not_mutate_the_callers_config(env):
+    cfg = {"standing_ball_radius": 0.1}
+    with pytest.warns(DeprecationWarning):
+        VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer_cfg=cfg)
+    assert cfg == {"standing_ball_radius": 0.1}
+
+
+"""
+VelocityCommandManager -- debug visualizer angular velocity arcs
+
+The arrow and arc meshes are built with numpy/trimesh, already posed in the world, so
+they can be verified without a Genesis scene by recording the `draw_debug_mesh` calls
+and measuring the angular position of the arc mesh's vertices around the arc's center.
+"""
+
+
+def make_debug_arc_manager(
+    env, ang_vel_z: float, lin_vel: tuple[float, float] = (0.0, 0.0)
+):
+    env.scene = FakeScene(env.num_envs)
+    env.robot = FakeRobot(env.num_envs)
+    mgr = VelocityCommandManager(
+        env,
+        range={
+            "lin_vel_x": (-1.0, 1.0),
+            "lin_vel_y": (-1.0, 1.0),
+            "ang_vel_z": (-2.0, 2.0),
+        },
+        debug_visualizer=True,
+        debug_visualizer_cfg={"envs_idx": [0]},
+    )
+    mgr.build()
+    mgr._command[0, 0] = lin_vel[0]
+    mgr._command[0, 1] = lin_vel[1]
+    mgr._command[0, 2] = ang_vel_z
+    return mgr
+
+
+def rendered_arc_vertex_angles(env) -> np.ndarray:
+    """
+    The angles (radians, atan2 convention) of the rendered arc mesh's vertices around
+    the vertical axis through the arc's center.
+
+    The arrows are drawn before the arcs, so the arc is the last recorded mesh. The fake
+    robot sits at the world origin with no environment offset, so the arc is centered on
+    XY (0, 0).
+    """
+    assert env.scene.mesh_calls
+    mesh = env.scene.mesh_calls[-1]
+    return np.arctan2(mesh.vertices[:, 1], mesh.vertices[:, 0])
+
+
+def test_positive_yaw_rate_sweeps_the_arc_ccw_from_the_anchor(env):
+    """
+    With no linear command and an identity robot orientation the anchor angle is 0
+    (the +X axis). The robot's actual yaw rate is zero, so only the commanded arc is
+    drawn: it must sweep counter-clockwise (positive angles), with the arrowhead
+    extending past the arc's far end.
+    """
+    mgr = make_debug_arc_manager(env, ang_vel_z=2.0)  # max of the range: a full sweep
+    mgr._render_debug(force=True)
+
+    angles = rendered_arc_vertex_angles(env)
+    full_sweep = math.radians(45)
+    assert angles.min() > -0.01  # nothing clockwise of the anchor
+    assert angles.max() > full_sweep  # the head extends CCW past the arc's end
+
+
+def test_negative_yaw_rate_sweeps_the_arc_cw_from_the_anchor(env):
+    mgr = make_debug_arc_manager(env, ang_vel_z=-2.0)
+    mgr._render_debug(force=True)
+
+    angles = rendered_arc_vertex_angles(env)
+    full_sweep = math.radians(45)
+    assert angles.max() < 0.01  # nothing counter-clockwise of the anchor
+    assert angles.min() < -full_sweep  # the head extends CW past the arc's end
+
+
+def test_arc_is_anchored_at_the_commanded_linear_direction(env):
+    """A +Y linear command rotates the whole arc to start at the +Y axis (90 degrees)."""
+    mgr = make_debug_arc_manager(env, ang_vel_z=2.0, lin_vel=(0.0, 1.0))
+    mgr._render_debug(force=True)
+
+    angles = rendered_arc_vertex_angles(env)
+    anchor = math.pi / 2
+    assert angles.min() > anchor - 0.01
+    assert angles.max() > anchor + math.radians(45)
+
+
+def test_a_negligible_yaw_rate_draws_no_arc(env):
+    mgr = make_debug_arc_manager(env, ang_vel_z=0.01)
+    mgr._render_debug(force=True)
+    assert env.scene.mesh_calls == []

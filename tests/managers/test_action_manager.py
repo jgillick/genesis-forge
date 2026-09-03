@@ -532,6 +532,24 @@ def test_reset_clears_last_actions_for_reset_envs(env):
     expected[[0, 2]] = 0.0
     assert torch.equal(mgr.last_actions, expected)
 
+    # The next step must not copy the pre-reset actions back into last_actions
+    # for the reset envs.
+    mgr.step(torch.full((env.num_envs, 2), 0.3))
+    expected = torch.full((env.num_envs, 2), 0.2)
+    expected[[0, 2]] = 0.0
+    assert torch.equal(mgr.last_actions, expected)
+
+
+def test_reset_clears_current_and_raw_actions_for_reset_envs(env):
+    mgr = make_delayed_manager(env, delay_step=0)
+    mgr.step(torch.full((env.num_envs, 2), 0.2))
+    mgr.reset(torch.tensor([1]))
+
+    expected = torch.full((env.num_envs, 2), 0.2)
+    expected[1] = 0.0
+    assert torch.equal(mgr.actions, expected)
+    assert torch.equal(mgr.raw_actions, expected)
+
 
 def test_delay_buffer_holds_a_copy_of_the_actions(env):
     """Mutating the caller's tensor after a step doesn't change the queued action."""

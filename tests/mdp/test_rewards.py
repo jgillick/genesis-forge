@@ -402,6 +402,22 @@ def test_lin_vel_sensitivity_is_derived_from_the_command_range(env):
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
 
 
+def test_lin_vel_derived_sensitivity_uses_the_diagonal_max_speed(env):
+    """The 1/e error is half the fastest commanded speed, including diagonal commands."""
+    mgr = FakeEntityManager(lin_vel=torch.tensor([[0.15, 0.2, 0.0]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.3, 0.4, 0.0]]),
+        range={"lin_vel_x": (-0.3, 0.3), "lin_vel_y": (-0.4, 0.4), "ang_vel_z": (0.0, 0.0)},
+    )
+    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # max speed = hypot(0.3, 0.4) = 0.5 -> sensitivity = (0.5 * 0.5)^2 = 0.0625
+    # error = 0.15^2 + 0.2^2 = 0.0625 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
 def test_derived_sensitivity_follows_a_range_change(env):
     """A curriculum widening the command range loosens the reward on the next call."""
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.05, 0.0, 0.0]]))

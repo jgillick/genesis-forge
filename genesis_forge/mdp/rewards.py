@@ -5,6 +5,7 @@ Each of these should return a float tensor with the reward value for each enviro
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -470,7 +471,8 @@ class command_tracking_lin_vel(MdpFn):
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
                      If not defined, the sensitivity will be derived from the command manager's range on every step
-                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest absolute value of the command range.
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest commanded
+                     speed the range allows (the norm of the largest absolute lin_vel_x and lin_vel_y values).
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
@@ -512,15 +514,16 @@ class command_tracking_lin_vel(MdpFn):
         if self.sensitivity is not None:
             return self.sensitivity
 
-        # The largest linear speed in the command manager's current range
+        # The largest linear speed in the command manager's current range. The error sums
+        # the squares of both axes, so the fastest command is the diagonal one: the norm
+        # of the largest speeds along each axis.
         max_speed = 0.0
         if self.vel_cmd_manager is not None:
             velocity_range = self.vel_cmd_manager.range
-            values = [
-                abs(v)
-                for v in (*velocity_range["lin_vel_x"], *velocity_range["lin_vel_y"])
-            ]
-            max_speed = max(values)
+            max_speed = math.hypot(
+                max(abs(v) for v in velocity_range["lin_vel_x"]),
+                max(abs(v) for v in velocity_range["lin_vel_y"]),
+            )
         return _calculate_tracking_sensitivity(max_speed)
 
 

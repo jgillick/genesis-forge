@@ -136,7 +136,7 @@ class BaseActionManager(BaseManager):
     DOF convenience wrappers
     """
 
-    def get_dofs_position(self) ->  torch.Tensor:
+    def get_dofs_position(self) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
 
@@ -158,7 +158,9 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
+    def get_dofs_velocity(
+        self, clip: tuple[float, float] | None = None
+    ) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -205,9 +207,7 @@ class BaseActionManager(BaseManager):
         """
         return {
             name: value.item()
-            for name, value in zip(
-                self.dofs.keys(), self._actions[env_idx, :]
-            )
+            for name, value in zip(self.dofs.keys(), self._actions[env_idx, :])
         }
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -273,11 +273,12 @@ class BaseActionManager(BaseManager):
             self._action_delay_buffer.insert(0, actions.clone())
             actions = self._action_delay_buffer.pop()
 
-        # Copy the actions into the manager buffer
-        self._raw_actions = actions
+        # Copy the actions into the manager buffers
         if self._actions is None:
+            self._raw_actions = torch.zeros_like(actions, device=gs.device)
             self._actions = torch.zeros_like(actions, device=gs.device)
             self._last_actions = torch.zeros_like(actions, device=gs.device)
+        self._raw_actions[:] = actions
         self._last_actions[:] = self._actions[:]
 
         # Process the actions
@@ -294,5 +295,7 @@ class BaseActionManager(BaseManager):
             envs_idx = self.env.all_envs_idx
         for delayed_actions in self._action_delay_buffer:
             delayed_actions[envs_idx] = 0.0
-        if self._last_actions is not None:
+        if self._actions is not None:
+            self._raw_actions[envs_idx] = 0.0
+            self._actions[envs_idx] = 0.0
             self._last_actions[envs_idx] = 0.0

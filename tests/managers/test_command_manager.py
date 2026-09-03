@@ -159,7 +159,9 @@ def test_resample_command_only_touches_the_given_envs(env):
 
 def test_step_resamples_only_envs_whose_episode_length_hits_the_interval(env):
     env.episode_length = torch.tensor([0, 1, 2, 3])
-    mgr = CommandManager(env, range=(2.0, 2.0), resample_time_sec=2 * env.dt)  # resample_steps=2
+    mgr = CommandManager(
+        env, range=(2.0, 2.0), resample_time_sec=2 * env.dt
+    )  # resample_steps=2
 
     mgr.step()
 
@@ -350,11 +352,15 @@ VelocityCommandManager -- deprecated standing_probability/standing_envs aliases
 
 def test_deprecated_standing_probability_param_warns_and_sets_stopped_probability(env):
     with pytest.warns(DeprecationWarning, match="stopped_probability"):
-        mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.7)
+        mgr = VelocityCommandManager(
+            env, range=VELOCITY_RANGE, standing_probability=0.7
+        )
     assert mgr.stopped_probability == 0.7
 
 
-def test_deprecated_standing_probability_property_stays_in_sync_with_stopped_probability(env):
+def test_deprecated_standing_probability_property_stays_in_sync_with_stopped_probability(
+    env,
+):
     """Guards against the alias going stale after a later mutation."""
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.5)
     mgr.stopped_probability = 0.0
@@ -422,3 +428,38 @@ def test_velocity_range_setter_rejects_different_dict_keys(env):
             "lin_vel_y": (-1.0, 1.0),
             "wrong_key": (-1.0, 1.0),
         }
+
+
+"""
+VelocityCommandManager -- debug visuals are drawn as meshes
+"""
+
+
+def test_debug_arrow_and_arc_are_drawn_with_draw_debug_mesh(env):
+    from types import SimpleNamespace
+
+    import trimesh
+
+    calls = []
+    env.scene = SimpleNamespace(
+        draw_debug_mesh=lambda mesh, T: calls.append((mesh, T)) or object(),
+        clear_debug_object=lambda node: None,
+    )
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
+    mgr._ang_arc_scale_factor = 1.0
+    mgr._ang_arc_max_sweep = 1.0
+
+    origin = torch.tensor([1.0, 2.0, 3.0])
+    mgr._draw_arrow(origin, torch.tensor([0.1, 0.0, 0.0]), (0.0, 0.5, 0.0, 1.0))
+    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, 0.2, (0.0, 0.0, 0.5, 1.0))
+
+    assert len(calls) == 2
+    for mesh, T in calls:
+        assert isinstance(mesh, trimesh.Trimesh)
+        assert T.shape == (4, 4)
+        assert T[:3, 3].tolist() == [1.0, 2.0, 3.0]
+    assert len(mgr._debug_nodes) == 2
+
+    # A zero vector draws nothing
+    mgr._draw_arrow(origin, torch.zeros(3), (0.0, 0.5, 0.0, 1.0))
+    assert len(calls) == 2

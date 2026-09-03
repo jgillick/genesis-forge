@@ -5,12 +5,17 @@ from typing import NotRequired, TypedDict, cast
 import genesis as gs
 import numpy as np
 import torch
-import trimesh
 from deprecated import deprecated, deprecated_params
 from genesis.utils.geom import quat_to_xyz
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.meshes import (
+    arc_arrow_mesh,
+    arrow_mesh,
+    yaw_pose,
+    z_aligned_pose,
+)
 from genesis_forge.utils import transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
@@ -58,6 +63,9 @@ class VelocityDebugVisualizerConfig(TypedDict):
     ang_arc_gap: NotRequired[float]
     """The space between the tip of a full-length linear velocity arrow and the inner angular velocity arc, and between the two arcs"""
 
+    ang_arc_tube_radius: NotRequired[float]
+    """The radius of the tube of the debug arrow arc"""
+
     ang_arc_max_sweep: NotRequired[float]
     """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
 
@@ -66,28 +74,20 @@ DEFAULT_VISUALIZER_CONFIG = {
     "envs_idx": [],
     "fps": 30,
     "arrow_offset": 0.12,
-    "arrow_radius": 0.01,
+    "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
     "actual_color": (0.0, 0.0, 0.5, 1.0),
     "stopped_color": (1.0, 0.0, 0.0, 1.0),
     "stopped_ball_radius": 0.03,
     "ang_arc_enabled": True,
-    "ang_arc_gap": 0.01,
+    "ang_arc_gap": 0.015,
+    "ang_arc_tube_radius": 0.012,
     "ang_arc_max_sweep": math.radians(45),
 }
 
-# Angular velocity arc geometry
-_ARC_TUBE_SIDES = 8
-"""Number of sides of the arc tube's cross-section polygon"""
-_ARC_SECTIONS_PER_FULL_SWEEP = 16
-"""Number of segments along an arc of the maximum sweep angle"""
 _ARC_MIN_VISIBLE_SWEEP = 0.05
-"""Arcs with a smaller sweep (in radians) are too small to see, so they are not drawn"""
-_ARC_HEAD_RADIUS_RATIO = 2.5
-"""Base radius of the arc's arrowhead cone, relative to the arc tube radius"""
-_ARC_HEAD_LENGTH_RATIO = 5.0
-"""Length of the arc's arrowhead cone, relative to the arc tube radius"""
+"""Angular velocity arcs with a smaller sweep (in radians) are too small to see, so they are not drawn"""
 
 
 class VelocityCommandManager(CommandManager):
@@ -312,12 +312,6 @@ class VelocityCommandManager(CommandManager):
             self._actual_arc_radius = arrow_max_length + arc_gap
             self._commanded_arc_radius = self._actual_arc_radius + arc_gap
 
-            # Unit-circle cross-section of the arc tube, used by trimesh.creation.revolve.
-            # The last point repeats the first exactly, so revolve sees a closed profile.
-            theta = np.linspace(0.0, 2.0 * np.pi, _ARC_TUBE_SIDES + 1)
-            self._arc_cross_section = np.stack([np.cos(theta), np.sin(theta)], axis=1)
-            self._arc_cross_section[-1] = self._arc_cross_section[0]
-
     def step(self):
         """Render the debug visualization"""
         if not self.enabled:
@@ -495,14 +489,15 @@ class VelocityCommandManager(CommandManager):
         color: tuple[float, float, float, float],
     ):
         """Draw an arrow from `origin` along `vec`; nothing is drawn for a zero vector"""
-        if not torch.any(vec != 0.0):
+        vec_np = vec.cpu().numpy()
+        length = float(np.linalg.norm(vec_np))
+        if length == 0.0:
             return
+        mesh = arrow_mesh(length, self._debug_cfg("arrow_radius"), color=color)
         self._add_debug_object(
-            self.env.scene.draw_debug_arrow,
-            pos=origin.cpu().numpy(),
-            vec=vec.cpu().numpy(),
-            radius=self._debug_cfg("arrow_radius"),
-            color=color,
+            self.env.scene.draw_debug_mesh,
+            mesh,
+            T=z_aligned_pose(origin.cpu().numpy(), vec_np),
         )
 
     def _draw_stopped_ball(self, origin: torch.Tensor):
@@ -534,81 +529,17 @@ class VelocityCommandManager(CommandManager):
         if abs(sweep) < _ARC_MIN_VISIBLE_SWEEP:
             return
 
-        # The arc tube: the circular cross-section, offset from the vertical axis by the arc
-        # radius, revolved around that axis by the sweep angle. The tube is thinner than the
-        # arrows so the two concentric arcs stay visually distinct.
-        tube_radius = 0.5 * self._debug_cfg("arrow_radius")
-        cross_section = self._arc_cross_section * tube_radius
-        cross_section[:, 0] += arc_radius
-        sections = max(
-            4,
-            math.ceil(
-                abs(sweep) / self._ang_arc_max_sweep * _ARC_SECTIONS_PER_FULL_SWEEP
-            ),
+        # The arc starts on the +X axis in its own frame, so rotating it by the anchor
+        # angle starts it at the anchor. The tube is thinner than the arrows so the two
+        # concentric arcs stay visually distinct.
+        mesh = arc_arrow_mesh(
+            arc_radius, sweep, self._debug_cfg("ang_arc_tube_radius"), color=color
         )
-        arc = trimesh.creation.revolve(
-            cross_section, angle=abs(sweep), sections=sections
+        self._add_debug_object(
+            self.env.scene.draw_debug_mesh,
+            mesh,
+            T=yaw_pose(origin.cpu().numpy(), anchor_angle),
         )
-
-        # trimesh revolves counter-clockwise from the +X axis, so the arc covers the local
-        # angles [0, |sweep|]. A counter-clockwise sweep travels from 0 to |sweep|, a
-        # clockwise sweep from |sweep| back to 0, so the arrowhead cone goes on the
-        # corresponding end, pointing along the direction of travel.
-        head_angle = abs(sweep) if sweep > 0.0 else 0.0
-        head = self._arc_head_mesh(
-            arc_radius, tube_radius, head_angle, math.copysign(1.0, sweep)
-        )
-        mesh = trimesh.util.concatenate([arc, head])
-        mesh.visual.vertex_colors = color
-
-        # Rotate the mesh about Z so the arc starts at the anchor for a counter-clockwise
-        # sweep, or ends at the anchor for a clockwise sweep, and translate it to the origin
-        start_angle = anchor_angle if sweep > 0.0 else anchor_angle + sweep
-        cos_a = math.cos(start_angle)
-        sin_a = math.sin(start_angle)
-        center = origin.cpu().numpy()
-        transform = np.array(
-            [
-                [cos_a, -sin_a, 0.0, center[0]],
-                [sin_a, cos_a, 0.0, center[1]],
-                [0.0, 0.0, 1.0, center[2]],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-        self._add_debug_object(self.env.scene.draw_debug_mesh, mesh, T=transform)
-
-    def _arc_head_mesh(
-        self,
-        arc_radius: float,
-        tube_radius: float,
-        angle: float,
-        direction: float,
-    ) -> trimesh.Trimesh:
-        """
-        The arrowhead cone for an angular velocity arc, in the arc's local frame: its base
-        sits on the arc at `angle` (radians from the +X axis) and it points along the arc's
-        tangent, counter-clockwise for `direction` +1 or clockwise for -1.
-        """
-        cone = trimesh.creation.cone(
-            radius=tube_radius * _ARC_HEAD_RADIUS_RATIO,
-            height=tube_radius * _ARC_HEAD_LENGTH_RATIO,
-        )
-
-        # The cone is built along +Z. Build a rotation that maps +Z onto the tangent
-        # (its columns are the images of the X, Y, and Z axes) and place it on the arc.
-        tangent_x = -math.sin(angle) * direction
-        tangent_y = math.cos(angle) * direction
-        cone.apply_transform(
-            np.array(
-                [
-                    [-tangent_y, 0.0, tangent_x, arc_radius * math.cos(angle)],
-                    [tangent_x, 0.0, tangent_y, arc_radius * math.sin(angle)],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ]
-            )
-        )
-        return cone
 
     def _add_debug_object(self, draw_fn: Callable, *args, **kwargs):
         """

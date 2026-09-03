@@ -143,3 +143,4 @@ nav:
       - Video: api/wrappers/video.md
     - Other:
       - Gamepad: api/other/gamepad.md
+      - Meshes: api/other/meshes.md

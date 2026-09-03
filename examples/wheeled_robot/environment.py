@@ -40,7 +40,6 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(-0.5, 0.5, 0.5),
                 camera_lookat=(0.0, 0.0, 0.0),
                 camera_fov=40,

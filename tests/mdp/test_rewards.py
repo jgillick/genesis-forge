@@ -466,13 +466,13 @@ def test_command_tracking_requires_a_command_source(env, factory):
         fn.safe_build()
 
 
-def test_stand_still_joint_deviation_penalizes_only_below_command_threshold(env):
+def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2], [0.5, -0.2]]),
         default_pos=torch.tensor([0.0, 0.0]),
     )
     vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0], [1.0, 0.0, 0.0]]))
-    fn = rewards.stand_still_joint_deviation_l1(
+    fn = rewards.stopped_joint_deviation_l1(
         actuator_manager=actuator, vel_cmd_manager=vel_cmd, command_threshold=0.06
     )
     fn.context(env)
@@ -482,11 +482,27 @@ def test_stand_still_joint_deviation_penalizes_only_below_command_threshold(env)
     assert torch.allclose(fn(env), torch.tensor([0.7, 0.0]))
 
 
-def test_stand_still_joint_deviation_requires_a_manager_at_build_time(env):
-    fn = rewards.stand_still_joint_deviation_l1(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
+def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
+    fn = rewards.stopped_joint_deviation_l1(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
     fn.context(env)
     with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
         fn.safe_build()
+
+
+def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
+    actuator = FakeActuatorManager(
+        pos=torch.tensor([[0.5, -0.2]]),
+        default_pos=torch.tensor([0.0, 0.0]),
+    )
+    vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0]]))
+    with pytest.deprecated_call():
+        fn = rewards.stand_still_joint_deviation_l1(
+            actuator_manager=actuator, vel_cmd_manager=vel_cmd
+        )
+    assert isinstance(fn, rewards.stopped_joint_deviation_l1)
+    fn.context(env)
+    fn.safe_build()
+    assert torch.allclose(fn(env), torch.tensor([0.7]))
 
 
 def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import genesis as gs
 import torch
+from deprecated import deprecated
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
@@ -515,7 +516,10 @@ class command_tracking_lin_vel(MdpFn):
         max_speed = 0.0
         if self.vel_cmd_manager is not None:
             velocity_range = self.vel_cmd_manager.range
-            values = [abs(v) for v in (*velocity_range["lin_vel_x"], *velocity_range["lin_vel_y"])]
+            values = [
+                abs(v)
+                for v in (*velocity_range["lin_vel_x"], *velocity_range["lin_vel_y"])
+            ]
             max_speed = max(values)
         return _calculate_tracking_sensitivity(max_speed)
 
@@ -579,7 +583,7 @@ class command_tracking_ang_vel(MdpFn):
 
 
 @dataclass(kw_only=True, eq=False)
-class stand_still_joint_deviation_l1(MdpFn):
+class stopped_joint_deviation_l1(MdpFn):
     """
     Penalize offsets from the default joint positions when the command is very small.
 
@@ -601,7 +605,7 @@ class stand_still_joint_deviation_l1(MdpFn):
     def build(self):
         assert (
             self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to stand_still_joint_deviation_l1"
+        ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:
@@ -619,15 +623,17 @@ class stand_still_joint_deviation_l1(MdpFn):
         )
 
 
+@deprecated(reason="Use 'stopped_joint_deviation_l1' instead")
+@dataclass(kw_only=True, eq=False)
+class stand_still_joint_deviation_l1(stopped_joint_deviation_l1):
+    """Deprecated alias of :class:`stopped_joint_deviation_l1`."""
+
+
 @dataclass(kw_only=True, eq=False)
 class stopped_dof_velocity_l2(MdpFn):
     """
     Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded),
     using the L2 squared kernel.
-
-    When the robot is commanded to stop, its actuators should not be moving. This is especially
-    useful for wheeled robots, where a stopped robot with spinning or twitching wheels is not
-    penalized by the velocity tracking rewards alone.
 
     Args:
         vel_cmd_manager: The velocity command manager
@@ -677,9 +683,7 @@ class has_contact(MdpFn):
     min_contacts: int = 1
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        in_contact = (
-            self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
-        )
+        in_contact = self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
         result = in_contact.sum(dim=1) >= self.min_contacts
         return result.float()
 
@@ -779,9 +783,9 @@ class feet_ground_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
         last_contact_time = self.contact_manager.last_contact_time
-        short_contact = (
-            self.time_threshold - last_contact_time
-        ).clamp(min=0.0) * just_lifted
+        short_contact = (self.time_threshold - last_contact_time).clamp(
+            min=0.0
+        ) * just_lifted
         return torch.sum(short_contact, dim=1)
 
 

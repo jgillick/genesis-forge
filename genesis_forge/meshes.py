@@ -1,9 +1,8 @@
 """
 Trimesh builders for debug visuals.
 
-Each builder returns a `trimesh.Trimesh` built at the origin, ready to be drawn with
-`scene.draw_debug_mesh(mesh, T=...)`. The pose helpers build the 4x4 transform that
-places a mesh in the scene.
+Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn
+with `scene.draw_debug_mesh(mesh)`.
 """
 
 from __future__ import annotations
@@ -19,37 +18,40 @@ Color = tuple[float, float, float, float]
 
 
 def arrow_mesh(
-    length: float,
+    pos: ArrayLike,
+    vec: ArrayLike,
     radius: float,
     *,
     head_radius_ratio: float = 2.0,
     head_length_ratio: float = 4.0,
     max_head_fraction: float = 0.5,
-    sections: int = 48,
+    sections: int = 24,
     color: Color | None = None,
 ) -> trimesh.Trimesh:
     """
-    An arrow along the +Z axis with its base at the origin and its tip at z=`length`.
-    Pose it in the scene with `z_aligned_pose`.
+    An arrow from `pos` along `vec`, with its tip at `pos + vec`.
 
     Unlike the arrow drawn by `scene.draw_debug_arrow`, the arrowhead is sized from the
     shaft radius rather than the arrow length, so a short arrow keeps a pointed head, and
     the section count is configurable so the arrow looks round rather than blocky.
 
     Args:
-        length: The total length of the arrow, tip included
+        pos: The position of the base of the arrow, shape (3,)
+        vec: The arrow vector: its direction and length, shape (3,). Must not be zero.
         radius: The radius of the shaft
         head_radius_ratio: The base radius of the arrowhead, relative to `radius`
         head_length_ratio: The length of the arrowhead, relative to `radius`
-        max_head_fraction: The arrowhead is never longer than this fraction of `length`
+        max_head_fraction: The arrowhead is never longer than this fraction of the arrow length
         sections: The number of sides of the shaft and arrowhead
         color: RGBA color of the arrow, or None to leave the mesh uncolored
 
     Returns:
         The arrow mesh
     """
-    if length <= 0.0:
-        raise ValueError(f"Arrow length must be positive, got {length}")
+    vec = np.asarray(vec, dtype=np.float64)
+    length = float(np.linalg.norm(vec))
+    if length == 0.0:
+        raise ValueError("Arrow vector must not be zero")
     if radius <= 0.0:
         raise ValueError(f"Arrow radius must be positive, got {radius}")
 
@@ -59,6 +61,7 @@ def arrow_mesh(
     head_length = min(radius * head_length_ratio, length * max_head_fraction)
     shaft_length = length - head_length
 
+    # Build the arrow along +Z with its base at the origin, then pose it
     head = trimesh.creation.cone(
         radius=head_radius, height=head_length, sections=sections
     )
@@ -74,34 +77,39 @@ def arrow_mesh(
         parts.insert(0, shaft)
 
     mesh = trimesh.util.concatenate(parts)
+    mesh.apply_transform(_z_aligned_pose(pos, vec))
     if color is not None:
         mesh.visual.vertex_colors = color
     return mesh
 
 
 def arc_arrow_mesh(
+    pos: ArrayLike,
     radius: float,
     sweep: float,
     tube_radius: float,
     *,
+    start_angle: float = 0.0,
     head_radius_ratio: float = 2.5,
     head_length_ratio: float = 5.0,
-    tube_sides: int = 24,
+    tube_sides: int = 12,
     section_angle: float = math.radians(3.0),
     color: Color | None = None,
 ) -> trimesh.Trimesh:
     """
-    An arc of tube in the XY plane, centered on the origin, with an arrowhead at the end.
+    An arc of tube around the vertical axis through `pos`, with an arrowhead at the end.
 
-    The arc starts on the +X axis and sweeps counter-clockwise (viewed from +Z) for a
-    positive `sweep`, or clockwise for a negative one. The arrowhead sits at the end of the
-    sweep and points along the direction of travel. Pose it in the scene with `yaw_pose`
-    to rotate the start of the arc to any heading.
+    The arc lies in the horizontal plane through `pos`. It starts at `start_angle`
+    (radians from the world +X axis) and sweeps counter-clockwise (viewed from above) for
+    a positive `sweep`, or clockwise for a negative one. The arrowhead sits at the end of
+    the sweep and points along the direction of travel.
 
     Args:
+        pos: The center of the arc, shape (3,)
         radius: The radius of the arc, measured to the center of the tube
         sweep: The angle the arc sweeps through, in radians. Must not be zero.
         tube_radius: The radius of the tube
+        start_angle: The angle the arc starts from, in radians from the world +X axis
         head_radius_ratio: The base radius of the arrowhead, relative to `tube_radius`
         head_length_ratio: The length of the arrowhead, relative to `tube_radius`
         tube_sides: The number of sides of the tube's cross-section
@@ -144,12 +152,10 @@ def arc_arrow_mesh(
     )
     mesh = trimesh.util.concatenate([arc, head])
 
-    # A clockwise arc is rotated back so that it, too, starts on the +X axis
-    if direction < 0.0:
-        mesh.apply_transform(
-            trimesh.transformations.rotation_matrix(sweep, [0.0, 0.0, 1.0])
-        )
-
+    # Rotate the arc so it starts at the start angle. A clockwise arc currently starts at
+    # |sweep| and ends at 0, so it is rotated back by the sweep as well.
+    yaw = start_angle if direction > 0.0 else start_angle + sweep
+    mesh.apply_transform(_yaw_pose(pos, yaw))
     if color is not None:
         mesh.visual.vertex_colors = color
     return mesh
@@ -190,18 +196,8 @@ def _arc_head(
     return cone
 
 
-def z_aligned_pose(pos: ArrayLike, direction: ArrayLike) -> np.ndarray:
-    """
-    A 4x4 pose that places a mesh at `pos` with its +Z axis aligned to `direction`.
-    Use it to pose meshes built along +Z, such as `arrow_mesh`.
-
-    Args:
-        pos: The position, shape (3,)
-        direction: The world-frame direction the mesh's +Z axis should point along, shape (3,)
-
-    Returns:
-        The 4x4 transformation matrix
-    """
+def _z_aligned_pose(pos: ArrayLike, direction: ArrayLike) -> np.ndarray:
+    """A 4x4 pose that places a mesh at `pos` with its +Z axis aligned to `direction`"""
     direction = np.asarray(direction, dtype=np.float64)
     length = np.linalg.norm(direction)
     if length == 0.0:
@@ -223,18 +219,8 @@ def z_aligned_pose(pos: ArrayLike, direction: ArrayLike) -> np.ndarray:
     return T
 
 
-def yaw_pose(pos: ArrayLike, yaw: float) -> np.ndarray:
-    """
-    A 4x4 pose that places a mesh at `pos`, rotated by `yaw` radians about the +Z axis.
-    Use it to pose meshes built in the XY plane, such as `arc_arrow_mesh`.
-
-    Args:
-        pos: The position, shape (3,)
-        yaw: The rotation about +Z, in radians
-
-    Returns:
-        The 4x4 transformation matrix
-    """
+def _yaw_pose(pos: ArrayLike, yaw: float) -> np.ndarray:
+    """A 4x4 pose that places a mesh at `pos`, rotated by `yaw` radians about the +Z axis"""
     cos_yaw = math.cos(yaw)
     sin_yaw = math.sin(yaw)
     T = np.eye(4)

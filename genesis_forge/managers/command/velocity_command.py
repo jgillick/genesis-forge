@@ -9,12 +9,7 @@ from genesis.utils.geom import quat_to_xyz
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.meshes import (
-    arc_arrow_mesh,
-    arrow_mesh,
-    yaw_pose,
-    z_aligned_pose,
-)
+from genesis_forge.meshes import arc_arrow_mesh, arrow_mesh
 from genesis_forge.utils import transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
@@ -495,10 +490,13 @@ class VelocityCommandManager(CommandManager):
         length = float(np.linalg.norm(vec_np))
         if length == 0.0:
             return
-        mesh = arrow_mesh(length, self._debug_cfg("arrow_radius"), color=color)
-        node = self.env.scene.draw_debug_mesh(
-            mesh, T=z_aligned_pose(origin.cpu().numpy(), vec_np)
+        mesh = arrow_mesh(
+            origin.cpu().numpy(),
+            vec_np,
+            self._debug_cfg("arrow_radius"),
+            color=color,
         )
+        node = self.env.scene.draw_debug_mesh(mesh)
         self._debug_nodes.append(node)
 
     def _draw_stopped_ball(self, origin: torch.Tensor):
@@ -530,15 +528,17 @@ class VelocityCommandManager(CommandManager):
         if abs(sweep) < _ARC_MIN_VISIBLE_SWEEP:
             return
 
-        # The arc starts on the +X axis in its own frame, so rotating it by the anchor
-        # angle starts it at the anchor. The tube is thinner than the arrows so the two
-        # concentric arcs stay visually distinct.
+        # The tube is thinner than the arrows so the two concentric arcs stay visually
+        # distinct
         mesh = arc_arrow_mesh(
-            arc_radius, sweep, self._debug_cfg("ang_arc_tube_radius"), color=color
+            origin.cpu().numpy(),
+            arc_radius,
+            sweep,
+            self._debug_cfg("ang_arc_tube_radius"),
+            start_angle=anchor_angle,
+            color=color,
         )
-        node = self.env.scene.draw_debug_mesh(
-            mesh, T=yaw_pose(origin.cpu().numpy(), anchor_angle)
-        )
+        node = self.env.scene.draw_debug_mesh(mesh)
         self._debug_nodes.append(node)
 
     def _clear_debug_objects(self):

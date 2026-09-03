@@ -7,6 +7,7 @@ min/max (e.g. (2.0, 2.0)) wherever a sampled value needs to be deterministic,
 since resample_command draws from `torch.uniform_(min, max)`.
 """
 
+import numpy as np
 import pytest
 import torch
 
@@ -442,7 +443,7 @@ def test_debug_arrow_and_arc_are_drawn_with_draw_debug_mesh(env):
 
     calls = []
     env.scene = SimpleNamespace(
-        draw_debug_mesh=lambda mesh, T: calls.append((mesh, T)) or object(),
+        draw_debug_mesh=lambda mesh: calls.append(mesh) or object(),
         clear_debug_object=lambda node: None,
     )
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
@@ -454,10 +455,14 @@ def test_debug_arrow_and_arc_are_drawn_with_draw_debug_mesh(env):
     mgr._draw_ang_vel_arc(origin, 0.5, 0.0, 0.2, (0.0, 0.0, 0.5, 1.0))
 
     assert len(calls) == 2
-    for mesh, T in calls:
-        assert isinstance(mesh, trimesh.Trimesh)
-        assert T.shape == (4, 4)
-        assert T[:3, 3].tolist() == [1.0, 2.0, 3.0]
+    arrow, arc = calls
+    assert isinstance(arrow, trimesh.Trimesh)
+    assert isinstance(arc, trimesh.Trimesh)
+    # The arrow tip is at origin + vec; the arc is centered on the origin
+    tip = arrow.vertices[np.argmax(arrow.vertices[:, 0])]
+    assert np.allclose(tip, [1.1, 2.0, 3.0])
+    assert np.allclose(arrow.vertices[:, 0].min(), 1.0)
+    assert np.allclose(arc.vertices[:, 2].mean(), 3.0)
     assert len(mgr._debug_nodes) == 2
 
     # A zero vector draws nothing

@@ -75,7 +75,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.0, -1.5, 1.5),
+            pos=(-0.5, -0.5, 2.0),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,

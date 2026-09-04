@@ -13,7 +13,6 @@ import trimesh
 from genesis_forge.meshes import (
     arrow_mesh,
     flat_arc_arrow_mesh,
-    flat_arrow_mesh,
 )
 
 TOL = 1e-6
@@ -85,82 +84,11 @@ def test_arrow_rejects_degenerate_dimensions(vec, radius):
 
 
 """
-flat_arrow_mesh
+flat_arc_arrow_mesh
 """
 
 WIDTH = 0.02
 THICKNESS = 0.004
-
-
-def test_flat_arrow_is_placed_at_pos_and_points_along_vec():
-    pos = np.array([1.0, 2.0, 3.0])
-    vec = np.array([0.3, 0.4, 0.0])
-    mesh = flat_arrow_mesh(pos, vec, WIDTH, THICKNESS, head_width_ratio=2.5)
-    unit = vec / np.linalg.norm(vec)
-    along = (mesh.vertices - pos) @ unit
-    assert along.min() == pytest.approx(0.0, abs=TOL)
-    assert along.max() == pytest.approx(0.5, abs=TOL)
-    # The tip is on the arrow's axis
-    tip = mesh.vertices[np.isclose(along, 0.5)]
-    assert np.allclose(tip[:, :2], (pos + vec)[:2], atol=TOL)
-    # Horizontal arrows are flat: centered on the plane through pos, `thickness` thick
-    z = mesh.vertices[:, 2]
-    assert z.min() == pytest.approx(3.0 - THICKNESS / 2, abs=TOL)
-    assert z.max() == pytest.approx(3.0 + THICKNESS / 2, abs=TOL)
-    # Widest across the head
-    sideways = (mesh.vertices - pos) @ np.array([-unit[1], unit[0], 0.0])
-    assert sideways.max() - sideways.min() == pytest.approx(WIDTH * 2.5, abs=TOL)
-
-
-def test_flat_arrow_is_closed_with_outward_normals():
-    mesh = flat_arrow_mesh(ORIGIN, (0.3, 0.0, 0.0), WIDTH, THICKNESS)
-    assert mesh.is_watertight
-    assert mesh.volume > 0.0
-    assert len(mesh.vertices) == 14
-
-
-def test_flat_arrow_head_length_is_clamped_for_short_arrows():
-    mesh = flat_arrow_mesh(
-        ORIGIN,
-        (0.02, 0.0, 0.0),
-        WIDTH,
-        THICKNESS,
-        head_length_ratio=2.0,
-        max_head_fraction=0.5,
-    )
-    # The head base is the widest cross-section; it sits at half the length
-    widest = mesh.vertices[np.isclose(np.abs(mesh.vertices[:, 1]), WIDTH * 2.5 / 2)]
-    assert np.allclose(widest[:, 0], 0.01)
-
-
-def test_flat_arrow_faces_the_up_direction():
-    # An arrow along +Y with `up` along +X lies in the YZ plane
-    mesh = flat_arrow_mesh(
-        ORIGIN, (0.0, 0.3, 0.0), WIDTH, THICKNESS, up=(1.0, 0.0, 0.0)
-    )
-    x = mesh.vertices[:, 0]
-    assert x.max() - x.min() == pytest.approx(THICKNESS, abs=TOL)
-    assert mesh.vertices[:, 1].max() == pytest.approx(0.3, abs=TOL)
-
-
-@pytest.mark.parametrize(
-    "vec, width, thickness, up",
-    [
-        ((0.0, 0.0, 0.0), WIDTH, THICKNESS, (0.0, 0.0, 1.0)),
-        ((0.3, 0.0, 0.0), 0.0, THICKNESS, (0.0, 0.0, 1.0)),
-        ((0.3, 0.0, 0.0), WIDTH, 0.0, (0.0, 0.0, 1.0)),
-        ((0.0, 0.0, 0.3), WIDTH, THICKNESS, (0.0, 0.0, 1.0)),  # up parallel to vec
-    ],
-)
-def test_flat_arrow_rejects_degenerate_inputs(vec, width, thickness, up):
-    with pytest.raises(ValueError):
-        flat_arrow_mesh(ORIGIN, vec, width, thickness, up=up)
-
-
-"""
-flat_arc_arrow_mesh
-"""
-
 ARC_RADIUS = 0.2
 FLAT_HEAD_ANGLE = math.atan(WIDTH * 2.0 / ARC_RADIUS)
 """The angle the flat arrowhead tip (2 widths long) extends past the end of the arc"""
@@ -238,14 +166,11 @@ Colors (shared by every builder)
     "build",
     [
         lambda color: arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, color=color),
-        lambda color: flat_arrow_mesh(
-            ORIGIN, (0.3, 0.0, 0.0), WIDTH, THICKNESS, color=color
-        ),
         lambda color: flat_arc_arrow_mesh(
             ORIGIN, ARC_RADIUS, math.radians(45), WIDTH, THICKNESS, color=color
         ),
     ],
-    ids=["arrow", "flat_arrow", "flat_arc"],
+    ids=["arrow", "flat_arc"],
 )
 def test_color_is_applied_to_every_vertex_or_left_off(build):
     color = (0.0, 0.5, 0.0, 1.0)

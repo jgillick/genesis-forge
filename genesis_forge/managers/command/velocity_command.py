@@ -127,10 +127,6 @@ class VelocityCommandManager(CommandManager):
         - BLUE ARROW: Actual robot velocity in world coordinates
         - RED BALL: Shown when no linear velocity is commanded
 
-        The angular velocity arcs are flat bands drawn at the same radius. The commanded
-        arc is narrower and taller than the actual one, so both stay readable when they
-        overlap.
-
     Args:
         env: The environment to control
         range: The ranges of linear & angular velocities
@@ -241,7 +237,7 @@ class VelocityCommandManager(CommandManager):
     def standing_probability(self, value: float) -> None:
         self.stopped_probability = value
 
-    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
+    def stopped_envs(self, threshold: float = 0.0025) -> torch.Tensor:
         """
         The environments whose command is effectively stopped: no movement commanded,
         linear or angular.
@@ -459,7 +455,7 @@ class VelocityCommandManager(CommandManager):
                 # Actual linear velocity
                 self._draw_arrow(origin[i], actual_vec[i], actual_color)
 
-                # Commanded and actual angular velocity
+                # Actual angular velocities
                 if self._ang_arc_enabled:
                     self._draw_ang_vel_arc(
                         origin[i],
@@ -578,9 +574,6 @@ class VelocityCommandManager(CommandManager):
         if abs(sweep) < DEBUG_ARC_MIN_SWEEP:
             return
 
-        # The commanded arc is narrower and taller than the actual one, so both stay
-        # visible when they overlap: the commanded arc shows above and below the actual
-        # one, and the actual arc shows on either side of the commanded one.
         width = self._debug_cfg("ang_arc_width")
         thickness = self._debug_cfg("ang_arc_height")
         if commanded:

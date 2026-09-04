@@ -83,78 +83,6 @@ def arrow_mesh(
     return mesh
 
 
-def flat_arrow_mesh(
-    pos: ArrayLike,
-    vec: ArrayLike,
-    width: float,
-    thickness: float,
-    *,
-    up: ArrayLike = (0.0, 0.0, 1.0),
-    head_width_ratio: float = 1.5,
-    head_length_ratio: float = 2.0,
-    max_head_fraction: float = 0.5,
-    color: Color | None = None,
-) -> trimesh.Trimesh:
-    """
-    A flat arrow from `pos` along `vec`, with its tip at `pos + vec`.
-
-    The arrow is a two-dimensional outline (a rectangular shaft and a triangular head)
-    extruded to `thickness`. It lies in the plane containing `vec` that faces `up`, and
-    is centered on that plane, so a horizontal arrow reads as a chevron from above.
-
-    Args:
-        pos: The position of the base of the arrow, shape (3,)
-        vec: The arrow vector: its direction and length, shape (3,). Must not be zero.
-        width: The width of the shaft
-        thickness: The thickness of the arrow, perpendicular to its plane
-        up: The direction the flat faces of the arrow face, shape (3,). Must not be
-            parallel to `vec`.
-        head_width_ratio: The width of the arrowhead, relative to `width`. Should be > 1.
-        head_length_ratio: The length of the arrowhead, relative to `width`
-        max_head_fraction: The arrowhead is never longer than this fraction of the arrow length
-        color: RGBA color of the arrow, or None to leave the mesh uncolored
-
-    Returns:
-        The arrow mesh
-    """
-    vec = np.asarray(vec, dtype=np.float64)
-    length = float(np.linalg.norm(vec))
-    if length == 0.0:
-        raise ValueError("Arrow vector must not be zero")
-    if width <= 0.0:
-        raise ValueError(f"Arrow width must be positive, got {width}")
-    if thickness <= 0.0:
-        raise ValueError(f"Arrow thickness must be positive, got {thickness}")
-
-    # The head is sized from the shaft width; only its length gives way on short arrows
-    head_width = width * head_width_ratio
-    head_length = min(width * head_length_ratio, length * max_head_fraction)
-    shaft_length = length - head_length
-
-    # The outline along +X, as one simple polygon: shaft corners, then the head fanned
-    # from the tip. The shaft's end corners lie on the head's base line, so the shaft
-    # and head share their edge and the mesh is closed.
-    half_w = width / 2.0
-    half_head_w = head_width / 2.0
-    outline = np.array(
-        [
-            [0.0, -half_w],  # 0: shaft base
-            [shaft_length, -half_w],  # 1: shaft end
-            [shaft_length, -half_head_w],  # 2: head base corner
-            [length, 0.0],  # 3: tip
-            [shaft_length, half_head_w],  # 4: head base corner
-            [shaft_length, half_w],  # 5: shaft end
-            [0.0, half_w],  # 6: shaft base
-        ]
-    )
-    faces = [[0, 1, 5], [0, 5, 6], [3, 4, 5], [3, 5, 1], [3, 1, 2]]
-    mesh = _extrude(outline, faces, thickness)
-    mesh.apply_transform(_planar_pose(pos, vec, up))
-    if color is not None:
-        _set_color(mesh, color)
-    return mesh
-
-
 def flat_arc_arrow_mesh(
     pos: ArrayLike,
     radius: float,
@@ -302,31 +230,6 @@ def _extrude(outline: np.ndarray, faces: list, thickness: float) -> trimesh.Trim
     mesh = trimesh.creation.extrude_triangulation(outline, faces, thickness)
     mesh.apply_translation([0.0, 0.0, -thickness / 2.0])
     return mesh
-
-
-def _planar_pose(pos: ArrayLike, direction: ArrayLike, up: ArrayLike) -> np.ndarray:
-    """
-    A 4x4 pose that places a mesh at `pos` with its +X axis along `direction` and its
-    +Z axis as close to `up` as possible while staying perpendicular to `direction`.
-    """
-    x_axis = np.asarray(direction, dtype=np.float64)
-    x_norm = np.linalg.norm(x_axis)
-    if x_norm == 0.0:
-        raise ValueError("Pose direction must not be a zero vector")
-    x_axis = x_axis / x_norm
-
-    z_axis = np.asarray(up, dtype=np.float64)
-    z_axis = z_axis - x_axis * (z_axis @ x_axis)
-    z_norm = np.linalg.norm(z_axis)
-    if z_norm == 0.0:
-        raise ValueError("Pose `up` must not be parallel to the direction")
-    z_axis = z_axis / z_norm
-    y_axis = np.cross(z_axis, x_axis)
-
-    T = np.eye(4)
-    T[:3, :3] = np.column_stack([x_axis, y_axis, z_axis])
-    T[:3, 3] = np.asarray(pos, dtype=np.float64)
-    return T
 
 
 def _set_color(mesh: trimesh.Trimesh, color: Color) -> None:

@@ -3,7 +3,8 @@
 Trimesh builders for drawing custom debug visuals with `scene.draw_debug_mesh`.
 
 Each builder returns a `trimesh.Trimesh` already placed in the scene, so it can be
-drawn directly:
+drawn directly. `arrow_mesh` builds a round arrow; `flat_arrow_mesh` and
+`flat_arc_arrow_mesh` build thin extruded outlines that read clearly from above.
 
 ```python
 from genesis_forge.meshes import arrow_mesh

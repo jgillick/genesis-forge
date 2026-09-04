@@ -133,6 +133,8 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
+                "arrow_radius": 0.01,
+                "ang_arc_width": 0.015,
             },
         )
 

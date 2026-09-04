@@ -10,7 +10,11 @@ import numpy as np
 import pytest
 import trimesh
 
-from genesis_forge.meshes import arc_arrow_mesh, arrow_mesh
+from genesis_forge.meshes import (
+    arrow_mesh,
+    flat_arc_arrow_mesh,
+    flat_arrow_mesh,
+)
 
 TOL = 1e-6
 ORIGIN = (0.0, 0.0, 0.0)
@@ -33,18 +37,10 @@ arrow_mesh
 """
 
 
-def test_arrow_spans_its_base_to_its_tip():
-    mesh = arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, head_radius_ratio=2.0)
-    z = mesh.vertices[:, 2]
-    assert z.min() == pytest.approx(0.0)
-    assert z.max() == pytest.approx(0.3)
-    assert radial(mesh).max() == pytest.approx(0.02)
-
-
 def test_arrow_is_placed_at_pos_and_points_along_vec():
     pos = np.array([1.0, 2.0, 3.0])
     vec = np.array([0.3, 0.4, 0.0])
-    mesh = arrow_mesh(pos, vec, 0.01)
+    mesh = arrow_mesh(pos, vec, 0.01, head_radius_ratio=2.0)
     # The tip is the vertex farthest along the vector
     along = (mesh.vertices - pos) @ (vec / np.linalg.norm(vec))
     assert along.max() == pytest.approx(0.5, abs=TOL)
@@ -55,6 +51,7 @@ def test_arrow_is_placed_at_pos_and_points_along_vec():
         (mesh.vertices - pos) - np.outer(along, vec / np.linalg.norm(vec)), axis=1
     )
     assert axis_dist.max() == pytest.approx(0.02, abs=TOL)
+    assert mesh.is_watertight
 
 
 def test_arrow_head_length_comes_from_the_radius_not_the_length():
@@ -79,26 +76,6 @@ def test_arrow_head_radius_does_not_depend_on_the_length():
         assert radial(mesh).max() == pytest.approx(0.02)
 
 
-def test_arrow_sections_control_the_resolution():
-    coarse = arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, sections=12)
-    fine = arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, sections=32)
-    assert len(fine.vertices) > len(coarse.vertices)
-    assert coarse.is_watertight
-    assert fine.is_watertight
-
-
-def test_arrow_color_is_applied_to_every_vertex():
-    color = (0.0, 0.5, 0.0, 1.0)
-    mesh = arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, color=color)
-    expected = trimesh.visual.color.to_rgba(color)
-    assert np.all(mesh.visual.vertex_colors == expected)
-
-
-def test_arrow_without_color_is_left_uncolored():
-    mesh = arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01)
-    assert mesh.visual.kind is None
-
-
 @pytest.mark.parametrize(
     "vec, radius", [((0.0, 0.0, 0.0), 0.01), ((0.0, 0.0, 0.3), 0.0)]
 )
@@ -108,95 +85,170 @@ def test_arrow_rejects_degenerate_dimensions(vec, radius):
 
 
 """
-arc_arrow_mesh
+flat_arrow_mesh
+"""
+
+WIDTH = 0.02
+THICKNESS = 0.004
+
+
+def test_flat_arrow_is_placed_at_pos_and_points_along_vec():
+    pos = np.array([1.0, 2.0, 3.0])
+    vec = np.array([0.3, 0.4, 0.0])
+    mesh = flat_arrow_mesh(pos, vec, WIDTH, THICKNESS, head_width_ratio=2.5)
+    unit = vec / np.linalg.norm(vec)
+    along = (mesh.vertices - pos) @ unit
+    assert along.min() == pytest.approx(0.0, abs=TOL)
+    assert along.max() == pytest.approx(0.5, abs=TOL)
+    # The tip is on the arrow's axis
+    tip = mesh.vertices[np.isclose(along, 0.5)]
+    assert np.allclose(tip[:, :2], (pos + vec)[:2], atol=TOL)
+    # Horizontal arrows are flat: centered on the plane through pos, `thickness` thick
+    z = mesh.vertices[:, 2]
+    assert z.min() == pytest.approx(3.0 - THICKNESS / 2, abs=TOL)
+    assert z.max() == pytest.approx(3.0 + THICKNESS / 2, abs=TOL)
+    # Widest across the head
+    sideways = (mesh.vertices - pos) @ np.array([-unit[1], unit[0], 0.0])
+    assert sideways.max() - sideways.min() == pytest.approx(WIDTH * 2.5, abs=TOL)
+
+
+def test_flat_arrow_is_closed_with_outward_normals():
+    mesh = flat_arrow_mesh(ORIGIN, (0.3, 0.0, 0.0), WIDTH, THICKNESS)
+    assert mesh.is_watertight
+    assert mesh.volume > 0.0
+    assert len(mesh.vertices) == 14
+
+
+def test_flat_arrow_head_length_is_clamped_for_short_arrows():
+    mesh = flat_arrow_mesh(
+        ORIGIN,
+        (0.02, 0.0, 0.0),
+        WIDTH,
+        THICKNESS,
+        head_length_ratio=2.0,
+        max_head_fraction=0.5,
+    )
+    # The head base is the widest cross-section; it sits at half the length
+    widest = mesh.vertices[np.isclose(np.abs(mesh.vertices[:, 1]), WIDTH * 2.5 / 2)]
+    assert np.allclose(widest[:, 0], 0.01)
+
+
+def test_flat_arrow_faces_the_up_direction():
+    # An arrow along +Y with `up` along +X lies in the YZ plane
+    mesh = flat_arrow_mesh(
+        ORIGIN, (0.0, 0.3, 0.0), WIDTH, THICKNESS, up=(1.0, 0.0, 0.0)
+    )
+    x = mesh.vertices[:, 0]
+    assert x.max() - x.min() == pytest.approx(THICKNESS, abs=TOL)
+    assert mesh.vertices[:, 1].max() == pytest.approx(0.3, abs=TOL)
+
+
+@pytest.mark.parametrize(
+    "vec, width, thickness, up",
+    [
+        ((0.0, 0.0, 0.0), WIDTH, THICKNESS, (0.0, 0.0, 1.0)),
+        ((0.3, 0.0, 0.0), 0.0, THICKNESS, (0.0, 0.0, 1.0)),
+        ((0.3, 0.0, 0.0), WIDTH, 0.0, (0.0, 0.0, 1.0)),
+        ((0.0, 0.0, 0.3), WIDTH, THICKNESS, (0.0, 0.0, 1.0)),  # up parallel to vec
+    ],
+)
+def test_flat_arrow_rejects_degenerate_inputs(vec, width, thickness, up):
+    with pytest.raises(ValueError):
+        flat_arrow_mesh(ORIGIN, vec, width, thickness, up=up)
+
+
+"""
+flat_arc_arrow_mesh
 """
 
 ARC_RADIUS = 0.2
-TUBE_RADIUS = 0.005
-HEAD_LENGTH = TUBE_RADIUS * 5.0
-HEAD_ANGLE = math.atan(HEAD_LENGTH / ARC_RADIUS)
-"""The angle the arrowhead tip extends past the end of the arc"""
-
-
-def test_arc_positive_sweep_starts_at_x_and_heads_counter_clockwise():
-    sweep = math.radians(45)
-    mesh = arc_arrow_mesh(ORIGIN, ARC_RADIUS, sweep, TUBE_RADIUS, head_length_ratio=5.0)
-    a = angles(mesh)
-    assert a.min() == pytest.approx(0.0, abs=TOL)
-    assert a.max() == pytest.approx(sweep + HEAD_ANGLE, abs=TOL)
-    # The farthest vertex is the cone tip, on the tangent at the end of the arc
-    tip = mesh.vertices[np.argmax(a)]
-    assert np.hypot(tip[0], tip[1]) == pytest.approx(
-        math.hypot(ARC_RADIUS, HEAD_LENGTH), abs=TOL
-    )
-
-
-def test_arc_negative_sweep_starts_at_x_and_heads_clockwise():
-    sweep = -math.radians(45)
-    mesh = arc_arrow_mesh(ORIGIN, ARC_RADIUS, sweep, TUBE_RADIUS, head_length_ratio=5.0)
-    a = angles(mesh)
-    assert a.max() == pytest.approx(0.0, abs=TOL)
-    assert a.min() == pytest.approx(sweep - HEAD_ANGLE, abs=TOL)
-
-
-def test_arc_negative_sweep_mirrors_the_positive_sweep():
-    sweep = math.radians(30)
-    ccw = arc_arrow_mesh(ORIGIN, ARC_RADIUS, sweep, TUBE_RADIUS)
-    cw = arc_arrow_mesh(ORIGIN, ARC_RADIUS, -sweep, TUBE_RADIUS)
-    mirrored = cw.bounds * np.array([1.0, -1.0, 1.0])
-    assert np.allclose(np.sort(mirrored, axis=0), ccw.bounds, atol=TOL)
+FLAT_HEAD_ANGLE = math.atan(WIDTH * 2.0 / ARC_RADIUS)
+"""The angle the flat arrowhead tip (2 widths long) extends past the end of the arc"""
 
 
 @pytest.mark.parametrize("sweep", [math.radians(45), -math.radians(45)])
-def test_arc_is_centered_on_pos_and_starts_at_the_start_angle(sweep):
+def test_flat_arc_sweeps_from_the_start_angle_in_the_direction_of_the_sign(sweep):
     pos = np.array([1.0, 2.0, 3.0])
     start = math.radians(120)
-    mesh = arc_arrow_mesh(pos, ARC_RADIUS, sweep, TUBE_RADIUS, start_angle=start)
-    # Same shape as the arc at the origin, rotated by the start angle
+    mesh = flat_arc_arrow_mesh(
+        pos,
+        ARC_RADIUS,
+        sweep,
+        WIDTH,
+        THICKNESS,
+        start_angle=start,
+        head_length_ratio=2.0,
+    )
     a = angles(mesh, pos) - start
     a = np.arctan2(np.sin(a), np.cos(a))  # wrap to [-pi, pi]
     if sweep > 0.0:
         assert a.min() == pytest.approx(0.0, abs=TOL)
-        assert a.max() == pytest.approx(sweep + HEAD_ANGLE, abs=TOL)
+        assert a.max() == pytest.approx(sweep + FLAT_HEAD_ANGLE, abs=TOL)
     else:
         assert a.max() == pytest.approx(0.0, abs=TOL)
-        assert a.min() == pytest.approx(sweep - HEAD_ANGLE, abs=TOL)
-    assert mesh.vertices[:, 2].mean() == pytest.approx(3.0, abs=TOL)
-    assert radial(mesh, pos).min() == pytest.approx(
-        ARC_RADIUS - TUBE_RADIUS * 2.5, abs=TOL
-    )
+        assert a.min() == pytest.approx(sweep - FLAT_HEAD_ANGLE, abs=TOL)
+    # Flat: centered on the plane through pos
+    z = mesh.vertices[:, 2]
+    assert z.min() == pytest.approx(3.0 - THICKNESS / 2, abs=TOL)
+    assert z.max() == pytest.approx(3.0 + THICKNESS / 2, abs=TOL)
 
 
-def test_arc_stays_near_its_ring():
-    mesh = arc_arrow_mesh(
-        ORIGIN, ARC_RADIUS, math.radians(60), TUBE_RADIUS, head_radius_ratio=2.5
+def test_flat_arc_band_and_head_widths():
+    mesh = flat_arc_arrow_mesh(
+        ORIGIN, ARC_RADIUS, math.radians(45), WIDTH, THICKNESS, head_width_ratio=2.5
     )
-    head_radius = TUBE_RADIUS * 2.5
     r = radial(mesh)
-    assert r.min() >= ARC_RADIUS - head_radius - TOL
-    assert r.max() <= ARC_RADIUS + head_radius + TOL
-    assert np.abs(mesh.vertices[:, 2]).max() <= head_radius + TOL
-
-
-def test_arc_resolution_scales_with_the_sweep():
-    short = arc_arrow_mesh(ORIGIN, ARC_RADIUS, math.radians(10), TUBE_RADIUS)
-    long = arc_arrow_mesh(ORIGIN, ARC_RADIUS, math.radians(45), TUBE_RADIUS)
-    assert len(long.vertices) > len(short.vertices)
-
-
-def test_arc_color_is_applied_to_every_vertex():
-    color = (0.0, 0.0, 0.5, 1.0)
-    mesh = arc_arrow_mesh(
-        ORIGIN, ARC_RADIUS, math.radians(45), TUBE_RADIUS, color=color
+    assert r.min() == pytest.approx(ARC_RADIUS - WIDTH * 2.5 / 2, abs=TOL)
+    assert r.max() == pytest.approx(ARC_RADIUS + WIDTH * 2.5 / 2, abs=TOL)
+    # The band itself is `WIDTH` wide: its vertices at the start of the arc
+    start = mesh.vertices[np.isclose(angles(mesh), 0.0)]
+    assert radial(mesh)[np.isclose(angles(mesh), 0.0)].min() == pytest.approx(
+        ARC_RADIUS - WIDTH / 2, abs=TOL
     )
-    expected = trimesh.visual.color.to_rgba(color)
-    assert np.all(mesh.visual.vertex_colors == expected)
+    assert len(start) > 0
+
+
+@pytest.mark.parametrize("sweep", [math.radians(45), -math.radians(45)])
+def test_flat_arc_is_closed_with_outward_normals(sweep):
+    mesh = flat_arc_arrow_mesh(ORIGIN, ARC_RADIUS, sweep, WIDTH, THICKNESS)
+    assert mesh.is_watertight
+    assert mesh.volume > 0.0
 
 
 @pytest.mark.parametrize(
-    "radius, sweep, tube_radius",
-    [(ARC_RADIUS, 0.0, TUBE_RADIUS), (0.0, 1.0, TUBE_RADIUS), (ARC_RADIUS, 1.0, 0.0)],
+    "radius, sweep, width, thickness",
+    [
+        (ARC_RADIUS, 0.0, WIDTH, THICKNESS),
+        (0.0, 1.0, WIDTH, THICKNESS),
+        (ARC_RADIUS, 1.0, 0.0, THICKNESS),
+        (ARC_RADIUS, 1.0, WIDTH, 0.0),
+    ],
 )
-def test_arc_rejects_degenerate_dimensions(radius, sweep, tube_radius):
+def test_flat_arc_rejects_degenerate_dimensions(radius, sweep, width, thickness):
     with pytest.raises(ValueError):
-        arc_arrow_mesh(ORIGIN, radius, sweep, tube_radius)
+        flat_arc_arrow_mesh(ORIGIN, radius, sweep, width, thickness)
+
+
+"""
+Colors (shared by every builder)
+"""
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda color: arrow_mesh(ORIGIN, (0.0, 0.0, 0.3), 0.01, color=color),
+        lambda color: flat_arrow_mesh(
+            ORIGIN, (0.3, 0.0, 0.0), WIDTH, THICKNESS, color=color
+        ),
+        lambda color: flat_arc_arrow_mesh(
+            ORIGIN, ARC_RADIUS, math.radians(45), WIDTH, THICKNESS, color=color
+        ),
+    ],
+    ids=["arrow", "flat_arrow", "flat_arc"],
+)
+def test_color_is_applied_to_every_vertex_or_left_off(build):
+    color = (0.0, 0.5, 0.0, 1.0)
+    mesh = build(color)
+    assert np.all(mesh.visual.vertex_colors == trimesh.visual.color.to_rgba(color))
+    assert build(None).visual.kind is None

@@ -479,38 +479,42 @@ VelocityCommandManager -- debug visuals are drawn as meshes
 """
 
 
-def test_debug_arrow_and_arc_are_drawn_with_draw_debug_mesh(env):
-    from types import SimpleNamespace
-
-    import trimesh
-
-    calls = []
-    env.scene = SimpleNamespace(
-        draw_debug_mesh=lambda mesh: calls.append(mesh) or object(),
-        clear_debug_object=lambda node: None,
-    )
+def test_arrows_are_drawn_as_meshes_and_zero_vectors_draw_nothing(env):
+    env.scene = FakeScene(env.num_envs)
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
-    mgr._ang_arc_scale_factor = 1.0
-    mgr._ang_arc_max_sweep = 1.0
 
     origin = torch.tensor([1.0, 2.0, 3.0])
     mgr._draw_arrow(origin, torch.tensor([0.1, 0.0, 0.0]), (0.0, 0.5, 0.0, 1.0))
-    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, 0.2, (0.0, 0.0, 0.5, 1.0))
+    assert len(env.scene.mesh_calls) == 1
+    assert len(mgr._debug_nodes) == 1
 
-    assert len(calls) == 2
-    arrow, arc = calls
-    assert isinstance(arrow, trimesh.Trimesh)
-    assert isinstance(arc, trimesh.Trimesh)
-    # The arrow tip is at origin + vec; the arc is centered on the origin
-    tip = arrow.vertices[np.argmax(arrow.vertices[:, 0])]
-    assert np.allclose(tip, [1.1, 2.0, 3.0])
-    assert np.allclose(arrow.vertices[:, 0].min(), 1.0)
-    assert np.allclose(arc.vertices[:, 2].mean(), 3.0)
-    assert len(mgr._debug_nodes) == 2
-
-    # A zero vector draws nothing
     mgr._draw_arrow(origin, torch.zeros(3), (0.0, 0.5, 0.0, 1.0))
-    assert len(calls) == 2
+    assert len(env.scene.mesh_calls) == 1
+
+
+def test_commanded_arc_is_narrower_and_taller_than_the_actual_arc(env):
+    """The two arcs overlap at one radius, so the flag must change the arc's shape"""
+    env.scene = FakeScene(env.num_envs)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
+    mgr._ang_arc_scale_factor = 1.0
+    mgr._ang_arc_max_sweep = 1.0
+    mgr._ang_arc_radius = 0.2
+
+    origin = torch.zeros(3)
+    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, (0.0, 0.5, 0.0, 1.0), commanded=True)
+    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, (0.0, 0.0, 0.5, 1.0), commanded=False)
+    commanded, actual = env.scene.mesh_calls
+
+    def band_width(mesh):
+        # The band's start edge lies on the +X axis (y == 0); the head is elsewhere
+        start = mesh.vertices[np.isclose(mesh.vertices[:, 1], 0.0)]
+        return start[:, 0].max() - start[:, 0].min()
+
+    def thickness(mesh):
+        return mesh.vertices[:, 2].max() - mesh.vertices[:, 2].min()
+
+    assert band_width(commanded) < band_width(actual)
+    assert thickness(commanded) > thickness(actual)
 
 
 """

@@ -10,7 +10,7 @@ from genesis.utils.geom import quat_to_xyz
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.meshes import arc_arrow_mesh, arrow_mesh
+from genesis_forge.meshes import arrow_mesh, flat_arc_arrow_mesh
 from genesis_forge.utils import transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
@@ -40,11 +40,17 @@ class VelocityDebugVisualizerConfig(TypedDict):
     arrow_max_length: NotRequired[float]
     """The length of the linear velocity arrow at the maximum of the linear velocity range"""
 
-    commanded_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the commanded velocity arrow and arc"""
+    ang_arc_enabled: NotRequired[bool]
+    """Show the angular velocity arcs"""
 
-    actual_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the actual robot velocity arrow and arc"""
+    ang_arc_width: NotRequired[float]
+    """The radial width of the actual angular velocity arc"""
+
+    ang_arc_height: NotRequired[float]
+    """The vertical thickness of the actual angular velocity arc"""
+
+    ang_arc_max_sweep: NotRequired[float]
+    """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
 
     stopped_color: NotRequired[tuple[float, float, float, float]]
     """The color of the ball shown when no linear velocity is commanded"""
@@ -52,23 +58,20 @@ class VelocityDebugVisualizerConfig(TypedDict):
     stopped_ball_radius: NotRequired[float]
     """The radius of the ball shown when no linear velocity is commanded"""
 
-    ang_arc_enabled: NotRequired[bool]
-    """Show the angular velocity arcs"""
+    commanded_color: NotRequired[tuple[float, float, float, float]]
+    """The color of the commanded velocity arrow and arc"""
 
-    ang_arc_gap: NotRequired[float]
-    """The space between the tip of a full-length linear velocity arrow and the inner angular velocity arc, and between the two arcs"""
+    actual_color: NotRequired[tuple[float, float, float, float]]
+    """The color of the actual robot velocity arrow and arc"""
 
-    ang_arc_tube_radius: NotRequired[float]
-    """The radius of the tube of the debug arrow arc"""
-
-    ang_arc_max_sweep: NotRequired[float]
-    """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
+    ##
+    # DEPRECATED
+    #
+    standing_ball_radius: NotRequired[float]
+    """Deprecated: use `stopped_ball_radius` instead"""
 
     standing_color: NotRequired[tuple[float, float, float, float]]
     """Deprecated: use `stopped_color` instead"""
-
-    standing_ball_radius: NotRequired[float]
-    """Deprecated: use `stopped_ball_radius` instead"""
 
 
 _DEPRECATED_VISUALIZER_KEYS = {
@@ -83,18 +86,24 @@ DEFAULT_VISUALIZER_CONFIG = {
     "arrow_offset": 0.12,
     "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
+    "ang_arc_enabled": True,
+    "ang_arc_width": 0.03,
+    "ang_arc_height": 0.0025,
+    "ang_arc_max_sweep": math.radians(45),
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
     "actual_color": (0.0, 0.0, 0.5, 1.0),
-    "stopped_color": (1.0, 0.0, 0.0, 1.0),
     "stopped_ball_radius": 0.03,
-    "ang_arc_enabled": True,
-    "ang_arc_gap": 0.015,
-    "ang_arc_tube_radius": 0.012,
-    "ang_arc_max_sweep": math.radians(45),
+    "stopped_color": (1.0, 0.0, 0.0, 1.0),
 }
 
-_ARC_MIN_VISIBLE_SWEEP = 0.05
+DEBUG_ARC_MIN_SWEEP = 0.05
 """Angular velocity arcs with a smaller sweep (in radians) are too small to see, so they are not drawn"""
+
+DEBUG_ARC_COMMANDED_WIDTH_RATIO = 0.5
+"""The width of the commanded angular velocity arc, relative to the actual angular velocity arc"""
+
+DEBUG_ARC_COMMANDED_HEIGHT_RATIO = 1.25
+"""The height of the commanded angular velocity arc, relative to the actual angular velocity arc"""
 
 
 class VelocityCommandManager(CommandManager):
@@ -117,6 +126,10 @@ class VelocityCommandManager(CommandManager):
           When joystick is "forward", this arrow points in the robot's forward direction
         - BLUE ARROW: Actual robot velocity in world coordinates
         - RED BALL: Shown when no linear velocity is commanded
+
+        The angular velocity arcs are flat bands drawn at the same radius. The commanded
+        arc is narrower and taller than the actual one, so both stay readable when they
+        overlap.
 
     Args:
         env: The environment to control
@@ -309,15 +322,17 @@ class VelocityCommandManager(CommandManager):
         )
 
         # Angular velocity arcs: a full sweep is the fastest angular velocity in the range,
-        # and both arcs sit just beyond the tip of a full-length linear velocity arrow
+        # and both arcs share a radius just beyond the tip of a full-length linear velocity
+        # arrow
         max_ang_vel = max(abs(v) for v in velocity_range["ang_vel_z"])
         self._ang_arc_enabled = self._debug_cfg("ang_arc_enabled") and max_ang_vel > 0.0
         if self._ang_arc_enabled:
             self._ang_arc_max_sweep = self._debug_cfg("ang_arc_max_sweep")
             self._ang_arc_scale_factor = self._ang_arc_max_sweep / max_ang_vel
-            arc_gap = self._debug_cfg("ang_arc_gap")
-            self._actual_arc_radius = arrow_max_length + arc_gap
-            self._commanded_arc_radius = self._actual_arc_radius + arc_gap
+
+            # Place the arc outside of the full-length linear velocity arrow
+            radius_gap = self._debug_cfg("arrow_radius") * 1.6
+            self._ang_arc_radius = arrow_max_length + radius_gap
 
     def step(self):
         """Render the debug visualization"""
@@ -450,15 +465,15 @@ class VelocityCommandManager(CommandManager):
                         origin[i],
                         commanded_ang_vel[i],
                         arc_anchor[i],
-                        self._commanded_arc_radius,
                         commanded_color,
+                        commanded=True,
                     )
                     self._draw_ang_vel_arc(
                         origin[i],
                         actual_ang_vel[i],
                         arc_anchor[i],
-                        self._actual_arc_radius,
                         actual_color,
+                        commanded=False,
                     )
             except Exception as e:  # noqa
                 print(f"Error drawing debug visuals in VelocityCommandManager: {e}")
@@ -548,11 +563,11 @@ class VelocityCommandManager(CommandManager):
         origin: torch.Tensor,
         ang_vel: float,
         anchor_angle: float,
-        arc_radius: float,
         color: tuple[float, float, float, float],
+        commanded: bool,
     ):
         """
-        Draw an arc around the vertical axis representing a yaw rate.
+        Draw a flat arc around the vertical axis representing a yaw rate.
 
         The arc starts at `anchor_angle` (world frame, radians) and sweeps counter-clockwise
         for a positive yaw rate or clockwise for a negative one, with a length proportional
@@ -560,16 +575,23 @@ class VelocityCommandManager(CommandManager):
         """
         sweep = ang_vel * self._ang_arc_scale_factor
         sweep = max(-self._ang_arc_max_sweep, min(self._ang_arc_max_sweep, sweep))
-        if abs(sweep) < _ARC_MIN_VISIBLE_SWEEP:
+        if abs(sweep) < DEBUG_ARC_MIN_SWEEP:
             return
 
-        # The tube is thinner than the arrows so the two concentric arcs stay visually
-        # distinct
-        mesh = arc_arrow_mesh(
+        # The commanded arc is narrower and taller than the actual one, so both stay
+        # visible when they overlap: the commanded arc shows above and below the actual
+        # one, and the actual arc shows on either side of the commanded one.
+        width = self._debug_cfg("ang_arc_width")
+        thickness = self._debug_cfg("ang_arc_height")
+        if commanded:
+            width *= DEBUG_ARC_COMMANDED_WIDTH_RATIO
+            thickness *= DEBUG_ARC_COMMANDED_HEIGHT_RATIO
+        mesh = flat_arc_arrow_mesh(
             origin.cpu().numpy(),
-            arc_radius,
+            self._ang_arc_radius,
             sweep,
-            self._debug_cfg("ang_arc_tube_radius"),
+            width,
+            thickness,
             start_angle=anchor_angle,
             color=color,
         )

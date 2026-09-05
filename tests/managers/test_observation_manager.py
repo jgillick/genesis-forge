@@ -204,6 +204,24 @@ def test_zero_noise_is_a_noop(env):
     assert torch.equal(result, torch.full((env.num_envs, 1), 5.0))
 
 
+def test_noise_is_applied_before_scale(env):
+    # Noise models the real sensor's own measurement uncertainty, in the raw units `fn`
+    # returns -- it must land before `scale`, which is only a downstream convenience for
+    # the policy. `(value + noise) * scale`, never `value * scale + noise`.
+    torch.manual_seed(0)
+    expected_noise = torch.empty((env.num_envs, 1)).uniform_(-1, 1) * 5.0
+
+    torch.manual_seed(0)
+    mgr = ObservationManager(
+        env,
+        cfg={"a": {"fn": const, "params": {"value": 2.0}, "noise": 5.0, "scale": 10.0}},
+    )
+    mgr.build()
+    result = mgr.get_observations()
+
+    assert torch.allclose(result, (2.0 + expected_noise) * 10.0)
+
+
 """
 get_observations(values=...) -- override path for manual deployment/debugging
 """

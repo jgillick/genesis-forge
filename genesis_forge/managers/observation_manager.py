@@ -23,10 +23,12 @@ class ObservationConfig(ConfigItemDict):
     """Function that will be called to generate an observation, returning a value for each environment."""
 
     scale: NotRequired[float | None]
-    """The scale to apply to the observation. If None, no scale will be applied."""
+    """The scale to apply to the observation, after noise. If None, no scale will be applied."""
 
     noise: NotRequired[float | None]
-    """The noise scale to add to the observation. If None, no noise will be added.
+    """The noise scale to add to the observation, in the raw units `fn` returns (before
+    `scale` is applied) -- so this should match the real sensor's own measurement noise,
+    independent of whatever scale is chosen for the policy. If None, no noise will be added.
     This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
 
 
@@ -39,7 +41,8 @@ class ObservationManager(BaseManager):
         cfg: The configuration for the observation manager.
         name: The name to categorize the observations under, generally used for asymmetrical RL.
               It's required to have one observation manager named "policy".
-        noise: The range of random noise to add to all observations.
+        noise: The default range of random noise to add to observations that don't set
+               their own. Applied in the raw units each `fn` returns, before `scale`.
         history_len: The number of previous observations to include in the observation.
 
     Example with ManagedEnvironment::
@@ -320,17 +323,17 @@ class ObservationManager(BaseManager):
                 else:
                     value = cfg.execute()
 
-                # Apply scale
-                scale = cfg.scale
-                if scale is not None and scale != 1.0:
-                    value = value * scale
-
-                # Add noise, if the value is not an override
+                # Add noise, if the value is not an override. 
                 if not has_overrides:
                     noise = cfg.noise or self.noise
                     if noise is not None and noise != 0.0:
                         noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
                         value = value + noise_value
+
+                # Apply scale
+                scale = cfg.scale
+                if scale is not None and scale != 1.0:
+                    value = value * scale
 
                 # Copy directly into output buffer
                 value_size = value.shape[-1]

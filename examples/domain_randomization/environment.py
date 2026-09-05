@@ -233,15 +233,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.02,
                 },
                 "linear_velocity": {
                     "fn": lambda env: self.robot_manager.get_linear_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.05,
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
-                    "noise": 0.01,
+                    "noise": 0.05,
                 },
                 "dof_position": {
                     "fn": lambda env: self.action_manager.get_dofs_position(),
@@ -250,7 +250,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.02,
-                    "noise": 0.01,
+                    "noise": 1.0,
                 },
                 "actions": {
                     "fn": observations.current_actions(),

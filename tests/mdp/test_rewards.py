@@ -39,8 +39,16 @@ class FakeEntityManager:
 
 
 class FakeVelCmd:
-    def __init__(self, command):
+    def __init__(self, command, range=None):
         self.command = command
+        self.range = range or {
+            "lin_vel_x": (-1.0, 1.0),
+            "lin_vel_y": (-1.0, 1.0),
+            "ang_vel_z": (-1.0, 1.0),
+        }
+
+    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
+        return torch.norm(self.command, dim=1) <= threshold
 
 
 class FakeContactManager:
@@ -287,7 +295,7 @@ def test_action_acceleration_reset_clears_history(env):
         env.actions = torch.tensor([actions] * env.num_envs)
         fn(env)
 
-    fn.reset([0, 1])
+    fn.reset(torch.tensor([0, 1]))
 
     env.actions = torch.tensor([[0.5] * 3] * env.num_envs)
     value = fn(env)
@@ -379,6 +387,92 @@ def test_ang_vel_tracking_decays_with_error(env):
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
 
 
+def test_lin_vel_sensitivity_is_derived_from_the_command_range(env):
+    """Without `sensitivity`, half the max commanded speed is the 1/e error."""
+    mgr = FakeEntityManager(lin_vel=torch.tensor([[0.05, 0.0, 0.0]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.1, 0.0, 0.0]]),
+        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+    )
+    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # sensitivity = (0.5 * 0.1)^2 = 0.0025; error = 0.05^2 = 0.0025 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_lin_vel_derived_sensitivity_uses_the_diagonal_max_speed(env):
+    """The 1/e error is half the fastest commanded speed, including diagonal commands."""
+    mgr = FakeEntityManager(lin_vel=torch.tensor([[0.15, 0.2, 0.0]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.3, 0.4, 0.0]]),
+        range={"lin_vel_x": (-0.3, 0.3), "lin_vel_y": (-0.4, 0.4), "ang_vel_z": (0.0, 0.0)},
+    )
+    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # max speed = hypot(0.3, 0.4) = 0.5 -> sensitivity = (0.5 * 0.5)^2 = 0.0625
+    # error = 0.15^2 + 0.2^2 = 0.0625 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_derived_sensitivity_follows_a_range_change(env):
+    """A curriculum widening the command range loosens the reward on the next call."""
+    mgr = FakeEntityManager(lin_vel=torch.tensor([[0.05, 0.0, 0.0]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.1, 0.0, 0.0]]),
+        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+    )
+    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+    before = fn(env)
+
+    vel_cmd.range["lin_vel_x"] = (-0.2, 0.2)  # sensitivity -> 0.01, same error -> exp(-0.25)
+    assert torch.allclose(fn(env), torch.tensor([0.77880078]), atol=1e-6)
+    assert fn(env) > before
+
+
+def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
+    mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.25]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.0, 0.0, 0.5]]),
+        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+    )
+    fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # sensitivity = (0.5 * 0.5)^2 = 0.0625; error = 0.25^2 = 0.0625 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_sensitivity_falls_back_to_default_without_a_command_manager(env):
+    mgr = FakeEntityManager(lin_vel=torch.tensor([[0.5, 0.0, 0.0]]))
+    fn = rewards.command_tracking_lin_vel(command=torch.tensor([[1.0, 0.0]]), entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # error = 0.25, default sensitivity 0.25 -> exp(-1)
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
+def test_sensitivity_falls_back_to_default_for_a_zero_range(env):
+    mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.5]]))
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.0, 0.0, 0.0]]),
+        range={"lin_vel_x": (-1.0, 1.0), "lin_vel_y": (-1.0, 1.0), "ang_vel_z": (0.0, 0.0)},
+    )
+    fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    # error = 0.25, default sensitivity 0.25 -> exp(-1), no division by zero
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
+
+
 @pytest.mark.parametrize(
     "factory",
     [rewards.command_tracking_lin_vel, rewards.command_tracking_ang_vel],
@@ -391,13 +485,13 @@ def test_command_tracking_requires_a_command_source(env, factory):
         fn.safe_build()
 
 
-def test_stand_still_joint_deviation_penalizes_only_below_command_threshold(env):
+def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2], [0.5, -0.2]]),
         default_pos=torch.tensor([0.0, 0.0]),
     )
     vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0], [1.0, 0.0, 0.0]]))
-    fn = rewards.stand_still_joint_deviation_l1(
+    fn = rewards.stopped_joint_deviation_l1(
         actuator_manager=actuator, vel_cmd_manager=vel_cmd, command_threshold=0.06
     )
     fn.context(env)
@@ -407,11 +501,50 @@ def test_stand_still_joint_deviation_penalizes_only_below_command_threshold(env)
     assert torch.allclose(fn(env), torch.tensor([0.7, 0.0]))
 
 
-def test_stand_still_joint_deviation_requires_a_manager_at_build_time(env):
-    fn = rewards.stand_still_joint_deviation_l1(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
+def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
+    fn = rewards.stopped_joint_deviation_l1(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
     fn.context(env)
     with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
         fn.safe_build()
+
+
+def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
+    actuator = FakeActuatorManager(
+        pos=torch.tensor([[0.5, -0.2]]),
+        default_pos=torch.tensor([0.0, 0.0]),
+    )
+    vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0]]))
+    with pytest.deprecated_call():
+        fn = rewards.stand_still_joint_deviation_l1(
+            actuator_manager=actuator, vel_cmd_manager=vel_cmd
+        )
+    assert isinstance(fn, rewards.stopped_joint_deviation_l1)
+    fn.context(env)
+    fn.safe_build()
+    assert torch.allclose(fn(env), torch.tensor([0.7]))
+
+
+def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
+    class FakeActuatorManagerVel:
+        def get_dofs_velocity(self):
+            return torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
+
+    # env 0: fully stopped, env 1: linear command, env 2: angular-only command
+    vel_cmd = FakeVelCmd(
+        torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.0, 0.2]])
+    )
+    fn = rewards.stopped_dof_velocity_l2(
+        vel_cmd_manager=vel_cmd, actuator_manager=FakeActuatorManagerVel()
+    )
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([5.0, 0.0, 0.0]))
+
+
+def test_stopped_dof_velocity_requires_an_actuator_manager(env):
+    with pytest.raises(TypeError, match="actuator_manager"):
+        rewards.stopped_dof_velocity_l2(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
 
 
 """

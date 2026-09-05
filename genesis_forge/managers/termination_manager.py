@@ -82,7 +82,7 @@ class TerminationManager(BaseManager):
 
                 return obs, rewards, terminated, truncated, info
 
-            def reset(self, envs_idx: Sequence[int] = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
                 # ...do reset logic here...x
 
@@ -145,7 +145,7 @@ class TerminationManager(BaseManager):
         for cfg in self.term_cfg.values():
             cfg.build()
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """
         Reset any stateful termination functions for the given environments.
 
@@ -153,7 +153,7 @@ class TerminationManager(BaseManager):
             envs_idx: The environment ids being reset. All environments, if None.
         """
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
         for cfg in self.term_cfg.values():
             cfg.reset(envs_idx)
 

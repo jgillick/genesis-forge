@@ -58,7 +58,6 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -129,7 +128,10 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
     @property
     def observation_spaces(self) -> dict[str, spaces.Box]:
         """Per-leg MAPPO observation space: which is the shared space + the leg's local space."""
-        space_by_name = { manager.name: manager.observation_space for manager in self.managers["observation"] }
+        space_by_name = {
+            manager.name: manager.observation_space
+            for manager in self.managers["observation"]
+        }
         shared = space_by_name[OBS_SHARED_KEY]
         named_spaces = {}
         for agent in self.AGENTS:
@@ -141,15 +143,16 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             high = np.concatenate(
                 [shared.high.astype(np.float32), leg.high.astype(np.float32)]
             )
-            named_spaces[agent] = spaces.Box(low, high, (int(low.shape[0]),), dtype=np.float32)
+            named_spaces[agent] = spaces.Box(
+                low, high, (int(low.shape[0]),), dtype=np.float32
+            )
         return named_spaces
 
     @property
     def action_spaces(self) -> dict[str, spaces.Box]:
         """Per-leg posture commands (one :class:`~genesis_forge.managers.PositionActionManager` each)."""
         return {
-            agent: self.leg_action_managers[agent].action_space
-            for agent in self.AGENTS
+            agent: self.leg_action_managers[agent].action_space for agent in self.AGENTS
         }
 
     @property
@@ -250,7 +253,9 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                 "similar_to_default": {
                     "weight": -0.05,
                     "fn": rewards.dof_similar_to_default(
-                        actuator_manager=[ self.leg_actuator_managers[a] for a in self.AGENTS ],
+                        actuator_manager=[
+                            self.leg_actuator_managers[a] for a in self.AGENTS
+                        ],
                     ),
                 },
             },
@@ -307,9 +312,9 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                         "scale": 0.05,
                     },
                     "actions": {
-                        "fn": observations.current_actions(action_manager=action_manager)
+                        "fn": observations.current_actions(
+                            action_manager=action_manager
+                        )
                     },
                 },
             )
-
-

@@ -43,7 +43,7 @@ class BaseActionManager(BaseManager):
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
         )
         self._dofs: dict[int, str] = {}
-        self._actuator_dof_filter: torch.Tensor | None = None
+        self._actuator_dof_filter: torch.Tensor = None
 
         if self._actuator_manager is None:
             raise ValueError("No ActuatorManager provided.")
@@ -88,7 +88,7 @@ class BaseActionManager(BaseManager):
         return self._actuator_dof_filter
 
     @property
-    def action_space(self) -> tuple[float, float]:
+    def action_space(self) -> spaces.Space:
         """
         Returns the actions space for the environment, based on the number of DOFs defined in this action manager.
         """
@@ -136,7 +136,7 @@ class BaseActionManager(BaseManager):
     DOF convenience wrappers
     """
 
-    def get_dofs_position(self) ->  torch.Tensor:
+    def get_dofs_position(self) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_limits` that returns the position limits of the controlled DOFs.
 
@@ -158,7 +158,9 @@ class BaseActionManager(BaseManager):
         """
         return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
 
-    def get_dofs_velocity(self, clip: tuple[float, float] | None = None) -> torch.Tensor:
+    def get_dofs_velocity(
+        self, clip: tuple[float, float] | None = None
+    ) -> torch.Tensor:
         """
         A wrapper for `RigidEntity.get_dofs_velocity` that returns the current velocity of the controlled DOFs.
 
@@ -205,9 +207,7 @@ class BaseActionManager(BaseManager):
         """
         return {
             name: value.item()
-            for name, value in zip(
-                self.dofs.keys(), self._actions[env_idx, :]
-            )
+            for name, value in zip(self.dofs.keys(), self._actions[env_idx, :])
         }
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -257,20 +257,28 @@ class BaseActionManager(BaseManager):
             index_filter, device=gs.device, dtype=gs.tc_int
         )
 
+        # Seed the action delay buffer with zero actions, so the first `delay_step`
+        # steps send no-op actions while the real ones are still queued
+        self._action_delay_buffer = [
+            torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
+            for _ in range(self._delay_step)
+        ]
+
     def step(self, actions: torch.Tensor) -> None:
         """
         Handle actions received in this step.
         """
-        # Action delay buffer
+        # Action delay buffer: queue a copy of this step's actions and send the oldest
         if self._delay_step > 0:
-            self._action_delay_buffer.insert(0, actions)
+            self._action_delay_buffer.insert(0, actions.clone())
             actions = self._action_delay_buffer.pop()
 
-        # Copy the actions into the manager buffer
-        self._raw_actions = actions
+        # Copy the actions into the manager buffers
         if self._actions is None:
+            self._raw_actions = torch.zeros_like(actions, device=gs.device)
             self._actions = torch.zeros_like(actions, device=gs.device)
             self._last_actions = torch.zeros_like(actions, device=gs.device)
+        self._raw_actions[:] = actions
         self._last_actions[:] = self._actions[:]
 
         # Process the actions
@@ -278,14 +286,16 @@ class BaseActionManager(BaseManager):
 
         return self._actions
 
-    def reset(self, envs_idx: list[int] | None):
-        """Reset environments."""
-        if (
-            self._delay_step > 0
-            and len(self._action_delay_buffer) < self._delay_step
-            and self.num_actions > 0
-        ):
-            while len(self._action_delay_buffer) < self._delay_step:
-                self._action_delay_buffer.append(
-                    torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-                )
+    def reset(self, envs_idx: torch.Tensor | None = None):
+        """
+        Clear the action history of the reset environments, so the previous episode's
+        actions are neither delivered by the delay buffer nor reported as the last actions.
+        """
+        if envs_idx is None:
+            envs_idx = self.env.all_envs_idx
+        for delayed_actions in self._action_delay_buffer:
+            delayed_actions[envs_idx] = 0.0
+        if self._actions is not None:
+            self._raw_actions[envs_idx] = 0.0
+            self._actions[envs_idx] = 0.0
+            self._last_actions[envs_idx] = 0.0

@@ -125,7 +125,7 @@ class ObservationManager(BaseManager):
                 obs = self.observation_manager.observation()
                 return obs, rewards, terminations, timeouts, info
 
-            def reset(self, envs_idx: list[int] | None = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
 
                 # ... reset logic ...
@@ -216,7 +216,7 @@ class ObservationManager(BaseManager):
             device=gs.device,
         )
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """
         Reset any stateful observation functions and clear the stacked
         observation history for the given environments.
@@ -225,7 +225,7 @@ class ObservationManager(BaseManager):
             envs_idx: The environment ids being reset. All environments, if None.
         """
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
 
         # Reset observation functions
         for cfg in self.cfg.values():

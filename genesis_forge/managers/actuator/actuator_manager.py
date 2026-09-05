@@ -443,7 +443,7 @@ class ActuatorManager(BaseManager):
 
     def reset(
         self,
-        envs_idx: list[int] | None = None,
+        envs_idx: torch.Tensor | None = None,
     ):
         """Reset the DOF positions."""
         if not self.enabled:
@@ -577,7 +577,7 @@ class ActuatorManager(BaseManager):
         }
 
     def _get_value_buffer(
-        self, name: ValueName, envs_idx: list[int] | None = None
+        self, name: ValueName, envs_idx: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Get the value buffer tensor, with noise applied

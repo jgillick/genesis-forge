@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any, TypeVar
 
 import genesis as gs
@@ -108,7 +109,7 @@ class Wrapper:
 
     def reset(
         self,
-        env_ids: list[int] | None = None,
+        env_ids: torch.Tensor | Sequence[int] | None = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data."""
         return self.env.reset(env_ids)

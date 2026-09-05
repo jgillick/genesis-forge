@@ -327,8 +327,10 @@ class VelocityCommandManager(CommandManager):
             self._ang_arc_scale_factor = self._ang_arc_max_sweep / max_ang_vel
 
             # Place the arc outside of the full-length linear velocity arrow
-            radius_gap = self._debug_cfg("arrow_radius") * 1.6
-            self._ang_arc_radius = arrow_max_length + radius_gap
+            arc_width = self._debug_cfg("ang_arc_width")
+            arrow_radius = self._debug_cfg("arrow_radius")
+            radius_gap = arrow_radius * 2.5
+            self._ang_arc_radius = arrow_max_length + (arc_width / 2) + radius_gap
 
     def step(self):
         """Render the debug visualization"""

@@ -19,7 +19,9 @@ import torch
 
 DT = 0.01
 INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
-INITIAL_BASE_Z = 0.4  # nominal standing height; only a first guess before link alignment
+INITIAL_BASE_Z = (
+    0.4  # nominal standing height; only a first guess before link alignment
+)
 
 # Drop / settle tuning (edit here instead of CLI flags)
 DROP_MARGIN = 0.05  # m clearance between AABB bottom and ground before release
@@ -70,7 +72,9 @@ def set_passive_joints(robot, dofs_idx: list[int]) -> None:
     robot.set_dofs_kv(zeros, dofs_idx, [0])
 
 
-def sample_joint_positions(robot, dofs_idx: list[int], limit_scale: float) -> torch.Tensor:
+def sample_joint_positions(
+    robot, dofs_idx: list[int], limit_scale: float
+) -> torch.Tensor:
     lower, upper = robot.get_dofs_limit(dofs_idx)
     if lower.dim() == 1:
         lower = lower.unsqueeze(0)
@@ -196,7 +200,6 @@ def build_scene(headless: bool) -> tuple[gs.Scene, object]:
         show_viewer=not headless,
         sim_options=gs.options.SimOptions(dt=DT, substeps=2),
         viewer_options=gs.options.ViewerOptions(
-            refresh_rate=int(0.5 / DT),
             camera_pos=(2.0, 0.0, 2.5),
             camera_lookat=(0.0, 0.0, 0.5),
             camera_fov=40,

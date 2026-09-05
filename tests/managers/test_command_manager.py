@@ -30,17 +30,14 @@ class FakeScene:
     def __init__(self, num_envs: int):
         self.envs_offset = np.zeros((num_envs, 3))
         self.vis_options = None
-        self.mesh_calls: list[tuple] = []
+        self.mesh_calls: list = []
         self.cleared: list = []
-
-    def draw_debug_arrow(self, pos, vec, radius, color):
-        return ("arrow", tuple(pos), tuple(vec))
 
     def draw_debug_sphere(self, pos, radius, color):
         return ("sphere", tuple(pos))
 
-    def draw_debug_mesh(self, mesh, T):
-        self.mesh_calls.append((mesh, T))
+    def draw_debug_mesh(self, mesh):
+        self.mesh_calls.append(mesh)
         return ("mesh", len(self.mesh_calls))
 
     def clear_debug_object(self, node):
@@ -206,7 +203,9 @@ def test_resample_command_only_touches_the_given_envs(env):
 
 def test_step_resamples_only_envs_whose_episode_length_hits_the_interval(env):
     env.episode_length = torch.tensor([0, 1, 2, 3])
-    mgr = CommandManager(env, range=(2.0, 2.0), resample_time_sec=2 * env.dt)  # resample_steps=2
+    mgr = CommandManager(
+        env, range=(2.0, 2.0), resample_time_sec=2 * env.dt
+    )  # resample_steps=2
 
     mgr.step()
 
@@ -397,11 +396,15 @@ VelocityCommandManager -- deprecated standing_probability/standing_envs aliases
 
 def test_deprecated_standing_probability_param_warns_and_sets_stopped_probability(env):
     with pytest.warns(DeprecationWarning, match="stopped_probability"):
-        mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, standing_probability=0.7)
+        mgr = VelocityCommandManager(
+            env, range=VELOCITY_RANGE, standing_probability=0.7
+        )
     assert mgr.stopped_probability == 0.7
 
 
-def test_deprecated_standing_probability_property_stays_in_sync_with_stopped_probability(env):
+def test_deprecated_standing_probability_property_stays_in_sync_with_stopped_probability(
+    env,
+):
     """Guards against the alias going stale after a later mutation."""
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.5)
     mgr.stopped_probability = 0.0
@@ -472,6 +475,49 @@ def test_velocity_range_setter_rejects_different_dict_keys(env):
 
 
 """
+VelocityCommandManager -- debug visuals are drawn as meshes
+"""
+
+
+def test_arrows_are_drawn_as_meshes_and_zero_vectors_draw_nothing(env):
+    env.scene = FakeScene(env.num_envs)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
+
+    origin = torch.tensor([1.0, 2.0, 3.0])
+    mgr._draw_arrow(origin, torch.tensor([0.1, 0.0, 0.0]), (0.0, 0.5, 0.0, 1.0))
+    assert len(env.scene.mesh_calls) == 1
+    assert len(mgr._debug_nodes) == 1
+
+    mgr._draw_arrow(origin, torch.zeros(3), (0.0, 0.5, 0.0, 1.0))
+    assert len(env.scene.mesh_calls) == 1
+
+
+def test_commanded_arc_is_narrower_and_taller_than_the_actual_arc(env):
+    """The two arcs overlap at one radius, so the flag must change the arc's shape"""
+    env.scene = FakeScene(env.num_envs)
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, debug_visualizer=True)
+    mgr._ang_arc_scale_factor = 1.0
+    mgr._ang_arc_max_sweep = 1.0
+    mgr._ang_arc_radius = 0.2
+
+    origin = torch.zeros(3)
+    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, (0.0, 0.5, 0.0, 1.0), commanded=True)
+    mgr._draw_ang_vel_arc(origin, 0.5, 0.0, (0.0, 0.0, 0.5, 1.0), commanded=False)
+    commanded, actual = env.scene.mesh_calls
+
+    def band_width(mesh):
+        # The band's start edge lies on the +X axis (y == 0); the head is elsewhere
+        start = mesh.vertices[np.isclose(mesh.vertices[:, 1], 0.0)]
+        return start[:, 0].max() - start[:, 0].min()
+
+    def thickness(mesh):
+        return mesh.vertices[:, 2].max() - mesh.vertices[:, 2].min()
+
+    assert band_width(commanded) < band_width(actual)
+    assert thickness(commanded) > thickness(actual)
+
+
+"""
 VelocityCommandManager -- deprecated standing_* debug visualizer config keys
 """
 
@@ -502,7 +548,10 @@ def test_stopped_key_wins_when_both_old_and_new_keys_are_given(env):
         mgr = VelocityCommandManager(
             env,
             range=VELOCITY_RANGE,
-            debug_visualizer_cfg={"standing_ball_radius": 0.1, "stopped_ball_radius": 0.2},
+            debug_visualizer_cfg={
+                "standing_ball_radius": 0.1,
+                "stopped_ball_radius": 0.2,
+            },
         )
     assert mgr._debug_cfg("stopped_ball_radius") == 0.2
 
@@ -517,13 +566,15 @@ def test_deprecated_key_conversion_does_not_mutate_the_callers_config(env):
 """
 VelocityCommandManager -- debug visualizer angular velocity arcs
 
-The arc and arrowhead meshes are built with numpy/trimesh, so they can be verified
-without a Genesis scene by recording the `draw_debug_mesh` calls and measuring the
-angular position of the transformed mesh's vertices around the arc's center.
+The arrow and arc meshes are built with numpy/trimesh, already posed in the world, so
+they can be verified without a Genesis scene by recording the `draw_debug_mesh` calls
+and measuring the angular position of the arc mesh's vertices around the arc's center.
 """
 
 
-def make_debug_arc_manager(env, ang_vel_z: float, lin_vel: tuple[float, float] = (0.0, 0.0)):
+def make_debug_arc_manager(
+    env, ang_vel_z: float, lin_vel: tuple[float, float] = (0.0, 0.0)
+):
     env.scene = FakeScene(env.num_envs)
     env.robot = FakeRobot(env.num_envs)
     mgr = VelocityCommandManager(
@@ -545,15 +596,15 @@ def make_debug_arc_manager(env, ang_vel_z: float, lin_vel: tuple[float, float] =
 
 def rendered_arc_vertex_angles(env) -> np.ndarray:
     """
-    The angles (radians, atan2 convention) of the single rendered arc mesh's vertices
-    around the vertical axis through the arc's center.
+    The angles (radians, atan2 convention) of the rendered arc mesh's vertices around
+    the vertical axis through the arc's center.
 
-    The fake robot sits at the world origin with no environment offset, so the arc
-    center's XY is (0, 0) after the recorded transform is applied.
+    The arrows are drawn before the arcs, so the arc is the last recorded mesh. The fake
+    robot sits at the world origin with no environment offset, so the arc is centered on
+    XY (0, 0).
     """
-    assert len(env.scene.mesh_calls) == 1
-    mesh, transform = env.scene.mesh_calls[0]
-    mesh.apply_transform(transform)
+    assert env.scene.mesh_calls
+    mesh = env.scene.mesh_calls[-1]
     return np.arctan2(mesh.vertices[:, 1], mesh.vertices[:, 0])
 
 

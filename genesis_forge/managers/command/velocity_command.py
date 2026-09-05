@@ -1,17 +1,16 @@
 import math
 import warnings
-from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
 import numpy as np
 import torch
-import trimesh
 from deprecated import deprecated, deprecated_params
 from genesis.utils.geom import quat_to_xyz
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.meshes import arrow_mesh, flat_arc_arrow_mesh
 from genesis_forge.utils import transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
@@ -41,11 +40,17 @@ class VelocityDebugVisualizerConfig(TypedDict):
     arrow_max_length: NotRequired[float]
     """The length of the linear velocity arrow at the maximum of the linear velocity range"""
 
-    commanded_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the commanded velocity arrow and arc"""
+    ang_arc_enabled: NotRequired[bool]
+    """Show the angular velocity arcs"""
 
-    actual_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the actual robot velocity arrow and arc"""
+    ang_arc_width: NotRequired[float]
+    """The radial width of the actual angular velocity arc"""
+
+    ang_arc_height: NotRequired[float]
+    """The vertical thickness of the actual angular velocity arc"""
+
+    ang_arc_max_sweep: NotRequired[float]
+    """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
 
     stopped_color: NotRequired[tuple[float, float, float, float]]
     """The color of the ball shown when no linear velocity is commanded"""
@@ -53,20 +58,20 @@ class VelocityDebugVisualizerConfig(TypedDict):
     stopped_ball_radius: NotRequired[float]
     """The radius of the ball shown when no linear velocity is commanded"""
 
-    ang_arc_enabled: NotRequired[bool]
-    """Show the angular velocity arcs"""
+    commanded_color: NotRequired[tuple[float, float, float, float]]
+    """The color of the commanded velocity arrow and arc"""
 
-    ang_arc_gap: NotRequired[float]
-    """The space between the tip of a full-length linear velocity arrow and the inner angular velocity arc, and between the two arcs"""
+    actual_color: NotRequired[tuple[float, float, float, float]]
+    """The color of the actual robot velocity arrow and arc"""
 
-    ang_arc_max_sweep: NotRequired[float]
-    """The sweep angle of an angular velocity arc, in radians, at the maximum of the ang_vel_z range (per rotation direction)"""
+    ##
+    # DEPRECATED
+    #
+    standing_ball_radius: NotRequired[float]
+    """Deprecated: use `stopped_ball_radius` instead"""
 
     standing_color: NotRequired[tuple[float, float, float, float]]
     """Deprecated: use `stopped_color` instead"""
-
-    standing_ball_radius: NotRequired[float]
-    """Deprecated: use `stopped_ball_radius` instead"""
 
 
 _DEPRECATED_VISUALIZER_KEYS = {
@@ -79,28 +84,26 @@ DEFAULT_VISUALIZER_CONFIG = {
     "envs_idx": [],
     "fps": 30,
     "arrow_offset": 0.12,
-    "arrow_radius": 0.01,
+    "arrow_radius": 0.02,
     "arrow_max_length": 0.15,
+    "ang_arc_enabled": True,
+    "ang_arc_width": 0.03,
+    "ang_arc_height": 0.0025,
+    "ang_arc_max_sweep": math.radians(45),
     "commanded_color": (0.0, 0.5, 0.0, 1.0),
     "actual_color": (0.0, 0.0, 0.5, 1.0),
-    "stopped_color": (1.0, 0.0, 0.0, 1.0),
     "stopped_ball_radius": 0.03,
-    "ang_arc_enabled": True,
-    "ang_arc_gap": 0.01,
-    "ang_arc_max_sweep": math.radians(45),
+    "stopped_color": (1.0, 0.0, 0.0, 1.0),
 }
 
-# Angular velocity arc geometry
-_ARC_TUBE_SIDES = 8
-"""Number of sides of the arc tube's cross-section polygon"""
-_ARC_SECTIONS_PER_FULL_SWEEP = 16
-"""Number of segments along an arc of the maximum sweep angle"""
-_ARC_MIN_VISIBLE_SWEEP = 0.05
-"""Arcs with a smaller sweep (in radians) are too small to see, so they are not drawn"""
-_ARC_HEAD_RADIUS_RATIO = 2.5
-"""Base radius of the arc's arrowhead cone, relative to the arc tube radius"""
-_ARC_HEAD_LENGTH_RATIO = 5.0
-"""Length of the arc's arrowhead cone, relative to the arc tube radius"""
+DEBUG_ARC_MIN_SWEEP = 0.05
+"""Angular velocity arcs with a smaller sweep (in radians) are too small to see, so they are not drawn"""
+
+DEBUG_ARC_COMMANDED_WIDTH_RATIO = 0.5
+"""The width of the commanded angular velocity arc, relative to the actual angular velocity arc"""
+
+DEBUG_ARC_COMMANDED_HEIGHT_RATIO = 1.25
+"""The height of the commanded angular velocity arc, relative to the actual angular velocity arc"""
 
 
 class VelocityCommandManager(CommandManager):
@@ -234,7 +237,7 @@ class VelocityCommandManager(CommandManager):
     def standing_probability(self, value: float) -> None:
         self.stopped_probability = value
 
-    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
+    def stopped_envs(self, threshold: float = 0.0025) -> torch.Tensor:
         """
         The environments whose command is effectively stopped: no movement commanded,
         linear or angular.
@@ -315,21 +318,19 @@ class VelocityCommandManager(CommandManager):
         )
 
         # Angular velocity arcs: a full sweep is the fastest angular velocity in the range,
-        # and both arcs sit just beyond the tip of a full-length linear velocity arrow
+        # and both arcs share a radius just beyond the tip of a full-length linear velocity
+        # arrow
         max_ang_vel = max(abs(v) for v in velocity_range["ang_vel_z"])
         self._ang_arc_enabled = self._debug_cfg("ang_arc_enabled") and max_ang_vel > 0.0
         if self._ang_arc_enabled:
             self._ang_arc_max_sweep = self._debug_cfg("ang_arc_max_sweep")
             self._ang_arc_scale_factor = self._ang_arc_max_sweep / max_ang_vel
-            arc_gap = self._debug_cfg("ang_arc_gap")
-            self._actual_arc_radius = arrow_max_length + arc_gap
-            self._commanded_arc_radius = self._actual_arc_radius + arc_gap
 
-            # Unit-circle cross-section of the arc tube, used by trimesh.creation.revolve.
-            # The last point repeats the first exactly, so revolve sees a closed profile.
-            theta = np.linspace(0.0, 2.0 * np.pi, _ARC_TUBE_SIDES + 1)
-            self._arc_cross_section = np.stack([np.cos(theta), np.sin(theta)], axis=1)
-            self._arc_cross_section[-1] = self._arc_cross_section[0]
+            # Place the arc outside of the full-length linear velocity arrow
+            arc_width = self._debug_cfg("ang_arc_width")
+            arrow_radius = self._debug_cfg("arrow_radius")
+            radius_gap = arrow_radius * 2.5
+            self._ang_arc_radius = arrow_max_length + (arc_width / 2) + radius_gap
 
     def step(self):
         """Render the debug visualization"""
@@ -446,31 +447,34 @@ class VelocityCommandManager(CommandManager):
             actual_ang_vel = self.env.robot.get_ang()[:, 2].cpu().numpy()
 
         for i in self.debug_envs_idx:
-            # Commanded linear velocity: an arrow, or a ball when no linear velocity is commanded
-            if has_lin_cmd[i]:
-                self._draw_arrow(origin[i], commanded_vec[i], commanded_color)
-            else:
-                self._draw_stopped_ball(origin[i])
+            try:
+                # Commanded linear velocity: an arrow, or a ball when no linear velocity is commanded
+                if has_lin_cmd[i]:
+                    self._draw_arrow(origin[i], commanded_vec[i], commanded_color)
+                else:
+                    self._draw_stopped_ball(origin[i])
 
-            # Actual linear velocity
-            self._draw_arrow(origin[i], actual_vec[i], actual_color)
+                # Actual linear velocity
+                self._draw_arrow(origin[i], actual_vec[i], actual_color)
 
-            # Commanded and actual angular velocity
-            if self._ang_arc_enabled:
-                self._draw_ang_vel_arc(
-                    origin[i],
-                    commanded_ang_vel[i],
-                    arc_anchor[i],
-                    self._commanded_arc_radius,
-                    commanded_color,
-                )
-                self._draw_ang_vel_arc(
-                    origin[i],
-                    actual_ang_vel[i],
-                    arc_anchor[i],
-                    self._actual_arc_radius,
-                    actual_color,
-                )
+                # Actual angular velocities
+                if self._ang_arc_enabled:
+                    self._draw_ang_vel_arc(
+                        origin[i],
+                        commanded_ang_vel[i],
+                        arc_anchor[i],
+                        commanded_color,
+                        commanded=True,
+                    )
+                    self._draw_ang_vel_arc(
+                        origin[i],
+                        actual_ang_vel[i],
+                        arc_anchor[i],
+                        actual_color,
+                        commanded=False,
+                    )
+            except Exception as e:  # noqa
+                print(f"Error drawing debug visuals in VelocityCommandManager: {e}")
 
     def _debug_origin(self) -> torch.Tensor:
         """
@@ -530,35 +534,38 @@ class VelocityCommandManager(CommandManager):
         color: tuple[float, float, float, float],
     ):
         """Draw an arrow from `origin` along `vec`; nothing is drawn for a zero vector"""
-        if not torch.any(vec != 0.0):
+        vec_np = vec.cpu().numpy()
+        length = float(np.linalg.norm(vec_np))
+        if length == 0.0:
             return
-        self._add_debug_object(
-            self.env.scene.draw_debug_arrow,
-            pos=origin.cpu().numpy(),
-            vec=vec.cpu().numpy(),
-            radius=self._debug_cfg("arrow_radius"),
+        mesh = arrow_mesh(
+            origin.cpu().numpy(),
+            vec_np,
+            self._debug_cfg("arrow_radius"),
             color=color,
         )
+        node = self.env.scene.draw_debug_mesh(mesh)
+        self._debug_nodes.append(node)
 
     def _draw_stopped_ball(self, origin: torch.Tensor):
         """Draw the ball that shows no linear velocity is commanded"""
-        self._add_debug_object(
-            self.env.scene.draw_debug_sphere,
+        node = self.env.scene.draw_debug_sphere(
             pos=origin.cpu().numpy(),
             radius=self._debug_cfg("stopped_ball_radius"),
             color=self._debug_cfg("stopped_color"),
         )
+        self._debug_nodes.append(node)
 
     def _draw_ang_vel_arc(
         self,
         origin: torch.Tensor,
         ang_vel: float,
         anchor_angle: float,
-        arc_radius: float,
         color: tuple[float, float, float, float],
+        commanded: bool,
     ):
         """
-        Draw an arc around the vertical axis representing a yaw rate.
+        Draw a flat arc around the vertical axis representing a yaw rate.
 
         The arc starts at `anchor_angle` (world frame, radians) and sweeps counter-clockwise
         for a positive yaw rate or clockwise for a negative one, with a length proportional
@@ -566,97 +573,25 @@ class VelocityCommandManager(CommandManager):
         """
         sweep = ang_vel * self._ang_arc_scale_factor
         sweep = max(-self._ang_arc_max_sweep, min(self._ang_arc_max_sweep, sweep))
-        if abs(sweep) < _ARC_MIN_VISIBLE_SWEEP:
+        if abs(sweep) < DEBUG_ARC_MIN_SWEEP:
             return
 
-        # The arc tube: the circular cross-section, offset from the vertical axis by the arc
-        # radius, revolved around that axis by the sweep angle. The tube is thinner than the
-        # arrows so the two concentric arcs stay visually distinct.
-        tube_radius = 0.5 * self._debug_cfg("arrow_radius")
-        cross_section = self._arc_cross_section * tube_radius
-        cross_section[:, 0] += arc_radius
-        sections = max(
-            4,
-            math.ceil(
-                abs(sweep) / self._ang_arc_max_sweep * _ARC_SECTIONS_PER_FULL_SWEEP
-            ),
+        width = self._debug_cfg("ang_arc_width")
+        thickness = self._debug_cfg("ang_arc_height")
+        if commanded:
+            width *= DEBUG_ARC_COMMANDED_WIDTH_RATIO
+            thickness *= DEBUG_ARC_COMMANDED_HEIGHT_RATIO
+        mesh = flat_arc_arrow_mesh(
+            origin.cpu().numpy(),
+            self._ang_arc_radius,
+            sweep,
+            width,
+            thickness,
+            start_angle=anchor_angle,
+            color=color,
         )
-        arc = trimesh.creation.revolve(
-            cross_section, angle=abs(sweep), sections=sections
-        )
-
-        # trimesh revolves counter-clockwise from the +X axis, so the arc covers the local
-        # angles [0, |sweep|]. A counter-clockwise sweep travels from 0 to |sweep|, a
-        # clockwise sweep from |sweep| back to 0, so the arrowhead cone goes on the
-        # corresponding end, pointing along the direction of travel.
-        head_angle = abs(sweep) if sweep > 0.0 else 0.0
-        head = self._arc_head_mesh(
-            arc_radius, tube_radius, head_angle, math.copysign(1.0, sweep)
-        )
-        mesh = trimesh.util.concatenate([arc, head])
-        mesh.visual.vertex_colors = color
-
-        # Rotate the mesh about Z so the arc starts at the anchor for a counter-clockwise
-        # sweep, or ends at the anchor for a clockwise sweep, and translate it to the origin
-        start_angle = anchor_angle if sweep > 0.0 else anchor_angle + sweep
-        cos_a = math.cos(start_angle)
-        sin_a = math.sin(start_angle)
-        center = origin.cpu().numpy()
-        transform = np.array(
-            [
-                [cos_a, -sin_a, 0.0, center[0]],
-                [sin_a, cos_a, 0.0, center[1]],
-                [0.0, 0.0, 1.0, center[2]],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-        self._add_debug_object(self.env.scene.draw_debug_mesh, mesh, T=transform)
-
-    def _arc_head_mesh(
-        self,
-        arc_radius: float,
-        tube_radius: float,
-        angle: float,
-        direction: float,
-    ) -> trimesh.Trimesh:
-        """
-        The arrowhead cone for an angular velocity arc, in the arc's local frame: its base
-        sits on the arc at `angle` (radians from the +X axis) and it points along the arc's
-        tangent, counter-clockwise for `direction` +1 or clockwise for -1.
-        """
-        cone = trimesh.creation.cone(
-            radius=tube_radius * _ARC_HEAD_RADIUS_RATIO,
-            height=tube_radius * _ARC_HEAD_LENGTH_RATIO,
-        )
-
-        # The cone is built along +Z. Build a rotation that maps +Z onto the tangent
-        # (its columns are the images of the X, Y, and Z axes) and place it on the arc.
-        tangent_x = -math.sin(angle) * direction
-        tangent_y = math.cos(angle) * direction
-        cone.apply_transform(
-            np.array(
-                [
-                    [-tangent_y, 0.0, tangent_x, arc_radius * math.cos(angle)],
-                    [tangent_x, 0.0, tangent_y, arc_radius * math.sin(angle)],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ]
-            )
-        )
-        return cone
-
-    def _add_debug_object(self, draw_fn: Callable, *args, **kwargs):
-        """
-        Call one of the scene's `draw_debug_*` functions and keep the node it returns, so
-        the object is removed on the next render
-        """
-        try:
-            node = draw_fn(*args, **kwargs)
-        except Exception as e:  # noqa
-            print(f"Error adding debug visualizing in VelocityCommandManager: {e}")
-            return
-        if node:
-            self._debug_nodes.append(node)
+        node = self.env.scene.draw_debug_mesh(mesh)
+        self._debug_nodes.append(node)
 
     def _clear_debug_objects(self):
         """Remove all debug objects drawn by the previous render"""

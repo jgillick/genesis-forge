@@ -156,15 +156,15 @@ class Pose2dCommand(CommandManager):
                 RewardManager(
                     self,
                     cfg={
-                        "position_tracking": {
+                        "position_progress": {
                             "weight": 1.0,
-                            "fn": rewards.position_tracking(
+                            "fn": rewards.position_progress(
                                 pose_cmd_manager=self.pose_command,
                             ),
                         },
-                        "heading_tracking": {
+                        "heading_progress": {
                             "weight": 0.5,
-                            "fn": rewards.heading_tracking(
+                            "fn": rewards.heading_progress(
                                 pose_cmd_manager=self.pose_command,
                             ),
                         },

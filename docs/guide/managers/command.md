@@ -188,7 +188,7 @@ ObservationManager(
 
 ### Using Pose Commands in Rewards
 
-Goal-reaching usually wants both a reward for *being* at the goal and one for *getting closer*, since the first is nearly flat when the robot starts far away. Add `heading_tracking` if you also care which way the robot is facing:
+Goal-reaching usually wants a reward for *getting closer*, since a reward for merely *being* close is nearly flat when the robot starts far away. Add `heading_progress` if you also care which way the robot is facing:
 
 ```python
 from genesis_forge.mdp import rewards
@@ -196,13 +196,6 @@ from genesis_forge.mdp import rewards
 RewardManager(
     self,
     cfg={
-        # Strongest at the goal: makes the robot settle there rather than drive past
-        "position_tracking": {
-            "fn": rewards.position_tracking(
-                pose_cmd_manager=self.pose_command,
-            ),
-            "weight": 1.0,
-        },
         # Pays for closing the distance at any range: gets the robot moving
         "position_progress": {
             "fn": rewards.position_progress(
@@ -228,11 +221,9 @@ RewardManager(
 )
 ```
 
-Like the velocity tracking rewards, `position_tracking` derives its sensitivity from the command range, so widening the range in a curriculum loosens the reward to match.
-
 `heading_progress` asks for the goal heading at every distance by default, which suits a robot that can travel one way while facing another — a legged or omnidirectional robot. A robot that has to point where it is going cannot chase the goal heading from far away without driving sideways to reach the goal, so set `lines_up_within` to have it steer toward the goal while there is ground to cover and line up with the goal heading only on the final approach.
 
-`position_progress` and `heading_progress` pay for *changing* rather than for *being*: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead. `position_tracking` and `heading_tracking` are the "being there" versions, and are the better choice when the goal is *not* replaced on arrival; their docstrings carry the warning.
+`position_progress` and `heading_progress` pay for *changing* rather than for *being*: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead.
 
 If you don't care which way the robot faces, simply leave out the heading reward; the heading is still drawn and observed, but nothing scores it.
 

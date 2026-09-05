@@ -2,7 +2,7 @@
 
 Train the [Freenove 4WD car](https://store.freenove.com/products/fnk0043) to drive to a goal pose — a point, and the direction to be facing once there — while avoiding obstacles, using its ultrasonic range sensor.
 
-This builds on the [wheeled_robot](../wheeled_robot/) example, which covers the car itself. There, the policy is handed a velocity to follow, so *how to move* is given and only the execution is learned. Here it is told only **where to end up and which way to face there**, and has to pick its own route and speed, read its range sensor, and stay out of trouble on the way.
+This builds on the [wheeled_robot](../wheeled_robot/) example, which covers the car itself. There, the policy is handed a velocity to follow, so _how to move_ is given and only the execution is learned. Here it is told only **where to end up and which way to face there**, and has to pick its own route and speed, read its range sensor, and stay out of trouble on the way.
 
 See [`environment.py`](./environment.py) for the full configuration.
 
@@ -13,7 +13,11 @@ See [`environment.py`](./environment.py) for the full configuration.
 ```python
 self.pose_command = Pose2dCommand(
     self,
-    range={"x": (-2.5, 2.5), "y": (-2.5, 2.5), "heading": (-math.pi, math.pi)},
+    range={
+        "x": (-2.5, 2.5),
+        "y": (-2.5, 2.5),
+        "heading": (-math.pi, math.pi),
+    },
     goal_reached_threshold=0.2,
     heading_reached_threshold=math.radians(30),
     resample_on_reached=True,
@@ -33,35 +37,35 @@ Splitting distance out from bearing keeps the steering signal at full strength a
 
 ### Why a polar controller, not x/y
 
-This robot is a *skid-steer*: it can drive and spin on the spot, but not slide sideways. That makes reaching a pose — a position **and** a heading together — a well-studied hard case: no fixed feedback rule can bring a robot like this smoothly to a pose ([Brockett's condition](https://arxiv.org/html/2607.26442)), which in practice shows up as shuffling near the goal. The classical fix is to think in polar terms — distance, bearing, heading error — which is exactly what the observation above reports, and the reward has to respect the same constraint:
+This robot is a _skid-steer_: it can drive and spin on the spot, but not slide sideways. That makes reaching a pose — a position **and** a heading together — a well-studied hard case: no fixed feedback rule can bring a robot like this smoothly to a pose ([Brockett's condition](https://arxiv.org/html/2607.26442)), which in practice shows up as shuffling near the goal. The classical fix is to think in polar terms — distance, bearing, heading error — which is exactly what the observation above reports, and the reward has to respect the same constraint:
 
 ```python
 rewards.heading_progress(pose_cmd_manager=self.pose_command, lines_up_within=0.75)
 ```
 
-Further than `lines_up_within` from the goal, this pays for turning *toward the goal* — the way the robot actually has to point to drive there. Closer in, it hands over to the goal heading. Asking for the goal heading the whole way round instead makes the robot line up early and then try to crab sideways into the goal, which it physically cannot do. A robot that *can* travel one way while facing another — legged or omnidirectional — doesn't need this split.
+Further than `lines_up_within` from the goal, this pays for turning _toward the goal_ — the way the robot actually has to point to drive there. Closer in, it hands over to the goal heading. Asking for the goal heading the whole way round instead makes the robot line up early and then try to crab sideways into the goal, which it physically cannot do. A robot that _can_ travel one way while facing another — legged or omnidirectional — doesn't need this split.
 
 Arrival also requires the heading (`heading_reached_threshold`), not just position: without it the goal would be replaced the instant the robot drove into range, and there would be nothing to line up for. The 30° tolerance isn't tight, on purpose — every degree shaved off costs extra shuffling to satisfy distance and heading together.
 
 ## Rewards
 
-Every reward here pays for *doing* something, never for *being* somewhere. A robot that stops earns exactly zero.
+Every reward here pays for _doing_ something, never for _being_ somewhere. A robot that stops earns exactly zero.
 
-| Reward | Weight | What it does |
-|---|---|---|
-| `position_progress` | 1.0 | Pays for closing the distance, at any range — what gets the robot moving at all |
-| `heading_progress` | 0.5 | Pays for turning the right way, per the polar controller above |
-| `reached_goal` | 50.0 | A bonus for arriving: on the goal *and* lined up with it |
-| `keep_clear` | -2.0 | Crowding an obstacle, growing from nothing at 0.3m to full on contact |
-| `collision` | -50.0 | Hitting an obstacle, which also ends the episode |
-| `action_rate` | -0.005 | Discourages twitchy steering |
-| `body_acceleration_exp` | -0.02 | Discourages jerky motion |
+| Reward                  | Weight | What it does                                                                    |
+| ----------------------- | ------ | ------------------------------------------------------------------------------- |
+| `position_progress`     | 1.0    | Pays for closing the distance, at any range — what gets the robot moving at all |
+| `heading_progress`      | 0.5    | Pays for turning the right way, per the polar controller above                  |
+| `reached_goal`          | 50.0   | A bonus for arriving: on the goal _and_ lined up with it                        |
+| `keep_clear`            | -2.0   | Crowding an obstacle, growing from nothing at 0.3m to full on contact           |
+| `collision`             | -50.0  | Hitting an obstacle, which also ends the episode                                |
+| `action_rate`           | -0.005 | Discourages twitchy steering                                                    |
+| `body_acceleration_exp` | -0.02  | Discourages jerky motion                                                        |
 
-`position_progress` and `heading_progress` are both *rates* — closing speed on distance and on heading error — not proximity. That distinction matters here: the goal is replaced the moment it's reached, so a reward that pays for merely *being* near the goal (`position_tracking` / `heading_tracking` in this library) lets a robot park just outside the reach threshold and collect it forever, which is worth far more over an episode than the one-time arrival bonus. Progress rewards can't be farmed that way — standing still pays zero by construction, and over a whole goal they only ever add up to the distance the robot started with. This is [potential-based shaping](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf), which is provably incapable of changing the optimal policy, so it can't invent a camping strategy either. `position_tracking`/`heading_tracking` are still the right call for tasks where the goal isn't replaced on arrival.
+`position_progress` and `heading_progress` are both _rates_ — closing speed on distance and on heading error — not proximity. That distinction matters here: the goal is replaced the moment it's reached, so a reward that pays for merely _being_ near the goal (`position_tracking` / `heading_tracking` in this library) lets a robot park just outside the reach threshold and collect it forever, which is worth far more over an episode than the one-time arrival bonus. Progress rewards can't be farmed that way — standing still pays zero by construction, and over a whole goal they only ever add up to the distance the robot started with. This is [potential-based shaping](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf), which is provably incapable of changing the optimal policy, so it can't invent a camping strategy either. `position_tracking`/`heading_tracking` are still the right call for tasks where the goal isn't replaced on arrival.
 
-`keep_clear` deliberately reads the true distance to each obstacle rather than the sensor reading. A penalty computed from the sensor would be one the robot could dodge by *pointing the sensor somewhere else* — teaching it to look away from danger instead of avoiding it.
+`keep_clear` deliberately reads the true distance to each obstacle rather than the sensor reading. A penalty computed from the sensor would be one the robot could dodge by _pointing the sensor somewhere else_ — teaching it to look away from danger instead of avoiding it.
 
-Note the collision termination below is *not* marked `time_out: True` — a crash is a genuine failure, and marking it as a time-out would tell the learning algorithm to bootstrap value past it as though the episode had merely been cut short.
+Note the collision termination below is _not_ marked `time_out: True` — a crash is a genuine failure, and marking it as a time-out would tell the learning algorithm to bootstrap value past it as though the episode had merely been cut short.
 
 ## Randomized obstacles
 
@@ -80,7 +84,7 @@ Genesis models a range sensor as a raycaster: a bundle of rays in a pattern, eac
 Sensors must be added before the scene is built, so the sensor is created in `__init__` alongside the entities. Two details worth knowing if you mount a sensor on your own robot:
 
 - **`euler_offset` orients the beam.** Ray patterns fire along the sensor frame's **+X** axis, but a link's frame is whatever the model gives it — here the board's own **+Z** is the one pointing out of the transducers, so the pattern is rotated onto it. `draw_debug=True` shows where the rays actually go.
-- **`pos_offset` starts the rays clear of the robot.** Rays hit *everything*, including the robot they're mounted on, and `min_range` does not suppress those self-hits — without a small offset, every ray would stop on the transducer housing a few millimeters out.
+- **`pos_offset` starts the rays clear of the robot.** Rays hit _everything_, including the robot they're mounted on, and `min_range` does not suppress those self-hits — without a small offset, every ray would stop on the transducer housing a few millimeters out.
 
 `return_points=False` measures distances without building a point cloud, about four times cheaper.
 
@@ -101,13 +105,13 @@ self.head_action_manager = PositionActionManager(
 )
 ```
 
-The pan range is deliberately narrow. The beam is 15° wide, so watching straight ahead and looking off to the side are the *same* 15° — the sensor can't do both at once. Measured against the robot's own collision corridor:
+The pan range is deliberately narrow. The beam is 15° wide, so watching straight ahead and looking off to the side are the _same_ 15° — the sensor can't do both at once. Measured against the robot's own collision corridor:
 
 | head angle | corridor covered at 1m | at 2m |
 | ---------- | ---------------------- | ----- |
-| 0° | 88% | 100% |
-| 7.5° | 50% | 50% |
-| 15°+ | ~0% | 0% |
+| 0°         | 88%                    | 100%  |
+| 7.5°       | 50%                    | 50%   |
+| 15°+       | ~0%                    | 0%    |
 
 Capping the pan at ±7.5° keeps the corridor mostly covered no matter which way the head is pointed, while still letting the policy nudge the beam enough to pick up parallax from its own sweeping — nothing in the reward argues for looking anywhere useful on its own (`keep_clear` and the collision penalty are computed from true positions, not the sensor), so an uncapped range lets the policy blind itself by parking the head off to one side.
 

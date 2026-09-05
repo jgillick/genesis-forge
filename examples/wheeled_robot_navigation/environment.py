@@ -1,6 +1,4 @@
-import colorsys
 import math
-import random
 
 import genesis as gs
 
@@ -23,8 +21,15 @@ INITIAL_BODY_POSITION = (0.0, 0.0, 0.0458)
 INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 NUM_OBSTACLES = 30
 OBSTACLE_SIZE = (0.1, 0.1, 0.1)
-OBSTACLE_COLORS = [(0.95, 0.8, 0.3, 1.0), (0.75, 0.33, 0.95, 1.0), (0.33, 0.93, 0.95, 1.0), (0.75, 0.95, 0.33, 1.0), (0.95, 0.33, 0.43, 1.0)]
-MAX_WHEEL_VELOCITY = 20.0 # ~200RPM
+OBSTACLE_COLORS = [
+    (0.95, 0.8, 0.3, 1.0),
+    (0.75, 0.33, 0.95, 1.0),
+    (0.33, 0.93, 0.95, 1.0),
+    (0.75, 0.95, 0.33, 1.0),
+    (0.95, 0.33, 0.43, 1.0),
+]
+MAX_WHEEL_VELOCITY = 20.0  # ~200RPM
+
 
 def obstacle_color(index: int) -> tuple[float, float, float, float]:
     return OBSTACLE_COLORS[index % len(OBSTACLE_COLORS)]
@@ -60,7 +65,6 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=10),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(-1.0, 1.0, 1.0),
                 camera_lookat=(0.0, 0.0, 0.0),
                 camera_fov=40,
@@ -104,7 +108,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
         self.ultrasonic = self.scene.add_sensor(
             gs.sensors.Raycaster(
                 pattern=gs.sensors.SphericalPattern(
-                    fov=(15.0, 15.0), # 15 degreens cone
+                    fov=(15.0, 15.0),  # 15 degree cone
                     n_points=(5, 5),
                 ),
                 entity_idx=self.robot.idx,
@@ -112,11 +116,11 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                 euler_offset=(0.0, -90.0, 0.0),
                 pos_offset=(0.0, 0.0, 0.03),
                 min_range=0.02,
-                max_range=4.0, # 2cm-400cm
+                max_range=4.0,  # 2cm-400cm
                 return_points=False,
                 noise=0.003,
                 resolution=0.003,
-                draw_debug=True
+                draw_debug=True,
             )
         )
 
@@ -200,15 +204,15 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
         )
         self.wheel_action_manager = VelocityActionManager(
             self,
-            # Reduce the actions from 4 to 2 by grouping
-            # the motors on each side together.
+            # Group the wheels on each side together, as one action
+            # since they should be moving at the same velocity.
             action_groups=[
                 ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
                 ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
             ],
             scale={
                 # The front and rear motors are mounted opposite of each other,
-                # so their actions need to be reversed in order to be turning in the same direction 
+                # so their target velocities need to be reversed in order to be turning in the same direction
                 "TT_Motor-1_axel": -MAX_WHEEL_VELOCITY,  # front right
                 "TT_Motor-2_axel": +MAX_WHEEL_VELOCITY,  # rear right
                 "TT_Motor-3_axel": -MAX_WHEEL_VELOCITY,  # front left
@@ -216,7 +220,6 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
             },
             clip=(-MAX_WHEEL_VELOCITY, MAX_WHEEL_VELOCITY),
             actuator_manager=self.wheel_motors,
-            
         )
 
         ##
@@ -244,7 +247,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
             clip={
                 # Sweeping 7.5 degrees to the lef/right gives full body clearance coverage
                 "servo-2": (-math.radians(7.5), math.radians(7.5)),
-            }
+            },
         )
 
         ##
@@ -298,8 +301,9 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                     "weight": 0.5,
                     "fn": rewards.heading_progress(
                         pose_cmd_manager=self.pose_command,
-                        lines_up_within=0.75, # How close to the goal the robot should switch from steering
-                                              # toward the goal to lining up with the goal heading.
+                        # How close to the goal the robot should switch from steering
+                        # toward the goal to lining up with the goal heading.
+                        lines_up_within=0.75,
                     ),
                 },
                 # Arriving: on the goal *and* lined up with it. This is the task, and the
@@ -310,7 +314,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                         pose_cmd_manager=self.pose_command,
                     ),
                 },
-                # Twitchy steering is discouraged, but only for the wheels. 
+                # Twitchy steering is discouraged, but only for the wheels.
                 "action_rate": {
                     "weight": -0.005,
                     "fn": rewards.action_rate_l2(
@@ -325,8 +329,8 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                         sensitivity=0.02,
                     ),
                 },
-                # Leaving room around an obstacle. Hitting an obstacle ends the episode, 
-                # but that only tells the robot it got something wrong once it is far too late to steer. 
+                # Leaving room around an obstacle. Hitting an obstacle ends the episode,
+                # but that only tells the robot it got something wrong once it is far too late to steer.
                 # This gives it something to follow on the way in.
                 "keep_clear": {
                     "weight": -2.0,

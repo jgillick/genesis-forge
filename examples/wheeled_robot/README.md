@@ -2,7 +2,7 @@
 
 Train a simplified [Freenove 4WD car](https://store.freenove.com/products/fnk0043) platform, to move in a commanded direction, controlled programmatically or through a gamepad controller.
 
-This builds on the [command_direction](../command_direction/) example, but demonstrates driving four continuously-rotating wheels instead of legged position control.
+This is a ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering) robot, which means, all 4 wheels are facing the same direction and turning is done by changing the speed of the wheels on either side.
 
 The velocity action manager setup looks like this:
 
@@ -19,12 +19,26 @@ def config(self):
     )
     self.action_manager = VelocityActionManager(
         self,
-        scale=5.0,
+        # Group the wheels on each side together, as one action
+        # since they should be moving at the same velocity.
+        action_groups=[
+            ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
+            ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+        ],
+        scale={
+            # The front and rear motors are mounted opposite of each other,
+            # so their target velocities need to be reversed in order to be turning in the same direction
+            "TT_Motor-1_axel": -1,  # front right
+            "TT_Motor-2_axel": +1,  # rear right
+            "TT_Motor-3_axel": -1,  # front left
+            "TT_Motor-4_axel": +1,  # rear left
+        },
+        clip=(-20, 20), # ~200 RPM
         actuator_manager=self.wheel_motors,
     )
 ```
 
-This is a ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering) robot, which means, all 4 wheels are facing the same direction and turning is done by changing the speed each wheel is rotating at. As such, the velocity command can only direct the robot to go forwards/backwards, and turn along the center axis.
+Since the robot uses ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering), the velocity command can only direct the robot to go forwards/backwards, and turn along the center axis -- the robot cannot move sideways.
 
 ```python
     self.velocity_command = VelocityCommandManager(

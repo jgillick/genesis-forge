@@ -796,6 +796,7 @@ dependencies = [
     { name = "skrl", extra = ["torch"] },
     { name = "tensordict" },
     { name = "torch" },
+    { name = "trimesh" },
 ]
 
 [package.metadata]
@@ -809,6 +810,7 @@ requires-dist = [
     { name = "skrl", extras = ["torch"] },
     { name = "tensordict" },
     { name = "torch", specifier = ">=2.10.0" },
+    { name = "trimesh" },
 ]
 
 [package.metadata.requires-dev]

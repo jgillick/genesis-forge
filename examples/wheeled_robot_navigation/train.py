@@ -18,7 +18,7 @@ EXPERIMENT_NAME = "wheeled-robot-navigation"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=2048)
-parser.add_argument("--max_iterations", type=int, default=350)
+parser.add_argument("--max_iterations", type=int, default=250)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -49,7 +49,7 @@ def training_cfg():
             "rnn_hidden_dim": 256,
             "hidden_dims": [256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
             "distribution_cfg": {
                 "class_name": "GaussianDistribution",
                 "init_std": 1.0,
@@ -61,7 +61,7 @@ def training_cfg():
             "rnn_hidden_dim": 256,
             "hidden_dims": [256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
         },
         "seed": 1,
         "num_steps_per_env": 48,

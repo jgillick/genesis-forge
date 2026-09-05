@@ -121,6 +121,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                 noise=0.003,
                 resolution=0.003,
                 draw_debug=True,
+                debug_ray_start_color=(0.0, 0.0, 0.0, 0.0)
             )
         )
 

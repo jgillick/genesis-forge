@@ -228,7 +228,9 @@ class BaseActionManager(BaseManager):
         """
         return {
             name: value.item()
-            for name, value in zip(self.dofs.keys(), self._actions[env_idx, :])
+            for name, value in zip(
+                self.dofs.keys(), self._actions[env_idx, :], strict=True
+            )
         }
 
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
@@ -314,7 +316,9 @@ class BaseActionManager(BaseManager):
                         )
                     action_of_dof[dof_idx] = action_idx
 
-        ungrouped = [name for name, a in zip(dof_names, action_of_dof) if a is None]
+        ungrouped = [
+            name for name, a in zip(dof_names, action_of_dof, strict=True) if a is None
+        ]
         if ungrouped:
             raise ValueError(
                 f"These joints are not in any action group, so nothing would drive them: "

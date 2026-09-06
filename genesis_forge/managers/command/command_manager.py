@@ -108,7 +108,7 @@ class CommandManager(BaseManager):
                 f"Cannot change the shape of the CommandManager range. Expected size: {self._command.shape[1]}, got {num}"
             )
         # Validate the range types match
-        if type(range) != type(self._range):
+        if type(range) is not type(self._range):
             raise ValueError(
                 f"Cannot change the base type of the CommandManager range. Expected type: {type(self._range)}, got {type(range)}"
             )

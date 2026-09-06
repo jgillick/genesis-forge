@@ -2,7 +2,9 @@
 
 Train the [Freenove 4WD car](https://store.freenove.com/products/fnk0043) to drive to a goal pose — a point, and the direction to be facing once there — while avoiding obstacles, using its ultrasonic range sensor.
 
-This builds on the [wheeled_robot](../wheeled_robot/) example, which covers the car itself. There, the policy is handed a velocity to follow, so _how to move_ is given and only the execution is learned. Here it is told only **where to end up and which way to face there**, and has to pick its own route and speed, read its range sensor, and avoid obstacles on the way.
+This builds on the [wheeled_robot](../wheeled_robot/) example, which covers the car itself. There, the policy is handed a velocity to follow, so _how to move_ is given and only the execution is learned. Here it is told only **where to end up and which way to face there**, and has to pick its own route and speed, aim and read its range sensor, and avoid obstacles on the way.
+
+Every reset lays out the obstacles afresh and points the robot in a random direction, so the goal is never reliably straight ahead.
 
 See [`environment.py`](./environment.py) for the full configuration.
 
@@ -18,63 +20,61 @@ self.pose_command = Pose2dCommand(
         "y": (-2.5, 2.5),
         "heading": (-math.pi, math.pi),
     },
-    goal_reached_threshold=0.2,
-    heading_reached_threshold=math.radians(30),
-    resample_on_reached=True,
+    entity_manager=self.robot_manager,
     debug_visualizer=True,
 )
 ```
 
-Position and heading are drawn independently, so the robot cannot satisfy the heading just by arriving — it has to turn to face the right way. Reaching a goal earns a new one immediately (`resample_on_reached=True`), so one episode is a string of navigation problems rather than a single drive.
+Position and heading are drawn independently, so the robot cannot satisfy the heading just by arriving — it has to turn to face the right way. Reaching a goal earns a new one immediately, so one episode is a string of navigation problems rather than a single drive.
 
 The observation is the goal seen from the **robot's own frame**, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to face on arrival):
 
 ```python
-"goal_pose": {"fn": self.pose_command.observation},
+ObservationManager(
+    self,
+    cfg={
+        "goal_pose": {"fn": self.pose_command.observation},
+        ...
+    }
+)
 ```
 
-### Why a polar controller, not x/y
+### Lining up late, not early
 
-This robot is a _skid-steer_: it can drive and spin on the spot, but not slide sideways. That makes reaching a pose — a position **and** a heading together — a well-studied hard case: no fixed feedback rule can bring a robot like this smoothly to a pose ([Brockett's condition](https://arxiv.org/html/2607.26442)), which in practice shows up as shuffling near the goal. The classical fix is to think in polar terms — distance, bearing, heading error — which is exactly what the observation above reports, and the reward has to respect the same constraint:
+Like most wheeled robots, this one can drive and spin on the spot, but it cannot move sideways. Holding the goal heading on the way in would mean crabbing sideways into the goal — a well-known hard case ([Brockett's condition](https://arxiv.org/abs/2607.26442)). The `lines_up_within` argument of the `heading_progress` reward pays for turning _toward_ the goal when far away, and on the final approach pays for the correct heading.
 
 ```python
 rewards.heading_progress(
     pose_cmd_manager=self.pose_command,
-    lines_up_within=0.75
+    lines_up_within=0.75,
 )
 ```
 
-Further than `lines_up_within` from the goal, this pays for turning _toward the goal_ — the way the robot actually has to point to drive there. Closer in, it hands over to the goal heading. Asking for the goal heading the whole way round instead makes the robot line up early and then try to crab sideways into the goal, which it physically cannot do. A robot that _can_ travel one way while facing another — legged or omnidirectional — doesn't need this split.
+In practice, this means the robot moves directly to the target point, and when it get's close, adjusts it's body to also match the heading.
 
-Arrival also requires the heading (`heading_reached_threshold`), not just position: without it the goal would be replaced the instant the robot drove into range, and there would be nothing to line up for. The 30° tolerance isn't tight, on purpose — every degree shaved off costs extra shuffling to satisfy distance and heading together.
+## Seeing: an aimed ultrasonic sensor
+
+The robot's only view of the world is an HC-SR04 ultrasonic sensor, modeled as a raycaster over a 15° cone that reports the single closest hit. The sensor rides on a servo, that the robot controls to pan the sensor left and right looking for obstacles.
 
 ## Rewards
 
-Every reward here pays for _doing_ something, never for _being_ somewhere. A robot that stops earns exactly zero.
+Every reward here pays for _doing_ something, never for _being_ somewhere. A robot that stops moving earns exactly zero.
 
 | Reward                  | Weight | What it does                                                                    |
 | ----------------------- | ------ | ------------------------------------------------------------------------------- |
 | `position_progress`     | 1.0    | Pays for closing the distance, at any range — what gets the robot moving at all |
-| `heading_progress`      | 0.5    | Pays for turning the right way, per the polar controller above                  |
+| `heading_progress`      | 0.5    | Pays for turning the right way                                                  |
 | `reached_goal`          | 50.0   | A bonus for arriving: on the goal _and_ lined up with it                        |
-| `keep_clear`            | -2.0   | Crowding an obstacle, growing from nothing at 0.3m to full on contact           |
+| `keep_clear`            | -2.0   | Penalizes for crowding an obstacle                                              |
 | `collision`             | -50.0  | Hitting an obstacle, which also ends the episode                                |
-| `action_rate`           | -0.005 | Discourages twitchy steering                                                    |
+| `action_rate`           | -0.005 | Discourages twitchy steering (wheels only, see above)                           |
 | `body_acceleration_exp` | -0.02  | Discourages jerky motion                                                        |
 
-`position_progress` and `heading_progress` are both _rates_ — closing speed on distance and on heading error — not proximity. That distinction matters here: the goal is replaced the moment it's reached, so a reward that pays for merely _being_ near the goal (`position_tracking` / `heading_tracking` in this library) lets a robot park just outside the reach threshold and collect it forever, which is worth far more over an episode than the one-time arrival bonus. Progress rewards can't be farmed that way — standing still pays zero by construction, and over a whole goal they only ever add up to the distance the robot started with. This is [potential-based shaping](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf), which is provably incapable of changing the optimal policy, so it can't invent a camping strategy either. `position_tracking`/`heading_tracking` are still the right call for tasks where the goal isn't replaced on arrival.
-
-`keep_clear` deliberately reads the true distance to each obstacle rather than the sensor reading. A penalty computed from the sensor would be one the robot could dodge by _pointing the sensor somewhere else_ — teaching it to look away from danger instead of avoiding it.
-
-Note the collision termination below is _not_ marked `time_out: True` — a crash is a genuine failure, and marking it as a time-out would tell the learning algorithm to bootstrap value past it as though the episode had merely been cut short.
-
-## The ultrasonic sensor
-
-The model uses an HC-SR04 ultrasonic sensor to detect obstacles. This is modeled as a raycaster sensor that returns a single value of the closest object detected. Sensors must be added before the scene is built, so the sensor is created in `__init__` alongside the entities.
+Paying for movement rather than position matters here because the goal is replaced the moment it is reached. A reward for merely _being_ near the goal would pay out every step, worth far more over an episode than the one-time arrival bonus, so the robot would learn to park just outside the threshold and collect it forever. Rates can't be farmed that way — this is [potential-based shaping](https://ai.stanford.edu/~ang/papers/shaping-icml99.pdf).
 
 ## The training algorithm: a recurrent policy
 
-This training algorithm uses `RNNModel` (a GRU, 256-unit hidden state, `[256, 128]` MLP head) rather than plain feedforward networks:
+Training uses `RNNModel` (a GRU, 256-unit hidden state, `[256, 128]` MLP head) rather than plain feedforward networks:
 
 ```python
 "actor": {
@@ -86,7 +86,7 @@ This training algorithm uses `RNNModel` (a GRU, 256-unit hidden state, `[256, 12
 },
 ```
 
-Avoiding obstacles depends on integrating information over time — a single ultrasonic reading is ambiguous, and disambiguating it takes watching how the reading changes as the robot drives, turns, and sweeps its head. A recurrent hidden state carries a running summary across the whole episode, which is a better fit for a signal whose relevant timescale isn't known in advance. PPO (via `rsl-rl`) trains through this the normal way, backpropagating through `num_steps_per_env` steps of hidden state per update.
+Avoiding obstacles depends on integrating information over time — a single ultrasonic reading is one number in one direction, and making sense of it takes watching how it changes as the robot drives, turns, and sweeps its head. A recurrent hidden state carries a running summary across the whole episode, which suits a signal whose relevant timescale isn't known in advance. PPO (via `rsl-rl`) trains through this the normal way, backpropagating through `num_steps_per_env` steps of hidden state per update.
 
 ## Training
 

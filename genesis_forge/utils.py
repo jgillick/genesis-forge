@@ -116,7 +116,7 @@ def assign_by_pattern(names: list[str], config: dict[str, T]) -> list[T | None]:
                 assigned[i] = value
                 found = True
         if not found:
-            unassigned = [n for n, a in zip(names, assigned) if a is None]
+            unassigned = [n for n, a in zip(names, assigned, strict=True) if a is None]
             raise RuntimeError(
                 f"'{pattern}' not found among the unassigned names: {unassigned}"
             )

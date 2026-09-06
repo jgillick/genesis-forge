@@ -4,41 +4,49 @@ Train a simplified [Freenove 4WD car](https://store.freenove.com/products/fnk004
 
 This is a ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering) robot, which means, all 4 wheels are facing the same direction and turning is done by changing the speed of the wheels on either side.
 
-The velocity action manager setup looks like this:
+## Driving: two actions, not four
+
+The robot has four wheels, in a ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering) configuration, which means, turning is done by changing the speed of the wheels on the left and right side. This also means that the wheels on each side (left or right) act like a synchronized pair, each turning the same speed.
+
+Asking the model to provide four actions for a car that only truly needs two, would be a waste. So we can group the actuators together using action_groups.
 
 ```python
-def config(self):
-    # ...
-
-    self.wheel_motors = ActuatorManager(
-        self,
-        joint_names=[
-            "TT_Motor-[1-4]_axel",
-        ],
-        kv=1.0,
-    )
-    self.action_manager = VelocityActionManager(
-        self,
-        # Group the wheels on each side together, as one action
-        # since they should be moving at the same velocity.
-        action_groups=[
-            ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
-            ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
-        ],
-        scale={
-            # The front and rear motors are mounted opposite of each other,
-            # so their target velocities need to be reversed in order to be turning in the same direction
-            "TT_Motor-1_axel": -1,  # front right
-            "TT_Motor-2_axel": +1,  # rear right
-            "TT_Motor-3_axel": -1,  # front left
-            "TT_Motor-4_axel": +1,  # rear left
-        },
-        clip=(-20, 20), # ~200 RPM
-        actuator_manager=self.wheel_motors,
-    )
+self.wheel_action_manager = VelocityActionManager(
+    self,
+    action_groups=[
+        ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
+        ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+    ],
+    ...
+)
 ```
 
-Since the robot uses ["differential steering"](https://en.wikipedia.org/wiki/Differential_steering), the velocity command can only direct the robot to go forwards/backwards, and turn along the center axis -- the robot cannot move sideways.
+The other peculiarity is that the front motors are mounted in reverse orientation to the rear motors. So if you applied the same positive velocity to all four motors, the front and rear motors would be moving in opposite directions and the car would move nowhere.
+
+<img src="./motors.png" width="200" alt="Motor orientation" />
+
+To solve this, we can use negative action scaling to reverse the target actuator actions on the front motors.
+
+```python
+self.wheel_action_manager = VelocityActionManager(
+    self,
+    action_groups=[
+        ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
+        ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+    ],
+    scale={
+        "TT_Motor-1_axel": -1,  # right front (reverse action sign)
+        "TT_Motor-2_axel": +1,  # right rear
+        "TT_Motor-3_axel": -1,  # left front (reverse action sign)
+        "TT_Motor-4_axel": +1,  # left rear
+    },
+    ...
+)
+```
+
+Now, if the model sends an action of `5` to the left motors, the left/front action will be translated to `-5` and the left/rear action will remain as `+5`.
+
+Lastly, since the robot can only move forwards and backwards, but not side-to-side, the commanded linear velocity range is set to zero.
 
 ```python
     self.velocity_command = VelocityCommandManager(
@@ -51,8 +59,6 @@ Since the robot uses ["differential steering"](https://en.wikipedia.org/wiki/Dif
         ...
     )
 ```
-
-See [`environment.py`](./environment.py) for the full configuration, and the [`VelocityActionManager` guide](../../docs/guide/managers/action.md) for how the manager generalizes to any continuously-rotating-joint robot.
 
 ## Training
 

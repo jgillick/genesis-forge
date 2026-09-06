@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import re
 from typing import TYPE_CHECKING
 
 import genesis as gs
@@ -14,6 +13,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
 )
 from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
+from genesis_forge.utils import name_matches
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -408,7 +408,7 @@ class ContactManager(BaseManager):
             for pattern in names:
                 found = False
                 for link in entity.links:
-                    if pattern == link.name or re.match(f"^{pattern}$", link.name):
+                    if name_matches(link.name, pattern):
                         ids.append(link.idx)
                         local_ids.append(link.idx_local)
                         found = True

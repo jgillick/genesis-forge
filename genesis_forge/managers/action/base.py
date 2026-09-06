@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 import genesis as gs
 import numpy as np
 import torch
@@ -10,6 +8,7 @@ from gymnasium import spaces
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.utils import name_matches
 
 
 class BaseActionManager(BaseManager):
@@ -23,11 +22,9 @@ class BaseActionManager(BaseManager):
                          These can be full names or regular expressions.
         action_groups: Drive several joints from a single action, given as a list of groups,
                        where each group is the joint names (or regular expressions) that one
-                       action controls. Use this when the joints are mechanically tied
-                       together and steering them apart is meaningless -- the wheels down one
-                       side of a skid-steer robot, for example, where one action per side
-                       matches how the robot actually moves. Every controlled joint must
-                       appear in exactly one group. Defaults to None: one action per joint.
+                       action controls. For example the wheels down one side of a skid-steer robot,
+                       where one action per side matches how the robot actually moves. Every controlled
+                       joint must appear in exactly one group. Defaults to None: one action per joint.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
     """
@@ -126,9 +123,7 @@ class BaseActionManager(BaseManager):
         The processed actions for for the current step.
         """
         if self._actions is None:
-            return torch.zeros(
-                (self.env.num_envs, self.num_dofs), device=gs.device
-            )
+            return torch.zeros((self.env.num_envs, self.num_dofs), device=gs.device)
         return self._actions
 
     @property
@@ -137,9 +132,7 @@ class BaseActionManager(BaseManager):
         The actions received from the policy, before being processed.
         """
         if self._raw_actions is None:
-            return torch.zeros(
-                (self.env.num_envs, self.num_actions), device=gs.device
-            )
+            return torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
         return self._raw_actions
 
     @property
@@ -148,9 +141,7 @@ class BaseActionManager(BaseManager):
         The processed actions for for the previous step.
         """
         if self._last_actions is None:
-            return torch.zeros(
-                (self.env.num_envs, self.num_dofs), device=gs.device
-            )
+            return torch.zeros((self.env.num_envs, self.num_dofs), device=gs.device)
         return self._last_actions
 
     """
@@ -217,9 +208,7 @@ class BaseActionManager(BaseManager):
         Get the current actions for the environments.
         """
         if self._actions is None:
-            return torch.zeros(
-                (self.env.num_envs, self.num_dofs), device=gs.device
-            )
+            return torch.zeros((self.env.num_envs, self.num_dofs), device=gs.device)
         return self._actions
 
     def get_actions_dict(self, env_idx: int = 0) -> dict[str, float]:
@@ -271,7 +260,7 @@ class BaseActionManager(BaseManager):
             for index, (name, dof_idx) in enumerate[tuple[str, int]](
                 actuator_dofs.items()
             ):
-                if name == filter or re.match(f"^{filter}$", name):
+                if name_matches(name, filter):
                     self._dofs[name] = dof_idx
                     index_filter.append(index)
         self._actuator_dof_filter = torch.tensor(
@@ -291,9 +280,6 @@ class BaseActionManager(BaseManager):
         """
         Work out which action drives each controlled DOF, so a step's actions can be
         handed out to the DOFs they belong to.
-
-        The result is one action index per DOF, in the manager's DOF order, which turns
-        the hand-out into a single lookup.
         """
         if self._action_groups is None:
             return
@@ -305,7 +291,7 @@ class BaseActionManager(BaseManager):
             patterns = [group] if isinstance(group, str) else group
             for pattern in patterns:
                 for dof_idx, name in enumerate(dof_names):
-                    if name != pattern and not re.match(f"^{pattern}$", name):
+                    if not name_matches(name, pattern):
                         continue
                     if action_of_dof[dof_idx] is not None:
                         raise ValueError(
@@ -327,8 +313,9 @@ class BaseActionManager(BaseManager):
 
     def _actions_for_dofs(self, actions: torch.Tensor) -> torch.Tensor:
         """
-        Hand each DOF the action that drives it, shape (num_envs, num_dofs). Without
-        `action_groups` every DOF has its own action already, and this is a no-op.
+        Distribute the actions to the DOFs they control.
+        If `action_groups` is not defined, the actions are already one per DOF, otherwise,
+        the actions are distributed to the DOFs according to the groups defined in `action_groups`.
         """
         if self._dof_action_idx is None:
             return actions
@@ -346,8 +333,7 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
 
-        # Hand each DOF the action driving it, which is every action unless the manager
-        # groups several DOFs onto one
+        # Convert actions to the dof indices they control
         dof_actions = self._actions_for_dofs(actions)
 
         if self._actions is None:

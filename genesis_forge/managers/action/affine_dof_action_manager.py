@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any, TypeVar
 
 import genesis as gs
@@ -9,6 +8,7 @@ import torch
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.utils import assign_by_pattern
 
 T = TypeVar("T")
 
@@ -112,21 +112,15 @@ class AffineDofActionManager(BaseActionManager):
             A list of values for the DOF indices.
             For example, for 4 DOFs: [50, 50, 50, 50]
         """
-        is_set = [False] * self.num_dofs
         dof_names = list(self.dofs.keys())
         if output is None:
             output = torch.zeros(
                 self.num_dofs, device=gs.device, dtype=gs.tc_float
             ).fill_(default_value)
-        for pattern, value in values.items():
-            found = False
-            for i, name in enumerate[str](dof_names):
-                if not is_set[i] and re.match(f"^{pattern}$", name):
-                    if isinstance(value, (list, tuple)):
-                        value = torch.tensor(value, device=gs.device)
-                    is_set[i] = True
-                    output[i] = value
-                    found = True
-            if not found:
-                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
+        for i, value in enumerate(assign_by_pattern(dof_names, values)):
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple)):
+                value = torch.tensor(value, device=gs.device)
+            output[i] = value
         return output

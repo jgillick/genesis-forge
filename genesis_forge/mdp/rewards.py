@@ -349,7 +349,9 @@ class action_rate_l2(MdpFn):
         last_actions = env.last_actions
         if last_actions is None:
             return torch.zeros(env.num_envs, device=gs.device)
-        change = last_actions[:, self._action_slice] - env.actions[:, self._action_slice]
+        change = (
+            last_actions[:, self._action_slice] - env.actions[:, self._action_slice]
+        )
         return torch.sum(torch.square(change), dim=1)
 
 
@@ -920,9 +922,10 @@ class heading_progress(MdpFn):
         """
         The angle the entity is being asked to close, in radians.
 
-        With `lines_up_within` set, that is the bearing to the goal while the entity is
-        still travelling, becoming the goal heading as it arrives. The two are mixed
-        rather than switched between, so the reward changes smoothly on the way in.
+        With `lines_up_within` set, the entity is rewarded for turning to face the goal
+        position while it is far away, and for turning into the goal heading as it
+        closes in. The two are blended by distance rather than switched at a threshold,
+        so the reward stays smooth on the approach.
         """
         heading_error = self.pose_cmd_manager.heading_error.abs()
         if self.lines_up_within is None:

@@ -138,7 +138,7 @@ env.velocity_command.use_gamepad(gamepad)
 
 ## Pose Command Manager
 
-`Pose2dCommand` commands a goal *pose* rather than a velocity: a point to drive to, and the direction to be facing once there. Use it for navigation tasks, where the policy is told where to end up and has to choose its own route and speed to get there.
+`Pose2dCommand` commands a goal _pose_ rather than a velocity: a point to drive to, and the direction to be facing once there. Use it for navigation tasks, where the policy is told where to end up and has to choose its own route and speed to get there.
 
 ```python
 import math
@@ -159,23 +159,17 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-The position and the heading are drawn independently, so the goal heading is not simply the direction the robot happened to approach from — it has to both get there and turn to face the right way. This is what a real arrival often needs: backing into a charging dock, or pulling up to a shelf facing it.
+The position and the heading independent, so the goal heading is not simply the direction the robot happened to approach from — it has to both get there and turn to face the right way. This is what a real arrival often needs: backing into a charging dock, or pulling up to a shelf facing it.
 
-Goals are sampled in the environment's local frame, and a new one is drawn whenever the environment resets, whenever the goal is reached (with `resample_on_reached`), and on a timer if you set `resample_time_sec`. Left unset, `resample_time_sec` means a goal never expires — the robot keeps working at it until it arrives or the episode ends.
+Goals are sampled in the environment's local frame, and a new one is drawn when the environment resets, the goal is reached (with `resample_on_reached`), and/or on a timer if you set `resample_time_sec`.
 
 By default a goal counts as reached on position alone, whichever way the robot ends up facing. Set `heading_reached_threshold` if the robot must also be lined up before it has arrived.
-
-### Keeping goals clear of the scene
-
-A goal is never placed on top of anything else in the scene. Every entity — the obstacles, the robot itself, anything else that was added — gets a circle of clear space around it, sized from its own footprint plus the reach threshold. If a drawn goal lands inside one of those circles it is drawn again.
-
-This is automatic and there is nothing to configure. It is also why a fresh goal never starts out already reached: the robot's own footprint is one of the things goals are kept clear of.
 
 ### Using Pose Commands in Observations
 
 The observation is the goal from the robot's own point of view, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to turn to face the goal heading).
 
-The goal vector alone would locate the goal, but it mixes up *how far* with *which way* — a few centimeters out it is a tiny vector, so the steering signal fades exactly where steering has to be most precise. Reporting distance and bearing separately keeps the direction at full strength all the way in.
+The goal vector alone would locate the goal, but it mixes up _how far_ with _which way_ — a few centimeters out it is a tiny vector, so the steering signal fades exactly where steering has to be most precise. Reporting distance and bearing separately keeps the direction at full strength all the way in.
 
 ```python
 ObservationManager(
@@ -188,7 +182,7 @@ ObservationManager(
 
 ### Using Pose Commands in Rewards
 
-Goal-reaching usually wants both a reward for *being* at the goal and one for *getting closer*, since the first is nearly flat when the robot starts far away. Add `heading_tracking` if you also care which way the robot is facing:
+Goal-reaching usually wants both a reward for _being_ at the goal and one for _getting closer_, since the first is nearly flat when the robot starts far away. Add `heading_tracking` if you also care which way the robot is facing:
 
 ```python
 from genesis_forge.mdp import rewards
@@ -214,6 +208,9 @@ RewardManager(
         "heading_progress": {
             "fn": rewards.heading_progress(
                 pose_cmd_manager=self.pose_command,
+                # How close to the goal the robot should switch from steering
+                # toward the goal to lining up with the goal heading.
+                lines_up_within=0.75,
             ),
             "weight": 0.5,
         },
@@ -232,7 +229,7 @@ Like the velocity tracking rewards, `position_tracking` derives its sensitivity 
 
 `heading_progress` asks for the goal heading at every distance by default, which suits a robot that can travel one way while facing another — a legged or omnidirectional robot. A robot that has to point where it is going cannot chase the goal heading from far away without driving sideways to reach the goal, so set `lines_up_within` to have it steer toward the goal while there is ground to cover and line up with the goal heading only on the final approach.
 
-`position_progress` and `heading_progress` pay for *changing* rather than for *being*: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead. `position_tracking` and `heading_tracking` are the "being there" versions, and are the better choice when the goal is *not* replaced on arrival; their docstrings carry the warning.
+`position_progress` and `heading_progress` pay for _changing_ rather than for _being_: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead. `position_tracking` and `heading_tracking` are the "being there" versions, and are the better choice when the goal is _not_ replaced on arrival; their docstrings carry the warning.
 
 If you don't care which way the robot faces, simply leave out the heading reward; the heading is still drawn and observed, but nothing scores it.
 

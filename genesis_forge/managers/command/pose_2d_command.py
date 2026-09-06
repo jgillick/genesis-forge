@@ -560,20 +560,20 @@ class Pose2dCommand(CommandManager):
         """
 
         # Put the X/Y position of all the entities to avoid in a stack
-        avoided_xy = torch.stack([ 
+        avoid_xy = torch.stack([ 
             cast(torch.Tensor, entity.get_pos())[:, :2] 
             for entity in self._avoided_entities
         ])
 
         remaining = env_ids
         for _ in range(MAX_RESAMPLE_ATTEMPTS):
-            remaining = remaining[self._blocked_goals(remaining, avoided_xy)]
+            remaining = remaining[self._blocked_goals(remaining, avoid_xy)]
             if len(remaining) == 0:
                 return
             super().resample_command(remaining)
 
     def _blocked_goals(
-        self, env_ids: torch.Tensor, avoided_xy: torch.Tensor
+        self, env_ids: torch.Tensor, avoid_xy: torch.Tensor
     ) -> torch.Tensor:
         """
         Which of `env_ids` sampled a goal that is too close to something in the scene.
@@ -585,7 +585,7 @@ class Pose2dCommand(CommandManager):
                         entity, shape (entities, num_envs, 2)
         """
         goal_xy = self._command[env_ids, :2]
-        distance = torch.norm(avoided_xy[:, env_ids] - goal_xy, dim=-1)
+        distance = torch.norm(avoid_xy[:, env_ids] - goal_xy, dim=-1)
 
         # Distances are (entities, envs); the margins are turned on their side to match,
         # so each entity's margin is compared against every environment

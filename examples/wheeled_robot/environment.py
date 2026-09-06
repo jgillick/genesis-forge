@@ -61,7 +61,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="./model/Freenove4WD.xml",
+                file="./Freenove4WD/Freenove4WD.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
@@ -73,7 +73,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-0.5, 0.5, 0.5),  # x, y, z
+            pos=(-1.0, 1.0, 1.0),  # x, y, z
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -120,8 +120,8 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             # Group the wheels on each side together, as one action
             # since they should be moving at the same velocity.
             action_groups=[
-                ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
                 ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+                ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
             ],
             scale={
                 # The front and rear motors are mounted opposite of each other,
@@ -156,7 +156,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": (-0.1, 0.1),  # forward/backward
+                "lin_vel_x": (-0.5, 0.5),  # forward/backward
                 "lin_vel_y": (-0.0, 0.0),  # cannot move side-to-side
                 "ang_vel_z": (-0.5, 0.5),  # turning
             },

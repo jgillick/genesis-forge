@@ -16,8 +16,8 @@ from genesis_forge.managers import (
 )
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.4)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 TARGET_X_VELOCITY = 0.5
 
 

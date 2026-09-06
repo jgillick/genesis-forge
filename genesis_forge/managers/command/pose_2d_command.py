@@ -1,33 +1,41 @@
 import math
-from collections.abc import Callable
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 import genesis as gs
+import numpy as np
 import torch
-from genesis.utils.geom import inv_quat, transform_by_quat
 
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.meshes import arrow_mesh
 
-from .command_manager import CommandManager, CommandRangeValue
+from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
 
+    from genesis_forge.managers.entity_manager import EntityManager
+    from genesis_forge.managers.terrain_manager import TerrainManager
+
 
 MAX_RESAMPLE_ATTEMPTS = 10
 """
-How many times a goal that landed on top of something is redrawn before the manager gives
-up and keeps the last draw. Without a limit, a scene with no free space left would loop
-forever.
+How many times a goal that landed on top of something is resampled before giving up and
+keeping the last sample.
 """
 
 
 class Pose2dCommandRange(TypedDict):
-    """The ranges a goal pose is drawn from."""
+    """The ranges a goal pose is sampled from."""
 
     x: CommandRangeValue
     y: CommandRangeValue
-    heading: CommandRangeValue
+
+    heading: NotRequired[CommandRangeValue | None]
+    """
+    The range the goal heading is sampled from. Leave it out, or set it to None, for a
+    position-only goal, which can be arrived at facing any direction.
+    """
 
 
 class Pose2dDebugVisualizerConfig(TypedDict):
@@ -39,37 +47,56 @@ class Pose2dDebugVisualizerConfig(TypedDict):
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
+    marker_height: NotRequired[float]
+    """The height above the ground to draw the goal marker at"""
+
     arrow_length: NotRequired[float]
-    """The length of the goal arrow"""
+    """The length of the goal arrow, when the goal has a heading"""
 
     arrow_radius: NotRequired[float]
-    """The thickness of the goal arrow"""
+    """The thickness of the goal arrow, when the goal has a heading"""
 
-    arrow_height: NotRequired[float]
-    """The height above the ground to draw the goal arrow at"""
+    ball_radius: NotRequired[float]
+    """The radius of the goal ball, when the goal has no heading"""
 
     goal_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the goal arrow"""
+    """The color of the goal marker"""
 
     reached_color: NotRequired[tuple[float, float, float, float]]
-    """The color of the goal arrow when the goal has been reached"""
+    """The color of the goal marker when the goal has been reached"""
 
 
 DEFAULT_VISUALIZER_CONFIG = {
     "envs_idx": [],
     "fps": 30,
+    "marker_height": 0.05,
     "arrow_length": 0.25,
     "arrow_radius": 0.02,
-    "arrow_height": 0.05,
+    "ball_radius": 0.05,
     "goal_color": (0.0, 0.5, 0.0, 1.0),
     "reached_color": (1.0, 0.0, 0.0, 1.0),
 }
 
 
+def _normalize_range(range: "Pose2dCommandRange | CommandRange") -> CommandRange:
+    """
+    Remove heading from the range dict if it is None.
+    Otherwise, the base command manager will attempt to sample from None
+    """
+    if not isinstance(range, Mapping):
+        return range
+    ranges = dict(range)
+    if ranges.get("heading") is None:
+        ranges.pop("heading", None)
+    return cast(dict[str, CommandRangeValue], ranges)
+
+
 def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
     """
-    Which way an entity is facing, seen from above: the compass direction of its nose, in
-    radians, ignoring any tilt forwards, backwards, or to the side.
+    The compass direction the entity's nose points, seen from above, in radians.
+
+    This follows the nose, so tilting the entity moves it. It is not the yaw of an euler
+    decomposition (`quat_to_xyz(quat)[:, 2]`), which tilting leaves where it was.
 
     Args:
         quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
@@ -78,18 +105,14 @@ def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
         torch.Tensor: Heading in radians, shape (num_envs,)
     """
     w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-    # The standard way to pull the flat, around-the-vertical-axis part out of a quaternion
+    # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
     return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
 def shortest_turn_to(target_angle: torch.Tensor, current_angle: torch.Tensor) -> torch.Tensor:
     """
-    How far `current_angle` has to turn to face `target_angle`, taking the shorter way around.
-
-    Angles wrap around at half a turn, so plain subtraction can give a silly answer: going
-    from 179 degrees to -179 degrees looks like a 358 degree turn, when really it is a 2
-    degree turn the other way. Shifting by half a turn, taking the remainder, and shifting
-    back folds the answer into "at most half a turn, in whichever direction is closer".
+    How far `current_angle` has to turn to face `target_angle`, taking the shorter way
+    around: turning from 179 degrees to -179 degrees is 2 degrees, not 358.
 
     Returns:
         torch.Tensor: Radians to turn, positive to the left and negative to the right
@@ -100,42 +123,44 @@ def shortest_turn_to(target_angle: torch.Tensor, current_angle: torch.Tensor) ->
 
 class Pose2dCommand(CommandManager):
     """
-    Generates a goal pose command: a point to drive to, and the direction to be facing
-    once there. Use this for navigation tasks where the robot should arrive somewhere
-    lined up for whatever it does next, like backing into a charging dock or pulling up
-    to a shelf facing it.
+    Generates a goal pose command: a point to drive to, and (optionally) the direction
+    to be facing once there. Use this for navigation tasks where the robot should arrive
+    somewhere lined up for whatever it does next, like backing into a charging dock or
+    pulling up to a shelf facing it.
 
-    The X/Y position and the heading are drawn independently, so the heading is not
-    simply "whichever way you happened to arrive from" -- the robot has to both get there
-    and turn to face the right way. If you only care about the position, leave
-    `heading_reached_threshold` unset and give the heading a small weight (or no reward
-    at all); the goal then counts as reached on position alone.
-
-    A goal is never placed on top of anything else in the scene. Every entity, including
-    the robot itself, is given a circle of clear space around it, so goals don't spawn
-    inside an obstacle or right under the robot's wheels. This is automatic -- there is
-    nothing to configure.
+    The X/Y position and the heading are sampled independently, so the robot has to both
+    get there and turn to face the right way. If you only care about the position, leave
+    the `heading` range out (or set it to None): the goal is then a point to reach,
+    arrived at facing any direction.
 
     The goal for each environment is resampled when the environment resets, when the
-    goal is reached (if `resample_on_reached` is True), and on a timer
-    (if `resample_time_sec` is set).
+    goal is reached (if `resample_on_reached` is True), and when it has taken longer than
+    `resample_time_sec` (if one is set).
 
     !!! note "Debug Visualization"
-        If you set `debug_visualizer` to True, an arrow is drawn at each goal: it starts
-        at the goal position and points the way to face on arrival, changing color when
-        the goal has been reached.
+        If you set `debug_visualizer` to True, a marker is drawn at each goal: 
+        an arrow pointing the way to face on arrival when the goal has a heading, 
+        and a ball when it does not.
 
     Args:
         env: The environment to control
-        range: The X/Y and heading ranges to draw goal poses from, in the environment's local frame
-        resample_time_sec: The time interval between changing the goal.
-                           Defaults to None: the goal only changes on reset or when reached.
+        range: The X/Y and (optional) heading ranges to sample the goal poses from, in the
+               environment's local frame
         goal_reached_threshold: The distance (in meters) at which the goal counts as reached.
-        heading_reached_threshold: How closely (in radians) the entity must be facing the goal
-                                   heading for the goal to count as reached. Defaults to None:
-                                   arriving at the position is enough, whichever way it is facing.
+        heading_reached_threshold: How closely (in radians) the entity must be facing the
+                                   goal heading for the goal to count as reached. Ignored
+                                   by a goal with no heading.
         resample_on_reached: Sample a new goal for an environment when its goal is reached.
+        resample_time_sec: How long an environment may spend on one goal before it is
+                           given up on and replaced. The clock restarts with each new goal. 
+                           Defaults to None: the goal only changes on reset or when reached.
         entity: The entity that is navigating to the goal. Defaults to `env.robot`.
+                This isn't necessary if `entity_manager` is provided.
+        entity_manager: The entity manager for the entity that is navigating to the goal.
+                        This is more performant than the `entity` parameter: the pose comes
+                        from the manager's per-step cache instead of the solver.
+        terrain_manager: The terrain manager, so the debug marker sits above the terrain.
+                         Defaults to None: the ground is assumed to be flat at z=0.
         debug_visualizer: Enable the debug visualization
         debug_visualizer_cfg: The configuration for the debug visualizer
 
@@ -156,15 +181,15 @@ class Pose2dCommand(CommandManager):
                 RewardManager(
                     self,
                     cfg={
-                        "position_tracking": {
+                        "position_progress": {
                             "weight": 1.0,
-                            "fn": rewards.position_tracking(
+                            "fn": rewards.position_progress(
                                 pose_cmd_manager=self.pose_command,
                             ),
                         },
-                        "heading_tracking": {
+                        "heading_progress": {
                             "weight": 0.5,
-                            "fn": rewards.heading_tracking(
+                            "fn": rewards.heading_progress(
                                 pose_cmd_manager=self.pose_command,
                             ),
                         },
@@ -195,32 +220,29 @@ class Pose2dCommand(CommandManager):
         range: Pose2dCommandRange,
         resample_time_sec: float | None = None,
         goal_reached_threshold: float = 0.15,
-        heading_reached_threshold: float | None = None,
+        heading_reached_threshold: float = math.radians(30),
         resample_on_reached: bool = True,
         entity: "RigidEntity | None" = None,
+        entity_manager: "EntityManager | None" = None,
+        terrain_manager: "TerrainManager | None" = None,
         debug_visualizer: bool = False,
         debug_visualizer_cfg: Pose2dDebugVisualizerConfig | None = None,
     ):
-        # The resampled mask is written by resample_command, which the base constructor
-        # can indirectly trigger, so it must exist first
-        self._resampled_last_step = torch.zeros(
-            env.num_envs, dtype=torch.bool, device=gs.device
-        )
-
-        # Filled in by build(), once the scene exists and can be inspected
-        self._avoided_entities: list = []
-        self._avoided_margins: list[float] = []
-
         super().__init__(
             env,
-            range=range,
+            range=_normalize_range(range),
             resample_time_sec=resample_time_sec,
         )
+
+        # A goal with no heading range is position-only: the command is x and y alone
+        self._has_heading = "heading" in self._range
 
         self.goal_reached_threshold = goal_reached_threshold
         self.heading_reached_threshold = heading_reached_threshold
         self.resample_on_reached = resample_on_reached
         self._entity = entity
+        self._entity_manager = entity_manager
+        self.terrain_manager = terrain_manager
 
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx: list | None = None
@@ -229,40 +251,38 @@ class Pose2dCommand(CommandManager):
         )
         self._debug_nodes: list = []
 
+        # Which environments had their goal replaced since rewards were last computed
+        self._resampled_last_step = torch.zeros(
+            env.num_envs, dtype=torch.bool, device=gs.device
+        )
+
+        # How long each environment has been working on its current goal
+        self._steps_on_goal = torch.zeros(
+            env.num_envs, dtype=torch.long, device=gs.device
+        )
+
+        # Filled in by build(), once the scene exists and can be inspected
+        self._avoided_entities: list = []
+        self._avoided_margins = torch.zeros(0, device=gs.device)
+
     """
     Properties
     """
 
     @property
-    def range(self) -> Pose2dCommandRange:
-        """The goal pose range dict."""
-        return cast(Pose2dCommandRange, self._range)
+    def range(self) -> dict[str, CommandRangeValue]:
+        """The goal pose ranges: `x`, `y`, and (optionally) `heading`."""
+        return cast(dict[str, CommandRangeValue], self._range)
 
     @range.setter
-    def range(self, range: Pose2dCommandRange, *_args, **_kwargs):
-        """Update the goal pose ranges."""
-        CommandManager.range.fset(self, range)
-
-    @property
-    def resample_time_sec(self) -> float | None:
+    def range(self, range: "Pose2dCommandRange | CommandRange"):
         """
-        The time interval (in seconds) between changing the goal for each environment,
-        or None to only change the goal on reset or when it is reached.
+        Update the goal pose ranges. A heading can be retuned, but not added or dropped:
+        whether the goal has one is fixed at construction.
         """
-        return self._resample_time_sec
-
-    @resample_time_sec.setter
-    def resample_time_sec(self, resample_time_sec: float | None):
-        """Set the time interval (in seconds) between changing the goal, or None to disable."""
-        self._resample_time_sec = resample_time_sec
-        self._resample_steps = (
-            0 if resample_time_sec is None else int(resample_time_sec / self.env.dt)
-        )
-
-    @property
-    def entity(self) -> "RigidEntity":
-        """The entity that is navigating to the goal."""
-        return self._entity if self._entity is not None else self.env.robot
+        # `__set__` calls the base setter through the descriptor, which a type checker can
+        # follow where the optional `fset` cannot
+        CommandManager.range.__set__(self, _normalize_range(range))
 
     @property
     def goal_position(self) -> torch.Tensor:
@@ -272,24 +292,38 @@ class Pose2dCommand(CommandManager):
     @property
     def goal_heading(self) -> torch.Tensor:
         """The direction (in radians) to be facing at the goal. Shape is (num_envs,)."""
+        self._assert_has_heading("goal_heading")
         return self.command[:, 2]
 
     @property
     def distance_to_goal(self) -> torch.Tensor:
         """The XY distance from the entity to its goal position. Shape is (num_envs,)."""
-        return torch.norm(self.goal_position - self.entity.get_pos()[:, :2], dim=-1)
+        return torch.norm(self.goal_position - self._entity_pos[:, :2], dim=-1)
 
     @property
     def goal_vec_local(self) -> torch.Tensor:
         """
-        The vector from the entity to its goal position, in the entity's own frame:
+        The vector from the entity to its goal position, in the entity's heading frame:
         how far ahead the goal is, and how far to the left. Shape is (num_envs, 2).
+
+        The frame turns with the entity but does not tilt with it, so leaning or pitching
+        neither swings the goal around nor shortens the distance to it.
         """
-        entity = self.entity
-        self._goal_vec_buffer[:, :2] = self.goal_position - entity.get_pos()[:, :2]
-        self._goal_vec_buffer[:, 2] = 0.0
-        rotated = transform_by_quat(self._goal_vec_buffer, inv_quat(entity.get_quat()))
-        return rotated[:, :2]
+        entity_pos = self._entity_pos
+        goal_position = self.goal_position
+        ahead = goal_position[:, 0] - entity_pos[:, 0]
+        left = goal_position[:, 1] - entity_pos[:, 1]
+
+        # Turn the world-frame offset by minus the heading
+        heading = heading_from_quat(self._entity_quat)
+        cos_heading, sin_heading = torch.cos(heading), torch.sin(heading)
+        return torch.stack(
+            (
+                cos_heading * ahead + sin_heading * left,
+                cos_heading * left - sin_heading * ahead,
+            ),
+            dim=-1,
+        )
 
     @property
     def bearing_error(self) -> torch.Tensor:
@@ -297,8 +331,8 @@ class Pose2dCommand(CommandManager):
         How far the entity has to turn to be pointing straight *at* its goal position, in
         radians: positive to the left, negative to the right. Shape is (num_envs,).
 
-        This is the "which way do I drive" angle, and is not the same as
-        `heading_error`, which is the "which way do I face once I get there" angle.
+        Not to be confused with `heading_error`: this is which way to drive, that is
+        which way to face once there.
         """
         vec = self.goal_vec_local
         return torch.atan2(vec[:, 1], vec[:, 0])
@@ -309,30 +343,54 @@ class Pose2dCommand(CommandManager):
         How far the entity still has to turn to be facing its goal heading, in radians:
         positive to the left, negative to the right. Shape is (num_envs,).
         """
-        current_heading = heading_from_quat(self.entity.get_quat())
+        self._assert_has_heading("heading_error")
+        current_heading = heading_from_quat(self._entity_quat)
         return shortest_turn_to(self.goal_heading, current_heading)
 
     @property
     def goal_reached(self) -> torch.Tensor:
         """
         Whether each environment's entity has arrived: within `goal_reached_threshold` of
-        its goal position, and -- if `heading_reached_threshold` is set -- also facing
-        close enough to the goal heading. Shape is (num_envs,).
+        its goal position, and -- for a goal with a heading -- also facing within
+        `heading_reached_threshold` of the goal heading. 
+        Shape is (num_envs,).
         """
         reached = self.distance_to_goal < self.goal_reached_threshold
-        if self.heading_reached_threshold is not None:
+        if self._has_heading:
             reached &= self.heading_error.abs() < self.heading_reached_threshold
         return reached
 
     @property
     def resampled_last_step(self) -> torch.Tensor:
         """
-        Boolean tensor marking the environments whose goal was resampled since the previous
-        step's rewards were computed. Reward functions that track per-step goal history
-        (e.g. progress toward the goal) use this to skip the step that spans a goal change.
-        Shape is (num_envs,).
+        Which environments had their goal resampled since the last rewards were computed.
+        Reward functions that compare against the previous step (e.g. progress toward the
+        goal) use this to skip the step that spans a goal change. Shape is (num_envs,).
         """
         return self._resampled_last_step
+
+    @property
+    def _navigating_entity(self) -> "RigidEntity":
+        """The entity that is navigating to the goal: the one given, or the env's robot."""
+        if self._entity_manager is not None:
+            return self._entity_manager.entity
+        return self._entity if self._entity is not None else self.env.robot
+
+    @property
+    def _entity_pos(self) -> torch.Tensor:
+        """
+        Where the navigating entity is, shape (num_envs, 3).
+        """
+        if self._entity_manager is not None:
+            return self._entity_manager.base_pos
+        return cast(torch.Tensor, self._navigating_entity.get_pos())
+
+    @property
+    def _entity_quat(self) -> torch.Tensor:
+        """Which way the navigating entity is turned, shape (num_envs, 4)."""
+        if self._entity_manager is not None:
+            return self._entity_manager.base_quat
+        return cast(torch.Tensor, self._navigating_entity.get_quat())
 
     """
     Lifecycle Operations
@@ -341,8 +399,10 @@ class Pose2dCommand(CommandManager):
     def build(self):
         """Build the pose command manager"""
         super().build()
-        self._goal_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
-        self._observation_buffer = torch.zeros(self.env.num_envs, 7, device=gs.device)
+        num_obs = 7 if self._has_heading else 5
+        self._observation_buffer = torch.zeros(
+            self.env.num_envs, num_obs, device=gs.device
+        )
         self._find_entities_to_avoid()
         self.build_debug()
 
@@ -350,27 +410,25 @@ class Pose2dCommand(CommandManager):
         """Draw new goal poses for the given environment ids."""
         super().resample_command(env_ids)
         if self._avoided_entities:
-            self._redraw_blocked_goals(env_ids)
+            self._resample_blocked_goals(env_ids)
         self._resampled_last_step[env_ids] = True
+        self._steps_on_goal[env_ids] = 0
 
     def step(self):
-        """Resample goals on the timer (if enabled) and for reached environments."""
+        """Resample the goals of environments that reached theirs, or ran out of time."""
         if not self.enabled:
             return
 
-        # Rewards for this step have already been computed, so the resampled marks
-        # from the previous step have been consumed
+        # This value is used for rewards, and rewards for this step have already been computed, 
+        # so the resampled marks from the previous step have been consumed
         self._resampled_last_step[:] = False
 
-        # Timer-based resampling (the base implementation), only when enabled
-        if self._resample_steps > 0:
-            super().step()
-
-        # Resample environments that reached their goal
-        if self.resample_on_reached and self._external_controller is None:
-            reached_envs_idx = self.goal_reached.nonzero(as_tuple=False).flatten()
-            if len(reached_envs_idx) > 0:
-                self.resample_command(reached_envs_idx)
+        # An external controller owns the command, so the manager doesn't replace it
+        if self._external_controller is None:
+            self._steps_on_goal += 1
+            envs_idx = self._needs_new_goal().nonzero(as_tuple=False).flatten()
+            if len(envs_idx) > 0:
+                self.resample_command(envs_idx)
 
         self._render_debug()
 
@@ -386,119 +444,152 @@ class Pose2dCommand(CommandManager):
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
         """
-        The goal from the entity's own point of view, in seven numbers:
+        The goal from the entity's own point of view, in five numbers, or seven when the
+        goal has a heading:
 
         | # | Value | Meaning |
         |---|-------|---------|
-        | 0, 1 | ahead, left | the goal vector in the entity's frame |
+        | 0, 1 | ahead, left | the goal vector in the entity's heading frame |
         | 2 | distance | how far away the goal is |
         | 3, 4 | cos, sin of the bearing | which way to drive to reach it |
         | 5, 6 | cos, sin of the heading error | which way to turn to face the goal heading |
 
-        The goal vector on its own would be enough to locate the goal, but it mixes up
-        *how far* with *which way*: at 3m away it is a long vector, and a few centimeters
-        out it is a tiny one. That makes the steering signal fade away exactly where
-        steering has to be most precise. Splitting the distance out from the bearing
-        keeps the direction at full strength all the way in.
-
-        Angles are given as cosine/sine pairs rather than raw radians so there is no jump
-        where they wrap around.
+        Distance and bearing are reported separately because the goal vector alone shrinks
+        as the entity closes in, fading the steering signal exactly where it has to be most
+        precise. Angles are cosine/sine pairs so there is no jump where they wrap around.
 
         Returns:
-            torch.Tensor: Shape (num_envs, 7)
+            torch.Tensor: Shape (num_envs, 7), or (num_envs, 5) for a goal with no heading
         """
         goal_vec = self.goal_vec_local
         distance = torch.norm(goal_vec, dim=-1)
-        heading_error = self.heading_error
 
-        # Dividing the goal vector by its own length leaves the bearing as a unit vector,
-        # which is the cosine and sine of the angle to turn through to face the goal. The
-        # floor keeps an entity sitting exactly on its goal from dividing by zero.
+        # The unit goal vector is the cosine and sine of the bearing; the floor keeps an
+        # entity sitting exactly on its goal from dividing by zero
         unit_bearing = goal_vec / distance.clamp(min=1e-6).unsqueeze(-1)
 
         obs = self._observation_buffer
         obs[:, :2] = goal_vec
         obs[:, 2] = distance
         obs[:, 3:5] = unit_bearing
-        obs[:, 5] = torch.cos(heading_error)
-        obs[:, 6] = torch.sin(heading_error)
+        if self._has_heading:
+            heading_error = self.heading_error
+            obs[:, 5] = torch.cos(heading_error)
+            obs[:, 6] = torch.sin(heading_error)
         return obs
 
     """
     Internal Implementation
     """
 
+    def _needs_new_goal(self) -> torch.Tensor:
+        """
+        Which environments are due a new goal: they reached the one they had (when
+        `resample_on_reached` is set), or they have spent longer than `resample_time_sec`
+        on it. Shape is (num_envs,).
+        """
+        needs_new_goal = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+        if self.resample_on_reached:
+            needs_new_goal |= self.goal_reached
+        if self._resample_steps > 0:
+            needs_new_goal |= self._steps_on_goal >= self._resample_steps
+        return needs_new_goal
+
+    def _assert_has_heading(self, name: str):
+        """Raise a helpful error when a heading value is asked of a position-only goal"""
+        if not self._has_heading:
+            raise ValueError(
+                f"{name} is not available: the goal range has no heading. Add a "
+                "'heading' range if the entity should arrive facing a particular direction."
+            )
+
     def _find_entities_to_avoid(self):
         """
-        Work out what a goal must not be placed on top of, and how much room each one needs.
+        Avoid putting the goal on top of any other entity in the scene.
 
-        Everything in the scene counts -- the obstacles, the robot itself, anything else
-        that was added -- except the ground, which every goal sits on by definition.
-
-        The room an entity needs is half the diagonal of its footprint, so the goal lands
-        outside it whichever way it is turned, plus the reach threshold, so that arriving
+        The room an entity needs, between it and any other entity, is half 
+        the diagonal of its footprint, plus the reach threshold, so that arriving
         at the goal doesn't mean driving into it.
         """
         ground = self._ground_entities()
         self._avoided_entities = []
-        self._avoided_margins = []
+        margins = []
 
-        for entity in self.env.scene.entities:
+        for entity in cast(list["RigidEntity"], self.env.scene.entities):
             if any(entity is ground_entity for ground_entity in ground):
                 continue
+
+            # Get the entity footprint radius
+            aabb = entity.get_AABB()
+            if aabb.ndim == 3:
+                aabb = aabb[0]
+            (x_min, y_min, _), (x_max, y_max, _) = aabb.tolist()
+            footprint_radius = math.hypot(x_max - x_min, y_max - y_min) / 2
+
             self._avoided_entities.append(entity)
-            self._avoided_margins.append(
-                self._footprint_radius(entity) + self.goal_reached_threshold
-            )
+            margins.append(footprint_radius + self.goal_reached_threshold)
+
+        self._avoided_margins = torch.tensor(
+            margins, device=gs.device, dtype=gs.tc_float
+        ) # shape (num_entities, 1)
 
     def _ground_entities(self) -> list:
         """
-        The terrain entities in the scene. Goals are placed *on* these, so unlike
-        everything else they are not kept clear of.
+        The entities that make up the ground in the scene.
         """
         ground = []
         if getattr(self.env, "terrain", None) is not None:
             ground.append(self.env.terrain)
         for manager in getattr(self.env, "managers", {}).get("terrain", []):
             ground.append(manager.terrain)
+        for entity in self.env.scene.entities:
+            morph = getattr(entity, "main_morph", None)
+            if morph is None:
+                morph = getattr(entity, "morph", None)
+            if morph and isinstance(morph, (gs.morphs.Plane, gs.morphs.Terrain)):
+                ground.append(entity)
         return ground
 
-    def _footprint_radius(self, entity: "RigidEntity") -> float:
+    def _resample_blocked_goals(self, env_ids: torch.Tensor):
         """
-        The radius of a circle drawn around the entity's footprint, big enough to cover it
-        from every angle: half the diagonal of its bounding box, seen from above.
-        """
-        aabb = entity.get_AABB()
-        # One bounding box per parallel environment; they are all the same size
-        if aabb.ndim == 3:
-            aabb = aabb[0]
-        (x_min, y_min, _), (x_max, y_max, _) = aabb.tolist()
-        return math.hypot(x_max - x_min, y_max - y_min) / 2
-
-    def _redraw_blocked_goals(self, env_ids: torch.Tensor):
-        """
-        Redraw any goal in `env_ids` that landed too close to something in the scene,
+        Resample any goal in `env_ids` that landed too close to something in the scene,
         retrying up to `MAX_RESAMPLE_ATTEMPTS` times. Environments still blocked after
-        that keep their last draw rather than looping forever.
+        that keep their last sample rather than looping forever.
         """
+
+        # Put the X/Y position of all the entities to avoid in a stack
+        avoid_xy = torch.stack([ 
+            cast(torch.Tensor, entity.get_pos())[:, :2] 
+            for entity in self._avoided_entities
+        ])
+
         remaining = env_ids
         for _ in range(MAX_RESAMPLE_ATTEMPTS):
-            remaining = remaining[self._blocked_goals(remaining)]
+            remaining = remaining[self._blocked_goals(remaining, avoid_xy)]
             if len(remaining) == 0:
                 return
             super().resample_command(remaining)
 
-    def _blocked_goals(self, env_ids: torch.Tensor) -> torch.Tensor:
+    def _blocked_goals(
+        self, env_ids: torch.Tensor, avoid_xy: torch.Tensor
+    ) -> torch.Tensor:
         """
-        Which of `env_ids` drew a goal that is too close to something in the scene.
+        Which of `env_ids` sampled a goal that is too close to something in the scene.
         Returns a boolean mask lined up with `env_ids`.
+
+        Args:
+            env_ids: The environments to check
+            avoided_xy: The XY position of everything to keep clear of, one row per
+                        entity, shape (entities, num_envs, 2)
         """
         goal_xy = self._command[env_ids, :2]
-        blocked = torch.zeros(len(env_ids), dtype=torch.bool, device=gs.device)
-        for entity, margin in zip(self._avoided_entities, self._avoided_margins):
-            distance = torch.norm(goal_xy - entity.get_pos()[env_ids, :2], dim=-1)
-            blocked |= distance < margin
-        return blocked
+        distance = torch.norm(avoid_xy[:, env_ids] - goal_xy, dim=-1)
+
+        # Distances are (entities, envs); the margins are turned on their side to match,
+        # so each entity's margin is compared against every environment
+        return (distance < self._avoided_margins.unsqueeze(1)).any(dim=0)
 
     def build_debug(self):
         """Build the debug visualizer buffers and render throttle"""
@@ -517,19 +608,23 @@ class Pose2dCommand(CommandManager):
             else:
                 self.debug_envs_idx = list[int](range(self.env.num_envs))
 
+        self._debug_envs_tensor = torch.tensor(
+            self.debug_envs_idx or [], dtype=torch.long, device=gs.device
+        )
+
         # Calculate the number of steps per debug render
         self._steps_per_debug_render = math.ceil(
             1.0 / self._vis_cfg("fps") / self.env.dt
         )
 
     def _vis_cfg(self, key: str):
-        """A debug visualizer config value, or its default when not configured"""
+        """Get a debug visualizer config value, or its default when not configured"""
         return self.visualizer_cfg.get(key, DEFAULT_VISUALIZER_CONFIG[key])
 
     def _render_debug(self, force: bool = False):
         """
-        Draw an arrow at each debug environment's goal: it starts at the goal position and
-        points the way to be facing on arrival.
+        Draw a marker at each debug environment's goal: an arrow pointing the way to be
+        facing on arrival, or a ball when the goal has no heading.
 
         Args:
             force: Draw now, even if this step is not a scheduled render for the configured FPS
@@ -543,44 +638,65 @@ class Pose2dCommand(CommandManager):
 
         self._clear_debug_objects()
 
-        arrow_height = self._vis_cfg("arrow_height")
-        arrow_length = self._vis_cfg("arrow_length")
-        arrow_radius = self._vis_cfg("arrow_radius")
         goal_color = self._vis_cfg("goal_color")
         reached_color = self._vis_cfg("reached_color")
-        goal_reached = self.goal_reached
+        envs_idx = self._debug_envs_tensor
+        positions = self._debug_marker_positions()
+        reached = self.goal_reached[envs_idx].cpu().numpy()
+        headings = (
+            self.goal_heading[envs_idx].cpu().numpy() if self._has_heading else None
+        )
 
-        for i in self.debug_envs_idx:
-            pos = (
-                self.command[i, 0].item() + self._scene_env_offset[i, 0].item(),
-                self.command[i, 1].item() + self._scene_env_offset[i, 1].item(),
-                arrow_height + self._scene_env_offset[i, 2].item(),
-            )
-            heading = self.goal_heading[i].item()
-            self._add_debug_object(
-                self.env.scene.draw_debug_arrow,
-                pos=pos,
-                vec=(
-                    math.cos(heading) * arrow_length,
-                    math.sin(heading) * arrow_length,
-                    0.0,
-                ),
-                radius=arrow_radius,
-                color=reached_color if goal_reached[i] else goal_color,
+        for n in range(len(positions)):
+            color = reached_color if reached[n] else goal_color
+            try:
+                if headings is not None:
+                    node = self._draw_goal_arrow(positions[n], headings[n], color)
+                else:
+                    node = self.env.scene.draw_debug_sphere(
+                        pos=positions[n],
+                        radius=self._vis_cfg("ball_radius"),
+                        color=color,
+                    )
+                self._debug_nodes.append(node)
+            except Exception as e:  # noqa
+                print(f"Error drawing debug visuals in Pose2dCommand: {e}")
+
+    def _debug_marker_positions(self) -> np.ndarray:
+        """
+        The world position of the goal marker for each debug environment.
+        shape (len(debug_envs_idx), 3)
+        """
+        envs_idx = self._debug_envs_tensor
+        goal_xy = self.command[envs_idx, :2]
+
+        height = torch.full(
+            (len(envs_idx),), self._vis_cfg("marker_height"), device=gs.device
+        )
+        if self.terrain_manager is not None:
+            height += self.terrain_manager.get_terrain_height(
+                goal_xy[:, 0], goal_xy[:, 1]
             )
 
-    def _add_debug_object(self, draw_fn: Callable, *args, **kwargs):
-        """
-        Call one of the scene's `draw_debug_*` functions and keep the node it returns, so
-        the object is removed on the next render
-        """
-        try:
-            node = draw_fn(*args, **kwargs)
-        except Exception as e:  # noqa
-            print(f"Error adding debug visualizing in Pose2dCommand: {e}")
-            return
-        if node:
-            self._debug_nodes.append(node)
+        pos = torch.empty(len(envs_idx), 3, device=gs.device)
+        pos[:, :2] = goal_xy
+        pos[:, 2] = height
+        pos += self._scene_env_offset[envs_idx]
+        return pos.cpu().numpy()
+
+    def _draw_goal_arrow(
+        self, pos: np.ndarray, heading: float, color: tuple[float, float, float, float]
+    ):
+        """Draw the arrow that shows the goal position and the way to face on arrival"""
+        length = self._vis_cfg("arrow_length")
+        vector = (math.cos(heading) * length, math.sin(heading) * length, 0.0)
+        mesh = arrow_mesh(
+            pos,
+            vector,
+            self._vis_cfg("arrow_radius"),
+            color=color,
+        )
+        return self.env.scene.draw_debug_mesh(mesh)
 
     def _clear_debug_objects(self):
         """Remove all debug objects drawn by the previous render"""

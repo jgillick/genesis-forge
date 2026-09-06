@@ -84,7 +84,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
         # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="../wheeled_robot/model/Freenove4WD.xml",
+                file="../wheeled_robot/Freenove4WD/Freenove4WD.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
@@ -121,6 +121,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
                 noise=0.003,
                 resolution=0.003,
                 draw_debug=True,
+                debug_ray_start_color=(0.0, 0.0, 0.0, 0.0)
             )
         )
 
@@ -260,7 +261,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
             range={"x": (-2.5, 2.5), "y": (-2.5, 2.5), "heading": (-math.pi, math.pi)},
             goal_reached_threshold=0.2,
             heading_reached_threshold=math.radians(30),
-            resample_on_reached=True,
+            entity_manager=self.robot_manager,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

@@ -159,21 +159,50 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
-The position and the heading are drawn independently, so the goal heading is not simply the direction the robot happened to approach from — it has to both get there and turn to face the right way. This is what a real arrival often needs: backing into a charging dock, or pulling up to a shelf facing it.
+The position and the heading are sampled independently, so the goal heading is not simply the direction the robot happened to approach from — it has to both get there and turn to face the right way. This is what a real arrival often needs: backing into a charging dock, or pulling up to a shelf facing it.
 
-Goals are sampled in the environment's local frame, and a new one is drawn whenever the environment resets, whenever the goal is reached (with `resample_on_reached`), and on a timer if you set `resample_time_sec`. Left unset, `resample_time_sec` means a goal never expires — the robot keeps working at it until it arrives or the episode ends.
+Goals are sampled in the environment's local frame, and a new one is taken whenever the environment resets and whenever the goal is reached (with `resample_on_reached`).
 
-By default a goal counts as reached on position alone, whichever way the robot ends up facing. Set `heading_reached_threshold` if the robot must also be lined up before it has arrived.
+`resample_time_sec` sets how long a robot may spend on a single goal before it is given up on and replaced. The clock is per goal — it restarts every time a goal is handed out — so it acts as a deadline rather than a metronome: a robot that keeps reaching goals is never interrupted mid-approach, while one stuck against an obstacle is moved on instead of spending the rest of the episode there. Left unset, a goal never expires.
+
+A goal counts as reached once the robot is within `goal_reached_threshold` of the position and within `heading_reached_threshold` (30° by default) of the goal heading. Tighten `heading_reached_threshold` if the robot has to line up more precisely — every degree shaved off costs extra shuffling to satisfy the position and the heading at the same time.
+
+If you only care about the position, leave the `heading` range out (or set it to `None`). The goal is then a point to reach, arrived at facing any way, and the heading drops out of the command, the observation, and the reached check:
+
+```python
+self.pose_command = Pose2dCommand(
+    self,
+    range={"x": (-2.5, 2.5), "y": (-2.5, 2.5)},
+)
+```
+
+### Visualizing the goal
+
+With `debug_visualizer=True`, a marker is drawn at each goal, turning from green to red when the goal has been reached: an arrow pointing the way to face on arrival, or a ball for a position-only goal. Pass a `terrain_manager` if the ground isn't flat, so the marker sits above the terrain rather than above `z=0`. Passing the robot's `entity_manager` is worth it whenever you have one — the goal is then measured against the pose it already cached for this step, instead of reading the robot's position and orientation out of the solver again for every reward, observation and goal check:
+
+```python
+self.pose_command = Pose2dCommand(
+    self,
+    range={"x": (-2.5, 2.5), "y": (-2.5, 2.5), "heading": (-math.pi, math.pi)},
+    entity_manager=self.robot_manager,
+    terrain_manager=self.terrain_manager,
+    debug_visualizer=True,
+    debug_visualizer_cfg={
+        "envs_idx": [0],       # only draw the first environment's goal
+        "marker_height": 0.05, # how far above the ground the marker floats
+    },
+)
+```
 
 ### Keeping goals clear of the scene
 
-A goal is never placed on top of anything else in the scene. Every entity — the obstacles, the robot itself, anything else that was added — gets a circle of clear space around it, sized from its own footprint plus the reach threshold. If a drawn goal lands inside one of those circles it is drawn again.
+A goal is never placed on top of anything else in the scene. Every entity — the obstacles, the robot itself, anything else that was added — gets a circle of clear space around it, sized from its own footprint plus the reach threshold. If a sampled goal lands inside one of those circles it is sampled again.
 
 This is automatic and there is nothing to configure. It is also why a fresh goal never starts out already reached: the robot's own footprint is one of the things goals are kept clear of.
 
 ### Using Pose Commands in Observations
 
-The observation is the goal from the robot's own point of view, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to turn to face the goal heading).
+The observation is the goal from the robot's own point of view, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to turn to face the goal heading). A position-only goal has no heading error, so its observation is the first five.
 
 The goal vector alone would locate the goal, but it mixes up *how far* with *which way* — a few centimeters out it is a tiny vector, so the steering signal fades exactly where steering has to be most precise. Reporting distance and bearing separately keeps the direction at full strength all the way in.
 
@@ -225,7 +254,7 @@ RewardManager(
 
 `position_progress` and `heading_progress` pay for *changing* rather than for *being*: an entity that stands still earns exactly nothing from either. That matters when `resample_on_reached` is set, because a reward paid every step for sitting near the goal can be worth far more than the one-off bonus for arriving — the entity learns to park just outside the reach threshold and hold the reward instead.
 
-If you don't care which way the robot faces, simply leave out the heading reward; the heading is still drawn and observed, but nothing scores it.
+If you don't care which way the robot faces, leave the `heading` range out of the command entirely; there is then no heading to reward, observe, or arrive lined up with.
 
 The manager also exposes `distance_to_goal`, `heading_error`, and `goal_reached` for writing your own reward or termination functions.
 

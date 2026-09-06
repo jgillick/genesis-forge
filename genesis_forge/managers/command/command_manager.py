@@ -24,7 +24,8 @@ class CommandManager(BaseManager):
     Args:
         env: The environment to control
         range: The number range, or dict of ranges, to generate target command(s) for
-        resample_time_sec: The time interval between changing the command
+        resample_time_sec: The time interval between changing the command,
+                           or None to only change it on reset
 
     Example::
 
@@ -66,7 +67,7 @@ class CommandManager(BaseManager):
         self,
         env: GenesisEnv,
         range: CommandRange,
-        resample_time_sec: float = 5.0,
+        resample_time_sec: float | None = 5.0,
     ):
         super().__init__(env, type="command")
 
@@ -120,15 +121,20 @@ class CommandManager(BaseManager):
         self._range = range
 
     @property
-    def resample_time_sec(self) -> float:
-        """The time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self) -> float | None:
+        """
+        The time interval (in seconds) between changing the command for each environment,
+        or None to only change it on reset.
+        """
         return self._resample_time_sec
 
     @resample_time_sec.setter
-    def resample_time_sec(self, resample_time_sec: float):
-        """Set the time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self, resample_time_sec: float | None):
+        """Set the time interval (in seconds) between changing the command, or None to disable."""
         self._resample_time_sec = resample_time_sec
-        self._resample_steps = int(resample_time_sec / self.env.dt)
+        self._resample_steps = (
+            0 if resample_time_sec is None else int(resample_time_sec / self.env.dt)
+        )
 
     """
     Operations
@@ -225,6 +231,10 @@ class CommandManager(BaseManager):
     def step(self):
         """Resample the command if necessary"""
         if not self.enabled or self._external_controller is not None:
+            return
+
+        # No timer: the command only changes on reset
+        if self._resample_steps <= 0:
             return
 
         resample_command_envs = (

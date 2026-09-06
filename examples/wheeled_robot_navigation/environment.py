@@ -261,6 +261,7 @@ class WheeledRobotNavigationEnv(ManagedEnvironment):
             range={"x": (-2.5, 2.5), "y": (-2.5, 2.5), "heading": (-math.pi, math.pi)},
             goal_reached_threshold=0.2,
             heading_reached_threshold=math.radians(30),
+            entity_manager=self.robot_manager,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

@@ -14,8 +14,8 @@ from genesis_forge.managers.actuator import NoisyValue
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class Go2CommandDirectionEnv(ManagedEnvironment):
@@ -112,7 +112,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "mass": {
                     "fn": reset.randomize_link_mass_shift(
                         link_name="base",
-                        mass_range=[-0.5, 1.0],  # kg
+                        mass_range=(-0.5, 1.0),  # kg
                     ),
                 },
             },
@@ -149,9 +149,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,

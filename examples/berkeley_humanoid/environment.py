@@ -13,8 +13,8 @@ from genesis_forge.managers import (
 )
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.515]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.515)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class BerkeleyHumanoidEnv(ManagedEnvironment):
@@ -141,9 +141,9 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [0.0, 1.0],
-                "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_x": (0.0, 1.0),
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-0.5, 0.5),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,

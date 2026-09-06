@@ -744,6 +744,7 @@ name = "genesis-forge"
 version = "1.0.0"
 source = { directory = "../../" }
 dependencies = [
+    { name = "deprecated" },
     { name = "genesis-world" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -752,10 +753,12 @@ dependencies = [
     { name = "skrl", extra = ["torch"] },
     { name = "tensordict" },
     { name = "torch" },
+    { name = "trimesh" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "deprecated", specifier = ">=1.3.1" },
     { name = "genesis-world", specifier = ">=1.0.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -764,6 +767,7 @@ requires-dist = [
     { name = "skrl", extras = ["torch"] },
     { name = "tensordict" },
     { name = "torch", specifier = ">=2.10.0" },
+    { name = "trimesh" },
 ]
 
 [package.metadata.requires-dev]

@@ -16,8 +16,8 @@ from genesis_forge.managers import (
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 CURRICULUM_CHECK_EVERY_STEPS = 100
 
 
@@ -158,9 +158,9 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [0.0, 0.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (0.0, 0.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
             stopped_probability=0.00,
             resample_time_sec=3.0,

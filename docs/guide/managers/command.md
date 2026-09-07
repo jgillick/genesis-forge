@@ -9,11 +9,11 @@ The Command Manager generates high-level commands for goal-conditioned RL tasks.
 
 You can see a full example using the command manager in [examples/command_direction](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction).
 
-<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/command_manager.mp4"></video>
-
 ## Velocity Command Manager
 
 The most common command manager is `VelocityCommandManager` for locomotion tasks:
+
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/cmd_velocity.mp4"></video>
 
 ```python
 from genesis_forge.managers.command import VelocityCommandManager
@@ -139,6 +139,10 @@ env.velocity_command.use_gamepad(gamepad)
 ## Pose Command Manager
 
 `Pose2dCommand` commands a goal _pose_ rather than a velocity: a point to move to, and the direction to be facing once there. Use it for navigation tasks, where the policy is told where to end up and has to choose its own route and speed to get there.
+
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/cmd_pose2d.mp4"></video>
+
+You can see a full example in [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation).
 
 ```python
 import math

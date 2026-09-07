@@ -6,7 +6,7 @@ This builds on the [wheeled_robot](../wheeled_robot/) example, which covers the 
 
 Every reset lays out the obstacles afresh and points the robot in a random direction, so the goal is never reliably straight ahead.
 
-See [`environment.py`](./environment.py) for the full configuration.
+<video autoplay="" muted="" loop="" playsinline="" controls="" src="../../docs/media/cmd_pose2d.mp4" style="max-width:500px"></video>
 
 ## The goal: a 2D pose
 

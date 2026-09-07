@@ -198,6 +198,88 @@ class randomize_terrain_position(ResetMdpFn):
 
 
 @dataclass(kw_only=True, eq=False)
+class randomize_annulus_position(ResetMdpFn):
+    """
+    Place the entity at a random position within a flat ring (annulus) around a center point.
+
+    The minimum radius creates a keep-out zone, which is useful for scattering obstacles
+    around a robot without dropping any of them on top of it. Positions are sampled
+    uniformly by area, so they don't cluster near the center.
+
+    Args:
+        center: The X/Y center of the annulus, in the environment's local frame.
+        radius_range: The (min, max) distance from the center to place the entity at.
+        z: The height to place the entity at.
+        rotation: The X/Y/Z rotation to set the entity to. Defaults to a random rotation around the z-axis.
+                  Set to None to not set a rotation.
+        zero_velocity: Whether to zero the velocity of all the entity's dofs.
+                       Defaults to True. This is a safety measure after a sudden change in entity pose.
+    """
+
+    radius_range: tuple[float, float]
+    center: tuple[float, float] = (0.0, 0.0)
+    z: float = 0.0
+    rotation: XYZRotation | None = field(
+        default_factory=lambda: {"z": (0, 2 * math.pi)}
+    )
+    zero_velocity: bool = True
+
+    def build(self):
+        self._pos_buffer = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._rotation_buffer = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._quat_buffer = torch.zeros(
+            (self.env.num_envs, 4), device=gs.device, dtype=gs.tc_float
+        )
+
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
+        n_envs = len(envs_idx)
+        r_min, r_max = self.radius_range
+
+        # Sample uniformly by area: r = sqrt(U(r_min^2, r_max^2))
+        radius = torch.empty(n_envs, device=gs.device).uniform_(
+            r_min**2, r_max**2
+        ).sqrt()
+        theta = torch.empty(n_envs, device=gs.device).uniform_(0, 2 * math.pi)
+
+        self._pos_buffer[envs_idx, 0] = self.center[0] + radius * torch.cos(theta)
+        self._pos_buffer[envs_idx, 1] = self.center[1] + radius * torch.sin(theta)
+        self._pos_buffer[envs_idx, 2] = self.z
+        entity.set_pos(
+            self._pos_buffer[envs_idx],
+            envs_idx=envs_idx,
+            zero_velocity=self.zero_velocity,
+        )
+
+        # Rotation
+        if self.rotation is not None:
+            x = self.rotation.get("x", 0)
+            y = self.rotation.get("y", 0)
+            z = self.rotation.get("z", 0)
+            if isinstance(x, tuple):
+                self._rotation_buffer[envs_idx, 0] = torch.empty(
+                    n_envs, device=gs.device
+                ).uniform_(*x)
+            if isinstance(y, tuple):
+                self._rotation_buffer[envs_idx, 1] = torch.empty(
+                    n_envs, device=gs.device
+                ).uniform_(*y)
+            if isinstance(z, tuple):
+                self._rotation_buffer[envs_idx, 2] = torch.empty(
+                    n_envs, device=gs.device
+                ).uniform_(*z)
+            self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
+            entity.set_quat(
+                self._quat_buffer[envs_idx],
+                envs_idx=envs_idx,
+                zero_velocity=self.zero_velocity,
+            )
+
+
+@dataclass(kw_only=True, eq=False)
 class randomize_link_mass_shift(ResetMdpFn):
     """
     Randomly add/subtract mass to one or more links of the entity.

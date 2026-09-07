@@ -13,8 +13,8 @@ from genesis_forge.managers import (
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class Go2CommandDirectionEnv(ManagedEnvironment):

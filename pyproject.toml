@@ -10,7 +10,7 @@ description = "A robotics RL training framework for Genesis inspired by Isaac La
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "genesis-world>=1.0.0",
+  "genesis-world>=1.3.0",
   "gymnasium",
   "pysdl2",
   "pysdl2-dll",
@@ -48,3 +48,9 @@ filterwarnings = [
     "ignore:`torch.jit.script` is deprecated.*:DeprecationWarning",
     "ignore:Using SDL2 binaries from pysdl2-dll.*:UserWarning",
 ]
+
+[tool.ruff.lint]
+# E4/E7/E9 is ruff's default pycodestyle subset; plain "E" would also pull in
+# E501 (line-too-long), which the formatter already owns and which fires 750+
+# times on existing code.
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import genesis as gs
@@ -8,6 +7,7 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.utils import assign_by_pattern, name_matches
 from genesis_forge.values import ensure_dof_pattern
 
 from .noisy_value import NoisyValue
@@ -389,7 +389,7 @@ class ActuatorManager(BaseManager):
                 continue
             name = joint.name
             for pattern in self._joint_name_cfg:
-                if pattern == name or re.match(f"^{pattern}$", name):
+                if name_matches(name, pattern):
                     self._dofs[name] = joint.dof_start
                     break
 
@@ -508,7 +508,7 @@ class ActuatorManager(BaseManager):
         cfg = self._values[value_name]
         if cfg is None:
             return False
-        if cfg["has_been_set"] and not cfg["has_noise"]: # noqa SIM103
+        if cfg["has_been_set"] and not cfg["has_noise"]:  # noqa SIM103
             return False
         return True
 
@@ -527,8 +527,7 @@ class ActuatorManager(BaseManager):
 
         """
         num_dofs = len(self._dofs)
-        is_idx_set = [False] * num_dofs
-        dof_names = self._dofs.keys()
+        dof_names = list(self._dofs.keys())
         has_noise = False
 
         # Nothing to be done if the config is None
@@ -541,23 +540,15 @@ class ActuatorManager(BaseManager):
         noise_buffer = torch.zeros_like(value_buffer, device=gs.device)
         output_buffer = torch.zeros_like(value_buffer, device=gs.device)
 
-        for pattern, value in config.items():
-            found = False
-            for i, name in enumerate[str](dof_names):
-                if is_idx_set[i]:
-                    continue
-                if pattern == name or re.match(f"^{pattern}$", name):
-                    found = True
-                    is_idx_set[i] = True
-
-                    if isinstance(value, NoisyValue):
-                        noise[i] = value.noise
-                        value_buffer[i] = value.value
-                        has_noise = True
-                    else:
-                        value_buffer[i] = value
-            if not found:
-                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
+        for i, cfg_value in enumerate(assign_by_pattern(dof_names, config)):
+            if cfg_value is None:
+                continue
+            if isinstance(cfg_value, NoisyValue):
+                noise[i] = cfg_value.noise
+                value_buffer[i] = cfg_value.value
+                has_noise = True
+            else:
+                value_buffer[i] = cfg_value
 
         # Expand the default postion buffer to the number of environments
         if value_name == "default_pos" or self._batch_dofs_enabled:

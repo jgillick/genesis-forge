@@ -91,6 +91,38 @@ class MyEnv(ManagedEnvironment):
         )
 ```
 
+## Obstacle collisions
+
+`with_entity` also accepts a list, which is how you detect a robot hitting any one of several obstacles.
+
+A robot driving around is always touching the ground, so "is anything touching the robot" is not a useful collision test. Filtering by the obstacles solves that, and it lets you track *every* link of the robot rather than hand-picking links that happen not to touch the floor — so clipping an obstacle with a wheel counts just as much as hitting it head-on.
+
+```python
+class MyEnv(ManagedEnvironment):
+
+    def config(self):
+        self.collision_manager = ContactManager(
+            self,
+            entity=self.robot,
+            with_entity=self.obstacles,  # a list of entities
+        )
+
+        TerminationManager(
+            self,
+            term_cfg={
+                "collision": {
+                    "fn": terminations.has_contact(
+                        contact_manager=self.collision_manager,
+                    ),
+                },
+            },
+        )
+```
+
+Leaving `link_names` unset tracks all of the entity's links.
+
+See [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation) for this in a full environment.
+
 ## Contact Visualization
 
 <video autoplay="" muted="" loop="" playsinline="" controls="" src="../../media/contacts_debug.webm" width="100%"></video>

@@ -242,13 +242,15 @@ Action penalties
 
 
 def test_action_rate_l2_is_zero_with_no_last_actions(env):
+    """One value per environment, like every other reward -- not one per action."""
+    env.num_envs = 1
     env.actions = torch.tensor([[0.1, 0.2]])
     env.last_actions = None
     fn = rewards.action_rate_l2()
     fn.context(env)
     fn.safe_build()
 
-    assert torch.equal(fn(env), torch.zeros_like(env.actions))
+    assert torch.equal(fn(env), torch.zeros(1))
 
 
 def test_action_rate_l2_sums_the_squared_change_from_the_last_step(env):
@@ -548,6 +550,292 @@ def test_stopped_dof_velocity_requires_an_actuator_manager(env):
 
 
 """
+Pose Command Rewards
+"""
+
+
+class FakePoseCmd:
+    def __init__(
+        self,
+        distance,
+        range=None,
+        goal_reached_threshold=0.15,
+        heading_error=None,
+        bearing_error=None,
+    ):
+        self.distance_to_goal = distance
+        self.bearing_error = (
+            bearing_error if bearing_error is not None else torch.zeros_like(distance)
+        )
+        self.range = range or {
+            "x": (-2.0, 2.0),
+            "y": (-2.0, 2.0),
+            "heading": (-math.pi, math.pi),
+        }
+        self.goal_reached_threshold = goal_reached_threshold
+        self.heading_error = (
+            heading_error if heading_error is not None else torch.zeros_like(distance)
+        )
+        self.resampled_last_step = torch.zeros(distance.shape, dtype=torch.bool)
+
+    @property
+    def goal_reached(self):
+        return self.distance_to_goal < self.goal_reached_threshold
+
+
+def test_reached_goal_uses_the_managers_threshold(env):
+    cmd = FakePoseCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
+    fn = rewards.reached_goal(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, 0.0]))
+
+
+def test_reached_goal_threshold_can_be_overridden(env):
+    cmd = FakePoseCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
+    fn = rewards.reached_goal(pose_cmd_manager=cmd, threshold=0.25)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, 1.0]))
+
+
+def test_heading_progress_is_zero_on_the_first_step(env):
+    """There's no previous heading error to compare the first step against."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_heading_progress_rewards_turning_toward_the_goal_heading(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)  # first step establishes the previous heading error
+    cmd.heading_error = torch.tensor([0.98])  # 0.02 rad closer over a 0.02s step
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_heading_progress_penalizes_turning_away(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([1.02])
+
+    assert torch.allclose(fn(env), torch.tensor([-1.0]), atol=1e-5)
+
+
+def test_heading_progress_measures_the_gap_either_side_of_the_goal_heading(env):
+    """Turning from 1 rad to the left to 0.98 rad to the right is not progress."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([-0.98])
+
+    # The gap closed by 0.02 rad, regardless of which side it is now on
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_heading_progress_pays_nothing_for_standing_still(env):
+    """The whole point of a progress reward: holding a pose earns nothing."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([0.0]), heading_error=torch.tensor([0.0]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    for _ in range(5):
+        assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_heading_progress_tracks_the_bearing_when_far_from_the_goal(env):
+    """With lines_up_within set, a distant robot is paid for pointing at the goal."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(
+        torch.tensor([5.0]),
+        heading_error=torch.tensor([0.0]),
+        bearing_error=torch.tensor([1.0]),
+    )
+    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.bearing_error = torch.tensor([0.98])  # turned toward the goal
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_heading_progress_ignores_the_goal_heading_when_far_away(env):
+    """Chasing the goal heading from across the map would mean driving sideways."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(
+        torch.tensor([5.0]),
+        heading_error=torch.tensor([1.0]),
+        bearing_error=torch.tensor([0.0]),
+    )
+    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([0.5])  # lined up with the goal heading
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]), atol=1e-3)
+
+
+def test_heading_progress_tracks_the_goal_heading_once_at_the_goal(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(
+        torch.tensor([0.0]),
+        heading_error=torch.tensor([1.0]),
+        bearing_error=torch.tensor([0.0]),
+    )
+    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([0.98])
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_heading_progress_without_lines_up_within_always_tracks_the_goal_heading(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(
+        torch.tensor([5.0]),
+        heading_error=torch.tensor([1.0]),
+        bearing_error=torch.tensor([0.0]),
+    )
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([0.98])
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_heading_progress_skips_the_step_the_goal_was_resampled(env):
+    """A new goal means a new heading, so the jump in error isn't the robot's doing."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([0.1]))
+    fn = rewards.heading_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.heading_error = torch.tensor([3.0])
+    cmd.resampled_last_step = torch.tensor([True])
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_position_progress_is_zero_on_the_first_step(env):
+    """There's no previous distance to compare the first step against."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_position_progress_rewards_closing_the_distance(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)  # first step establishes the previous distance
+    cmd.distance_to_goal = torch.tensor([1.98])  # 0.02m closer over a 0.02s step
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_position_progress_penalizes_moving_away(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.distance_to_goal = torch.tensor([2.02])
+
+    assert torch.allclose(fn(env), torch.tensor([-1.0]), atol=1e-5)
+
+
+def test_position_progress_skips_the_step_the_goal_was_resampled(env):
+    """The distance jumps when the goal moves -- that isn't progress the robot made."""
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([0.1]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)  # robot is at its goal
+    cmd.distance_to_goal = torch.tensor([3.0])  # a new, far goal was sampled
+    cmd.resampled_last_step = torch.tensor([True])
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_position_progress_resumes_after_a_resampled_step(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([0.1]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    cmd.distance_to_goal = torch.tensor([3.0])
+    cmd.resampled_last_step = torch.tensor([True])
+    fn(env)
+
+    cmd.resampled_last_step = torch.tensor([False])
+    cmd.distance_to_goal = torch.tensor([2.98])
+
+    assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_position_progress_is_zero_on_the_step_after_a_reset(env):
+    env.num_envs = 1
+    cmd = FakePoseCmd(torch.tensor([2.0]))
+    fn = rewards.position_progress(pose_cmd_manager=cmd)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    fn.reset(torch.tensor([0]))
+    cmd.distance_to_goal = torch.tensor([1.0])  # the robot teleported back to its start
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+"""
 Contacts
 """
 
@@ -696,3 +984,139 @@ Passing an MdpFn subclass uninstantiated
 def test_mdp_fn_class_passed_uninstantiated_raises_a_clear_error(env):
     with pytest.raises(TypeError, match="base_height must be constructed, not passed as a class"):
         ConfigItem({"fn": rewards.base_height, "params": {"target_height": 0.3}}, env)
+
+
+"""
+keep_clear
+"""
+
+
+class FakeObstacle:
+    def __init__(self, pos):
+        self._pos = pos
+
+    def get_pos(self):
+        return self._pos
+
+
+def test_keep_clear_is_zero_beyond_the_clearance(env):
+    env.num_envs = 1
+    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
+    fn = rewards.keep_clear(
+        entities=[FakeObstacle(torch.tensor([[5.0, 0.0, 0.0]]))], clearance=0.5
+    )
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.0]))
+
+
+def test_keep_clear_grows_as_the_obstacle_is_approached(env):
+    env.num_envs = 1
+    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
+    obstacle = FakeObstacle(torch.tensor([[0.25, 0.0, 0.0]]))
+    fn = rewards.keep_clear(entities=[obstacle], clearance=0.5)
+    fn.context(env)
+    fn.safe_build()
+
+    # Half way in from the clearance distance
+    assert torch.allclose(fn(env), torch.tensor([0.5]), atol=1e-6)
+
+    obstacle._pos = torch.tensor([[0.1, 0.0, 0.0]])
+    assert torch.allclose(fn(env), torch.tensor([0.8]), atol=1e-6)
+
+
+def test_keep_clear_only_counts_the_nearest_obstacle(env):
+    """Threading a gap is no worse than passing one obstacle at the same distance."""
+    env.num_envs = 1
+    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
+    near = FakeObstacle(torch.tensor([[0.25, 0.0, 0.0]]))
+
+    alone = rewards.keep_clear(entities=[near], clearance=0.5)
+    alone.context(env)
+    alone.safe_build()
+
+    crowded = rewards.keep_clear(
+        entities=[near, FakeObstacle(torch.tensor([[-0.3, 0.0, 0.0]]))], clearance=0.5
+    )
+    crowded.context(env)
+    crowded.safe_build()
+
+    assert torch.allclose(alone(env), crowded(env))
+
+
+def test_keep_clear_ignores_height(env):
+    """An obstacle is in the way or not; how tall it is doesn't change the clearance."""
+    env.num_envs = 1
+    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
+    fn = rewards.keep_clear(
+        entities=[FakeObstacle(torch.tensor([[0.25, 0.0, 9.0]]))], clearance=0.5
+    )
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.5]), atol=1e-6)
+
+
+"""
+action_rate_l2 scoped to one action manager
+"""
+
+
+class FakeScopedActionManager:
+    def __init__(self, num_actions):
+        self.num_actions = num_actions
+
+
+def test_action_rate_l2_counts_every_action_by_default(env):
+    env.num_envs = 1
+    env.actions = torch.tensor([[0.5, 0.5, 0.5]])
+    env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
+    fn = rewards.action_rate_l2()
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.75]))  # three changes of 0.5
+
+
+def test_action_rate_l2_can_be_scoped_to_one_action_manager(env):
+    """The wheels are penalized for jerking about; the swept sensor is left alone."""
+    env.num_envs = 1
+    wheels = FakeScopedActionManager(num_actions=2)
+    head = FakeScopedActionManager(num_actions=1)
+    env.managers = {"action": [wheels, head]}
+
+    env.actions = torch.tensor([[0.5, 0.5, 9.0]])
+    env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
+
+    fn = rewards.action_rate_l2(action_manager=wheels)
+    fn.context(env)
+    fn.safe_build()
+
+    # Only the first two columns count, so the head's wild swing is ignored
+    assert torch.allclose(fn(env), torch.tensor([0.5]))
+
+
+def test_action_rate_l2_scopes_to_a_manager_that_is_not_first(env):
+    env.num_envs = 1
+    wheels = FakeScopedActionManager(num_actions=2)
+    head = FakeScopedActionManager(num_actions=1)
+    env.managers = {"action": [wheels, head]}
+
+    env.actions = torch.tensor([[9.0, 9.0, 0.5]])
+    env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
+
+    fn = rewards.action_rate_l2(action_manager=head)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([0.25]))
+
+
+def test_action_rate_l2_rejects_an_unregistered_action_manager(env):
+    env.managers = {"action": [FakeScopedActionManager(num_actions=2)]}
+    fn = rewards.action_rate_l2(action_manager=FakeScopedActionManager(num_actions=1))
+    fn.context(env)
+
+    with pytest.raises(ValueError, match="not registered with this environment"):
+        fn.safe_build()

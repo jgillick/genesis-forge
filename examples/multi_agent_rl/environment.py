@@ -24,8 +24,8 @@ OBS_SHARED_KEY = "shared"
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 _LEG_THIGH_DEFAULT = {"FL": 0.8, "FR": 0.8, "RL": 1.0, "RR": 1.0}
 
@@ -112,7 +112,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             self.scene.viewer.follow_entity(self.robot)
 
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.5, -1.5, 1.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -174,7 +174,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                 "position": {
                     "fn": reset.randomize_terrain_position(
                         height_offset=HEIGHT_OFFSET,
-                        terrain=self.terrain_manager,
+                        terrain_manager=self.terrain_manager,
                     ),
                 },
             },
@@ -206,9 +206,9 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,

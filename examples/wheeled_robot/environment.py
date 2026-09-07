@@ -1,4 +1,5 @@
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
@@ -15,6 +16,7 @@ from genesis_forge.mdp import observations, reset, rewards, terminations
 
 INITIAL_BODY_POSITION = (0.0, 0.0, 0.0458)
 INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
+MAX_WHEEL_VELOCITY = 20.0  # ~200RPM
 
 
 class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
@@ -59,7 +61,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         # Robot
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file="./model/Freenove4WD_platform.xml",
+                file="./Freenove4WD/Freenove4WD.xml",
                 pos=INITIAL_BODY_POSITION,
                 quat=INITIAL_QUAT,
             ),
@@ -71,7 +73,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-0.5, 0.5, 0.5),  # x, y, z
+            pos=(-1.0, 1.0, 1.0),  # x, y, z
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -115,8 +117,38 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         )
         self.action_manager = VelocityActionManager(
             self,
-            scale=5.0,
+            # Group the wheels on each side together, as one action
+            # since they should be moving at the same velocity.
+            action_groups=[
+                ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+                ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
+            ],
+            scale={
+                # The front and rear motors are mounted opposite of each other,
+                # so their target velocities need to be reversed in order to be turning in the same direction
+                "TT_Motor-1_axel": -MAX_WHEEL_VELOCITY,  # front right
+                "TT_Motor-2_axel": +MAX_WHEEL_VELOCITY,  # rear right
+                "TT_Motor-3_axel": -MAX_WHEEL_VELOCITY,  # front left
+                "TT_Motor-4_axel": +MAX_WHEEL_VELOCITY,  # rear left
+            },
+            clip=(-MAX_WHEEL_VELOCITY, MAX_WHEEL_VELOCITY),
             actuator_manager=self.wheel_motors,
+        )
+
+        ##
+        # Head servos
+        self.head_sevos = ActuatorManager(
+            self,
+            joint_names=[
+                "servo-2",  # left/right
+                "servo_horn-1",  # up/down
+            ],
+            default_pos={
+                "servo-2": 0.0,  # facing straight ahead
+                "servo_horn-1": 0.0,
+            },
+            kp=8.0,
+            kv=0.4,
         )
 
         ##
@@ -124,7 +156,7 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": (-0.1, 0.1),  # forward/backward
+                "lin_vel_x": (-0.5, 0.5),  # forward/backward
                 "lin_vel_y": (-0.0, 0.0),  # cannot move side-to-side
                 "ang_vel_z": (-0.5, 0.5),  # turning
             },
@@ -224,3 +256,12 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 },
             },
         )
+
+    def step(self, actions: torch.Tensor):
+        # Keep the head from drooping by keeping the servos at position 0.0
+        # This is purely cosmetic, and does not affect the training at all
+        self.head_sevos.control_dofs_position(
+            torch.zeros((self.num_envs, 2), device=gs.device)
+        )
+
+        return super().step(actions)

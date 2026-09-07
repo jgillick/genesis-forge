@@ -1,12 +1,14 @@
-import torch
-from gymnasium import spaces
-from typing import Any, Tuple
+from typing import Any
 
+import torch
+from deprecated import deprecated
+from gymnasium import spaces
 from skrl.envs.wrappers.torch.base import Wrapper as SkrlWrapper
+
 from genesis_forge.wrappers.wrapper import Wrapper as GenesisWrapper
 
 
-class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
+class SkrlEnvWrapper(SkrlWrapper, GenesisWrapper):
     """
     A wrapper that makes your genesis forge environment compatible with the skrl training framework.
     """
@@ -14,36 +16,36 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     can_be_wrapped = False
 
     @property
-    def action_space(self) -> spaces:
+    def action_space(self) -> spaces.Space:
         """The action space of the environment."""
         return self._env.action_space
 
     @property
-    def observation_space(self) -> spaces:
+    def observation_space(self) -> spaces.Space:
         """The observation space of the environment."""
         return self._env.observation_space
 
-    def reset(self) -> Tuple[torch.Tensor, Any]:
+    def reset(self) -> tuple[torch.Tensor, Any]:
         """Reset the environment
 
         Raises:
             NotImplementedError: Not implemented
 
-        Returns: 
+        Returns:
             tuple: Observation (tensor), info (dict)
         """
         return self._env.reset()
 
     def step(
         self, actions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
         """Perform a step in the environment
 
         Args:
             actions: The actions to perform
 
         Returns:
-            tuple of tensors and a dict: 
+            tuple of tensors and a dict:
                 Observation (tensor) , reward (tensor), terminated (tensor), truncated (tensor), info (dict)
         """
         obs, rewards, terminations, timeouts, extras = self._env.step(actions)
@@ -58,7 +60,7 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     def state(self) -> torch.Tensor:
         """Get the environment state
 
-        Returns: 
+        Returns:
             State (torch.Tensor)
         """
         return self.env.state()
@@ -67,7 +69,6 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
         """
         Not implemented for Genesis Forge environments.
         """
-        pass
 
     def close(self) -> None:
         """Close the environment"""
@@ -76,3 +77,10 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     def build(self) -> None:
         """Build the environment"""
         self._env.build()
+
+
+@deprecated(reason="Use SkrlEnvWrapper")
+class SkrlEnvWapper(SkrlEnvWrapper):
+    """
+    Deprecated alias of :class:`SkrlEnvWrapper`.
+    """

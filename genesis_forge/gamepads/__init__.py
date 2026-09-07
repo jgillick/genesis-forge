@@ -1,5 +1,5 @@
 from .common import Key
-from .sdl2 import ControllerEventLoop, controller_key_from_event
 from .gamepad import Gamepad
+from .sdl2 import ControllerEventLoop, controller_key_from_event
 
-__all__ = ["Key", "ControllerEventLoop", "controller_key_from_event", "Gamepad"]
+__all__ = ["ControllerEventLoop", "Gamepad", "Key", "controller_key_from_event"]

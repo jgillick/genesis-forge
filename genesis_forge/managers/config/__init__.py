@@ -1,18 +1,18 @@
 from .config_item import (
     ConfigItem,
     ConfigItemDict,
+    ObservationConfigItem,
     RewardConfigItem,
     TerminationConfigItem,
-    ObservationConfigItem,
 )
-from .mdp_fn_class import MdpFnClass, ResetMdpFnClass
+from .mdp_fn import MdpFn, ResetMdpFn
 
 __all__ = [
     "ConfigItem",
     "ConfigItemDict",
-    "MdpFnClass",
-    "ResetMdpFnClass",
+    "MdpFn",
+    "ObservationConfigItem",
+    "ResetMdpFn",
     "RewardConfigItem",
     "TerminationConfigItem",
-    "ObservationConfigItem",
 ]

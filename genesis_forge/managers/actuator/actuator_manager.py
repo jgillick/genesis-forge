@@ -1,11 +1,15 @@
 from __future__ import annotations
-import re
-import torch
+
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
+
 import genesis as gs
-from typing import Literal, TypedDict, TYPE_CHECKING, Any
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
+from genesis_forge.utils import assign_by_pattern, name_matches
 from genesis_forge.values import ensure_dof_pattern
+
 from .noisy_value import NoisyValue
 
 if TYPE_CHECKING:
@@ -64,8 +68,7 @@ class ActuatorManager(BaseManager):
         stiffness: The stiffness values.
         frictionloss: The frictionloss values.
         armature: The armature values.
-        entity_attr: The attribute of the environment to get the robot from.
-        default_noise_scale: (deprecated) This noise scale will be applied to all actuator values. Use `NoisyValue` instead.
+        entity: The robot entity to manage. Defaults to `env.robot`.
 
     Example::
 
@@ -97,7 +100,7 @@ class ActuatorManager(BaseManager):
         self,
         env: GenesisEnv,
         joint_names: list[str] | str = ".*",
-        default_pos: float | NoisyValue | dict = {".*": 0.0},
+        default_pos: float | NoisyValue | dict | None = None,
         kp: float | NoisyValue | dict = None,
         kv: float | NoisyValue | dict = None,
         max_force: float | NoisyValue | tuple[Any, Any] | dict = None,
@@ -105,13 +108,14 @@ class ActuatorManager(BaseManager):
         stiffness: float | NoisyValue | dict = None,
         frictionloss: float | NoisyValue | dict = None,
         armature: float | NoisyValue | dict = None,
-        default_noise_scale: float = 0.0,
-        entity_attr: str = "robot",
+        entity: RigidEntity = None,
     ):
         super().__init__(env, type="actuator")
+        default_pos_val = default_pos if default_pos is not None else {".*": 0.0}
+
         self._dofs: dict[str, int] = {}
-        self._robot: RigidEntity = getattr(env, entity_attr)
-        self._default_pos_cfg = ensure_dof_pattern(default_pos)
+        self._robot: RigidEntity = entity if entity is not None else env.robot
+        self._default_pos_cfg = ensure_dof_pattern(default_pos_val)
         self._kp_cfg = ensure_dof_pattern(kp)
         self._kv_cfg = ensure_dof_pattern(kv)
         self._max_force_cfg = ensure_dof_pattern(max_force)
@@ -119,7 +123,6 @@ class ActuatorManager(BaseManager):
         self._stiffness_cfg = ensure_dof_pattern(stiffness)
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
         self._armature_cfg = ensure_dof_pattern(armature)
-        self._default_noise_scale = default_noise_scale
 
         self._batch_dofs_enabled = (
             env.scene.rigid_options.batch_dofs_info
@@ -210,7 +213,7 @@ class ActuatorManager(BaseManager):
     def get_dofs_velocity(
         self,
         noise: float = 0.0,
-        clip: tuple[float, float] = None,
+        clip: tuple[float, float] | None = None,
         dofs_idx: list[int] | None = None,
     ) -> torch.Tensor:
         """
@@ -261,7 +264,7 @@ class ActuatorManager(BaseManager):
             [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
             force = force.clamp(lower, upper)
         return force
-    
+
     def get_dofs_control_force(
         self,
         noise: float = 0.0,
@@ -358,6 +361,20 @@ class ActuatorManager(BaseManager):
         """
         self._robot.control_dofs_position(position, dofs_idx or self.dofs_idx)
 
+    def control_dofs_velocity(
+        self, velocity: torch.Tensor, dofs_idx: list[int] | None = None
+    ):
+        """
+        Control the velocity of the configured DOFs.
+        This is a wrapper for `RigidEntity.control_dofs_velocity`.
+
+        Args:
+            velocity: The velocity to set the DOFs to. The indices of this tensor should match the configured DOFs
+                      (see: `dofs_names` and `dofs_idx` properties).
+            dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
+        """
+        self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+
     """
     Lifecycle operations
     """
@@ -372,7 +389,7 @@ class ActuatorManager(BaseManager):
                 continue
             name = joint.name
             for pattern in self._joint_name_cfg:
-                if pattern == name or re.match(f"^{pattern}$", name):
+                if name_matches(name, pattern):
                     self._dofs[name] = joint.dof_start
                     break
 
@@ -426,7 +443,7 @@ class ActuatorManager(BaseManager):
 
     def reset(
         self,
-        envs_idx: list[int] = None,
+        envs_idx: torch.Tensor | None = None,
     ):
         """Reset the DOF positions."""
         if not self.enabled:
@@ -491,7 +508,7 @@ class ActuatorManager(BaseManager):
         cfg = self._values[value_name]
         if cfg is None:
             return False
-        if cfg["has_been_set"] and not cfg["has_noise"]:
+        if cfg["has_been_set"] and not cfg["has_noise"]:  # noqa SIM103
             return False
         return True
 
@@ -510,8 +527,7 @@ class ActuatorManager(BaseManager):
 
         """
         num_dofs = len(self._dofs)
-        is_idx_set = [False] * num_dofs
-        dof_names = self._dofs.keys()
+        dof_names = list(self._dofs.keys())
         has_noise = False
 
         # Nothing to be done if the config is None
@@ -520,29 +536,19 @@ class ActuatorManager(BaseManager):
 
         # Initialize the buffers
         value_buffer = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
-        noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float).fill_(
-            self._default_noise_scale
-        )
+        noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
         noise_buffer = torch.zeros_like(value_buffer, device=gs.device)
         output_buffer = torch.zeros_like(value_buffer, device=gs.device)
 
-        for pattern, value in config.items():
-            found = False
-            for i, name in enumerate[str](dof_names):
-                if is_idx_set[i]:
-                    continue
-                if pattern == name or re.match(f"^{pattern}$", name):
-                    found = True
-                    is_idx_set[i] = True
-
-                    if isinstance(value, NoisyValue):
-                        noise[i] = value.noise
-                        value_buffer[i] = value.value
-                        has_noise = True
-                    else:
-                        value_buffer[i] = value
-            if not found:
-                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
+        for i, cfg_value in enumerate(assign_by_pattern(dof_names, config)):
+            if cfg_value is None:
+                continue
+            if isinstance(cfg_value, NoisyValue):
+                noise[i] = cfg_value.noise
+                value_buffer[i] = cfg_value.value
+                has_noise = True
+            else:
+                value_buffer[i] = cfg_value
 
         # Expand the default postion buffer to the number of environments
         if value_name == "default_pos" or self._batch_dofs_enabled:
@@ -562,7 +568,7 @@ class ActuatorManager(BaseManager):
         }
 
     def _get_value_buffer(
-        self, name: ValueName, envs_idx: list[int] | None = None
+        self, name: ValueName, envs_idx: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Get the value buffer tensor, with noise applied

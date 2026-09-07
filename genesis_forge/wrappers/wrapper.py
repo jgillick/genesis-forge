@@ -1,8 +1,10 @@
-from typing import Any, TypeVar, Sequence
+from collections.abc import Sequence
+from typing import Any, TypeVar
 
-import torch
 import genesis as gs
+import torch
 from gymnasium import spaces
+
 from genesis_forge.genesis_env import GenesisEnv
 
 RenderFrame = TypeVar("RenderFrame")
@@ -24,7 +26,7 @@ class Wrapper:
 
         self.env = env
         if not isinstance(env, GenesisEnv) and not isinstance(env, Wrapper):
-            raise ValueError(
+            raise TypeError(
                 f"Expected env to be a `GenesisEnv` or `Wrapper` but got {type(env)}"
             )
 
@@ -107,7 +109,7 @@ class Wrapper:
 
     def reset(
         self,
-        env_ids: Sequence[int] = None,
+        env_ids: torch.Tensor | Sequence[int] | None = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Uses the :meth:`reset` of the :attr:`env` that can be overwritten to change the returned data."""
         return self.env.reset(env_ids)

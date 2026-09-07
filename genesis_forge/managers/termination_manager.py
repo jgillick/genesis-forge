@@ -1,11 +1,12 @@
 
-import torch
-import genesis as gs
 from typing import NotRequired
+
+import genesis as gs
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import TerminationConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, TerminationConfigItem
 
 
 class TerminationConfig(ConfigItemDict):
@@ -81,7 +82,7 @@ class TerminationManager(BaseManager):
 
                 return obs, rewards, terminated, truncated, info
 
-            def reset(self, envs_idx: Sequence[int] = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
                 # ...do reset logic here...x
 
@@ -144,6 +145,18 @@ class TerminationManager(BaseManager):
         for cfg in self.term_cfg.values():
             cfg.build()
 
+    def reset(self, envs_idx: torch.Tensor | None = None):
+        """
+        Reset any stateful termination functions for the given environments.
+
+        Args:
+            envs_idx: The environment ids being reset. All environments, if None.
+        """
+        if envs_idx is None:
+            envs_idx = self.env.all_envs_idx
+        for cfg in self.term_cfg.values():
+            cfg.reset(envs_idx)
+
     def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Calculate the termination/truncation signals for this step
@@ -161,8 +174,7 @@ class TerminationManager(BaseManager):
         for name, term_item in self.term_cfg.items():
             try:
                 # Get termination value
-                params = term_item.params
-                value = term_item.fn(self.env, **params)
+                value = term_item.execute()
 
                 # Add to the correct buffer using in-place operations
                 if term_item.time_out:
@@ -179,7 +191,7 @@ class TerminationManager(BaseManager):
 
             except Exception as e:
                 print(f"Error calculating termination for '{name}'")
-                raise e
+                raise e # noqa TRY201
 
         self.env.extras["terminations"] = self._terminated_buf
         self.env.extras["time_outs"] = self._truncated_buf

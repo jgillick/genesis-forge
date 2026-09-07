@@ -1,12 +1,13 @@
 from __future__ import annotations
-import re
+
 import torch
-from genesis import gs
 
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.values import ensure_dof_pattern
-from .position_action_manager import PositionActionManager
 from genesis_forge.managers.actuator import ActuatorManager
+from genesis_forge.utils import assign_by_pattern
+from genesis_forge.values import ensure_dof_pattern
+
+from .position_action_manager import PositionActionManager
 
 
 class PositionWithinLimitsActionManager(PositionActionManager):
@@ -21,7 +22,6 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         limit: A dictionary of DOF name patterns and their position limits.
                If omitted, the limits will be set to the limits of the actuators defined in the model.
         soft_limit_scale_factor: Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0.
-        quiet_action_errors: Whether to quiet action errors.
         delay_step: The number of steps to delay the actions for.
                     This is an easy way to emulate the latency in the system.
 
@@ -75,21 +75,17 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         env: GenesisEnv,
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
-        quiet_action_errors: bool = False,
-        limit: tuple[float, float] | dict[str, tuple[float, float]] = {},
+        limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         delay_step: int = 0,
-        **kwargs,
     ):
         super().__init__(
             env,
             actuator_manager=actuator_manager,
             actuator_joints=actuator_joints,
-            quiet_action_errors=quiet_action_errors,
             delay_step=delay_step,
-            **kwargs,
         )
-        self._limit_cfg = ensure_dof_pattern(limit)
+        self._limit_cfg = ensure_dof_pattern(limit if limit is not None else {})
         self._soft_limit_scale_factor = soft_limit_scale_factor
 
     """
@@ -132,16 +128,9 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         Define the position limits for the DOFs
         """
         lower, upper = self.get_dofs_limits()
-        is_set = [False] * self.num_actions
         dof_names = list[str](self.dofs.keys())
-        for pattern, value in self._limit_cfg.items():
-            found = False
-            for i, name in enumerate[str](dof_names):
-                if not is_set[i] and re.match(f"^{pattern}$", name):
-                    is_set[i] = True
-                    lower[i] = value[0]
-                    upper[i] = value[1]
-                    found = True
-            if not found:
-                raise RuntimeError(f"Joint DOF '{pattern}' not found.")
+        for i, limits in enumerate(assign_by_pattern(dof_names, self._limit_cfg)):
+            if limits is None:
+                continue
+            lower[i], upper[i] = limits
         return lower, upper

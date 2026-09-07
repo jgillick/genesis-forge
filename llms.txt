@@ -34,8 +34,10 @@ Source: https://github.com/jgillick/genesis-forge
 - [Action](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/index.md)
 - [PositionActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position.md)
 - [PositionWithinLimitsActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/position_w_limits.md)
+- [VelocityActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/velocity.md)
 - [Command](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/index.md)
 - [CommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/command.md)
+- [PositionCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/position.md)
 - [VelocityCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/velocity.md)
 
 ## MDP Functions

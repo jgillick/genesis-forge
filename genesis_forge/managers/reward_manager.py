@@ -1,11 +1,13 @@
 from __future__ import annotations
-import torch
+
+from collections.abc import Iterator
+
 import genesis as gs
-from typing import Iterator
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import RewardConfigItem, ConfigItemDict
+from genesis_forge.managers.config import ConfigItemDict, RewardConfigItem
 
 
 class RewardConfig(ConfigItemDict):
@@ -74,7 +76,7 @@ class RewardManager(BaseManager):
                 # ... other step logic ...
                 return obs, rewards, terminations, timeouts, info
 
-            def reset(self, envs_idx: list[int] | None = None):
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
                 # ... other reset logic ...
                 return obs, info
@@ -95,8 +97,8 @@ class RewardManager(BaseManager):
 
         # Wrap config items
         self.cfg: dict[str, RewardConfigItem] = {}
-        for name, cfg in cfg.items():
-            self.cfg[name] = RewardConfigItem(cfg, env)
+        for name, item in cfg.items():
+            self.cfg[name] = RewardConfigItem(item, env)
 
         # Initialize buffers
         self._reward_buf = torch.zeros(
@@ -105,9 +107,9 @@ class RewardManager(BaseManager):
         self._episode_seconds = torch.zeros(
             (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
-        self._episode_mean: dict[str, torch.Tensor] = dict()
-        self._episode_data: dict[str, torch.Tensor] = dict()
-        for name in self.cfg.keys():
+        self._episode_mean: dict[str, torch.Tensor] = {}
+        self._episode_data: dict[str, torch.Tensor] = {}
+        for name in self.cfg:
             self._episode_data[name] = torch.zeros(
                 (env.num_envs,), device=gs.device, dtype=gs.tc_float
             )
@@ -178,7 +180,7 @@ class RewardManager(BaseManager):
 
             # Get reward value from function
             weight = cfg.weight * dt
-            value = cfg.fn(self.env, **cfg.params) * weight
+            value = cfg.execute() * weight
 
             # Add to reward buffer
             self._reward_buf += value
@@ -189,10 +191,10 @@ class RewardManager(BaseManager):
 
         return self._reward_buf
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | None = None):
         """Log the reward mean values at the end of the episode"""
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
 
         # Reset function classes
         for cfg in self.cfg.values():

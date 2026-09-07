@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import math
-import torch
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Literal
+
 import genesis as gs
+import torch
 from gymnasium import spaces
-from typing import Any, Literal, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -37,7 +40,7 @@ class GenesisEnv:
                 # ...step logic here...
                 return obs, rewards, terminations, truncations, info
 
-            def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
                 # ...reset logic here...
                 return obs, info
 
@@ -98,6 +101,13 @@ class GenesisEnv:
     def unwrapped(self):
         """Returns this environment, not a wrapped version of it."""
         return self
+
+    @property
+    def all_envs_idx(self) -> torch.Tensor:
+        """
+        Generate the indices of all environments: a new long tensor on ``gs.device``, shape (num_envs,)
+        """
+        return torch.arange(self.num_envs, device=gs.device, dtype=torch.long)
 
     @property
     def step_dt(self) -> float:
@@ -216,7 +226,7 @@ class GenesisEnv:
 
     def reset(
         self,
-        env_ids: list[int] = None,
+        env_ids: torch.Tensor | Sequence[int] | None = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
         Reset one or more environments.
@@ -229,7 +239,9 @@ class GenesisEnv:
             A batch of observations and info from the vectorized environment.
         """
         if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=gs.device)
+            env_ids = self.all_envs_idx
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
 
         # Initial reset, set buffers
         if self.step_count == 0 and self.action_space is not None:
@@ -298,4 +310,3 @@ class GenesisEnv:
 
     def close(self):
         """Close the environment."""
-        pass

@@ -125,10 +125,12 @@ nav:
         - api/managers/action/index.md
         - PositionActionManager: api/managers/action/position.md
         - PositionWithinLimitsActionManager: api/managers/action/position_w_limits.md
+        - VelocityActionManager: api/managers/action/velocity.md
       - Command Managers:
         - api/managers/command/index.md
         - CommandManager: api/managers/command/command.md
         - VelocityCommandManager: api/managers/command/velocity.md
+        - Pose2dCommand: api/managers/command/pose_2d.md
     - MDP:
       - api/mdp/index.md
       - Observations: api/mdp/observations.md
@@ -142,3 +144,4 @@ nav:
       - Video: api/wrappers/video.md
     - Other:
       - Gamepad: api/other/gamepad.md
+      - Meshes: api/other/meshes.md

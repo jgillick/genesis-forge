@@ -1,95 +1,134 @@
 import inspect
+from types import MappingProxyType
+
+import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 
-from .dict_with_change import DictWithChangeHandler
-from .mdp_fn_class import MdpFnClass
 from .config_item_dict import ConfigItemDict
+from .mdp_fn import MdpFn
+
+_NO_PARAMS = MappingProxyType({})
+"""Read-only stand-in for the params of an MdpFn, whose params live on the instance."""
+
 
 class ConfigItem:
     """
     A config item for a manager config.
-    The manager config dict values get wrapped in this class to manage building function classes, and rebuilding them
-    when the config item parameters are changed.
+
+    The manager config dict values get wrapped in this class, which drives the lifecycle
+    of the executing function, params, and any build steps that might be necessary.
     """
 
     def __init__(self, cfg: ConfigItemDict, env: GenesisEnv):
         self._env = env
         self._entity = None
         self._kwargs = {}
+        self._built = False
 
         self._cfg = cfg
         self._fn = cfg["fn"]
         params = cfg.get("params", {}) or {}
-        self._params = DictWithChangeHandler(params, self._rebuild)
 
-        self._initialized = True
-        self._is_class = inspect.isclass(cfg["fn"])
-        if self._is_class:
-            self._initialized = False
+        self._is_mdp_class_fn = isinstance(self._fn, MdpFn)
+
+        # A class constructor, not an instance, was passed as the function.
+        if inspect.isclass(self._fn):
+            # This is an MdpFn subclass
+            if issubclass(self._fn, MdpFn):
+                param_string = ", ".join(f"{k}=..." for k in params) or "..."
+                raise TypeError(
+                    f"{self._fn.__name__} must be constructed, not passed as a class. "
+                    f"Use {self._fn.__name__}({param_string})"
+                )
+            # Any other class
+            raise TypeError(
+                f"{self._fn.__name__} is a class constructor, not a callable instance. "
+                "If this is a subclass of MdpFnClass or ResetMdpFnClass, see the 1.0.0 UPGRADE.md notes"
+            )
+
+        # Cannot pass params to a MdpFn instance
+        if self._is_mdp_class_fn:
+            if params:
+                raise ValueError(
+                    f"{type(self._fn).__name__} declares its params as fields, so the "
+                    f"config 'params' dict must be empty. Pass {sorted(params)!r} to "
+                    f"the constructor instead: {type(self._fn).__name__}(...)"
+                )
+            self._params = _NO_PARAMS
+        else:
+            self._params = dict(params)
+
+    """
+    Properties
+    """
 
     @property
     def fn(self):
+        """The callable for this config item."""
         return self._fn
 
     @property
+    def is_mdp_class_fn(self) -> bool:
+        """Whether ``fn`` is a constructed :class:`MdpFn` instance."""
+        return self._is_mdp_class_fn
+
+    @property
     def params(self):
+        """
+        The params provided for the function.
+
+        Empty for an :class:`MdpFn`, whose params are typed fields on the instance --
+        read and write them there (``cfg.fn.target_height``) to get type checking.
+        """
         return self._params
 
     @params.setter
     def params(self, params: dict):
-        """Overwrite the params dictionary"""
-        self._params = DictWithChangeHandler(params.copy(), self._rebuild)
-        if self._is_class:
-            self._rebuild()
+        """Overwrite all params at once, rebuilding once."""
+        if self._is_mdp_class_fn:
+            self._fn.update(**params)
+            return
+        self._params = dict(params)
+
+    """
+    Lifecycle Operations
+    """
 
     def build(self, **kwargs):
         """
-        Build the function class
+        Prepare the function or MdpFn class for training.
 
         Args:
-            **kwargs: Additional parameters to pass to the build and call methods of the function class.
+            **kwargs: Additional context injected by the manager to any MdpFn class.
+                      For example, the entity manager passes ``entity`` here.
         """
         self._kwargs = kwargs
-        if not self._is_class:
-            return
-        self._init_fn_class()
+        if self._is_mdp_class_fn:
+            self._fn.context(self._env, **kwargs)
+            self._fn.safe_build()
+        self._built = True
 
-    def reset(self, envs_idx: list[int]):
+    def reset(self, envs_idx: torch.Tensor):
         """
-        Reset the function class for the given environments.
-        No-op if the function is not a class instance.
+        Reset the function for the given environments.
+        No-op if the function is a plain function, or has not been built yet.
         """
-        if not self._is_class:
-            return
-        self._fn.reset(envs_idx)
+        if self._built and self._is_mdp_class_fn:
+            self._fn.reset(envs_idx)
 
-    def execute(self, envs_idx: list[int]):
+    def execute(self, **kwargs):
         """
-        Call the function for the given environment ids.
+        Call the function, passing along the build-time context and params.
 
         Args:
-            envs_idx: The environment ids to call the function for.
+            **kwargs: Additional per-call arguments. For example, the entity manager
+                      passes ``envs_idx`` here for a reset function.
+
+        Returns:
+            Whatever the function returns.
         """
-        self._fn(self._env, **self._kwargs, envs_idx=envs_idx, **self._params)
-
-    def _init_fn_class(self):
-        """Initialize the function class"""
-        params = self._cfg.get("params", {}) or {}
-        if self._initialized:
-            return
-
-        instance: MdpFnClass = self._fn(self._env, **self._kwargs, **params)
-        instance.build()
-
-        self._fn = instance
-        self._initialized = False
-
-    def _rebuild(self):
-        """Rebuild the function class"""
-        if not self._is_class:
-            return
-        self._init_fn_class()
+        return self._fn(self._env, **self._kwargs, **kwargs, **self._params)
 
 
 class TerminationConfigItem(ConfigItem):
@@ -111,7 +150,7 @@ class RewardConfigItem(ConfigItem):
         super().__init__(cfg, env)
         self.weight = cfg.get("weight", 0.0)
 
-    def increment_weight(self, increment: float, limit: float = None):
+    def increment_weight(self, increment: float, limit: float | None = None):
         """
         Increment the weight value by the given amount.
 
@@ -119,17 +158,10 @@ class RewardConfigItem(ConfigItem):
             increment: The amount to increment the weight by (+/-).
             limit: Do not set the value beyond this limit.
         """
-        value = self.weight
-        value += increment
-        if limit is not None:
-            if increment > 0:
-                value = min(value, limit)
-            else:
-                value = max(value, limit)
-        self.weight = value
-        return value
+        self.weight = directional_clamp(self.weight + increment, increment, limit)
+        return self.weight
 
-    def increment_param(self, param: str, increment: float, limit: float = None):
+    def increment_param(self, param: str, increment: float, limit: float | None = None):
         """
         Increment a float parameter value by the given amount.
 
@@ -138,14 +170,26 @@ class RewardConfigItem(ConfigItem):
             increment: The amount to increment the parameter by (+/-).
             limit: Do not set the value beyond this limit.
         """
-        value = self.params[param]
-        value += increment
-        if limit is not None:
-            if increment > 0:
-                value = min(value, limit)
-            else:
-                value = max(value, limit)
-        self.params[param] = value
+        # Get value
+        if self._is_mdp_class_fn:
+            if param not in self._fn._param_names():
+                raise AttributeError(
+                    f"{type(self._fn).__name__} has no param '{param}'. "
+                    f"Declared params: {sorted(self._fn._param_names())!r}"
+                )
+            value = getattr(self._fn, param)
+        else:
+            value = self.params[param]
+
+        # Increment
+        value = directional_clamp(value + increment, increment, limit)
+
+        # Update value
+        if self._is_mdp_class_fn:
+            setattr(self._fn, param, value)
+        else:
+            self.params[param] = value
+
         return value
 
 
@@ -158,3 +202,10 @@ class ObservationConfigItem(ConfigItem):
         super().__init__(cfg, env)
         self.scale = cfg.get("scale", 1.0)
         self.noise = cfg.get("noise", None)
+
+
+def directional_clamp(value: float, increment: float, limit: float | None = None) -> float:
+    """Clamp an incremented value to `limit`, in whichever direction it moved."""
+    if limit is None:
+        return value
+    return min(value, limit) if increment > 0 else max(value, limit)

@@ -12,41 +12,47 @@ Available managers:
 - :class:`TerminationManager` — episode termination/truncation conditions
 - :class:`ObservationManager` — observation space definition
 - :class:`PositionActionManager` / :class:`PositionWithinLimitsActionManager` — joint position actions
+- :class:`VelocityActionManager` — joint velocity actions (e.g. continuously-rotating wheels)
 - :class:`ActuatorManager` — PD controller gains and default joint positions
 - :class:`EntityManager` — entity spawning and per-episode resets
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
-- :class:`CommandManager` / :class:`VelocityCommandManager` — sampled command signals
+- :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
-from .base import BaseManager
-from .reward_manager import RewardManager
-from .termination_manager import TerminationManager
+from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
-from .command import CommandManager, VelocityCommandManager
+from .action.velocity_action_manager import VelocityActionManager
+from .actuator import ActuatorManager
+from .base import BaseManager
+from .command import CommandManager, Pose2dCommand, VelocityCommandManager
+from .config import (
+    MdpFn,
+    ResetMdpFn,
+)
 from .contact import ContactManager
-from .terrain_manager import TerrainManager
 from .entity_manager import EntityManager
 from .observation_manager import ObservationManager
-from .actuator import ActuatorManager
-from .config import (
-    MdpFnClass,
-    ResetMdpFnClass,
-)
+from .reward_manager import RewardManager
+from .termination_manager import TerminationManager
+from .terrain_manager import TerrainManager
 
 __all__ = [
+    "ActuatorManager",
+    "BaseActionManager",
     "BaseManager",
-    "RewardManager",
-    "TerminationManager",
     "CommandManager",
-    "VelocityCommandManager",
+    "ContactManager",
+    "EntityManager",
+    "MdpFn",
+    "ObservationManager",
+    "Pose2dCommand",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",
-    "ContactManager",
+    "ResetMdpFn",
+    "RewardManager",
+    "TerminationManager",
     "TerrainManager",
-    "EntityManager",
-    "ObservationManager",
-    "MdpFnClass",
-    "ResetMdpFnClass",
-    "ActuatorManager",
+    "VelocityActionManager",
+    "VelocityCommandManager",
 ]

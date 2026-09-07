@@ -6,20 +6,19 @@ import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
-    ContactManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
-
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.35]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.35)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class Go2CommandDirectionEnv(ManagedEnvironment):
@@ -46,7 +45,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -95,15 +93,14 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                    ),
                 },
             },
         )
@@ -141,11 +138,11 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [0, 0],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (0, 0),
+                "ang_vel_z": (-0.5, 0.5),
             },
-            standing_probability=0.0,
+            stopped_probability=0.0,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -171,57 +168,47 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             cfg={
                 "foot_air_time": {
                     "weight": 2.5,
-                    "fn": rewards.feet_air_time,
-                    "params": {
-                        "contact_manager": self.foot_contact_manager,
-                        "vel_cmd_manager": self.velocity_command,
-                        "time_threshold": 0.5,
-                    },
+                    "fn": rewards.feet_air_time(
+                        contact_manager=self.foot_contact_manager,
+                        vel_cmd_manager=self.velocity_command,
+                        time_threshold=0.5,
+                    ),
                 },
                 "tracking_lin_vel": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "tracking_ang_vel": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
                 "lin_vel_z": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
                 "ang_vel_xy": {
                     "weight": -0.05,
-                    "fn": rewards.ang_vel_xy_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
                 "similar_to_default": {
                     "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
                 "flat_orientation": {
                     "weight": -2.5,
-                    "fn": rewards.flat_orientation_l2,
+                    "fn": rewards.flat_orientation_l2(),
                 },
             },
         )
@@ -234,16 +221,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 20.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=20.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
             },
         )
@@ -271,7 +257,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

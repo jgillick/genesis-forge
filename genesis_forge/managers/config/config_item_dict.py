@@ -1,8 +1,9 @@
-import torch
 from typing import Any, NotRequired, Protocol, TypedDict
 
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers.config.mdp_fn_class import MdpFnClass
+from genesis_forge.managers.config.mdp_fn import MdpFn
 
 
 class ConfigCallbackFn(Protocol):
@@ -53,7 +54,7 @@ class ConfigCallbackFn(Protocol):
 class ConfigItemDict(TypedDict):
     """Defines a manager config item used to """
 
-    fn: ConfigCallbackFn | type[MdpFnClass]
+    fn: ConfigCallbackFn | MdpFn
     """
     Function that will be called to calculate results (reward, observations, etc), or execute
     an action (e.g. entity reset) for each environment."""

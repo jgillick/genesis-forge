@@ -1,4 +1,4 @@
-from typing import TypedDict, Tuple
+from typing import TypedDict
 
 
 class ContactDebugVisualizerConfig(TypedDict):
@@ -7,7 +7,7 @@ class ContactDebugVisualizerConfig(TypedDict):
     envs_idx: list[int]
     """The indices of the environments to visualize. If None, all environments will be visualized."""
 
-    color: Tuple[float, float, float, float]
+    color: tuple[float, float, float, float]
     """The color of the contact ball"""
 
     radius: float

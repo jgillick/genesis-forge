@@ -1,16 +1,17 @@
 from __future__ import annotations
-from typing import Tuple, Callable, TypedDict
 
 import os
-import torch
-import genesis as gs
+from collections.abc import Callable, Mapping, Sequence
 
+import genesis as gs
+import torch
+
+from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.gamepads import Gamepad
 
-CommandRangeValue = Tuple[float, float]
-CommandRange = CommandRangeValue | dict[str, CommandRangeValue] | TypedDict
+CommandRangeValue = tuple[float, float]
+CommandRange = CommandRangeValue | Mapping[str, CommandRangeValue]
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,7 +24,8 @@ class CommandManager(BaseManager):
     Args:
         env: The environment to control
         range: The number range, or dict of ranges, to generate target command(s) for
-        resample_time_sec: The time interval between changing the command
+        resample_time_sec: The time interval between changing the command,
+                           or None to only change it on reset
 
     Example::
 
@@ -65,7 +67,7 @@ class CommandManager(BaseManager):
         self,
         env: GenesisEnv,
         range: CommandRange,
-        resample_time_sec: float = 5.0,
+        resample_time_sec: float | None = 5.0,
     ):
         super().__init__(env, type="command")
 
@@ -107,28 +109,32 @@ class CommandManager(BaseManager):
                 f"Cannot change the shape of the CommandManager range. Expected size: {self._command.shape[1]}, got {num}"
             )
         # Validate the range types match
-        if type(range) != type(self._range):
+        if type(range) is not type(self._range):
             raise ValueError(
                 f"Cannot change the base type of the CommandManager range. Expected type: {type(self._range)}, got {type(range)}"
             )
         # Validate that the dict keys match the current range dict keys
-        if isinstance(range, dict):
-            if set(range.keys()) != set(self._range.keys()):
-                raise ValueError(
-                    f"Cannot change the dict keys of the CommandManager range. Expected keys: {set(self._range.keys())}, got {set(range.keys())}"
-                )
+        if isinstance(range, dict) and set(range.keys()) != set(self._range.keys()):
+            raise ValueError(
+                f"Cannot change the dict keys of the CommandManager range. Expected keys: {set(self._range.keys())}, got {set(range.keys())}"
+            )
         self._range = range
 
     @property
-    def resample_time_sec(self) -> float:
-        """The time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self) -> float | None:
+        """
+        The time interval (in seconds) between changing the command for each environment,
+        or None to only change it on reset.
+        """
         return self._resample_time_sec
 
     @resample_time_sec.setter
-    def resample_time_sec(self, resample_time_sec: float):
-        """Set the time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self, resample_time_sec: float | None):
+        """Set the time interval (in seconds) between changing the command, or None to disable."""
         self._resample_time_sec = resample_time_sec
-        self._resample_steps = int(resample_time_sec / self.env.dt)
+        self._resample_steps = (
+            0 if resample_time_sec is None else int(resample_time_sec / self.env.dt)
+        )
 
     """
     Operations
@@ -139,20 +145,20 @@ class CommandManager(BaseManager):
         If the range is a dict, get the command values for the given key.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         return self._command[:, self._range_idx[range_key]]
 
     def set_command(
         self,
         range_key: str,
         value: torch.Tensor,
-        envs_idx: list[int] | None = None,
+        envs_idx: torch.Tensor | Sequence[int] | None = None,
     ):
         """
         Update a command value for selected environments.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         if envs_idx is None:
             self._command[:, self._range_idx[range_key]] = value
         else:
@@ -162,7 +168,7 @@ class CommandManager(BaseManager):
         self,
         range_key: str,
         increment: float | tuple[float, float],
-        limit: float | tuple[float, float] = None,
+        limit: float | tuple[float, float] | None = None,
     ):
         """
         Increment a command range target values by the given amount, with an optional limit.
@@ -191,7 +197,7 @@ class CommandManager(BaseManager):
         """
         # Get the range to increment, and ensure it is a list, not a tuple (tuples are immutable)
         if not isinstance(self.range, dict):
-            raise ValueError("Cannot increment a non-dict range item")
+            raise TypeError("Cannot increment a non-dict range item")
         range_item = self._range.get(range_key, None)
         if range_item is None:
             raise ValueError(f"Range item {range_key} not found")
@@ -219,12 +225,16 @@ class CommandManager(BaseManager):
         If the range is a dict, get the command index for the given key.
         """
         if not isinstance(self._range, dict):
-            raise ValueError("The range is not a dict")
+            raise TypeError("The range is not a dict")
         return self._range_idx[key]
 
     def step(self):
         """Resample the command if necessary"""
         if not self.enabled or self._external_controller is not None:
+            return
+
+        # No timer: the command only changes on reset
+        if self._resample_steps <= 0:
             return
 
         resample_command_envs = (
@@ -234,12 +244,12 @@ class CommandManager(BaseManager):
         )
         self.resample_command(resample_command_envs)
 
-    def reset(self, env_ids: list[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | None = None):
         """One or more environments have been reset"""
         if not self.enabled:
             return
         if env_ids is None:
-            env_ids = torch.arange(self.env.num_envs, device=gs.device)
+            env_ids = self.env.all_envs_idx
         self.resample_command(env_ids)
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
@@ -355,7 +365,7 @@ class CommandManager(BaseManager):
             axis_map.append(range_axis)
             axis_invert_map.append(invert_axis)
         elif isinstance(range_axis, dict):
-            for key in self._range.keys():
+            for key in self._range:
                 axis_map.append(range_axis[key])
                 axis_invert_map.append(
                     invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
@@ -370,7 +380,7 @@ class CommandManager(BaseManager):
             self._command, device=gs.device
         )
 
-    def resample_command(self, env_ids: list[int]):
+    def resample_command(self, env_ids: torch.Tensor):
         """Create a new command for the given environment ids."""
 
         # Get range values (this might have changed since init due to curriculum training)

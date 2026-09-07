@@ -1,23 +1,27 @@
 from __future__ import annotations
-import torch
-import numpy as np
+
+from collections.abc import Sequence
 from typing import Any, TypedDict
-from gymnasium import spaces
+
 import genesis as gs
+import numpy as np
+import torch
+from gymnasium import spaces
 from tensordict import TensorDict
+
 from genesis_forge.genesis_env import GenesisEnv
-from genesis_forge.managers.base import BaseManager, ManagerType
 from genesis_forge.managers import (
+    ActuatorManager,
+    CommandManager,
     ContactManager,
     EntityManager,
-    CommandManager,
-    TerrainManager,
-    PositionActionManager,
     ObservationManager,
+    PositionActionManager,
     RewardManager,
     TerminationManager,
-    ActuatorManager,
+    TerrainManager,
 )
+from genesis_forge.managers.base import BaseManager, ManagerType
 
 
 class ManagersDict(TypedDict):
@@ -143,7 +147,7 @@ class ManagedEnvironment(GenesisEnv):
             "termination": None,
         }
 
-        self._action_space = None
+        self._action_space: spaces.Space | None = None
         self._action_ranges: list[tuple[int, int]] = []
         self._observation_space = None
         self._reward_buf = torch.zeros(
@@ -162,7 +166,7 @@ class ManagedEnvironment(GenesisEnv):
     """
 
     @property
-    def action_space(self) -> torch.Tensor:
+    def action_space(self) -> spaces.Space | None:
         """
         The action space, provided by the action manager(s), if any exist.
         """
@@ -236,19 +240,17 @@ class ManagedEnvironment(GenesisEnv):
             def config(self):
                 EntityManager(
                     self,
-                    entity_attr="robot",
+                    entity=self.robot,
                     on_reset={
                         "position": {
-                            "fn": reset.position,
-                            "params": {
-                                "position": INITIAL_BODY_POSITION,
-                                "quat": INITIAL_QUAT,
-                            },
+                            "fn": reset.position(
+                                position=INITIAL_BODY_POSITION,
+                                quat=INITIAL_QUAT,
+                            ),
                         },
                     },
                 )
         """
-        pass
 
     def build(self):
         """
@@ -343,7 +345,7 @@ class ManagedEnvironment(GenesisEnv):
         )
 
     def reset(
-        self, env_ids: list[int] | None = None
+        self, env_ids: torch.Tensor | Sequence[int] | None = None
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """
         Reset one or more environments.
@@ -355,6 +357,12 @@ class ManagedEnvironment(GenesisEnv):
         Returns:
             A batch of observations (if env_ids is None) and an info dictionary from the vectorized environment.
         """
+        reset_all = env_ids is None
+        if env_ids is None:
+            env_ids = self.all_envs_idx
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.as_tensor(env_ids, device=gs.device, dtype=torch.long)
+
         (obs, _) = super().reset(env_ids)
 
         for actuator_manager in self.managers["actuator"]:
@@ -376,7 +384,7 @@ class ManagedEnvironment(GenesisEnv):
 
         # Only get observations when env_ids is None because this will be the initial reset called before the first step
         # Otherwise, the observations are ignored
-        if env_ids is None:
+        if reset_all:
             obs = self.get_observations()
 
         return obs, self.extras
@@ -385,8 +393,8 @@ class ManagedEnvironment(GenesisEnv):
         """
         Returns the current observations for this step.
 
-        Named observations are stored in `extras["observations"]`. 
-        If a manager named `"policy"` exists, only its tensor is returned; 
+        Named observations are stored in `extras["observations"]`.
+        If a manager named `"policy"` exists, only its tensor is returned;
         otherwise all managers are concatenated in registration order.
         """
         self.extras["observations"] = TensorDict({}, device=gs.device)
@@ -466,7 +474,7 @@ class ManagedEnvironment(GenesisEnv):
         # If ther is an observation manager named "policy", that is the primary observation
         # manager and what will be returned to the main policy
         if policy_obs_mgr is not None:
-            self._observation_space = obs_manager.observation_space
+            self._observation_space = policy_obs_mgr.observation_space
             return
 
         # Merge the observation manager spaces

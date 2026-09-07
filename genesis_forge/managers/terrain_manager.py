@@ -1,11 +1,14 @@
 from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+import genesis as gs
 import torch
 import torch.nn.functional as F
-import genesis as gs
+
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import BaseManager
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -20,7 +23,7 @@ class TerrainManager(BaseManager):
 
     Args:
         env: The environment instance.
-        terrain_attr: The attribute name of the terrain in the environment.
+        terrain: The terrain entity to manage. Defaults to `env.terrain`.
 
     Example::
 
@@ -45,10 +48,10 @@ class TerrainManager(BaseManager):
             def config(self):
                 self.terrain_manager = TerrainManager(
                     self,
-                    terrain_attr="terrain",
+                    terrain=self.terrain,
                 )
 
-             def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+             def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
                 # Randomize positions on the terrain
                 pos = self.terrain_manager.generate_random_env_pos(
                     envs_idx=envs_idx,
@@ -61,36 +64,28 @@ class TerrainManager(BaseManager):
     def __init__(
         self,
         env: GenesisEnv,
-        terrain_attr: str = "terrain",
+        terrain: RigidEntity = None,
     ):
         super().__init__(env, type="terrain")
 
         self._origin = (0, 0, 0)
         self._bounds = (0, 0, 0, 0)  # x_min, x_max, y_min, y_max
         self._size = (0, 0)
-        self._terrain: RigidEntity = None
-        self._terrain_attr = terrain_attr
+        self._terrain: RigidEntity = terrain if terrain is not None else env.terrain
         self._subterrain_bounds = {}
         self._height_field: torch.Tensor | None = None
         self._env_pos_buffer = torch.zeros(
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
 
-        # Pre-allocated buffers for terrain height calculation to avoid memory allocations
-        self._norm_coords_buffer = torch.zeros(
-            (self.env.num_envs, 2), device=gs.device, dtype=gs.tc_float
-        )
-        self._grid_buffer = torch.zeros(
-            (self.env.num_envs, 1, 1, 2), device=gs.device, dtype=gs.tc_float
-        )
-        self._heights_buffer = torch.zeros(
-            self.env.num_envs, device=gs.device, dtype=gs.tc_float
-        )
-
     def build(self):
         """Cache the terrain height field"""
-        self._terrain = self.env.__getattribute__(self._terrain_attr)
         self._map_terrain()
+
+    @property
+    def terrain(self) -> RigidEntity:
+        """The terrain entity this manager describes."""
+        return self._terrain
 
     def get_bounds(
         self, subterrain: str | None = None
@@ -117,34 +112,16 @@ class TerrainManager(BaseManager):
 
         # No height field, so we can assume the height is consistent
         if self._height_field is None:
-            self._heights_buffer[:n_envs] = self._origin[2]
-            return self._heights_buffer[:n_envs]
+            return torch.full(
+                (n_envs,), self._origin[2], device=gs.device, dtype=gs.tc_float
+            )
 
         # Normalize coordinates to [-1, 1] range expected by grid_sample
         (x_min, x_max, y_min, y_max) = self._bounds
+        norm_x = 2 * (x - x_min) / (x_max - x_min) - 1
+        norm_y = 2 * (y - y_min) / (y_max - y_min) - 1
 
-        # Use pre-allocated buffer and in-place operations to avoid memory allocation
-        norm_x = self._norm_coords_buffer[:n_envs, 0]
-        norm_y = self._norm_coords_buffer[:n_envs, 1]
-
-        # In-place normalization to avoid creating new tensors
-        # norm_x = 2 * (norm_x - x_min) / (x_max - x_min) - 1
-        norm_x.copy_(x)
-        norm_x.sub_(x_min)
-        norm_x.div_(x_max - x_min)
-        norm_x.mul_(2)
-        norm_x.sub_(1)
-        # norm_y = 2 * (norm_y - y_min) / (y_max - y_min) - 1
-        norm_y.copy_(y)
-        norm_y.sub_(y_min)
-        norm_y.div_(y_max - y_min)
-        norm_y.mul_(2)
-        norm_y.sub_(1)
-
-        # Use pre-allocated grid buffer
-        grid = self._grid_buffer[:n_envs]
-        grid[:, 0, 0, 0] = norm_x
-        grid[:, 0, 0, 1] = norm_y
+        grid = torch.stack([norm_x, norm_y], dim=-1).view(n_envs, 1, 1, 2)
 
         # Border padding mode isn't supported on Mac GPU (mps)
         # https://github.com/pytorch/pytorch/issues/125098
@@ -165,10 +142,7 @@ class TerrainManager(BaseManager):
         )
 
         # Extract the height values at the specific coordinates
-        heights = self._heights_buffer[:n_envs]
-        heights.copy_(interpolated[:, 0, 0, 0])
-
-        return heights
+        return interpolated[:, 0, 0, 0]
 
     def generate_random_positions(
         self,
@@ -250,7 +224,7 @@ class TerrainManager(BaseManager):
 
     def generate_random_env_pos(
         self,
-        envs_idx: list[int] | torch.Tensor | None = None,
+        envs_idx: torch.Tensor | Sequence[int] | None = None,
         usable_ratio: float = 0.5,
         subterrain: str | None = None,
         height_offset: float = 0.1e-3,
@@ -274,7 +248,7 @@ class TerrainManager(BaseManager):
             The position tensor of shape (1, 3)
         """
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
         elif isinstance(envs_idx, list):
             envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 

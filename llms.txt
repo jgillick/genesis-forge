@@ -37,6 +37,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [VelocityActionManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/action/velocity.md)
 - [Command](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/index.md)
 - [CommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/command.md)
+- [Pose2dCommand](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/pose_2d.md)
 - [VelocityCommandManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/command/velocity.md)
 
 ## MDP Functions
@@ -64,4 +65,5 @@ Source: https://github.com/jgillick/genesis-forge
 ## Other
 
 - [Gamepad](https://genesis-forge.readthedocs.io/en/latest/api/other/gamepad.md)
+- [Meshes](https://genesis-forge.readthedocs.io/en/latest/api/other/meshes.md)
 

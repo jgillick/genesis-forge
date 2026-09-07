@@ -95,7 +95,7 @@ class MdpFn:
         times, and re-deriving from scratch is the expected implementation.
         """
 
-    def reset(self, envs_idx: list[int]) -> None:
+    def reset(self, envs_idx: torch.Tensor) -> None:
         """
         Called every time one or more environments reset.
 
@@ -212,7 +212,7 @@ class ResetMdpFn(MdpFn):
         self,
         env: GenesisEnv,
         entity: RigidEntity,
-        envs_idx: list[int],
+        envs_idx: torch.Tensor,
     ) -> None:
         """
         Apply this reset to the given environments.

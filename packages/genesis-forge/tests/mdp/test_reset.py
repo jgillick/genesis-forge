@@ -199,6 +199,67 @@ def test_randomize_terrain_position_calls_subterrain_when_callable(env):
 
 
 """
+randomize_annulus_position
+"""
+
+
+def test_randomize_annulus_position_respects_radius_range(env):
+    env.num_envs = 64
+    entity = FakeEntity()
+    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0), center=(1.0, -1.0), z=0.1)
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    fn(env, entity, list(range(64)))
+
+    pos, envs_idx, zero_vel = entity.pos_calls[0]
+    assert envs_idx == list(range(64))
+    assert zero_vel is True
+    radii = torch.sqrt((pos[:, 0] - 1.0) ** 2 + (pos[:, 1] + 1.0) ** 2)
+    assert torch.all(radii >= 0.5 - 1e-5)
+    assert torch.all(radii <= 2.0 + 1e-5)
+    assert torch.all(pos[:, 2] == 0.1)
+
+
+def test_randomize_annulus_position_default_rotation_is_z_only(env):
+    entity = FakeEntity()
+    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0))
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    assert fn.rotation == {"z": (0, 2 * math.pi)}
+
+    fn(env, entity, [0])
+
+    assert len(entity.quat_calls) == 1
+
+
+def test_randomize_annulus_position_none_rotation_skips_quat(env):
+    entity = FakeEntity()
+    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0), rotation=None)
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    fn(env, entity, [0])
+
+    assert len(entity.quat_calls) == 0
+
+
+def test_randomize_annulus_position_draws_fresh_positions_each_call(env):
+    entity = FakeEntity()
+    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0))
+    fn.context(env, entity=entity)
+    fn.safe_build()
+
+    fn(env, entity, [0, 1, 2, 3])
+    fn(env, entity, [0, 1, 2, 3])
+
+    first, _, _ = entity.pos_calls[0]
+    second, _, _ = entity.pos_calls[1]
+    assert not torch.equal(first, second)
+
+
+"""
 randomize_link_mass_shift
 """
 

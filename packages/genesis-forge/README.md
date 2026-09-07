@@ -27,8 +27,11 @@ Learn more in the [documentation](https://genesis-forge.readthedocs.io/en/latest
 <div>
 <img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/cmd_locomotion.gif" alt="Massively parallel locomotion training" width="48%" />
 <img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/gamepad.gif" alt="Gamepad controller interface" width="48%" />
-<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/terrain.gif" alt="Rough terrain" width="48%" />
-<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/spider.gif" alt="Complex robots" width="48%" />
+<center>
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/terrain.gif" alt="Rough terrain" width="33%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/spider.gif" alt="Complex robots" width="33%" />
+<img src="https://raw.githubusercontent.com/jgillick/genesis-forge/main/docs/media/cmd_pose2d.gif" alt="Obstacle avoidance" width="33%" />
+</center>
 </div>
 
 ## Install

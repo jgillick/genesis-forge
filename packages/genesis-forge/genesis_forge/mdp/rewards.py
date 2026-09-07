@@ -5,19 +5,23 @@ Each of these should return a float tensor with the reward value for each enviro
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import genesis as gs
 import torch
+from deprecated import deprecated
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
+    BaseActionManager,
     CommandManager,
     ContactManager,
     EntityManager,
     MdpFn,
+    Pose2dCommand,
     PositionActionManager,
     TerrainManager,
     VelocityCommandManager,
@@ -305,16 +309,50 @@ class action_rate_l2(MdpFn):
     """
     Penalize the rate of change of the actions using L2 squared kernel.
 
+    Args:
+        action_manager: Only count the actions belonging to this action manager, instead of
+                        every action the policy produces. Use this when part of the robot is
+                        *meant* to keep moving -- a sensor being swept around to look for
+                        obstacles, say -- where penalizing its changes works against the
+                        behavior you are trying to get. Defaults to None: every action counts.
+
     Returns:
-        torch.Tensor: Penalty for changes in actions
+        torch.Tensor: Penalty for changes in actions, shape (num_envs,)
     """
 
+    action_manager: BaseActionManager = None
+
+    def build(self):
+        self._action_slice = slice(None)
+        if self.action_manager is not None:
+            self._action_slice = self._find_action_slice()
+
+    def _find_action_slice(self) -> slice:
+        """
+        Which part of the environment's action vector belongs to `action_manager`.
+
+        The environment hands each action manager its own slice of the policy's output,
+        in the order the managers were created, so the slice is found by counting past
+        the managers created before this one.
+        """
+        start = 0
+        for manager in self.env.managers["action"]:
+            if manager is self.action_manager:
+                return slice(start, start + manager.num_actions)
+            start += manager.num_actions
+        raise ValueError(
+            "The action_manager passed to action_rate_l2 is not registered with this "
+            "environment, so there is no way to tell which actions belong to it."
+        )
+
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        actions = env.actions
         last_actions = env.last_actions
         if last_actions is None:
-            return torch.zeros_like(actions, device=gs.device)
-        return torch.sum(torch.square(last_actions - actions), dim=1)
+            return torch.zeros(env.num_envs, device=gs.device)
+        change = (
+            last_actions[:, self._action_slice] - env.actions[:, self._action_slice]
+        )
+        return torch.sum(torch.square(change), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -364,7 +402,7 @@ class action_acceleration_l2(MdpFn):
             (self.env.num_envs,), dtype=torch.long, device=gs.device
         )
 
-    def reset(self, envs_idx):
+    def reset(self, envs_idx: torch.Tensor):
         """
         Clear the action history for the specified environments.
         """
@@ -445,6 +483,19 @@ class dof_velocity_l2(MdpFn):
 Velocity Command Rewards
 """
 
+DEFAULT_TRACKING_SENSITIVITY = 0.25
+"""The tracking reward sensitivity when there is no command range to derive one from"""
+
+
+def _calculate_tracking_sensitivity(max_command: float) -> float:
+    """
+    Automatically calculate the tracking reward sensitivity for a command range: an error of half the maximum
+    commanded speed decays the reward to 1/e. Falls back to the default for a zero range.
+    """
+    if max_command <= 0.0:
+        return DEFAULT_TRACKING_SENSITIVITY
+    return (0.5 * max_command) ** 2
+
 
 @dataclass(kw_only=True, eq=False)
 class command_tracking_lin_vel(MdpFn):
@@ -455,6 +506,9 @@ class command_tracking_lin_vel(MdpFn):
         command: The commanded XY linear velocity in the shape (num_envs, 2)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+                     If not defined, the sensitivity will be derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest commanded
+                     speed the range allows (the norm of the largest absolute lin_vel_x and lin_vel_y values).
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
@@ -465,7 +519,7 @@ class command_tracking_lin_vel(MdpFn):
 
     command: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
-    sensitivity: float = 0.25
+    sensitivity: float | None = None
     entity: RigidEntity = None
     entity_manager: EntityManager = None
 
@@ -488,7 +542,25 @@ class command_tracking_lin_vel(MdpFn):
         lin_vel_error = torch.sum(
             torch.square(command - linear_vel_local[:, :2]), dim=1
         )
-        return torch.exp(-lin_vel_error / self.sensitivity)
+        sensitivity = self._get_sensitivity()
+        return torch.exp(-lin_vel_error / sensitivity)
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # The largest linear speed in the command manager's current range. The error sums
+        # the squares of both axes, so the fastest command is the diagonal one: the norm
+        # of the largest speeds along each axis.
+        max_speed = 0.0
+        if self.vel_cmd_manager is not None:
+            velocity_range = self.vel_cmd_manager.range
+            max_speed = math.hypot(
+                max(abs(v) for v in velocity_range["lin_vel_x"]),
+                max(abs(v) for v in velocity_range["lin_vel_y"]),
+            )
+        return _calculate_tracking_sensitivity(max_speed)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -500,6 +572,8 @@ class command_tracking_ang_vel(MdpFn):
         commanded_ang_vel: The commanded angular velocity in the shape (num_envs, 1)
         vel_cmd_manager: The velocity command manager
         sensitivity: A lower value means the reward is more sensitive to the error
+                     If not defined, the sensitivity will be derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest absolute value of the command range.
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
@@ -510,7 +584,7 @@ class command_tracking_ang_vel(MdpFn):
 
     commanded_ang_vel: torch.Tensor = None
     vel_cmd_manager: VelocityCommandManager = None
-    sensitivity: float = 0.25
+    sensitivity: float | None = None
     entity: RigidEntity = None
     entity_manager: EntityManager = None
 
@@ -531,11 +605,24 @@ class command_tracking_ang_vel(MdpFn):
             target = self.vel_cmd_manager.command[:, 2]
 
         ang_vel_error = torch.square(target - angular_vel[:, 2])
-        return torch.exp(-ang_vel_error / self.sensitivity)
+        sensitivity = self._get_sensitivity()
+        return torch.exp(-ang_vel_error / sensitivity)
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        # The largest angular speed in the command manager's current range
+        max_speed = 0.0
+        if self.vel_cmd_manager is not None:
+            values = [abs(v) for v in self.vel_cmd_manager.range["ang_vel_z"]]
+            max_speed = max(values)
+        return _calculate_tracking_sensitivity(max_speed)
 
 
 @dataclass(kw_only=True, eq=False)
-class stand_still_joint_deviation_l1(MdpFn):
+class stopped_joint_deviation_l1(MdpFn):
     """
     Penalize offsets from the default joint positions when the command is very small.
 
@@ -557,7 +644,7 @@ class stand_still_joint_deviation_l1(MdpFn):
     def build(self):
         assert (
             self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to stand_still_joint_deviation_l1"
+        ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:
@@ -573,6 +660,272 @@ class stand_still_joint_deviation_l1(MdpFn):
         return joint_deviation * (
             torch.norm(command[:, :2], dim=1) < self.command_threshold
         )
+
+
+@deprecated(reason="Use 'stopped_joint_deviation_l1' instead")
+@dataclass(kw_only=True, eq=False)
+class stand_still_joint_deviation_l1(stopped_joint_deviation_l1):
+    """Deprecated alias of :class:`stopped_joint_deviation_l1`."""
+
+
+@dataclass(kw_only=True, eq=False)
+class stopped_dof_velocity_l2(MdpFn):
+    """
+    Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded),
+    using the L2 squared kernel.
+
+    Args:
+        vel_cmd_manager: The velocity command manager
+        actuator_manager: The actuator manager to get the DOF velocities from.
+        command_threshold: The command is considered stopped when the norm of all its
+                           components (linear xy and angular z) is below this value.
+
+    Returns:
+        torch.Tensor: Penalty for joint velocity while the command is stopped, shape (num_envs,)
+    """
+
+    vel_cmd_manager: VelocityCommandManager
+    actuator_manager: ActuatorManager
+    command_threshold: float = 0.01
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        dof_vel = self.actuator_manager.get_dofs_velocity()
+        penalty = torch.sum(torch.square(dof_vel), dim=1)
+
+        # Only penalize when nothing is commanded, linear or angular
+        is_stopped = self.vel_cmd_manager.stopped_envs(self.command_threshold)
+        return penalty * is_stopped
+
+
+"""
+Pose Command Rewards
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class position_progress(MdpFn):
+    """
+    Reward for closing the distance to the commanded goal position, measured as the
+    speed (m/s) at which the entity is approaching its goal. Moving away is penalized.
+
+    Steps that don't have a valid distance to compare against are skipped: the first
+    step of an episode, and any step where the goal was resampled.
+
+    Args:
+        pose_cmd_manager: The pose command manager holding the goal position.
+
+    Returns:
+        torch.Tensor: Approach speed toward the goal, shape (num_envs,)
+    """
+
+    pose_cmd_manager: Pose2dCommand
+
+    def build(self):
+        self._prev_distance = torch.zeros(self.env.num_envs, device=gs.device)
+        self._has_prev_distance = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_distance[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        distance = self.pose_cmd_manager.distance_to_goal
+
+        # The previous distance was measured against a different goal, so it can't be compared
+        self._has_prev_distance &= ~self.pose_cmd_manager.resampled_last_step
+
+        progress = (self._prev_distance - distance) / env.dt
+        progress = progress * self._has_prev_distance
+
+        self._prev_distance[:] = distance
+        self._has_prev_distance[:] = True
+
+        return progress
+
+
+@dataclass(kw_only=True, eq=False)
+class heading_progress(MdpFn):
+    """
+    Reward for turning the right way, measured as the speed (rad/s) at which the entity
+    is closing the angle. Turning the wrong way is penalized.
+
+    This is the heading counterpart to :class:`position_progress`, and like it, pays for
+    *changing* rather than for *being*: an entity sitting still earns exactly nothing,
+    however well it is lined up. Over a whole goal it can only ever add up to the angle
+    it started with, so there is no way to farm it by turning back and forth.
+
+    Which angle counts depends on `lines_up_within`. By default it is always the goal
+    heading -- the way to face on arrival. That is the natural choice for something that
+    can travel in one direction while facing another, like a legged or omnidirectional
+    robot. Anything that has to point where it is going, like a car or a differential
+    drive robot, cannot chase the goal heading from far away without driving sideways to
+    reach the goal, which it physically cannot do. Setting `lines_up_within` makes the
+    reward ask for the bearing while there is still ground to cover, and hand over to the
+    goal heading on the final approach.
+
+    Steps that don't have a previous angle to compare against are skipped: the first step
+    of an episode, and any step where the goal was resampled.
+
+    Args:
+        pose_cmd_manager: The pose command manager holding the goal pose.
+        lines_up_within: How close to the goal (in meters) the entity should stop steering
+                         toward the goal and start lining up with the goal heading. The
+                         changeover is gradual, so the reward doesn't jump as the entity
+                         closes in. Defaults to None: the goal heading is asked for at
+                         every distance.
+
+    Returns:
+        torch.Tensor: Turning speed toward the angle being asked for, shape (num_envs,)
+    """
+
+    pose_cmd_manager: Pose2dCommand
+    lines_up_within: float | None = None
+
+    def build(self):
+        self._prev_error = torch.zeros(self.env.num_envs, device=gs.device)
+        self._has_prev_error = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_error[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        error = self._tracked_error()
+
+        # The previous error was measured against a different goal, so it can't be compared
+        self._has_prev_error &= ~self.pose_cmd_manager.resampled_last_step
+
+        progress = (self._prev_error - error) / env.dt
+        progress = progress * self._has_prev_error
+
+        self._prev_error[:] = error
+        self._has_prev_error[:] = True
+
+        return progress
+
+    def _tracked_error(self) -> torch.Tensor:
+        """
+        The angle the entity is being asked to close, in radians.
+
+        With `lines_up_within` set, the entity is rewarded for turning to face the goal
+        position while it is far away, and for turning into the goal heading as it
+        closes in. The two are blended by distance rather than switched at a threshold,
+        so the reward stays smooth on the approach.
+        """
+        heading_error = self.pose_cmd_manager.heading_error.abs()
+        if self.lines_up_within is None:
+            return heading_error
+
+        bearing_error = self.pose_cmd_manager.bearing_error.abs()
+        distance = self.pose_cmd_manager.distance_to_goal
+
+        # 1 at the goal, fading to 0 well beyond `lines_up_within`
+        lining_up = torch.exp(-torch.square(distance) / self.lines_up_within**2)
+        return lining_up * heading_error + (1.0 - lining_up) * bearing_error
+
+
+@dataclass(kw_only=True, eq=False)
+class reached_goal(MdpFn):
+    """
+    Reward for reaching the commanded goal position.
+
+    This is a sparse bonus, paid on each step the entity is within the threshold of its
+    goal. When the command manager is configured to resample on reach, this is paid once
+    per goal, since the goal is replaced immediately after the rewards are computed.
+
+    Args:
+        pose_cmd_manager: The pose command manager holding the goal pose.
+        threshold: Pay the bonus within this distance (in meters) of the goal, ignoring the
+                   goal heading. Defaults to None: the bonus is paid whenever the command
+                   manager itself counts the goal as reached, which is also when it hands
+                   out a new one.
+
+    Returns:
+        torch.Tensor: 1.0 for each environment that has reached its goal, shape (num_envs,)
+    """
+
+    pose_cmd_manager: Pose2dCommand
+    threshold: float | None = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if self.threshold is None:
+            return self.pose_cmd_manager.goal_reached.float()
+        return (self.pose_cmd_manager.distance_to_goal < self.threshold).float()
+
+
+@dataclass(kw_only=True, eq=False)
+class keep_clear(MdpFn):
+    """
+    Penalty for crowding the things the entity is supposed to keep away from, or move around.
+    The penalty growing from nothing at `clearance` to its full value on contact.
+
+    A collision termination only tells the entity it got something wrong once it is too
+    late to do anything about it. This gives it a gradient to follow on the way in, so it
+    can learn to leave room rather than only to regret not having done so.
+
+    Only the nearest obstacle counts. Threading a gap between two obstacles is no worse
+    than passing one at the same distance -- what matters is the closest thing, not how
+    many things are around.
+
+    !!! note "This deliberately reads the true distance, not a sensor"
+
+        The penalty uses the actual positions from the simulation, which a real robot
+        could not know. That is fine and usual for a reward -- rewards are free to use
+        information the observation withholds -- but it does mean the entity is being
+        asked to avoid things it may not be able to see. If it is crashing into obstacles
+        that never enter its sensor's view, the fix is the observation, not this.
+
+    Args:
+        entities: The entities to keep clear of.
+        clearance: The distance (in meters, centre to centre) at which the penalty starts.
+        entity: The entity being kept clear of them. Defaults to `env.robot`.
+        entity_manager: The entity manager for the above, which is slightly faster than
+                        passing `entity` since it reads a position cached once per step
+                        instead of querying the simulator.
+
+    Returns:
+        torch.Tensor: 0.0 when further than `clearance` from everything, rising toward 1.0
+                      as the nearest obstacle is approached, shape (num_envs,)
+    """
+
+    entities: list[RigidEntity]
+    clearance: float = 0.5
+    entity: RigidEntity = None
+    entity_manager: EntityManager = None
+
+    def build(self):
+        if (
+            self.entity is None
+            and self.entity_manager is None
+            and self.env.robot is None
+        ):
+            raise ValueError(
+                "keep_clear: no entity to compute the reward for -- pass entity or "
+                "entity_manager, or set env.robot"
+            )
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        if not self.entities:
+            return torch.zeros(env.num_envs, device=gs.device)
+
+        if self.entity_manager is not None:
+            entity_xy = self.entity_manager.base_pos[:, :2]
+        else:
+            entity = self.entity if self.entity is not None else env.robot
+            entity_xy = entity.get_pos()[:, :2]
+
+        # Stack every obstacle's position into one tensor so the distance to all of
+        # them, and the nearest one, are each a single reduction.
+        obstacles_xy = torch.stack(
+            [obstacle.get_pos()[:, :2] for obstacle in self.entities], dim=0
+        )
+        distance = torch.norm(obstacles_xy - entity_xy, dim=-1)
+        nearest_distance = distance.min(dim=0).values
+
+        # 0 at `clearance` and beyond, rising to 1 as the nearest obstacle closes to nothing
+        return (1.0 - nearest_distance / self.clearance).clamp(min=0.0)
 
 
 """
@@ -599,9 +952,7 @@ class has_contact(MdpFn):
     min_contacts: int = 1
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        in_contact = (
-            self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
-        )
+        in_contact = self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
         result = in_contact.sum(dim=1) >= self.min_contacts
         return result.float()
 
@@ -701,9 +1052,9 @@ class feet_ground_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
         last_contact_time = self.contact_manager.last_contact_time
-        short_contact = (
-            self.time_threshold - last_contact_time
-        ).clamp(min=0.0) * just_lifted
+        short_contact = (self.time_threshold - last_contact_time).clamp(
+            min=0.0
+        ) * just_lifted
         return torch.sum(short_contact, dim=1)
 
 

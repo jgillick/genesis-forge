@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import math
 import os
 from collections.abc import Callable
@@ -112,9 +111,9 @@ class VideoWrapper(Wrapper):
         self._current_episode: int = 0
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
+        self._recording_name: str = "recording"
 
         self._cam: Camera | None = None
-        self._start_recording_has_args: bool = False
         self._camera_attr = camera_attr
         self._out_dir = out_dir
         self._filename = filename
@@ -122,8 +121,6 @@ class VideoWrapper(Wrapper):
         self._steps_per_frame = max(1, round(1.0 / fps / self.dt)) # max prevents division by zero
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
-
-        self._recording_filepath = os.path.join(self._out_dir, ".recording.mp4")
 
         if episode_trigger is None and step_trigger is None:
             episode_trigger = capped_cubic_episode_trigger
@@ -133,6 +130,9 @@ class VideoWrapper(Wrapper):
 
         self.episode_trigger = episode_trigger
         self.step_trigger = step_trigger
+
+        # Videos are encoded into a scratch directory and moved into place once complete.
+        self._tmp_dir = os.path.join(self._out_dir, ".tmp")
 
         os.makedirs(self._out_dir, exist_ok=True)
 
@@ -150,10 +150,6 @@ class VideoWrapper(Wrapper):
         assert (
             self._cam is not None
         ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
-
-        # Genesis >= 1.3 moved the filename/fps args from stop_recording to start_recording
-        start_recording_params = inspect.signature(self._cam.start_recording).parameters
-        self._start_recording_has_args = "save_to_filename" in start_recording_params
 
     def step(
         self, actions: torch.Tensor
@@ -195,22 +191,20 @@ class VideoWrapper(Wrapper):
             self.finish_recording()
         super().close()
 
-    def start_recording(self):
+    def start_recording(self, index: int):
         """Start recording a video."""
         if self._cam is None:
             return
 
         self._is_recording = True
         self._recording_start_step = self._current_step
+        self._recording_name = self._filename or f"{index}.mp4"
         self._recording_stop_step = self._current_step + self._video_length_steps
 
-        # Genesis >= 1.3: filename/fps are passed to start_recording
-        if self._start_recording_has_args:
-            self._cam.start_recording(
-                save_to_filename=self._recording_filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
-            )
-        else:
-            self._cam.start_recording()
+        filepath = os.path.join(self._tmp_dir, self._recording_name)
+        self._cam.start_recording(
+            save_to_filename=filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
+        )
 
     def finish_recording(self):
         """
@@ -219,17 +213,15 @@ class VideoWrapper(Wrapper):
         if not self._is_recording or self._cam is None:
             return
 
-        filename = self._filename or f"{self._recording_start_step}.mp4"
-        filepath = os.path.join(self._out_dir, filename)
 
         # Save recording
+        filepath = os.path.join(self._out_dir, self._recording_name)
+        tmp_filepath = os.path.join(self._tmp_dir, self._recording_name)
         if self._logging:
             print(f"Saving recording to {filepath}")
-        if self._start_recording_has_args:
-            self._cam.stop_recording()
-            os.rename(self._recording_filepath, filepath)
-        else:
-            self._cam.stop_recording(filepath, fps=self._actual_fps)
+        self._cam.stop_recording()
+        if os.path.exists(tmp_filepath):
+            os.replace(tmp_filepath, filepath)
 
         # Reset recording state
         self._is_recording = False
@@ -238,14 +230,17 @@ class VideoWrapper(Wrapper):
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
         record = False
+        index = None
         if not self._is_recording:
             if self.episode_trigger is not None:
                 record = self.episode_trigger(self._current_episode)
-            if self.step_trigger is not None:
+                index = self._current_episode
+            elif self.step_trigger is not None:
                 record = self.step_trigger(self._current_step)
+                index = self._current_step
 
-        if record:
-            self.start_recording()
+        if record and index is not None:
+            self.start_recording(index)
         return record
 
     def _is_done(self, term_buffer: torch.Tensor | None) -> bool:

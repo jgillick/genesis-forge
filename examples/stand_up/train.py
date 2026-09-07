@@ -44,7 +44,7 @@ def training_cfg():
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
             "distribution_cfg": {
                 "class_name": "GaussianDistribution",
                 "init_std": 1.0,
@@ -54,7 +54,7 @@ def training_cfg():
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
         },
         "seed": 1,
         "num_steps_per_env": 24,

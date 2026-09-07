@@ -93,12 +93,12 @@ class MyFirstEnv(ManagedEnvironment):
         self.camera.set_pose(lookat=self.robot.get_pos()[0])
         return super().step(actions)
 
-    def reset(self, envs_idx: list[int] | None = None):
+    def reset(self, envs_idx: torch.Tensor | list[int] | None = None):
         # Perform any curriculum adjustments
-        self._curriculum(env_ids)
+        self._curriculum(envs_idx)
         return super().reset(envs_idx)
 
-    def _curriculum(self, envs_idx: list[int] | None = None):
+    def _curriculum(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         # ... curriculum logic here ...
 ```
 

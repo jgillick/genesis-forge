@@ -182,7 +182,7 @@ def test_reset_forwards_to_a_plain_reset_function(env):
     )
     mgr.build()
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
 
     assert calls == [(env, entity, [0, 2], 1.0)]
 
@@ -199,7 +199,7 @@ def test_reset_forwards_to_a_resetmdpfn_instance(env):
     mgr = EntityManager(env, entity=entity, on_reset={"pos": {"fn": fn}})
     mgr.build()
 
-    mgr.reset([1, 3])
+    mgr.reset(torch.tensor([1, 3]))
 
     assert fn.entity is entity
     assert fn.calls == [(entity, [1, 3])]
@@ -231,7 +231,7 @@ def test_reset_is_a_noop_when_disabled(env):
     mgr.build()
     mgr.enabled = False
 
-    mgr.reset([0])
+    mgr.reset(torch.tensor([0]))
 
     assert calls == []
 
@@ -246,4 +246,4 @@ def test_reset_reraises_the_original_exception(env):
     mgr.build()
 
     with pytest.raises(ValueError, match="boom"):
-        mgr.reset([0])
+        mgr.reset(torch.tensor([0]))

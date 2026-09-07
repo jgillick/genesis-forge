@@ -16,6 +16,7 @@ from skrl.memories.torch import RandomMemory
 from skrl.multi_agents.torch import ExperimentCfg
 from skrl.multi_agents.torch.mappo import MAPPO
 from skrl.multi_agents.torch.mappo.mappo_cfg import MAPPO_CFG
+from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 
 from genesis_forge.wrappers import VideoWrapper
@@ -73,6 +74,10 @@ def main() -> None:
     wrapped = SkrlMasqWrapper(env)
     agents = list(wrapped.possible_agents)
 
+    # All agents share the same observation/action/state structure (per-leg MASQ agents)
+    obs_space = wrapped.observation_spaces[agents[0]]
+    action_space = wrapped.action_spaces[agents[0]]
+    state_space = wrapped.state_spaces[agents[0]]
 
     # MAPPO learning configuration
     def for_each_agent(v):
@@ -90,9 +95,15 @@ def main() -> None:
         value_loss_scale=1.0,
         grad_norm_clip=0.5,
         learning_rate_scheduler_kwargs=for_each_agent({}),
-        observation_preprocessor_kwargs=for_each_agent({}),
-        state_preprocessor_kwargs=for_each_agent({}),
-        value_preprocessor_kwargs=for_each_agent({}),
+        # Running mean/std normalization -- keeps the policy/critic robust to the
+        # reset-boundary observation jumps in this environment's velocity/gravity
+        # channels, and to the value function's own return scale.
+        observation_preprocessor=for_each_agent(RunningStandardScaler),
+        observation_preprocessor_kwargs=for_each_agent({"size": obs_space}),
+        state_preprocessor=for_each_agent(RunningStandardScaler),
+        state_preprocessor_kwargs=for_each_agent({"size": state_space}),
+        value_preprocessor=for_each_agent(RunningStandardScaler),
+        value_preprocessor_kwargs=for_each_agent({"size": 1}),
         experiment=ExperimentCfg(
             directory=log_base_dir,
             experiment_name=args.exp_name,
@@ -114,9 +125,6 @@ def main() -> None:
 
     # Create agent models
     models: dict[str, dict] = {}
-    obs_space = wrapped.observation_spaces[agents[0]]
-    action_space = wrapped.action_spaces[agents[0]]
-    state_space = wrapped.state_spaces[agents[0]]
     for uid in agents:
         models[uid] = {
             "policy": MasqGaussianPolicy(obs_space, action_space, clip_actions=False),

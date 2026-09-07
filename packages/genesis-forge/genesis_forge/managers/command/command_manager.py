@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 
 import genesis as gs
 import torch
@@ -24,7 +24,8 @@ class CommandManager(BaseManager):
     Args:
         env: The environment to control
         range: The number range, or dict of ranges, to generate target command(s) for
-        resample_time_sec: The time interval between changing the command
+        resample_time_sec: The time interval between changing the command,
+                           or None to only change it on reset
 
     Example::
 
@@ -66,7 +67,7 @@ class CommandManager(BaseManager):
         self,
         env: GenesisEnv,
         range: CommandRange,
-        resample_time_sec: float = 5.0,
+        resample_time_sec: float | None = 5.0,
     ):
         super().__init__(env, type="command")
 
@@ -108,7 +109,7 @@ class CommandManager(BaseManager):
                 f"Cannot change the shape of the CommandManager range. Expected size: {self._command.shape[1]}, got {num}"
             )
         # Validate the range types match
-        if type(range) != type(self._range):
+        if type(range) is not type(self._range):
             raise ValueError(
                 f"Cannot change the base type of the CommandManager range. Expected type: {type(self._range)}, got {type(range)}"
             )
@@ -120,15 +121,20 @@ class CommandManager(BaseManager):
         self._range = range
 
     @property
-    def resample_time_sec(self) -> float:
-        """The time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self) -> float | None:
+        """
+        The time interval (in seconds) between changing the command for each environment,
+        or None to only change it on reset.
+        """
         return self._resample_time_sec
 
     @resample_time_sec.setter
-    def resample_time_sec(self, resample_time_sec: float):
-        """Set the time interval (in seconds) between changing the command for each environment."""
+    def resample_time_sec(self, resample_time_sec: float | None):
+        """Set the time interval (in seconds) between changing the command, or None to disable."""
         self._resample_time_sec = resample_time_sec
-        self._resample_steps = int(resample_time_sec / self.env.dt)
+        self._resample_steps = (
+            0 if resample_time_sec is None else int(resample_time_sec / self.env.dt)
+        )
 
     """
     Operations
@@ -146,7 +152,7 @@ class CommandManager(BaseManager):
         self,
         range_key: str,
         value: torch.Tensor,
-        envs_idx: list[int] | None = None,
+        envs_idx: torch.Tensor | Sequence[int] | None = None,
     ):
         """
         Update a command value for selected environments.
@@ -227,6 +233,10 @@ class CommandManager(BaseManager):
         if not self.enabled or self._external_controller is not None:
             return
 
+        # No timer: the command only changes on reset
+        if self._resample_steps <= 0:
+            return
+
         resample_command_envs = (
             (self.env.episode_length % self._resample_steps == 0)
             .nonzero(as_tuple=False)
@@ -234,12 +244,12 @@ class CommandManager(BaseManager):
         )
         self.resample_command(resample_command_envs)
 
-    def reset(self, env_ids: list[int] | None = None):
+    def reset(self, env_ids: torch.Tensor | None = None):
         """One or more environments have been reset"""
         if not self.enabled:
             return
         if env_ids is None:
-            env_ids = torch.arange(self.env.num_envs, device=gs.device)
+            env_ids = self.env.all_envs_idx
         self.resample_command(env_ids)
 
     def observation(self, env: GenesisEnv) -> torch.Tensor:
@@ -370,7 +380,7 @@ class CommandManager(BaseManager):
             self._command, device=gs.device
         )
 
-    def resample_command(self, env_ids: list[int]):
+    def resample_command(self, env_ids: torch.Tensor):
         """Create a new command for the given environment ids."""
 
         # Get range values (this might have changed since init due to curriculum training)

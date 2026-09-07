@@ -16,8 +16,8 @@ from genesis_forge.managers import (
 )
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.4)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 TARGET_X_VELOCITY = 0.5
 
 
@@ -53,7 +53,6 @@ class Go2BasicEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,

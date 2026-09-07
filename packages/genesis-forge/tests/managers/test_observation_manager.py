@@ -204,6 +204,24 @@ def test_zero_noise_is_a_noop(env):
     assert torch.equal(result, torch.full((env.num_envs, 1), 5.0))
 
 
+def test_noise_is_applied_before_scale(env):
+    # Noise models the real sensor's own measurement uncertainty, in the raw units `fn`
+    # returns -- it must land before `scale`, which is only a downstream convenience for
+    # the policy. `(value + noise) * scale`, never `value * scale + noise`.
+    torch.manual_seed(0)
+    expected_noise = torch.empty((env.num_envs, 1)).uniform_(-1, 1) * 5.0
+
+    torch.manual_seed(0)
+    mgr = ObservationManager(
+        env,
+        cfg={"a": {"fn": const, "params": {"value": 2.0}, "noise": 5.0, "scale": 10.0}},
+    )
+    mgr.build()
+    result = mgr.get_observations()
+
+    assert torch.allclose(result, (2.0 + expected_noise) * 10.0)
+
+
 """
 Scaling and noise must not reach back into the values they were given
 
@@ -355,7 +373,7 @@ def test_reset_forwards_to_each_config_items_reset(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": fn}})
     mgr.build()
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
 
     assert fn.reset_calls == [[0, 2]]
 
@@ -384,7 +402,7 @@ def test_reset_defaults_to_every_env(env):
 def test_reset_tolerates_plain_functions(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": const}})
     mgr.build()
-    mgr.reset([0])  # must not raise
+    mgr.reset(torch.tensor([0]))  # must not raise
 
 
 def test_reset_clears_history_only_for_the_reset_envs(env):
@@ -398,7 +416,7 @@ def test_reset_clears_history_only_for_the_reset_envs(env):
     mgr.get_observations()  # 2.0
     mgr.get_observations()  # 3.0
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
     obs = mgr.get_observations()  # 4.0
 
     # Reset envs observe only the fresh value; their history slots are zero
@@ -425,4 +443,4 @@ def test_reset_with_no_envs_idx_clears_history_for_every_env(env):
 
 def test_reset_before_build_tolerates_the_empty_history(env):
     mgr = ObservationManager(env, cfg={"a": {"fn": const}}, history_len=2)
-    mgr.reset([0])  # must not raise
+    mgr.reset(torch.tensor([0]))  # must not raise

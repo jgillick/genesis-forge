@@ -7,6 +7,7 @@ function lifecycle) and never build a Genesis scene, so the environment is faked
 from dataclasses import dataclass, field
 
 import genesis as gs
+import numpy as np
 import pytest
 import torch
 
@@ -23,6 +24,10 @@ class FakeEnv:
     extras_logging_key: str = "episode"
     episode_length: object = None
     max_episode_length: object = None
+
+    @property
+    def all_envs_idx(self) -> torch.Tensor:
+        return torch.arange(self.num_envs, dtype=torch.long)
 
 
 @pytest.fixture
@@ -43,3 +48,5 @@ def _fake_genesis_globals(monkeypatch):
     monkeypatch.setattr(gs, "tc_float", torch.float32, raising=False)
     monkeypatch.setattr(gs, "tc_int", torch.int32, raising=False)
     monkeypatch.setattr(gs, "tc_bool", torch.bool, raising=False)
+    # The float32 epsilon `gs.init()` would set; read by genesis.utils.geom functions
+    monkeypatch.setattr(gs, "EPS", float(np.finfo(np.float32).eps), raising=False)

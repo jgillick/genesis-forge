@@ -1,6 +1,8 @@
 import inspect
 from types import MappingProxyType
 
+import torch
+
 from genesis_forge.genesis_env import GenesisEnv
 
 from .config_item_dict import ConfigItemDict
@@ -107,7 +109,7 @@ class ConfigItem:
             self._fn.safe_build()
         self._built = True
 
-    def reset(self, envs_idx: list[int]):
+    def reset(self, envs_idx: torch.Tensor):
         """
         Reset the function for the given environments.
         No-op if the function is a plain function, or has not been built yet.

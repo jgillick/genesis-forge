@@ -79,7 +79,7 @@ class add_mass_on_reset(ResetMdpFn):
     def build(self):
         self._link = self.entity.get_link(self.link_name)
 
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: list[int]):
+    def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         mass_shift = torch.empty(len(envs_idx), device=gs.device).uniform_(*self.mass_range)
         entity.set_mass_shift(
             mass_shift,

@@ -17,14 +17,15 @@ Available managers:
 - :class:`EntityManager` — entity spawning and per-episode resets
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
-- :class:`CommandManager` / :class:`VelocityCommandManager` — sampled command signals
+- :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
+from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
 from .action.velocity_action_manager import VelocityActionManager
 from .actuator import ActuatorManager
 from .base import BaseManager
-from .command import CommandManager, VelocityCommandManager
+from .command import CommandManager, Pose2dCommand, VelocityCommandManager
 from .config import (
     MdpFn,
     ResetMdpFn,
@@ -38,12 +39,14 @@ from .terrain_manager import TerrainManager
 
 __all__ = [
     "ActuatorManager",
+    "BaseActionManager",
     "BaseManager",
     "CommandManager",
     "ContactManager",
     "EntityManager",
     "MdpFn",
     "ObservationManager",
+    "Pose2dCommand",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",
     "ResetMdpFn",

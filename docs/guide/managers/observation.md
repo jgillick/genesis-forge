@@ -47,8 +47,8 @@ ObservationManager(
     cfg={
         "robot_velocity": {
             "fn": observations.entity_linear_velocity(),
-            "scale": 2.0,    # Scale up small values
-            "noise": 0.05,   # Add 5% noise
+            "noise": 0.025,  # ±0.025 m/s of raw sensor noise
+            "scale": 2.0,    # then scale up small values for the policy
         },
         "contact_forces": {
             "fn": observations.entity_dofs_force(

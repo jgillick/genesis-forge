@@ -14,8 +14,8 @@ from genesis_forge.managers.actuator import NoisyValue
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class Go2CommandDirectionEnv(ManagedEnvironment):
@@ -42,7 +42,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -113,7 +112,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "mass": {
                     "fn": reset.randomize_link_mass_shift(
                         link_name="base",
-                        mass_range=[-0.5, 1.0],  # kg
+                        mass_range=(-0.5, 1.0),  # kg
                     ),
                 },
             },
@@ -150,9 +149,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
             stopped_probability=0.02,
             resample_time_sec=5.0,
@@ -234,15 +233,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.02,
                 },
                 "linear_velocity": {
                     "fn": lambda env: self.robot_manager.get_linear_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.05,
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
-                    "noise": 0.01,
+                    "noise": 0.05,
                 },
                 "dof_position": {
                     "fn": lambda env: self.action_manager.get_dofs_position(),
@@ -251,7 +250,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.02,
-                    "noise": 0.01,
+                    "noise": 1.0,
                 },
                 "actions": {
                     "fn": observations.current_actions(),

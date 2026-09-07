@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import genesis as gs
@@ -50,7 +51,7 @@ class TerrainManager(BaseManager):
                     terrain=self.terrain,
                 )
 
-             def reset(self, envs_idx: list[int] = None) -> tuple[torch.Tensor, dict[str, Any]]:
+             def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
                 # Randomize positions on the terrain
                 pos = self.terrain_manager.generate_random_env_pos(
                     envs_idx=envs_idx,
@@ -80,6 +81,11 @@ class TerrainManager(BaseManager):
     def build(self):
         """Cache the terrain height field"""
         self._map_terrain()
+
+    @property
+    def terrain(self) -> RigidEntity:
+        """The terrain entity this manager describes."""
+        return self._terrain
 
     def get_bounds(
         self, subterrain: str | None = None
@@ -218,7 +224,7 @@ class TerrainManager(BaseManager):
 
     def generate_random_env_pos(
         self,
-        envs_idx: list[int] | torch.Tensor | None = None,
+        envs_idx: torch.Tensor | Sequence[int] | None = None,
         usable_ratio: float = 0.5,
         subterrain: str | None = None,
         height_offset: float = 0.1e-3,
@@ -242,7 +248,7 @@ class TerrainManager(BaseManager):
             The position tensor of shape (1, 3)
         """
         if envs_idx is None:
-            envs_idx = torch.arange(self.env.num_envs, device=gs.device)
+            envs_idx = self.env.all_envs_idx
         elif isinstance(envs_idx, list):
             envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 

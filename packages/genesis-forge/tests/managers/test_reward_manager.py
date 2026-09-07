@@ -154,7 +154,7 @@ def test_reset_only_clears_the_given_envs_idx(env):
     mgr.build()
     mgr.step()
 
-    mgr.reset([0])
+    mgr.reset(torch.tensor([0]))
 
     assert mgr.episode_data["a"][0] == 0.0
     assert torch.all(mgr.episode_data["a"][1:] != 0.0)
@@ -181,7 +181,7 @@ def test_reset_forwards_to_the_config_items_reset(env):
     mgr = RewardManager(env, cfg={"a": {"fn": fn, "weight": 1.0}})
     mgr.build()
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
 
     assert torch.equal(fn.has_reset, torch.tensor([1.0, 0.0, 1.0, 0.0]))
 

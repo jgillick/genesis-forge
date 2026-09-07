@@ -197,7 +197,7 @@ def test_reset_forwards_to_each_config_items_reset(env):
     mgr = TerminationManager(env, term_cfg={"a": {"fn": fn}})
     mgr.build()
 
-    mgr.reset([0, 2])
+    mgr.reset(torch.tensor([0, 2]))
 
     assert fn.reset_calls == [[0, 2]]
 
@@ -228,4 +228,4 @@ def test_reset_tolerates_plain_functions(env):
         env, term_cfg={"a": {"fn": const, "params": {"value": [False] * env.num_envs}}}
     )
     mgr.build()
-    mgr.reset([0])  # must not raise
+    mgr.reset(torch.tensor([0]))  # must not raise

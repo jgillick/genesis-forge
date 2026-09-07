@@ -805,13 +805,14 @@ dependencies = [
     { name = "skrl", extra = ["torch"] },
     { name = "tensordict" },
     { name = "torch" },
+    { name = "trimesh" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "deprecated", specifier = ">=1.3.1" },
     { name = "genesis-forge-runtime", editable = "../../packages/genesis-forge-runtime" },
-    { name = "genesis-world", specifier = ">=1.0.0" },
+    { name = "genesis-world", specifier = ">=1.3.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
     { name = "pysdl2-dll" },
@@ -819,6 +820,7 @@ requires-dist = [
     { name = "skrl", extras = ["torch"] },
     { name = "tensordict" },
     { name = "torch", specifier = ">=2.10.0" },
+    { name = "trimesh" },
 ]
 
 [[package]]

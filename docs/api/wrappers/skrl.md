@@ -1,3 +1,3 @@
 # SkrlEnv
 
-::: genesis_forge.wrappers.SkrlEnvWapper
+::: genesis_forge.wrappers.SkrlEnvWrapper

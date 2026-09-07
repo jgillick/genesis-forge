@@ -50,7 +50,6 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                refresh_rate=int(0.5 / self.dt),
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -148,9 +147,9 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-0.5, 0.5),
             },
             stopped_probability=0.05,
             resample_time_sec=5.0,

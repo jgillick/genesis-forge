@@ -1,13 +1,14 @@
 from typing import Any
 
 import torch
+from deprecated import deprecated
 from gymnasium import spaces
 from skrl.envs.wrappers.torch.base import Wrapper as SkrlWrapper
 
 from genesis_forge.wrappers.wrapper import Wrapper as GenesisWrapper
 
 
-class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
+class SkrlEnvWrapper(SkrlWrapper, GenesisWrapper):
     """
     A wrapper that makes your genesis forge environment compatible with the skrl training framework.
     """
@@ -15,12 +16,12 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     can_be_wrapped = False
 
     @property
-    def action_space(self) -> spaces:
+    def action_space(self) -> spaces.Space:
         """The action space of the environment."""
         return self._env.action_space
 
     @property
-    def observation_space(self) -> spaces:
+    def observation_space(self) -> spaces.Space:
         """The observation space of the environment."""
         return self._env.observation_space
 
@@ -76,3 +77,10 @@ class SkrlEnvWapper(SkrlWrapper, GenesisWrapper):
     def build(self) -> None:
         """Build the environment"""
         self._env.build()
+
+
+@deprecated(reason="Use SkrlEnvWrapper")
+class SkrlEnvWapper(SkrlEnvWrapper):
+    """
+    Deprecated alias of :class:`SkrlEnvWrapper`.
+    """

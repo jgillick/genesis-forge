@@ -92,7 +92,7 @@ class PositionActionManager(AffineDofActionManager):
 
                 # ...do other step things...
 
-            reset(self, envs_idx: list[int] = None) -> None:
+            reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> None:
                 super().reset(envs_idx)
                 self.actuator_manager.reset(envs_idx)
                 self.action_manager.reset(envs_idx)

@@ -62,7 +62,7 @@ def training_cfg():
         "seed": 1,
         "num_steps_per_env": 24,
         "save_interval": 100,
-        "obs_groups": {"actor": ["policy"], "critic": ["policy"]},
+        "obs_groups": {"actor": ["policy"], "critic": ["policy", "privileged"]},
     }
 
 

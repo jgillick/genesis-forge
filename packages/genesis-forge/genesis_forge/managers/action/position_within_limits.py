@@ -148,7 +148,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,
             config={
-                "pre_clip": [-1.0, 1.0],
+                "raw_action_clip": [-1.0, 1.0],
                 "scale": nominal(self._scale, "scale"),
                 "offset": nominal(self._offset, "offset"),
             },

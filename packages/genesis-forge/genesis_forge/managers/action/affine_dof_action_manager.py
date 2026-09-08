@@ -153,9 +153,9 @@ class AffineDofActionManager(BaseActionManager):
         low = nominal(clip_low, "clip lower bound")
         high = nominal(clip_high, "clip upper bound")
         if any(value != float("-inf") for value in low):
-            config["post_clip_low"] = low
+            config["clip_low"] = low
         if any(value != float("inf") for value in high):
-            config["post_clip_high"] = high
+            config["clip_high"] = high
 
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,

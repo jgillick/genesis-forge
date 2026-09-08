@@ -68,8 +68,8 @@ def test_position_manager_exports_its_affine_decode(env):
     # use_default_offset is on by default, so the offset is the per-joint default pose.
     assert exported.config["offset"] == pytest.approx([0.1, 0.2, 0.3])
     # Clip defaults to the actuator's joint limits.
-    assert exported.config["post_clip_low"] == pytest.approx([-1.0, -1.5, -2.0])
-    assert exported.config["post_clip_high"] == pytest.approx([1.0, 1.5, 2.0])
+    assert exported.config["clip_low"] == pytest.approx([-1.0, -1.5, -2.0])
+    assert exported.config["clip_high"] == pytest.approx([1.0, 1.5, 2.0])
 
 
 def test_position_manager_export_is_plain_json_ready_data(env):
@@ -108,8 +108,8 @@ def test_position_manager_export_reflects_a_soft_limit_factor(env):
     config = manager.get_deployment_config().config
 
     # Half the range around each joint's midpoint.
-    assert config["post_clip_low"] == pytest.approx([-0.5, -0.75, -1.0])
-    assert config["post_clip_high"] == pytest.approx([0.5, 0.75, 1.0])
+    assert config["clip_low"] == pytest.approx([-0.5, -0.75, -1.0])
+    assert config["clip_high"] == pytest.approx([0.5, 0.75, 1.0])
 
 
 def test_exported_joint_order_matches_the_managers_dof_order(env):
@@ -138,13 +138,13 @@ def test_within_limits_manager_exports_its_own_decode(env):
     exported = manager.get_deployment_config()
 
     assert exported.deploy_type == "position_within_limits"
-    assert exported.config["pre_clip"] == [-1.0, 1.0]
+    assert exported.config["raw_action_clip"] == [-1.0, 1.0]
     # Midpoint and half-range of each joint's limits.
     assert exported.config["offset"] == pytest.approx([0.0, 0.0, 0.0])
     assert exported.config["scale"] == pytest.approx([1.0, 1.5, 2.0])
 
 
-def test_within_limits_export_does_not_claim_a_post_clip(env):
+def test_within_limits_export_does_not_claim_an_output_clip(env):
     """Its process_actions applies none, so the bundle must not describe one."""
     manager = PositionWithinLimitsActionManager(
         env, actuator_manager=make_actuator_manager()
@@ -153,8 +153,8 @@ def test_within_limits_export_does_not_claim_a_post_clip(env):
 
     config = manager.get_deployment_config().config
 
-    assert "post_clip_low" not in config
-    assert "post_clip_high" not in config
+    assert "clip_low" not in config
+    assert "clip_high" not in config
 
 
 def test_within_limits_export_reflects_custom_limits(env):
@@ -213,8 +213,8 @@ def test_an_unbounded_velocity_manager_exports_no_clip(env):
 
     config = manager.get_deployment_config().config
 
-    assert "post_clip_low" not in config
-    assert "post_clip_high" not in config
+    assert "clip_low" not in config
+    assert "clip_high" not in config
 
 
 def test_a_clipped_velocity_manager_exports_its_bounds(env):
@@ -225,8 +225,8 @@ def test_a_clipped_velocity_manager_exports_its_bounds(env):
 
     config = manager.get_deployment_config().config
 
-    assert config["post_clip_low"] == pytest.approx([-16.0, -16.0, -16.0])
-    assert config["post_clip_high"] == pytest.approx([16.0, 16.0, 16.0])
+    assert config["clip_low"] == pytest.approx([-16.0, -16.0, -16.0])
+    assert config["clip_high"] == pytest.approx([16.0, 16.0, 16.0])
 
 
 def test_a_partially_clipped_velocity_manager_keeps_both_sides(env):
@@ -238,10 +238,10 @@ def test_a_partially_clipped_velocity_manager_keeps_both_sides(env):
 
     config = manager.get_deployment_config().config
 
-    assert config["post_clip_low"][0] == pytest.approx(-5.0)
-    assert config["post_clip_high"][0] == pytest.approx(5.0)
+    assert config["clip_low"][0] == pytest.approx(-5.0)
+    assert config["clip_high"][0] == pytest.approx(5.0)
     # The unmatched joint stays unbounded.
-    assert config["post_clip_low"][1] == float("-inf")
+    assert config["clip_low"][1] == float("-inf")
 
 
 def test_every_builtin_action_manager_publishes_a_distinct_type(env):

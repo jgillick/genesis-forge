@@ -39,8 +39,8 @@ def position_spec(
         config={
             "scale": np.asarray(scale, dtype=np.float32),
             "offset": np.asarray(offset, dtype=np.float32),
-            "post_clip_low": np.asarray(clip_low, dtype=np.float32),
-            "post_clip_high": np.asarray(clip_high, dtype=np.float32),
+            "clip_low": np.asarray(clip_low, dtype=np.float32),
+            "clip_high": np.asarray(clip_high, dtype=np.float32),
         },
     )
 
@@ -59,7 +59,7 @@ def within_limits_spec(
         slice_start=start,
         slice_end=start + len(joints),
         config={
-            "pre_clip": [-1.0, 1.0],
+            "raw_action_clip": [-1.0, 1.0],
             "scale": np.asarray([2.0, 4.0], dtype=np.float32),
             "offset": np.asarray([0.0, 1.0], dtype=np.float32),
         },
@@ -108,7 +108,7 @@ def test_decoded_targets_are_named_by_joint():
     assert result.joint_names == ("hip", "knee", "ankle")
 
 
-def test_post_clip_bounds_are_honored():
+def test_clip_bounds_are_honored():
     decoder = ActionDecoder(
         (
             position_spec(
@@ -166,7 +166,7 @@ def test_output_is_float32():
 """Within-limits decoding"""
 
 
-def test_within_limits_pre_clips_before_scaling():
+def test_within_limits_clips_the_raw_action_before_scaling():
     decoder = ActionDecoder((within_limits_spec(),))
 
     # Inputs beyond +/-1 are clamped first, so both joints hit their limit value.
@@ -184,7 +184,7 @@ def test_within_limits_maps_midpoint_to_the_offset():
     np.testing.assert_allclose(result.targets, [0.0, 1.0])
 
 
-def test_within_limits_has_no_post_clip():
+def test_within_limits_has_no_output_clip():
     """The training-side manager applies no post-clip, so neither may the decoder."""
     spec = ActionManagerSpec(
         name="unbounded",
@@ -192,7 +192,7 @@ def test_within_limits_has_no_post_clip():
         joint_names=("a",),
         slice_start=0,
         slice_end=1,
-        config={"pre_clip": [-1.0, 1.0], "scale": 100.0, "offset": 50.0},
+        config={"raw_action_clip": [-1.0, 1.0], "scale": 100.0, "offset": 50.0},
     )
 
     result = ActionDecoder((spec,)).decode([1.0])
@@ -477,8 +477,8 @@ def test_velocity_targets_are_named_by_wheel():
 
 def test_a_configured_velocity_clip_is_honored():
     spec = velocity_spec()
-    spec.config["post_clip_low"] = np.asarray([-16.0, -16.0], dtype=np.float32)
-    spec.config["post_clip_high"] = np.asarray([16.0, 16.0], dtype=np.float32)
+    spec.config["clip_low"] = np.asarray([-16.0, -16.0], dtype=np.float32)
+    spec.config["clip_high"] = np.asarray([16.0, 16.0], dtype=np.float32)
 
     result = ActionDecoder((spec,)).decode([100.0, -100.0])
 

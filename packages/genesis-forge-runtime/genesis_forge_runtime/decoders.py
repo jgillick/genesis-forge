@@ -50,14 +50,14 @@ class ManagerDecoder:
 
 
 class AffineDecoder(ManagerDecoder):
-    """Optional pre-clip, then ``actions * scale + offset``, then optional post-clip.
+    """Optional raw-action clip, ``actions * scale + offset``, then optional clip.
 
     This single shape covers both built-in managers:
 
-    * ``position`` -- scale/offset from the manager's config, post-clipped to the
+    * ``position`` -- scale/offset from the manager's config, clipped to the
       joint limits.
-    * ``position_within_limits`` -- pre-clipped to [-1, 1], then mapped into the
-      joint's limit range, with no post-clip.
+    * ``position_within_limits`` -- the raw action clipped to [-1, 1], then
+      mapped into the joint's limit range, with no clip on the result.
 
     Which of those applies is decided by the config the exporter recorded, not by
     the type name, so a future affine-ish manager needs no new runtime class.
@@ -69,19 +69,15 @@ class AffineDecoder(ManagerDecoder):
         self._scale = self._vector(config.get("scale"), default=1.0)
         self._offset = self._vector(config.get("offset"), default=0.0)
 
-        pre_clip = config.get("pre_clip")
-        self._pre_clip = (
-            (float(pre_clip[0]), float(pre_clip[1])) if pre_clip is not None else None
+        raw = config.get("raw_action_clip")
+        self._raw_action_clip = (
+            (float(raw[0]), float(raw[1])) if raw is not None else None
         )
 
-        low = config.get("post_clip_low")
-        high = config.get("post_clip_high")
-        self._post_clip_low = (
-            self._vector(low, default=None) if low is not None else None
-        )
-        self._post_clip_high = (
-            self._vector(high, default=None) if high is not None else None
-        )
+        low = config.get("clip_low")
+        high = config.get("clip_high")
+        self._clip_low = self._vector(low, default=None) if low is not None else None
+        self._clip_high = self._vector(high, default=None) if high is not None else None
 
     def decode(self, actions: np.ndarray) -> np.ndarray:
         values = np.asarray(actions, dtype=self.dtype).ravel()
@@ -97,13 +93,13 @@ class AffineDecoder(ManagerDecoder):
             # opposite scale.
             values = values[self._joint_action_index]
 
-        if self._pre_clip is not None:
-            values = np.clip(values, *self._pre_clip)
+        if self._raw_action_clip is not None:
+            values = np.clip(values, *self._raw_action_clip)
 
         values = values * self._scale + self._offset
 
-        if self._post_clip_low is not None or self._post_clip_high is not None:
-            values = np.clip(values, self._post_clip_low, self._post_clip_high)
+        if self._clip_low is not None or self._clip_high is not None:
+            values = np.clip(values, self._clip_low, self._clip_high)
 
         return values.astype(self.dtype, copy=False)
 

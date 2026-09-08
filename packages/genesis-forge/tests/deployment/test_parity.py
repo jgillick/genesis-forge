@@ -150,10 +150,10 @@ def test_a_swapped_entry_order_is_caught(deployable_env):
         check_parity(capture)
 
 
-def test_a_missing_post_clip_is_caught(deployable_env):
+def test_a_missing_clip_is_caught(deployable_env):
     """Clip-boundary samples exist precisely to catch this."""
     capture = capture_environment(deployable_env)
-    del capture.manifest.actions[0].config["post_clip_high"]
+    del capture.manifest.actions[0].config["clip_high"]
 
     with pytest.raises(ParityError) as error:
         check_parity(capture)

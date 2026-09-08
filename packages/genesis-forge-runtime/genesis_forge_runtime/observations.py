@@ -142,7 +142,10 @@ class ObservationAssembler:
 
     def _value_for(self, entry: ObservationEntry, values: dict[str, Any]) -> np.ndarray:
         if entry.name not in values:
-            raise ObservationError(self._missing_value_message(entry))
+            raise ObservationError(
+                f"Missing observation value '{entry.name}'. This layout requires: "
+                f"{', '.join(item.name for item in self.inputs)}."
+            )
 
         raw = self._to_array(values[entry.name], name=entry.name)
         if raw.size != entry.size:
@@ -151,9 +154,8 @@ class ObservationAssembler:
                 f"{raw.size}."
             )
         if not np.all(np.isfinite(raw)):
-            # A dead IMU reads NaN. Caught here it names the sensor; carried into
-            # the policy it surfaces one step later as "policy produced NaN",
-            # which says nothing about where it came from.
+            # Caught here this names the sensor; carried into the policy it
+            # surfaces a step later as "policy produced NaN".
             bad = np.flatnonzero(~np.isfinite(raw))
             raise ObservationError(
                 f"Observation '{entry.name}' has non-finite value(s) at "
@@ -167,12 +169,6 @@ class ObservationAssembler:
             # deliberately do not reproduce.
             return raw * np.asarray(entry.scale, dtype=self._dtype)
         return raw
-
-    def _missing_value_message(self, entry: ObservationEntry) -> str:
-        return (
-            f"Missing observation value '{entry.name}'. This layout requires: "
-            f"{', '.join(item.name for item in self.inputs)}."
-        )
 
     def _check_for_unknown_names(self, values: dict[str, Any]) -> None:
         known = {entry.name for entry in self._layout.entries}

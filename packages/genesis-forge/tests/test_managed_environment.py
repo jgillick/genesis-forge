@@ -103,7 +103,9 @@ class RecordingObservationManager(BaseManager):
 
     def get_observations(self):
         self.log.append(("get_observations", self.name))
-        return torch.full((self.env.num_envs, self.observation_space.shape[0]), self._value)
+        return torch.full(
+            (self.env.num_envs, self.observation_space.shape[0]), self._value
+        )
 
     def reset(self, envs_idx=None):
         self.log.append(("reset", "observation", envs_idx))
@@ -114,10 +116,14 @@ class RecordingTerminationManager(BaseManager):
         super().__init__(env, type="termination")
         self.log = log
         self._terminated = (
-            terminated if terminated is not None else torch.zeros(env.num_envs, dtype=torch.bool)
+            terminated
+            if terminated is not None
+            else torch.zeros(env.num_envs, dtype=torch.bool)
         )
         self._truncated = (
-            truncated if truncated is not None else torch.zeros(env.num_envs, dtype=torch.bool)
+            truncated
+            if truncated is not None
+            else torch.zeros(env.num_envs, dtype=torch.bool)
         )
 
     def build(self):
@@ -366,7 +372,9 @@ def test_step_triggers_reset_for_envs_that_terminated_or_truncated():
     def configure(env):
         terminated = torch.tensor([False, True, False, False])
         truncated = torch.tensor([False, False, False, True])
-        RecordingTerminationManager(env, log, terminated=terminated, truncated=truncated)
+        RecordingTerminationManager(
+            env, log, terminated=terminated, truncated=truncated
+        )
         RecordingManager(env, "entity", log)
 
     env = ConfigurableEnv(configure=configure, num_envs=4)

@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .constants import HISTORY_NEWEST_FIRST
 from .errors import MalformedBundleError
 from .serialization import require
 
@@ -30,12 +29,12 @@ class ObservationEntry:
     units: str | None = None
 
     def describe(self) -> str:
-        """One-line human summary, used by the listings and the wiring stub."""
+        """One-line summary of what to supply for this entry."""
         parts = [f"{self.name} ({self.size} value{'s' if self.size != 1 else ''})"]
         if self.units:
             parts.append(f"in {self.units}")
-        if self.scale != 1.0:
-            parts.append(f"scaled by {self.scale}")
+        # No scale here: this listing is what the caller supplies, and the caller
+        # supplies raw readings. The assembler scales them afterwards.
         summary = ", ".join(parts)
         if self.description:
             summary = f"{summary} -- {self.description}"
@@ -54,7 +53,11 @@ class ObservationEntry:
         return entry
 
     def to_dict(self) -> dict[str, Any]:
-        data: dict[str, Any] = {"name": self.name, "size": self.size, "scale": self.scale}
+        data: dict[str, Any] = {
+            "name": self.name,
+            "size": self.size,
+            "scale": self.scale,
+        }
         if self.description is not None:
             data["description"] = self.description
         if self.units is not None:
@@ -68,7 +71,6 @@ class ObservationLayout:
 
     entries: tuple[ObservationEntry, ...]
     history_length: int = 1
-    history_order: str = HISTORY_NEWEST_FIRST
 
     @property
     def single_size(self) -> int:
@@ -110,22 +112,14 @@ class ObservationLayout:
             raise MalformedBundleError(
                 f"'observations.history_length' must be at least 1, got {history_length}."
             )
-        history_order = data.get("history_order", HISTORY_NEWEST_FIRST)
-        if history_order != HISTORY_NEWEST_FIRST:
-            raise MalformedBundleError(
-                f"Unsupported observation history order '{history_order}'. This runtime "
-                f"only implements '{HISTORY_NEWEST_FIRST}'."
-            )
         return cls(
             entries=entries,
             history_length=history_length,
-            history_order=history_order,
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "history_length": self.history_length,
-            "history_order": self.history_order,
             "single_size": self.single_size,
             "total_size": self.total_size,
             "entries": [entry.to_dict() for entry in self.entries],

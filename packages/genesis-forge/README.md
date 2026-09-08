@@ -169,7 +169,7 @@ class Go2CEnv(ManagedEnvironment):
         ObservationManager(
             self,
             cfg={
-                "velocity_cmd": { "fn": self.velocity_command.observation },
+                "velocity_cmd": {"fn": self.velocity_command.observation},
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
                 },

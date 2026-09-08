@@ -87,7 +87,9 @@ def test_step_accumulates_episode_data_when_logging_enabled(env):
 
 
 def test_step_does_not_accumulate_episode_data_when_logging_disabled(env):
-    mgr = RewardManager(env, cfg={"a": {"fn": echo_reward, "weight": 1.0}}, logging_enabled=False)
+    mgr = RewardManager(
+        env, cfg={"a": {"fn": echo_reward, "weight": 1.0}}, logging_enabled=False
+    )
     mgr.build()
     mgr.step()
 
@@ -100,7 +102,9 @@ reset() -- episode mean logging
 
 
 def test_reset_logs_the_mean_reward_before_and_after_weight(env):
-    mgr = RewardManager(env, cfg={"a": {"fn": echo_reward, "params": {"value": 2.0}, "weight": 3.0}})
+    mgr = RewardManager(
+        env, cfg={"a": {"fn": echo_reward, "params": {"value": 2.0}, "weight": 3.0}}
+    )
     mgr.build()
     mgr.step()  # one step: episode_data = 2.0 * 3.0 * dt, episode_seconds = dt
 

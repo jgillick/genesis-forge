@@ -4,7 +4,7 @@
 
 # Genesis Forge
 
-A robotics reinforcement learning framework built on the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator, plus the runtime that replays a trained policy on the robot itself.
+A robotics reinforcement learning framework built on the [Genesis](https://genesis-world.readthedocs.io/en/latest/) physics simulator, plus the runtime that connects a trained policy to a real robot.
 
 👋 **[Quick Start](https://docs.genesisforge.io/en/latest/guide/quick_start.html)** &nbsp;·&nbsp; 📖 **[Documentation](https://genesis-forge.readthedocs.io/en/latest/guide/index.html)** &nbsp;·&nbsp; 🤖 **[Examples](./examples)** &nbsp;·&nbsp; 🚀 **[Deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/)**
 

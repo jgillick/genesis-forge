@@ -25,7 +25,7 @@ import numpy as np
 
 from .actions import ActionDecoder
 from .archive import ensure_extracted, is_archive
-from .constants import GOLDEN_FILENAME, MANIFEST_FILENAME
+from .constants import GOLDEN_FILENAME, MANIFEST_FILENAME, POLICY_DIRNAME
 from .errors import MalformedBundleError
 from .manifest import Manifest
 from .observations import ObservationAssembler
@@ -51,22 +51,30 @@ class Bundle:
         return not self.path.is_dir()
 
     @property
-    def policy_file(self) -> str | None:
-        """Name of the exported policy inside the bundle, if it carries one."""
-        if self.manifest.policy is None:
+    def policy_files(self) -> tuple[str, ...]:
+        """Every policy file in the bundle, in the order it was exported."""
+        return self.manifest.policy
+
+    @property
+    def policy_dir(self) -> Path | None:
+        """Directory holding the policy files, if the bundle carries any."""
+        if not self.policy_files:
             return None
-        return self.manifest.policy.file
+        return self.path / POLICY_DIRNAME
 
     @property
     def policy_path(self) -> Path | None:
-        """Absolute path to the exported policy, when the bundle carries one.
+        """Absolute path to the first policy file, when the bundle carries any.
+
+        A convenience for the common single-file case; :attr:`policy_files` has
+        them all.
 
         Raises:
             MalformedBundleError: The bundle is still an archive, so its files
                 are not on disk. Use :meth:`unpacked` to get at them, or load the
                 archive with ``load_bundle`` for a directory that persists.
         """
-        if self.policy_file is None:
+        if not self.policy_files:
             return None
         if self.is_archive:
             raise MalformedBundleError(
@@ -74,7 +82,7 @@ class Bundle:
                 f"disk yet. Use `with bundle.unpacked() as directory:` to work with "
                 f"the contents, or load_bundle() to unpack it beside itself."
             )
-        return self.path / self.policy_file
+        return self.path / POLICY_DIRNAME / self.policy_files[0]
 
     @contextmanager
     def unpacked(self) -> Iterator[Path]:
@@ -105,8 +113,8 @@ class Bundle:
     def create_action_decoder(self, **kwargs: Any) -> ActionDecoder:
         """Build a new :class:`ActionDecoder` for this bundle.
 
-        Each call returns a fresh decoder with its own remembered actions and
-        delay buffers, so create one and keep it for the life of the control loop.
+        Each call returns a fresh decoder with its own remembered actions, so
+        create one and keep it for the life of the control loop.
         """
         return ActionDecoder(self.manifest.actions, **kwargs)
 
@@ -123,13 +131,20 @@ class Bundle:
             "  values you supply each tick:",
         ]
         lines.extend(f"    - {entry.describe()}" for entry in layout.entries)
-        lines.append(f"  joint targets produced ({self.manifest.num_actions}):")
+        joints = len(self.manifest.joint_names)
+        if joints == self.manifest.num_actions:
+            lines.append(f"  joint targets produced ({joints}):")
+        else:
+            lines.append(
+                f"  joint targets produced ({joints}, from "
+                f"{self.manifest.num_actions} policy outputs):"
+            )
         for spec in sorted(self.manifest.actions, key=lambda item: item.slice_start):
             joints = ", ".join(spec.joint_names)
             lines.append(f"    - [{spec.deploy_type}] {joints}")
-        if self.policy_file is not None:
-            policy_format = self.manifest.policy.format or "unknown format"
-            lines.append(f"  policy: {self.policy_file} ({policy_format})")
+        if self.policy_files:
+            files = ", ".join(f"{POLICY_DIRNAME}/{name}" for name in self.policy_files)
+            lines.append(f"  policy: {files}")
         return "\n".join(lines)
 
 
@@ -180,12 +195,12 @@ def load_bundle(path: str | Path, *, load_golden: bool = True) -> Bundle:
         with np.load(golden_path, allow_pickle=False) as archive:
             golden = {key: archive[key] for key in archive.files}
 
-    policy_file = manifest.policy.file if manifest.policy else None
-    if policy_file is not None and not (bundle_path / policy_file).is_file():
-        raise MalformedBundleError(
-            f"Manifest references policy file '{policy_file}', but it is missing from "
-            f"'{bundle_path}'."
-        )
+    for name in manifest.policy:
+        if not (bundle_path / POLICY_DIRNAME / name).is_file():
+            raise MalformedBundleError(
+                f"Manifest lists policy file '{name}', but it is missing from "
+                f"'{bundle_path}'."
+            )
 
     return Bundle(manifest=manifest, path=bundle_path, golden=golden)
 
@@ -196,11 +211,7 @@ def save_bundle(
     *,
     golden: dict[str, np.ndarray] | None = None,
 ) -> Path:
-    """Write a manifest (and optional golden samples) into a bundle directory.
-
-    Used by the exporter on the training machine; kept here so the read and write
-    sides of the schema cannot drift apart.
-    """
+    """Write a manifest (and optional golden samples) into a bundle directory."""
     path = Path(bundle_path)
     path.mkdir(parents=True, exist_ok=True)
     (path / MANIFEST_FILENAME).write_text(manifest.to_json() + "\n")

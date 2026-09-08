@@ -47,12 +47,9 @@ from .constants import (
     ARCHIVE_SUFFIX,
     EXTRACT_MARKER,
     GOLDEN_FILENAME,
-    HISTORY_NEWEST_FIRST,
     MANIFEST_FILENAME,
     MIN_SUPPORTED_SCHEMA_VERSION,
-    POLICY_FORMAT_ONNX,
-    POLICY_FORMAT_TORCHSCRIPT,
-    POLICY_STEM,
+    POLICY_DIRNAME,
     SCHEMA_VERSION,
 )
 from .decoders import AffineDecoder, ManagerDecoder
@@ -63,7 +60,7 @@ from .errors import (
     ObservationError,
     SchemaVersionError,
 )
-from .manifest import Manifest, PolicySpec, Provenance
+from .manifest import Manifest, Provenance
 from .observation_schema import ObservationEntry, ObservationLayout
 from .observations import ObservationAssembler
 
@@ -73,12 +70,9 @@ __all__ = [
     "ARCHIVE_SUFFIX",
     "EXTRACT_MARKER",
     "GOLDEN_FILENAME",
-    "HISTORY_NEWEST_FIRST",
     "MANIFEST_FILENAME",
     "MIN_SUPPORTED_SCHEMA_VERSION",
-    "POLICY_FORMAT_ONNX",
-    "POLICY_FORMAT_TORCHSCRIPT",
-    "POLICY_STEM",
+    "POLICY_DIRNAME",
     "SCHEMA_VERSION",
     "ActionDecoder",
     "ActionManagerSpec",
@@ -95,7 +89,6 @@ __all__ = [
     "ObservationEntry",
     "ObservationError",
     "ObservationLayout",
-    "PolicySpec",
     "Provenance",
     "SchemaVersionError",
     "__version__",

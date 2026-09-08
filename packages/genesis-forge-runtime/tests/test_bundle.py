@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -22,7 +23,6 @@ from genesis_forge_runtime import (
     Manifest,
     ObservationEntry,
     ObservationLayout,
-    PolicySpec,
     Provenance,
     SchemaVersionError,
     load_bundle,
@@ -54,11 +54,12 @@ def make_manifest(**overrides) -> Manifest:
                 joint_names=("hip", "knee"),
                 slice_start=0,
                 slice_end=2,
+                # Plain JSON data, as the exporter writes it.
                 config={
-                    "scale": np.array([0.5, 0.5], dtype=np.float32),
-                    "offset": np.array([0.1, -0.1], dtype=np.float32),
-                    "clip_low": np.array([-1.0, -1.0], dtype=np.float32),
-                    "clip_high": np.array([1.0, 1.0], dtype=np.float32),
+                    "scale": [0.5, 0.5],
+                    "offset": [0.1, -0.1],
+                    "clip_low": [-1.0, -1.0],
+                    "clip_high": [1.0, 1.0],
                     "mode": "affine",
                 },
             ),
@@ -67,10 +68,7 @@ def make_manifest(**overrides) -> Manifest:
             ActuatorSpec(
                 name="actuator_manager",
                 joint_names=("hip", "knee"),
-                values={
-                    "kp": np.array([50.0, 50.0], dtype=np.float32),
-                    "kv": np.array([0.5, 0.5], dtype=np.float32),
-                },
+                values={"kp": [50.0, 50.0], "kv": [0.5, 0.5]},
                 randomized=("default_pos",),
             ),
         ),
@@ -115,22 +113,14 @@ def test_round_trip_preserves_observation_layout(tmp_path):
     assert ang_vel.description == "Body-frame angular velocity"
 
 
-def test_config_numeric_lists_load_as_float32_arrays(tmp_path):
-    spec = load_bundle(write_bundle(tmp_path)).manifest.actions[0]
+def test_config_and_actuator_values_load_as_plain_json_data(tmp_path):
+    """Nothing is reshaped on load -- a decoder converts what it needs itself."""
+    manifest = load_bundle(write_bundle(tmp_path)).manifest
 
-    assert isinstance(spec.config["scale"], np.ndarray)
-    assert spec.config["scale"].dtype == np.float32
-    np.testing.assert_allclose(spec.config["scale"], [0.5, 0.5])
-    # Non-numeric config values are passed through untouched.
-    assert spec.config["mode"] == "affine"
-
-
-def test_actuator_values_load_as_float32_arrays(tmp_path):
-    actuator = load_bundle(write_bundle(tmp_path)).manifest.actuators[0]
-
-    assert actuator.values["kp"].dtype == np.float32
-    np.testing.assert_allclose(actuator.values["kp"], [50.0, 50.0])
-    assert actuator.randomized == ("default_pos",)
+    assert manifest.actions[0].config["scale"] == [0.5, 0.5]
+    assert manifest.actions[0].config["mode"] == "affine"
+    assert manifest.actuators[0].values["kp"] == [50.0, 50.0]
+    assert manifest.actuators[0].randomized == ("default_pos",)
 
 
 def test_manifest_json_is_human_readable(tmp_path):
@@ -293,43 +283,28 @@ def test_joint_count_must_match_slice_width(tmp_path):
     assert "mismatched" in str(error.value)
 
 
-def test_unsupported_history_order_is_rejected(tmp_path):
-    path = write_bundle(tmp_path)
-    manifest_file = path / "manifest.json"
-    data = json.loads(manifest_file.read_text())
-    data["observations"]["history_order"] = "oldest_first"
-    manifest_file.write_text(json.dumps(data))
-
-    with pytest.raises(MalformedBundleError) as error:
-        load_bundle(path)
-
-    assert "oldest_first" in str(error.value)
-
-
-"""Optional bundle contents"""
-
-
 def test_bundle_without_policy_loads(tmp_path):
     bundle = load_bundle(write_bundle(tmp_path))
 
-    assert bundle.manifest.policy is None
+    assert bundle.manifest.policy == ()
     assert bundle.policy_path is None
     assert bundle.golden is None
 
 
 def test_bundle_with_policy_resolves_its_path(tmp_path):
-    manifest = make_manifest(policy=PolicySpec(file="policy.onnx"))
+    manifest = make_manifest(policy=("policy.onnx",))
     path = write_bundle(tmp_path, manifest)
-    (path / "policy.onnx").write_bytes(b"not-a-real-onnx-file")
+    (path / "policy").mkdir()
+    (path / "policy" / "policy.onnx").write_bytes(b"not-a-real-onnx-file")
 
     bundle = load_bundle(path)
 
-    assert bundle.policy_path == path / "policy.onnx"
-    assert bundle.manifest.policy.input_name == "obs"
+    assert bundle.policy_path == path / "policy" / "policy.onnx"
+    assert bundle.policy_files == ("policy.onnx",)
 
 
 def test_manifest_referencing_a_missing_policy_file_raises(tmp_path):
-    manifest = make_manifest(policy=PolicySpec(file="policy.onnx"))
+    manifest = make_manifest(policy=("policy.onnx",))
     path = write_bundle(tmp_path, manifest)
     # Deliberately do not write policy.onnx.
 
@@ -353,7 +328,9 @@ def test_golden_samples_round_trip(tmp_path):
 
 
 def test_golden_samples_can_be_skipped(tmp_path):
-    path = write_bundle(tmp_path, golden={"observations": np.zeros(3, dtype=np.float32)})
+    path = write_bundle(
+        tmp_path, golden={"observations": np.zeros(3, dtype=np.float32)}
+    )
 
     assert load_bundle(path, load_golden=False).golden is None
 
@@ -405,6 +382,83 @@ def test_importing_the_runtime_does_not_pull_in_torch_or_genesis():
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "", f"heavy modules leaked in: {result.stdout.strip()}"
+    assert result.stdout.strip() == "", (
+        f"heavy modules leaked in: {result.stdout.strip()}"
+    )
 
 
+"""Action groups in the manifest"""
+
+
+def grouped_manager(**overrides):
+    defaults = dict(
+        name="wheels",
+        deploy_type="velocity",
+        joint_names=("fr", "br", "fl", "bl"),
+        slice_start=0,
+        slice_end=2,
+        config={"scale": [1.0, 1.0, -1.0, -1.0]},
+        joint_action_index=(0, 0, 1, 1),
+    )
+    defaults.update(overrides)
+    return ActionManagerSpec(**defaults)
+
+
+def test_the_mapping_round_trips_as_integers(tmp_path):
+    """Indices stay integers -- they address joints, they are not decode values."""
+    manifest = make_manifest(actions=(grouped_manager(),))
+    path = write_bundle(tmp_path, manifest)
+
+    raw = json.loads((path / "manifest.json").read_text())
+    stored = raw["actions"]["managers"][0]["joint_action_index"]
+    assert stored == [0, 0, 1, 1]
+    assert all(isinstance(index, int) for index in stored)
+
+    loaded = load_bundle(path).manifest.actions[0]
+    assert loaded.joint_action_index == (0, 0, 1, 1)
+    assert loaded.num_actions == 2
+    assert loaded.num_joints == 4
+
+
+def test_a_mapping_that_does_not_cover_every_joint_is_refused(tmp_path):
+    with pytest.raises(MalformedBundleError) as error:
+        write_bundle(
+            tmp_path,
+            make_manifest(actions=(grouped_manager(joint_action_index=(0, 0, 1)),)),
+        )
+        load_bundle(tmp_path / "bundle")
+
+    assert "maps" in str(error.value)
+
+
+def test_a_mapping_pointing_outside_the_slice_is_refused(tmp_path):
+    path = write_bundle(
+        tmp_path,
+        make_manifest(actions=(grouped_manager(joint_action_index=(0, 0, 1, 5)),)),
+    )
+
+    with pytest.raises(MalformedBundleError) as error:
+        load_bundle(path)
+
+    assert "outside its slice" in str(error.value)
+
+
+def test_a_non_integer_mapping_is_refused(tmp_path):
+    path = write_bundle(tmp_path, make_manifest(actions=(grouped_manager(),)))
+    manifest_file = path / "manifest.json"
+    data = json.loads(manifest_file.read_text())
+    data["actions"]["managers"][0]["joint_action_index"] = ["a", "b", "c", "d"]
+    manifest_file.write_text(json.dumps(data))
+
+    with pytest.raises(MalformedBundleError) as error:
+        load_bundle(path)
+
+    assert "non-integer" in str(error.value)
+
+
+def test_provenance_refuses_what_the_manifest_cannot_hold():
+    """The invariant belongs to the field's owner, so every caller gets it."""
+    with pytest.raises(TypeError) as error:
+        Provenance(additional={"checkpoint": Path("logs/model.pt")})
+
+    assert "not JSON serializable" in str(error.value)

@@ -162,7 +162,11 @@ class PositionActionManager(AffineDofActionManager):
             self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
         if self._soft_limit_scale_factor != 1.0:
             midpoint = (self._clip_values[:, 0] + self._clip_values[:, 1]) * 0.5
-            half_range = (self._clip_values[:, 1] - self._clip_values[:, 0]) * 0.5 * self._soft_limit_scale_factor
+            half_range = (
+                (self._clip_values[:, 1] - self._clip_values[:, 0])
+                * 0.5
+                * self._soft_limit_scale_factor
+            )
             self._clip_values[:, 0] = midpoint - half_range
             self._clip_values[:, 1] = midpoint + half_range
 

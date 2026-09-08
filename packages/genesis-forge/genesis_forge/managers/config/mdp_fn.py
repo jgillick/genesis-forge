@@ -47,7 +47,7 @@ class MdpFn:
     _building: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs) -> None:
-        """ Enforces the @dataclass decorator on subclasses. """
+        """Enforces the @dataclass decorator on subclasses."""
         super().__init_subclass__(**kwargs)
         dataclasses.dataclass(kw_only=True, eq=False)(cls)
 
@@ -127,9 +127,7 @@ class MdpFn:
         # Check if we're trying to set unknown params
         unknown = sorted(set(params) - self._param_names())
         if unknown:
-            raise AttributeError(
-                f"{type(self).__name__} has no param(s) {unknown!r}. "
-            )
+            raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
 
         # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
         for name, value in params.items():

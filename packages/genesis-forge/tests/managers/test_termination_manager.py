@@ -109,7 +109,8 @@ step() -- env.extras
 
 def test_step_writes_terminations_and_time_outs_to_env_extras(env):
     mgr = TerminationManager(
-        env, term_cfg={"a": {"fn": const, "params": {"value": [True, False, False, False]}}}
+        env,
+        term_cfg={"a": {"fn": const, "params": {"value": [True, False, False, False]}}},
     )
     mgr.build()
     mgr.step()
@@ -125,7 +126,8 @@ step() -- episode logging
 
 def test_step_logs_the_mean_value_when_any_env_is_done(env):
     mgr = TerminationManager(
-        env, term_cfg={"a": {"fn": const, "params": {"value": [True, False, False, False]}}}
+        env,
+        term_cfg={"a": {"fn": const, "params": {"value": [True, False, False, False]}}},
     )
     mgr.build()
     mgr.step()

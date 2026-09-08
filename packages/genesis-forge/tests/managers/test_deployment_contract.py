@@ -247,7 +247,9 @@ def test_a_partially_clipped_velocity_manager_keeps_both_sides(env):
 def test_every_builtin_action_manager_publishes_a_distinct_type(env):
     managers = [
         PositionActionManager(env, actuator_manager=make_actuator_manager()),
-        PositionWithinLimitsActionManager(env, actuator_manager=make_actuator_manager()),
+        PositionWithinLimitsActionManager(
+            env, actuator_manager=make_actuator_manager()
+        ),
         VelocityActionManager(env, actuator_manager=make_actuator_manager()),
     ]
     for manager in managers:
@@ -381,7 +383,11 @@ def test_divergent_environments_are_refused_with_actionable_guidance():
 def test_an_unexpected_shape_is_refused():
     with pytest.raises(ValueError) as error:
         to_nominal_array(
-            torch.zeros(2, 3, 4), name="scale", num_joints=2, num_envs=4, manager_name="X"
+            torch.zeros(2, 3, 4),
+            name="scale",
+            num_joints=2,
+            num_envs=4,
+            manager_name="X",
         )
 
     assert "scale" in str(error.value)
@@ -463,7 +469,6 @@ def test_observation_export_records_history_configuration(env):
     layout = manager.get_deployment_layout()
 
     assert layout["history_length"] == 3
-    assert layout["history_order"] == "newest_first"
 
 
 def test_zero_width_entries_are_excluded(env):

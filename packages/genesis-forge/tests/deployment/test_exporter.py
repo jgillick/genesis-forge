@@ -5,7 +5,6 @@ runtime, and that a failed export leaves nothing behind.
 """
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -76,7 +75,9 @@ def test_export_stamps_what_it_can_measure_itself(deployable_env, tmp_path):
 
 
 def test_export_ships_golden_samples(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", parity_ticks=5, verbose=False).path
+    path = export(
+        deployable_env, tmp_path / "bundle", parity_ticks=5, verbose=False
+    ).path
 
     bundle = load_bundle(path)
 
@@ -85,7 +86,9 @@ def test_export_ships_golden_samples(deployable_env, tmp_path):
 
 
 def test_the_manifest_is_readable_json(deployable_env, tmp_path):
-    path = export(deployable_env, tmp_path / "bundle", archive=False, verbose=False).path
+    path = export(
+        deployable_env, tmp_path / "bundle", archive=False, verbose=False
+    ).path
 
     data = json.loads((path / "manifest.json").read_text())
 
@@ -145,7 +148,9 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
     torch_targets = action_manager.process_actions(
         torch.as_tensor(np.tile(raw, (deployable_env.num_envs, 1)), dtype=torch.float32)
     )[0]
-    np.testing.assert_allclose(numpy_targets, torch_targets.numpy(), rtol=1.3e-6, atol=1e-5)
+    np.testing.assert_allclose(
+        numpy_targets, torch_targets.numpy(), rtol=1.3e-6, atol=1e-5
+    )
 
 
 def test_golden_samples_replay_through_the_loaded_runtime(deployable_env, tmp_path):
@@ -316,7 +321,9 @@ def test_a_supplied_policy_file_is_copied_into_the_bundle(deployable_env, tmp_pa
     policy = tmp_path / "policy.onnx"
     policy.write_bytes(b"stand-in for an exported graph")
 
-    path = export(deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False).path
+    path = export(
+        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
+    ).path
 
     bundle = load_bundle(path)
     assert bundle.policy_path is not None
@@ -335,7 +342,10 @@ def test_two_action_managers_are_captured_with_their_slices(make_env, tmp_path):
     env.actuator_manager = FakeActuatorManager(num_envs=env.num_envs)
     env.managers["actuator"].append(env.actuator_manager)
     env.hips = PositionActionManager(
-        env, actuator_manager=env.actuator_manager, actuator_joints=[".*_hip"], scale=0.5
+        env,
+        actuator_manager=env.actuator_manager,
+        actuator_joints=[".*_hip"],
+        scale=0.5,
     )
     env.knees = PositionWithinLimitsActionManager(
         env, actuator_manager=env.actuator_manager, actuator_joints=[".*_knee"]
@@ -356,7 +366,10 @@ def test_two_action_managers_are_captured_with_their_slices(make_env, tmp_path):
 
 
 """
-Packaging a policy of any format
+Packaging a policy
+
+The bundle carries the policy files under the names it was given, in a `policy/`
+directory. It never opens them, so it records nothing about what they are.
 """
 
 
@@ -367,138 +380,38 @@ def a_torchscript_policy(tmp_path):
     return path
 
 
-def test_a_torchscript_policy_keeps_its_extension(deployable_env, tmp_path):
-    """The bundle must not rename a torch archive to policy.onnx.
-
-    Its format stays unrecorded: a .pt is more often a state_dict than a scripted
-    module, and guessing wrong is worse than saying nothing.
-    """
+def test_the_policy_keeps_the_name_it_was_given(deployable_env, tmp_path):
     policy = a_torchscript_policy(tmp_path)
 
-    path = export(
-        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    ).path
-
-    bundle = load_bundle(path)
-    assert bundle.policy_path.name == "policy.pt"
-    assert bundle.manifest.policy.format is None
-
-
-def test_an_onnx_policy_is_recorded_as_onnx(deployable_env, tmp_path):
-    policy = tmp_path / "trained.onnx"
-    policy.write_bytes(b"\x08\x07not-really-but-not-a-zip-either")
-
-    path = export(
-        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    ).path
-
-    bundle = load_bundle(path)
-    assert bundle.policy_path.name == "policy.onnx"
-    assert bundle.manifest.policy.format == "onnx"
-
-
-def test_describe_reports_the_policy_format(deployable_env, tmp_path):
-    policy = tmp_path / "trained.onnx"
-    policy.write_bytes(b"\x08\x07 graph")
     bundle = export(
-        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    )
-
-    assert "policy.onnx (onnx)" in bundle.describe()
-
-
-def test_an_ambiguous_extension_is_described_as_unknown(deployable_env, tmp_path):
-    """Better than telling an operator it holds something it may not."""
-    policy = a_torchscript_policy(tmp_path)
-    bundle = export(
-        deployable_env, tmp_path / "bundle", policy_path=policy, verbose=False
-    )
-
-    assert "policy.pt (unknown format)" in bundle.describe()
-
-
-def test_additional_provenance_is_recorded_verbatim(deployable_env, tmp_path):
-    """What the developer states is kept apart from what the exporter measured."""
-    path = export(
         deployable_env,
         tmp_path / "bundle",
-        additional_provenance={
-            "checkpoint": "logs/my_run/model_500.pt",
-            "framework": "rsl_rl",
-            "framework_version": "5.4.2",
-        },
+        policy_path=policy,
+        archive=False,
         verbose=False,
-    ).path
-
-    provenance = load_bundle(path).manifest.provenance
-
-    assert provenance.additional == {
-        "checkpoint": "logs/my_run/model_500.pt",
-        "framework": "rsl_rl",
-        "framework_version": "5.4.2",
-    }
-    assert provenance.genesis_forge_version  # still measured, not supplied
-
-
-def test_a_path_is_converted_rather_than_refused(deployable_env, tmp_path):
-    """A checkpoint path is the common case, and str() loses nothing."""
-    path = export(
-        deployable_env,
-        tmp_path / "bundle",
-        additional_provenance={"checkpoint": Path("logs/my_run/model_500.pt")},
-        verbose=False,
-    ).path
-
-    assert load_bundle(path).manifest.provenance.additional["checkpoint"] == str(
-        Path("logs/my_run/model_500.pt")
     )
 
-
-def test_a_value_that_cannot_be_written_is_refused_before_the_gate_runs(
-    deployable_env, tmp_path
-):
-    """Failing at write time would waste the parity run and confuse the cause."""
-    destination = tmp_path / "bundle"
-
-    with pytest.raises(ExportError) as error:
-        export(
-            deployable_env,
-            destination,
-            additional_provenance={"weights": torch.ones(3)},
-            verbose=False,
-        )
-
-    message = str(error.value)
-    assert "weights" in message
-    assert "Tensor" in message
-    assert not destination.exists()
+    assert bundle.manifest.policy == ("trained.pt",)
+    assert bundle.policy_path.name == "trained.pt"
+    assert bundle.policy_path.parent.name == "policy"
+    assert bundle.policy_path.read_bytes() == policy.read_bytes()
 
 
-def test_a_non_string_key_is_refused(deployable_env, tmp_path):
-    with pytest.raises(ExportError) as error:
-        export(
-            deployable_env,
-            tmp_path / "bundle",
-            additional_provenance={42: "nope"},
-            verbose=False,
-        )
+def test_describe_points_at_the_policy(deployable_env, tmp_path):
+    bundle = export(
+        deployable_env,
+        tmp_path / "bundle",
+        policy_path=a_torchscript_policy(tmp_path),
+        verbose=False,
+    )
 
-    assert "keys must be strings" in str(error.value)
-
-
-"""
-Policies that are more than one file
-
-ONNX keeps tensors above a size threshold in a companion file, and OpenVINO always
-splits into two. Which files belong together is the caller's to state -- the naming
-differs per format, and guessing produced a bundle whose policy could not load.
-"""
+    assert "policy/trained.pt" in bundle.describe()
 
 
-def test_a_listed_companion_is_copied_under_its_own_name(deployable_env, tmp_path):
-    """The entry point is renamed; companions are not, since graphs refer to them."""
+def test_every_listed_file_is_copied(deployable_env, tmp_path):
+    """A graph and its weights, or OpenVINO's .xml and .bin."""
     graph = tmp_path / "trained.onnx"
-    graph.write_bytes(b"\x08\x07 graph")
+    graph.write_bytes(b"graph")
     weights = tmp_path / "trained.onnx.data"
     weights.write_bytes(b"the weights")
 
@@ -510,28 +423,14 @@ def test_a_listed_companion_is_copied_under_its_own_name(deployable_env, tmp_pat
         verbose=False,
     ).path
 
-    assert (path / "policy.onnx").read_bytes() == b"\x08\x07 graph"
-    assert (path / "trained.onnx.data").read_bytes() == b"the weights"
-    assert load_bundle(path).manifest.policy.file == "policy.onnx"
-
-
-def test_a_two_file_format_the_library_knows_nothing_about_works(
-    deployable_env, tmp_path
-):
-    """OpenVINO splits into .xml and .bin -- no naming convention connects them."""
-    xml = tmp_path / "trained.xml"
-    xml.write_text("<net/>")
-    binary = tmp_path / "trained.bin"
-    binary.write_bytes(b"weights")
-
-    path = export(
-        deployable_env, tmp_path / "bundle", policy_path=[xml, binary], archive=False, verbose=False
-    ).path
-
-    assert (path / "policy.xml").read_text() == "<net/>"
-    assert (path / "trained.bin").read_bytes() == b"weights"
-    # An extension the library has no name for is recorded as unknown, not refused.
-    assert load_bundle(path).manifest.policy.format is None
+    assert sorted(item.name for item in (path / "policy").iterdir()) == [
+        "trained.onnx",
+        "trained.onnx.data",
+    ]
+    assert load_bundle(path).manifest.policy == (
+        "trained.onnx",
+        "trained.onnx.data",
+    )
 
 
 def test_a_file_beside_the_policy_is_not_swept_in(deployable_env, tmp_path):
@@ -541,14 +440,14 @@ def test_a_file_beside_the_policy_is_not_swept_in(deployable_env, tmp_path):
     (tmp_path / "trained.onnx.data").write_bytes(b"not listed")
 
     path = export(
-        deployable_env, tmp_path / "bundle", policy_path=graph, archive=False, verbose=False
+        deployable_env,
+        tmp_path / "bundle",
+        policy_path=graph,
+        archive=False,
+        verbose=False,
     ).path
 
-    assert sorted(item.name for item in path.iterdir()) == [
-        "golden.npz",
-        "manifest.json",
-        "policy.onnx",
-    ]
+    assert [item.name for item in (path / "policy").iterdir()] == ["trained.onnx"]
 
 
 def test_a_listed_file_that_is_missing_aborts_the_export(deployable_env, tmp_path):
@@ -568,50 +467,31 @@ def test_a_listed_file_that_is_missing_aborts_the_export(deployable_env, tmp_pat
     assert not destination.exists()
 
 
-def test_an_empty_policy_list_is_refused(deployable_env, tmp_path):
-    """Almost certainly a mistake, and silently exporting nothing would hide it."""
-    with pytest.raises(ExportError) as error:
-        export(deployable_env, tmp_path / "bundle", policy_path=[], verbose=False)
+def test_an_empty_policy_list_means_no_policy(deployable_env, tmp_path):
+    bundle = export(deployable_env, tmp_path / "bundle", policy_path=[], verbose=False)
 
-    assert "empty list" in str(error.value)
+    assert bundle.manifest.policy == ()
+    assert bundle.policy_path is None
 
 
-def test_files_that_would_share_a_name_in_the_bundle_are_refused(
-    deployable_env, tmp_path
-):
-    graph = tmp_path / "trained.onnx"
-    graph.write_bytes(b"graph")
-    nested = tmp_path / "nested"
-    nested.mkdir()
-    clash = nested / "policy.onnx"
-    clash.write_bytes(b"would overwrite the entry point")
+def test_files_that_would_share_a_name_are_refused(deployable_env, tmp_path):
+    """They keep their own names, so two of the same name would overwrite."""
+    first = tmp_path / "a"
+    first.mkdir()
+    (first / "model.onnx").write_bytes(b"one")
+    second = tmp_path / "b"
+    second.mkdir()
+    (second / "model.onnx").write_bytes(b"two")
 
     with pytest.raises(ExportError) as error:
         export(
             deployable_env,
             tmp_path / "bundle",
-            policy_path=[graph, clash],
+            policy_path=[first / "model.onnx", second / "model.onnx"],
             verbose=False,
         )
 
-    assert "policy.onnx" in str(error.value)
-
-
-def test_a_self_contained_policy_copies_nothing_extra(deployable_env, tmp_path):
-    source = tmp_path / "trained.pt"
-    torch.jit.save(
-        torch.jit.trace(torch.nn.Linear(4, 2).eval(), torch.zeros(1, 4)), str(source)
-    )
-
-    path = export(
-        deployable_env, tmp_path / "bundle", policy_path=source, archive=False, verbose=False
-    ).path
-
-    assert sorted(item.name for item in path.iterdir()) == [
-        "golden.npz",
-        "manifest.json",
-        "policy.pt",
-    ]
+    assert "model.onnx" in str(error.value)
 
 
 """
@@ -651,7 +531,9 @@ def test_an_archive_holds_exactly_what_the_directory_would(deployable_env, tmp_p
     directory = export(
         deployable_env, tmp_path / "as_dir", archive=False, verbose=False
     ).path
-    packed = export(deployable_env, tmp_path / "as_zip", archive=True, verbose=False).path
+    packed = export(
+        deployable_env, tmp_path / "as_zip", archive=True, verbose=False
+    ).path
 
     with zipfile.ZipFile(packed) as archive:
         assert sorted(archive.namelist()) == sorted(
@@ -665,9 +547,7 @@ def test_an_existing_directory_is_not_replaced_by_an_archive(deployable_env, tmp
     clash.mkdir()
 
     with pytest.raises(ExportError) as error:
-        export(
-            deployable_env, clash, archive=True, overwrite=True, verbose=False
-        )
+        export(deployable_env, clash, archive=True, overwrite=True, verbose=False)
 
     assert "is a directory" in str(error.value)
 
@@ -779,7 +659,7 @@ def test_describing_an_archive_does_not_unpack_it(deployable_env, tmp_path):
 
     summary = bundle.describe()
 
-    assert "policy.onnx (onnx)" in summary
+    assert "policy/trained.onnx" in summary
     assert sorted(item.name for item in tmp_path.iterdir()) == [
         "my_policy.gfb",
         "trained.onnx",
@@ -811,7 +691,7 @@ def test_unpacked_yields_the_contents_and_cleans_up_after_itself(
     )
 
     with bundle.unpacked() as directory:
-        assert (directory / "policy.onnx").read_bytes() == b"\x08\x07 graph"
+        assert (directory / "policy" / "trained.onnx").read_bytes() == b"\x08\x07 graph"
         assert (directory / "manifest.json").is_file()
         scratch = directory
 

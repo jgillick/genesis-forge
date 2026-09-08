@@ -20,7 +20,9 @@ from genesis_forge.managers.action.base import BaseActionManager
 
 
 class FakeActuatorManager:
-    def __init__(self, dofs, default_pos, lower, upper, position=None, velocity=None, force=None):
+    def __init__(
+        self, dofs, default_pos, lower, upper, position=None, velocity=None, force=None
+    ):
         self.dofs = dofs
         self._idx_to_col = {idx: col for col, idx in enumerate(dofs.values())}
         self.default_dofs_pos = default_pos
@@ -62,7 +64,9 @@ def make_actuator_manager(num_envs=4, position=None, velocity=None, force=None):
     default_pos = torch.tensor([[0.1, 0.2, 0.3]] * num_envs)
     lower = torch.tensor([-1.0, -1.5, -2.0])
     upper = torch.tensor([1.0, 1.5, 2.0])
-    return FakeActuatorManager(dofs, default_pos, lower, upper, position, velocity, force)
+    return FakeActuatorManager(
+        dofs, default_pos, lower, upper, position, velocity, force
+    )
 
 
 """
@@ -77,7 +81,9 @@ def test_requires_an_actuator_manager(env):
 
 def test_build_filters_dofs_by_pattern_preserving_actuator_order(env):
     actuator = make_actuator_manager()
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
 
     assert mgr.dofs == {"FL_hip": 100, "FL_knee": 101}
@@ -96,7 +102,9 @@ def test_build_default_joints_selects_every_dof(env):
 
 def test_action_space_shape_matches_num_actions(env):
     actuator = make_actuator_manager()
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
 
     assert mgr.action_space.shape == (2,)
@@ -109,7 +117,9 @@ BaseActionManager -- actions buffers
 
 def test_actions_default_to_zero_before_any_step(env):
     actuator = make_actuator_manager()
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
 
     assert torch.equal(mgr.actions, torch.zeros((env.num_envs, 2)))
@@ -173,7 +183,9 @@ def test_step_delays_actions_by_delay_step(env):
 
 def test_reset_without_delay_step_is_a_noop(env):
     actuator = make_actuator_manager()
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
     mgr.reset(None)  # must not raise
 
@@ -191,8 +203,14 @@ def test_get_actions_dict_maps_dof_names_to_python_floats(env):
     mgr.build()
     mgr.step(torch.tensor([[0.1, 0.2], [0.3, 0.4]]))
 
-    assert mgr.get_actions_dict(0) == {"FL_hip": pytest.approx(0.1), "FL_knee": pytest.approx(0.2)}
-    assert mgr.get_actions_dict(1) == {"FL_hip": pytest.approx(0.3), "FL_knee": pytest.approx(0.4)}
+    assert mgr.get_actions_dict(0) == {
+        "FL_hip": pytest.approx(0.1),
+        "FL_knee": pytest.approx(0.2),
+    }
+    assert mgr.get_actions_dict(1) == {
+        "FL_hip": pytest.approx(0.3),
+        "FL_knee": pytest.approx(0.4),
+    }
 
 
 """
@@ -206,11 +224,17 @@ def test_get_dofs_wrappers_use_the_filtered_dofs_idx(env):
         velocity=torch.tensor([[4.0, 5.0, 6.0]] * env.num_envs),
         force=torch.tensor([[7.0, 8.0, 9.0]] * env.num_envs),
     )
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
 
-    assert torch.equal(mgr.get_dofs_position(), torch.tensor([[1.0, 2.0]] * env.num_envs))
-    assert torch.equal(mgr.get_dofs_velocity(), torch.tensor([[4.0, 5.0]] * env.num_envs))
+    assert torch.equal(
+        mgr.get_dofs_position(), torch.tensor([[1.0, 2.0]] * env.num_envs)
+    )
+    assert torch.equal(
+        mgr.get_dofs_velocity(), torch.tensor([[4.0, 5.0]] * env.num_envs)
+    )
     assert torch.equal(mgr.get_dofs_force(), torch.tensor([[7.0, 8.0]] * env.num_envs))
 
 
@@ -237,7 +261,9 @@ PositionActionManager -- default_dofs_pos and construction validation
 
 def test_default_dofs_pos_uses_the_actuator_dof_filter(env):
     actuator = make_actuator_manager()
-    mgr = PositionActionManager(env, actuator_manager=actuator, actuator_joints=["FR_.*"])
+    mgr = PositionActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FR_.*"]
+    )
     mgr.build()
 
     assert torch.allclose(mgr.default_dofs_pos, torch.tensor([[0.3]] * env.num_envs))
@@ -245,8 +271,12 @@ def test_default_dofs_pos_uses_the_actuator_dof_filter(env):
 
 def test_use_default_offset_with_nonzero_offset_raises(env):
     actuator = make_actuator_manager()
-    with pytest.raises(ValueError, match="Cannot set both use_default_offset and offset"):
-        PositionActionManager(env, actuator_manager=actuator, use_default_offset=True, offset=1.0)
+    with pytest.raises(
+        ValueError, match="Cannot set both use_default_offset and offset"
+    ):
+        PositionActionManager(
+            env, actuator_manager=actuator, use_default_offset=True, offset=1.0
+        )
 
 
 """
@@ -333,7 +363,9 @@ PositionWithinLimitsActionManager -- maps [-1, 1] to the DOF's position limits
 
 def test_within_limits_maps_full_range_to_dof_limits(env):
     actuator = make_actuator_manager()  # FL_hip [-1, 1], FL_knee [-1.5, 1.5]
-    mgr = PositionWithinLimitsActionManager(env, actuator_manager=actuator, actuator_joints=["FL_.*"])
+    mgr = PositionWithinLimitsActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_.*"]
+    )
     mgr.build()
 
     processed = mgr.process_actions(torch.tensor([[1.0, -1.0]] * env.num_envs))
@@ -345,7 +377,9 @@ def test_within_limits_maps_full_range_to_dof_limits(env):
 
 def test_within_limits_clamps_actions_outside_the_unit_range(env):
     actuator = make_actuator_manager()
-    mgr = PositionWithinLimitsActionManager(env, actuator_manager=actuator, actuator_joints=["FL_hip"])
+    mgr = PositionWithinLimitsActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_hip"]
+    )
     mgr.build()
 
     processed = mgr.process_actions(torch.tensor([[5.0]] * env.num_envs))
@@ -387,7 +421,9 @@ VelocityActionManager -- construction, DOF filtering, and clip validation
 
 def test_velocity_manager_clip_defaults_to_unbounded(env):
     actuator = make_actuator_manager()
-    mgr = VelocityActionManager(env, actuator_manager=actuator, actuator_joints=["FL_hip"])
+    mgr = VelocityActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_hip"]
+    )
     mgr.build()
 
     processed = mgr.process_actions(torch.tensor([[1e9]] * env.num_envs))
@@ -594,9 +630,7 @@ def test_action_groups_send_one_action_to_every_dof_in_the_group(env):
     mgr.step(torch.tensor([[0.5, -0.5]] * env.num_envs))
 
     # The first action drives both FL joints, the second drives FR on its own
-    assert torch.allclose(
-        mgr.actions, torch.tensor([[0.5, 0.5, -0.5]] * env.num_envs)
-    )
+    assert torch.allclose(mgr.actions, torch.tensor([[0.5, 0.5, -0.5]] * env.num_envs))
 
 
 def test_action_groups_accept_regular_expressions(env):
@@ -610,9 +644,7 @@ def test_action_groups_accept_regular_expressions(env):
 
     mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
 
-    assert torch.allclose(
-        mgr.actions, torch.tensor([[1.0, 1.0, 2.0]] * env.num_envs)
-    )
+    assert torch.allclose(mgr.actions, torch.tensor([[1.0, 1.0, 2.0]] * env.num_envs))
 
 
 def test_action_groups_reject_a_joint_left_out_of_every_group(env):

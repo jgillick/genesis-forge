@@ -26,9 +26,9 @@ class FakeEntity:
         self._size = size
         self.morph = morph
         half = yaw / 2.0
-        self._quat = torch.tensor(
-            [[math.cos(half), 0.0, 0.0, math.sin(half)]]
-        ).repeat(pos.shape[0], 1)
+        self._quat = torch.tensor([[math.cos(half), 0.0, 0.0, math.sin(half)]]).repeat(
+            pos.shape[0], 1
+        )
 
     def get_pos(self):
         return self._pos
@@ -40,7 +40,9 @@ class FakeEntity:
         """The bounding box of the footprint, centered on the entity, per environment."""
         half = self._size / 2
         corners = torch.tensor([[-half, -half, 0.0], [half, half, 0.0]])
-        return corners.unsqueeze(0).repeat(self._pos.shape[0], 1, 1) + self._pos.unsqueeze(1)
+        return corners.unsqueeze(0).repeat(
+            self._pos.shape[0], 1, 1
+        ) + self._pos.unsqueeze(1)
 
 
 def fake_morph(morph_cls):
@@ -72,7 +74,9 @@ class FakeScene:
 
 def make_manager(env, entity=None, scene_entities=None, **kwargs):
     """A built manager over a fixed goal range, so sampled goals are deterministic."""
-    kwargs.setdefault("range", {"x": (2.0, 2.0), "y": (0.0, 0.0), "heading": (0.0, 0.0)})
+    kwargs.setdefault(
+        "range", {"x": (2.0, 2.0), "y": (0.0, 0.0), "heading": (0.0, 0.0)}
+    )
     if entity is None:
         entity = FakeEntity(num_envs=env.num_envs)
     env.robot = entity
@@ -138,9 +142,7 @@ def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
 
     quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
 
-    assert math.isclose(
-        heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5
-    )
+    assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)
 
 
 def test_shortest_turn_takes_the_short_way_around():
@@ -169,7 +171,9 @@ distance_to_goal / heading_error / goal_reached
 
 
 def test_distance_to_goal_is_the_xy_distance(env):
-    entity = FakeEntity(pos=torch.tensor([[0.0, 0.0, 0.3], [2.0, 0.0, 0.3]]), num_envs=2)
+    entity = FakeEntity(
+        pos=torch.tensor([[0.0, 0.0, 0.3], [2.0, 0.0, 0.3]]), num_envs=2
+    )
     env.num_envs = 2
     mgr = make_manager(env, entity=entity)
     mgr.reset()
@@ -347,9 +351,7 @@ def test_the_goal_vector_is_in_the_heading_frame_not_the_body_frame(env):
 
     # The goal is 2m straight ahead; the body frame would have reported 1.88m of it
     assert torch.allclose(goal_vec, torch.tensor([[2.0, 0.0]]), atol=1e-5)
-    assert torch.allclose(
-        torch.norm(goal_vec, dim=-1), mgr.distance_to_goal, atol=1e-5
-    )
+    assert torch.allclose(torch.norm(goal_vec, dim=-1), mgr.distance_to_goal, atol=1e-5)
 
 
 def test_observation_keeps_the_bearing_at_full_strength_when_close(env):
@@ -370,7 +372,9 @@ def test_observation_keeps_the_bearing_at_full_strength_when_close(env):
     obs_near = mgr.observation(env)
 
     assert obs_near[0, 2] < 0.03  # the goal vector has all but vanished
-    assert torch.allclose(obs_near[0, 3:5], bearing_far, atol=1e-4)  # the bearing has not
+    assert torch.allclose(
+        obs_near[0, 3:5], bearing_far, atol=1e-4
+    )  # the bearing has not
 
 
 def test_bearing_error_is_the_turn_needed_to_point_at_the_goal(env):
@@ -451,9 +455,7 @@ def test_position_only_goals_ignore_a_heading_threshold(env):
     """The threshold is meaningless without a heading, rather than an error."""
     entity = FakeEntity(pos=torch.tensor([[2.0, 0.0, 0.0]]), yaw=math.pi, num_envs=1)
     env.num_envs = 1
-    mgr = make_position_only_manager(
-        env, entity=entity, heading_reached_threshold=0.1
-    )
+    mgr = make_position_only_manager(env, entity=entity, heading_reached_threshold=0.1)
     mgr.reset()
 
     assert mgr.goal_reached.tolist() == [True]
@@ -480,7 +482,9 @@ def test_reset_samples_goals_within_the_range(env):
 
 def test_step_resamples_only_the_environments_that_reached_their_goal(env):
     env.num_envs = 2
-    entity = FakeEntity(pos=torch.tensor([[2.0, 0.0, 0.0], [0.0, 0.0, 0.0]]), num_envs=2)
+    entity = FakeEntity(
+        pos=torch.tensor([[2.0, 0.0, 0.0], [0.0, 0.0, 0.0]]), num_envs=2
+    )
     mgr = make_manager(
         env,
         entity=entity,

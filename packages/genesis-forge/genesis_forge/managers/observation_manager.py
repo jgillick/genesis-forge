@@ -13,7 +13,9 @@ from genesis_forge.managers.config import ConfigItemDict, ObservationConfigItem
 
 
 class ObservationFn(Protocol):
-    def __call__(self, env: GenesisEnv, *params: Any, **kwargs: Any) -> torch.Tensor: ...
+    def __call__(
+        self, env: GenesisEnv, *params: Any, **kwargs: Any
+    ) -> torch.Tensor: ...
 
 
 class ObservationConfig(ConfigItemDict):
@@ -40,6 +42,8 @@ class ObservationConfig(ConfigItemDict):
     """Units this observation is expressed in (for example ``"rad/s"``), recorded into
     the deployment bundle. Wrong units are a classic sim-to-real failure, and naming
     them here is the cheapest guard against it."""
+
+
 def _deployable_scale(name: str, scale: Any) -> float:
     """A scale a bundle can carry, or a clear refusal.
 
@@ -351,9 +355,6 @@ class ObservationManager(BaseManager):
         return {
             "entries": entries,
             "history_length": self._history_len,
-            # ObservationManager concatenates history newest-first; recorded so the
-            # runtime can never silently disagree about the order.
-            "history_order": "newest_first",
         }
 
     """
@@ -370,14 +371,12 @@ class ObservationManager(BaseManager):
                 assert callable(cfg.fn), f"Observation function {name} is not callable"
                 value = cfg.execute()
                 value_size = value.shape[-1]
-                # Recorded per entry (not just summed) so deployment export knows the
-                # width of each slot without re-probing the simulator.
                 self._entry_sizes[name] = int(value_size)
                 if value_size > 0:
                     size += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e # noqa
+                raise e  # noqa
         return size
 
     def _perform_observation(
@@ -407,7 +406,7 @@ class ObservationManager(BaseManager):
                 else:
                     value = cfg.execute()
 
-                # Add noise, if the value is not an override. 
+                # Add noise, if the value is not an override.
                 if not has_overrides:
                     noise = cfg.noise or self.noise
                     if noise is not None and noise != 0.0:
@@ -426,5 +425,5 @@ class ObservationManager(BaseManager):
                     offset += value_size
             except Exception as e:
                 print(f"Error generating observation for '{name}'")
-                raise e # noqa
+                raise e  # noqa
         return output

@@ -17,9 +17,7 @@ from typing import Any
 from genesis_forge_runtime import (
     ARCHIVE_SUFFIX,
     MANIFEST_FILENAME,
-    POLICY_FORMAT_ONNX,
-    POLICY_FORMAT_TORCHSCRIPT,
-    POLICY_STEM,
+    POLICY_DIRNAME,
     Bundle,
     save_bundle,
 )
@@ -27,19 +25,6 @@ from genesis_forge_runtime import (
 from .capture import Capture, capture_environment
 from .errors import ExportError
 from .parity import ParityReport, check_parity
-from .provenance import clean_additional
-
-#: What a policy file's extension says it holds. Recorded in the manifest so an
-#: operator can see what the bundle carries; nothing here loads or checks it.
-_POLICY_FORMATS = {
-    ".onnx": POLICY_FORMAT_ONNX,
-    ".jit": POLICY_FORMAT_TORCHSCRIPT,
-    ".ts": POLICY_FORMAT_TORCHSCRIPT,
-}
-#: Deliberately absent: .pt and .pth. Both are far more often a plain state_dict
-#: than a scripted module, and recording "torchscript" for a file torch.jit.load
-#: would reject is worse than recording nothing. Those export with no format,
-#: which describe() shows as "unknown format".
 
 
 def export(
@@ -56,9 +41,9 @@ def export(
 ) -> Bundle:
     """Capture a built environment into a deployment bundle.
 
-    Writes a directory holding ``manifest.json`` (the readable deployment
-    contract), ``golden.npz`` (recorded input/output pairs that double as an
-    on-robot smoke test), and the exported policy when one is supplied.
+    The bundle holds ``manifest.json`` (the readable deployment contract),
+    ``golden.npz`` (recorded input/output pairs that double as an on-robot smoke
+    test), and the exported policy when one is supplied.
 
     The parity gate is not optional. Before anything is written, the numpy
     deployment classes are run against the live torch pipeline; if they disagree,
@@ -66,56 +51,24 @@ def export(
 
     Args:
         env: A built :class:`~genesis_forge.ManagedEnvironment`.
-        path: Directory to write the bundle to.
-        policy_path: The exported policy to copy into the bundle. ONNX is the
-            documented path, but TorchScript (or anything else you load
-            yourself) works too -- the bundle records the format rather than
-            requiring one.
-
-            Pass a list when the export produced more than one file, as ONNX
-            does once the weights exceed its inline threshold and as OpenVINO
-            always does. The first entry is the one the runtime loads; the rest
-            are copied beside it under their own names, since a graph refers to
-            its companions by filename::
-
-                policy_path=["policy.onnx", "policy.onnx.data"]
-
-            Checking that what landed in the bundle still matches the policy it
-            came from is yours to do, in the script that exports it; the
-            deployment guide shows how, and it is what catches a companion file
-            left behind.
-        additional_provenance: Anything you want recorded about where this bundle
-            came from, written to ``provenance.additional`` in the manifest. The
-            exporter stamps what it can measure itself -- the export time and the
-            Genesis Forge and torch versions -- but everything else depends on how
-            you train, so it is yours to state rather than the library's to guess.
-            The conventional keys are ``checkpoint``, ``framework`` and
-            ``framework_version``; any JSON-friendly key is accepted::
-
-                additional_provenance={
-                    "checkpoint": "logs/my_run/model_500.pt",
-                    "framework": "rsl_rl",
-                    "framework_version": "5.4.2",
-                }
-        archive: Write the bundle as a single ``.gfb`` file, the default, since
-            that is what you copy to a robot -- one artifact, and a transfer that
-            either arrives whole or not at all. Pass False for a plain directory,
-            which is easier to poke at while you are working. ``load_bundle``
-            reads either.
+        path: Where to write the bundle. Gains a ``.gfb`` suffix if it has none,
+            unless ``archive`` is False, in which case it names a directory.
+        policy_path: The exported policy file, or files, to export with the bundle.
+        additional_provenance: Extra entries recorded under
+            ``provenance.additional`` in the manifest, conventionally
+            ``checkpoint``, ``framework`` and ``framework_version``. Must be
+            JSON serializable.
+        archive: Write one ``.gfb`` file rather than a directory. A directory is
+            easier to inspect while working; ``load_bundle`` reads either.
         parity_ticks: How many sequential ticks the parity gate compares.
         seed: Seed for the parity inputs, so a failure reproduces.
-        overwrite: Replace a bundle already at this path, which is the default:
-            re-exporting after every training run is the normal thing to do.
-            Whatever is there must itself be a bundle -- a path holding anything
-            else is refused however this is set, so a mistyped destination cannot
-            cost you a file.
+        overwrite: Replace a bundle already at this path. A path holding anything
+            that is not a bundle is refused either way.
         verbose: Print a short summary of what was written.
 
     Returns:
-        The :class:`~genesis_forge_runtime.Bundle` that was written. Its manifest
-        and golden samples are already in memory, so describing or checking what
-        you just exported does not read the bundle back -- ``bundle.path`` is
-        where it landed.
+        The :class:`~genesis_forge_runtime.Bundle` written, with its manifest and
+        golden samples already in memory. ``bundle.path`` is where it landed.
 
     Raises:
         ExportError: The environment cannot be exported as configured, or the
@@ -133,13 +86,61 @@ def export(
         bundle = export(env, "./my_policy", policy_path="policy.onnx")
         print(bundle.describe())
     """
-    # Checked first: a value that cannot be written should fail now, not after
-    # the parity gate has run.
-    additional_provenance = clean_additional(additional_provenance)
+    destination = _resolve_destination(path, archive=archive, overwrite=overwrite)
+    policy_sources = _policy_sources(policy_path)
+    capture = capture_environment(
+        env,
+        additional_provenance=additional_provenance,
+        policy_files=[source.name for source in policy_sources],
+    )
 
+    # The gate. Raises ParityError before anything reaches disk.
+    report = check_parity(capture, ticks=parity_ticks, seed=seed)
+
+    # Build the bundle somewhere temporary, then move it into place, so a failure
+    # part-way through leaves the previous bundle where it was.
+    with tempfile.TemporaryDirectory(prefix="genesis-forge-export-") as staging:
+        staged = save_bundle(
+            Path(staging) / "bundle", capture.manifest, golden=report.golden
+        )
+        if policy_sources:
+            policy_dir = staged / POLICY_DIRNAME
+            policy_dir.mkdir()
+            for source in policy_sources:
+                shutil.copy2(source, policy_dir / source.name)
+
+        if archive:
+            packed = Path(staging) / f"bundle{ARCHIVE_SUFFIX}"
+            _write_archive(staged, packed)
+            staged = packed
+
+        # A partial bundle is refused on load rather than run: a truncated archive
+        # has no readable central directory, and a directory missing files is
+        # caught against the manifest. So the move need not be atomic.
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_dir():
+            shutil.rmtree(destination)
+        elif destination.exists():
+            destination.unlink()
+        shutil.move(str(staged), str(destination))
+
+    bundle = Bundle(manifest=capture.manifest, path=destination, golden=report.golden)
+    if verbose:
+        _report(destination, capture, report)
+    return bundle
+
+
+def _resolve_destination(path: str | Path, *, archive: bool, overwrite: bool) -> Path:
+    """Where the bundle will be written, once it is safe to write there.
+
+    Raises:
+        ExportError: Something is already at that path that this export must not
+            replace.
+    """
     destination = Path(path)
     if archive and not destination.suffix:
         destination = destination.with_suffix(ARCHIVE_SUFFIX)
+
     if destination.exists():
         if not overwrite:
             raise ExportError(
@@ -154,57 +155,7 @@ def export(
             raise ExportError(f"'{destination}' exists and is not a directory.")
         _refuse_unless_a_bundle(destination)
 
-    policy_sources = _policy_sources(policy_path)
-    policy_file = None
-    policy_format = None
-    if policy_sources:
-        # Keep the entry point's own extension: a bundle must not claim to hold
-        # an ONNX graph when it holds a TorchScript module.
-        entry_point = policy_sources[0]
-        policy_file = f"{POLICY_STEM}{entry_point.suffix}"
-        policy_format = _POLICY_FORMATS.get(entry_point.suffix.lower())
-        _check_names_do_not_collide(policy_file, policy_sources)
-
-    capture = capture_environment(
-        env,
-        additional_provenance=additional_provenance,
-        policy_file=policy_file,
-        policy_format=policy_format,
-    )
-
-    # The gate. Raises ParityError before anything reaches disk.
-    report = check_parity(capture, ticks=parity_ticks, seed=seed)
-
-    # Build the bundle somewhere temporary, then move it into place, so a failure
-    # part-way through cannot leave a half-written bundle looking usable.
-    with tempfile.TemporaryDirectory(prefix="genesis-forge-export-") as staging:
-        staged = save_bundle(
-            Path(staging) / "bundle", capture.manifest, golden=report.golden
-        )
-        if policy_sources:
-            shutil.copy2(policy_sources[0], staged / policy_file)
-            # Companions keep their own names: a graph refers to them by the
-            # filename recorded inside it, so renaming one breaks the reference.
-            for companion in policy_sources[1:]:
-                shutil.copy2(companion, staged / companion.name)
-
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if archive:
-            # Staged beside the destination, not in the system temp directory, so
-            # the move is a rename within one filesystem and an interrupted export
-            # cannot leave a half-written archive looking loadable.
-            packed = destination.with_name(f"{destination.name}.writing")
-            _write_archive(staged, packed)
-            packed.replace(destination)
-        else:
-            if destination.exists():
-                shutil.rmtree(destination)
-            shutil.move(str(staged), str(destination))
-
-    bundle = Bundle(manifest=capture.manifest, path=destination, golden=report.golden)
-    if verbose:
-        _report(destination, capture, report)
-    return bundle
+    return destination
 
 
 def _refuse_unless_a_bundle(destination: Path) -> None:
@@ -239,12 +190,13 @@ def _write_archive(staged: Path, destination: Path) -> None:
 
 
 def _policy_sources(policy_path: Any) -> list[Path]:
-    """Resolve what the caller said the policy is made of.
+    """The policy files to copy, in the order they were given.
 
-    One path, or several when the export produced more than one file. Nothing here
-    knows or asks what format they are -- the caller just ran the export that wrote
-    them, so which files belong together is theirs to state rather than ours to
-    infer from naming conventions that differ per format.
+    Accepts one path or several. None, or an empty list, means no policy.
+
+    Raises:
+        ExportError: A file is missing, or two of them share a name -- they are
+            copied in under the names they were given, so those must differ.
     """
     if policy_path is None:
         return []
@@ -252,11 +204,6 @@ def _policy_sources(policy_path: Any) -> list[Path]:
         candidates = [policy_path]
     else:
         candidates = list(policy_path)
-        if not candidates:
-            raise ExportError(
-                "policy_path is an empty list. Pass the policy's file(s), or omit "
-                "it to export the pipeline contract without a policy."
-            )
 
     sources = []
     for candidate in candidates:
@@ -264,20 +211,16 @@ def _policy_sources(policy_path: Any) -> list[Path]:
         if not source.is_file():
             raise ExportError(f"No policy file at '{source}'.")
         sources.append(source)
-    return sources
 
-
-def _check_names_do_not_collide(policy_file: str, sources: list[Path]) -> None:
-    """Every file must land in the bundle under a distinct name."""
-    names = [policy_file] + [companion.name for companion in sources[1:]]
+    names = [source.name for source in sources]
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
         raise ExportError(
-            f"More than one policy file would be written as "
-            f"{', '.join(repr(name) for name in duplicates)} in the bundle. The "
-            f"first path becomes '{policy_file}'; the rest keep their own names, "
-            f"so they must all differ."
+            f"More than one policy file is named "
+            f"{', '.join(repr(name) for name in duplicates)}. They keep the names "
+            f"you gave, so those must differ."
         )
+    return sources
 
 
 def _report(destination: Path, capture: Capture, report: ParityReport) -> None:
@@ -289,6 +232,13 @@ def _report(destination: Path, capture: Capture, report: ParityReport) -> None:
         f"  observations: {layout.total_size} values "
         f"({len(layout.entries)} input(s) to wire up)"
     )
-    print(f"  actions: {manifest.num_actions} joint target(s)")
+    joints = len(manifest.joint_names)
+    if joints == manifest.num_actions:
+        print(f"  actions: {joints} joint target(s)")
+    else:
+        print(
+            f"  actions: {manifest.num_actions} policy output(s) -> "
+            f"{joints} joint target(s)"
+        )
     print(f"  control rate: {manifest.control_hz:.1f} Hz")
     print("  install the runtime on the robot with: pip install genesis-forge-runtime")

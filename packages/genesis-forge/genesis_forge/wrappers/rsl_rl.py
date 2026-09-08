@@ -40,7 +40,7 @@ class RslRlWrapper(Wrapper, VecEnv):
             major_version = int(metadata.version("rsl-rl-lib").split(".")[0])
             if major_version >= 3:
                 self.rsl3 = True
-        except: # noqa
+        except:  # noqa
             pass
 
     @property

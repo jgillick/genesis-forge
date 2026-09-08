@@ -11,14 +11,14 @@ pipelines exactly as training built them:
 Recreating those by hand is tedious and easy to get subtly wrong, and a subtle
 mistake shows up as a robot that misbehaves for no obvious reason. Genesis Forge
 captures both pipelines from your built environment and gives you a simulation-free
-runtime that replays them.
+runtime that applies them on the robot, between your sensors and your motors.
 
 ## The two pieces
 
 | Package                 | Where it runs         | Depends on                               |
 | ----------------------- | --------------------- | ---------------------------------------- |
 | `genesis-forge`         | Your training machine | Genesis, torch, the RL framework         |
-| `genesis-forge-runtime` | The robot             | numpy (plus `onnxruntime` if you use it) |
+| [`genesis-forge-runtime`](../api/runtime/index.md) | The robot             | numpy (plus `onnxruntime` if you use it) |
 
 The robot never installs the simulator. That is the point of the split: a Raspberry
 Pi has no business downloading a physics engine.
@@ -44,10 +44,11 @@ disk, and never unpacks the archive.
 It writes `my_policy.gfb`, a **bundle**, holding:
 
 ```
-manifest.json     # the deployment contract, human readable
-golden.npz        # recorded input/output pairs, for an on-robot smoke test
-policy.onnx       # your exported policy, if you passed one
-policy.onnx.data  # its weights, when the export put them in a separate file
+manifest.json         # the deployment contract, human readable
+golden.npz            # recorded input/output pairs, for an on-robot smoke test
+policy/               # your exported policy, if you passed one
+  policy.onnx
+  policy.onnx.data    # its weights, when the export put them in a separate file
 ```
 
 Re-exporting replaces a bundle already at that path, since doing it after every
@@ -55,11 +56,9 @@ training run is the normal thing to do. It will only ever replace a bundle, thou
 a path holding anything else is refused, so a mistyped destination cannot cost you
 a file.
 
-The policy keeps whatever extension you handed it, and the manifest records what
-kind of file it is when the extension says so unambiguously — `format: "onnx"` for
-a `.onnx`. A `.pt` is left unrecorded, because it is more often a plain
-`state_dict` than a scripted module and a wrong label is worse than none. Nothing
-here requires ONNX; the runtime never loads the policy for you either way.
+Policy files are copied into `policy/` under the names you gave them — nothing is
+renamed, and nothing about their format is recorded, because the runtime never
+opens them. Name them whatever you like before calling `export`.
 
 A policy is not always one file. ONNX keeps tensors above a size threshold in a
 companion file, so `policy.onnx` can be a small skeleton whose weights live beside
@@ -70,9 +69,9 @@ produced:
 export(env, "./my_policy", policy_path=["policy.onnx", "policy.onnx.data"])
 ```
 
-The first entry is the one the runtime loads, and gets renamed to `policy.<ext>`.
-The rest keep their own names, because a graph refers to its companions by the
-filename recorded inside it.
+Every name is recorded in the manifest in the order you listed them, so
+`bundle.policy_files` gives them back the same way. Opening one is yours to do;
+`bundle.policy_dir` is where they landed.
 
 Genesis Forge does not try to work out which files belong together — the naming
 differs per format, and a wrong guess produces a bundle whose policy loads on your
@@ -182,10 +181,9 @@ yours can never quietly overwrite one of the measured ones.
 
 `checkpoint`, `framework` and `framework_version` are the conventional keys and are
 worth recording; beyond those the field is open, and a git commit, a robot serial,
-or a dataset version are all reasonable things to put there. Values must survive the
-trip to JSON — strings, numbers, bools, and lists or dicts of those. Paths are
-converted for you; anything else that cannot be written is rejected up front, before
-the parity gate runs.
+or a dataset version are all reasonable things to put there. It goes into the
+manifest as given, so it has to be JSON serializable — pass `str(path)` rather than
+a `Path`.
 
 ## Running on the robot
 
@@ -209,12 +207,16 @@ Bundle: my_policy
   control rate: 50.0 Hz (dt=0.02)
   observation vector: 45 values (15 per tick x 3 history)
   values you supply each tick:
-    - robot_ang_vel (3 values) in rad/s, scaled by 0.25 -- Body-frame angular velocity
-    - dof_pos (12 values) in rad -- Joint positions relative to the default pose
+    - robot_ang_vel (3 values), in rad/s -- Body-frame angular velocity
+    - dof_pos (12 values), in rad -- Joint positions relative to the default pose
     - actions (12 values) -- Previous policy output
   joint targets produced (12):
     - [position] FL_hip, FL_thigh, FL_calf, ...
 ```
+
+Supply raw readings. Any scaling your observation config applied during training is
+applied here too, by the assembler — the listing does not mention it because it is
+not yours to do, and doing it yourself would apply it twice.
 
 Then the control loop:
 
@@ -267,22 +269,11 @@ targets.
 If you leave one out, the assembler raises and names it — it never quietly feeds
 zeros — so a forgotten feedback wire fails on the bench rather than on the robot.
 
-!!! warning "If your action manager has a `delay_step`"
-    A manager records its raw actions *after* taking them off its delay buffer, so
-    `current_actions(action_manager=mgr)` observed the **delayed** action during
-    training. On the robot the decoder does the same — but only when you construct
-    it with `apply_delay=True`:
-
-    ```python
-    action_decoder = bundle.create_action_decoder(apply_delay=True)
-    ```
-
-    Left off (the default, because real hardware supplies its own latency), the
-    feedback is the action you just passed in, and the policy sees something
-    training never showed it. `bundle.manifest.actions[i].delay_step` tells you
-    whether this applies; `decoder.trained_delay_steps` reports it at runtime.
-    Note this affects only the per-manager form — plain `current_actions()` reads
-    `env.actions`, which is undelayed on both sides.
+!!! note "`delay_step` is a training-only setting"
+    A manager's `delay_step` stands in for the latency between issuing a command and
+    the joint acting on it. Real hardware has that latency for real, so the runtime
+    does not reproduce it — replaying it on the robot would stack a second delay on
+    top of the physical one. Nothing about it is carried into the bundle.
 
 A few things the runtime does for you:
 
@@ -326,8 +317,8 @@ it is worth holding the robot in a safe posture until it fills.
 ## Running the policy
 
 The runtime does not care how you run inference — hand `assemble()`'s output to
-anything that takes a float32 vector. The bundle carries the policy file and records
-its format; running it is yours to choose.
+anything that takes a float32 vector. The bundle carries the policy files; running
+them is yours to choose.
 
 ONNX with `onnxruntime` is the usual choice on a Pi or Jetson, because it installs
 without pulling in torch:
@@ -385,8 +376,7 @@ for ONNX.
 
 ### Verifying the exported policy
 
-Genesis Forge packages the policy file and records what format it is, but it does
-not open it. Confirming the exported file still computes what the trained policy
+Genesis Forge packages the policy files but never opens them. Confirming the exported file still computes what the trained policy
 computes is yours to do, in the same script that exported it — that code already
 knows which framework produced the file and how to run it.
 
@@ -410,7 +400,8 @@ bundle = export(env, "./my_policy", policy_path="policy.onnx")
 
 with bundle.unpacked() as directory:
     session = onnxruntime.InferenceSession(
-        str(directory / bundle.policy_file), providers=["CPUExecutionProvider"]
+        str(directory / "policy" / bundle.policy_files[0]),
+        providers=["CPUExecutionProvider"],
     )
     name = session.get_inputs()[0].name
 
@@ -466,10 +457,29 @@ for spec in bundle.manifest.actions:
 contract from `AffineDofActionManager`, so any future affine manager is deployable
 without new runtime code — it only declares its own `deploy_type`.
 
+### Grouped joints
+
+`action_groups` lets one policy output drive several joints — a robot's wheels on
+one side, say. The bundle records which action drives each joint, and the runtime
+fans them out the same way before decoding, so `targets.by_joint` still has an entry
+per joint:
+
+```
+  actions: 2 policy output(s) -> 4 joint target(s)
+  joint targets produced (4, from 2 policy outputs):
+    - [velocity] TT_Motor-1_axel, TT_Motor-2_axel, TT_Motor-3_axel, TT_Motor-4_axel
+```
+
+Grouping shares the *action*, not the decode. Every scale, offset and clip bound
+stays per joint, which is what lets mirrored wheels take one command and turn
+opposite ways — the wheeled-robot example exports `scale: [-20, 20, -20, 20]` behind
+two actions. The parity gate compares the whole path, fan-out included, so a
+mapping that disagreed with training would fail the export rather than reach a robot.
+
 ## Custom action managers
 
 If you have written your own `BaseActionManager` subclass, it participates in
-deployment by describing its decode as plain data and shipping a decoder that replays
+deployment by describing its decode as plain data and shipping a decoder that reproduces
 it. On the training side:
 
 ```python
@@ -493,9 +503,13 @@ import numpy as np
 from genesis_forge_runtime import ManagerDecoder
 
 class CartesianImpedanceDecoder(ManagerDecoder):
+    def reset(self):
+        # Config arrives as plain JSON data, so convert once here rather than
+        # on every tick. `reset` runs at construction and at episode start.
+        self._stiffness = np.asarray(self.spec.config["stiffness"], dtype=np.float32)
+
     def decode(self, actions):
-        stiffness = self.spec.config["stiffness"]
-        return np.asarray(actions, dtype=np.float32) * stiffness
+        return np.asarray(actions, dtype=np.float32) * self._stiffness
 ```
 
 If your manager is an affine one (scale, offset, clip), subclass
@@ -513,6 +527,9 @@ bundle fails loudly rather than misbehaving.
 
 ## Trust model
 
-**A bundle is trusted input, equivalent to executable code.** Loading one may import
-decoder classes it names, so only load bundles you produced yourself. Treat a bundle
-from someone else the way you would treat an unpickled checkpoint from someone else.
+**Only load bundles you produced.** A bundle whose action manager is a custom one
+records the import path of its decoder class, and `create_action_decoder()` imports
+that module — running whatever is at its top level. `load_bundle` itself imports
+nothing, and a bundle using only built-in managers never imports anything either,
+since those resolve from a table. But a bundle from elsewhere can name any module on
+the robot's path, so treat one the way you would treat a checkpoint from a stranger.

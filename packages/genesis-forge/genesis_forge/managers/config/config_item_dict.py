@@ -12,7 +12,7 @@ class ConfigCallbackFn(Protocol):
     The first argument will always be the environment, followed by the config dict values.
 
     Example::
-        
+
         ##
         # This is the config callback reward function
         #
@@ -22,7 +22,7 @@ class ConfigCallbackFn(Protocol):
         ) -> torch.Tensor:
             base_pos = env.robot.get_pos()
             return torch.square(base_pos[:, 2] - target_height)
-        
+
         ...
 
         ##
@@ -48,11 +48,13 @@ class ConfigCallbackFn(Protocol):
         result: torch.Tensor, shape (n_envs, 1)
     """
 
-    def __call__(self, env: GenesisEnv, *params: Any, **kwargs: Any) -> torch.Tensor: ...
+    def __call__(
+        self, env: GenesisEnv, *params: Any, **kwargs: Any
+    ) -> torch.Tensor: ...
 
 
 class ConfigItemDict(TypedDict):
-    """Defines a manager config item used to """
+    """Defines a manager config item used to"""
 
     fn: ConfigCallbackFn | MdpFn
     """
@@ -61,4 +63,3 @@ class ConfigItemDict(TypedDict):
 
     params: NotRequired[dict[str, Any]]
     """Additional parameters to pass to the function."""
- 

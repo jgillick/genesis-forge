@@ -31,7 +31,15 @@ class FakeScene:
 
 
 class FakeRobot:
-    def __init__(self, joints, position=None, velocity=None, force=None, force_range=None, limits=None):
+    def __init__(
+        self,
+        joints,
+        position=None,
+        velocity=None,
+        force=None,
+        force_range=None,
+        limits=None,
+    ):
         self.joints = joints
         self.calls = []
         self._position = position
@@ -43,7 +51,9 @@ class FakeRobot:
         # them back to a column position in this fake's own per-DOF buffers.
         self._idx_to_col = {
             j.dof_start: col
-            for col, j in enumerate(j for j in joints if j.type == gs.JOINT_TYPE.REVOLUTE)
+            for col, j in enumerate(
+                j for j in joints if j.type == gs.JOINT_TYPE.REVOLUTE
+            )
         }
 
     def _cols(self, dofs_idx):
@@ -76,7 +86,9 @@ class FakeRobot:
         lower, upper = self._limits
         return lower[cols], upper[cols]
 
-    def set_dofs_position(self, position, dofs_idx=None, dofs_idx_local=None, envs_idx=None):
+    def set_dofs_position(
+        self, position, dofs_idx=None, dofs_idx_local=None, envs_idx=None
+    ):
         # ActuatorManager calls this two different ways: positionally with `dofs_idx`
         # (its own set_dofs_position wrapper) and by keyword with `dofs_idx_local` and
         # `envs_idx` (its reset()) -- accept both.
@@ -96,20 +108,34 @@ class FakeRobot:
         self.calls.append(("set_dofs_kv", kv.clone(), list(dofs_idx), envs_idx))
 
     def set_dofs_damping(self, damping, dofs_idx, envs_idx):
-        self.calls.append(("set_dofs_damping", damping.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_damping", damping.clone(), list(dofs_idx), envs_idx)
+        )
 
     def set_dofs_stiffness(self, stiffness, dofs_idx, envs_idx):
-        self.calls.append(("set_dofs_stiffness", stiffness.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_stiffness", stiffness.clone(), list(dofs_idx), envs_idx)
+        )
 
     def set_dofs_frictionloss(self, frictionloss, dofs_idx, envs_idx):
-        self.calls.append(("set_dofs_frictionloss", frictionloss.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_frictionloss", frictionloss.clone(), list(dofs_idx), envs_idx)
+        )
 
     def set_dofs_armature(self, armature, dofs_idx, envs_idx=None):
-        self.calls.append(("set_dofs_armature", armature.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_armature", armature.clone(), list(dofs_idx), envs_idx)
+        )
 
     def set_dofs_force_range(self, force_min, force_max, dofs_idx, envs_idx):
         self.calls.append(
-            ("set_dofs_force_range", force_min.clone(), force_max.clone(), list(dofs_idx), envs_idx)
+            (
+                "set_dofs_force_range",
+                force_min.clone(),
+                force_max.clone(),
+                list(dofs_idx),
+                envs_idx,
+            )
         )
 
 
@@ -192,7 +218,9 @@ reset() -- setting values once, vs. every time when there's noise
 def test_reset_sets_a_non_noisy_value_to_the_exact_configured_number(env):
     env.robot = FakeRobot(make_joints())
     env.scene = FakeScene()
-    mgr = ActuatorManager(env, joint_names=".*", kp={"hip": 50, "knee": 30, "ankle": 30})
+    mgr = ActuatorManager(
+        env, joint_names=".*", kp={"hip": 50, "knee": 30, "ankle": 30}
+    )
     mgr.build()
     mgr.reset()
 
@@ -218,7 +246,9 @@ def test_reset_applies_noisy_value_within_the_configured_range(env):
 def test_reset_only_sets_a_non_noisy_value_once(env):
     env.robot = FakeRobot(make_joints())
     env.scene = FakeScene()
-    mgr = ActuatorManager(env, joint_names=".*", kp={"hip": 50, "knee": 30, "ankle": 30})
+    mgr = ActuatorManager(
+        env, joint_names=".*", kp={"hip": 50, "knee": 30, "ankle": 30}
+    )
     mgr.build()
 
     mgr.reset()
@@ -356,7 +386,9 @@ def test_armature_is_not_reapplied_at_reset_without_batching(env):
 
     mgr.reset()
 
-    assert len(env.robot.calls_named("set_dofs_armature")) == 1  # only the build-time call
+    assert (
+        len(env.robot.calls_named("set_dofs_armature")) == 1
+    )  # only the build-time call
 
 
 def test_armature_is_applied_at_reset_only_with_batching(env):
@@ -428,12 +460,16 @@ DOF convenience wrappers
 
 
 def test_get_dofs_position_defaults_to_every_configured_dof(env):
-    env.robot = FakeRobot(make_joints(), position=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs))
+    env.robot = FakeRobot(
+        make_joints(), position=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    )
     env.scene = FakeScene()
     mgr = ActuatorManager(env, joint_names=".*")
     mgr.build()
 
-    assert torch.equal(mgr.get_dofs_position(), torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs))
+    assert torch.equal(
+        mgr.get_dofs_position(), torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    )
 
 
 def test_get_dofs_velocity_clips_when_requested(env):
@@ -463,17 +499,22 @@ def test_get_dofs_force_clips_to_the_max_force_range(env):
 
 
 def test_get_dofs_control_force_reads_the_control_force_not_the_measured_force(env):
-    env.robot = FakeRobot(make_joints(), force=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs))
+    env.robot = FakeRobot(
+        make_joints(), force=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    )
     env.scene = FakeScene()
     mgr = ActuatorManager(env, joint_names=".*")
     mgr.build()
 
-    assert torch.equal(mgr.get_dofs_control_force(), torch.tensor([[-1.0, -2.0, -3.0]] * env.num_envs))
+    assert torch.equal(
+        mgr.get_dofs_control_force(), torch.tensor([[-1.0, -2.0, -3.0]] * env.num_envs)
+    )
 
 
 def test_get_dofs_limits_wraps_the_robot(env):
     env.robot = FakeRobot(
-        make_joints(), limits=(torch.tensor([-1.0, -1.5, -2.0]), torch.tensor([1.0, 1.5, 2.0]))
+        make_joints(),
+        limits=(torch.tensor([-1.0, -1.5, -2.0]), torch.tensor([1.0, 1.5, 2.0])),
     )
     env.scene = FakeScene()
     mgr = ActuatorManager(env, joint_names=".*")

@@ -34,11 +34,15 @@ class DeploymentActionConfig:
         decoder_import_path: For custom managers, where the matching decoder
             class lives, written as ``"my_package.decoders:MyDecoder"``. Leave
             unset for built-in types, which the runtime already ships.
+        joint_action_index: One action index per joint, in the manager's joint
+            order, when ``action_groups`` has several joints sharing an action.
+            Unset when every joint has its own action.
     """
 
     deploy_type: str
     config: dict[str, Any] = field(default_factory=dict)
     decoder_import_path: str | None = None
+    joint_action_index: list[int] | None = None
 
 
 def to_nominal_array(
@@ -229,9 +233,15 @@ class BaseActionManager(BaseManager):
         return self._raw_actions
 
     @property
-    def delay_step(self) -> int:
-        """How many steps the policy's actions are held before being applied."""
-        return int(self._delay_step or 0)
+    def joint_action_index(self) -> list[int] | None:
+        """One action index per joint, in `dofs` order.
+
+        None when every joint has its own action. Otherwise `action_groups` has
+        joints sharing one, and this says which.
+        """
+        if self._dof_action_idx is None:
+            return None
+        return [int(index) for index in self._dof_action_idx.detach().cpu().tolist()]
 
     @property
     def last_actions(self) -> torch.Tensor:
@@ -320,6 +330,14 @@ class BaseActionManager(BaseManager):
             )
         }
 
+    def actions_to_dof_targets(self, actions: torch.Tensor) -> torch.Tensor:
+        """Turn this manager's slice of the policy output into per-DOF targets.
+
+        Takes `(num_envs, num_actions)`: fans the actions out to the DOFs they
+        drive, then processes them. Override `process_actions` rather than this.
+        """
+        return self.process_actions(self._actions_for_dofs(actions))
+
     def process_actions(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Convert the incoming step actions into the values to send to the simulation.
@@ -327,7 +345,8 @@ class BaseActionManager(BaseManager):
         `AffineDofActionManager` applies a per-DOF scale/offset/clip transform.
 
         Args:
-            actions: The incoming step actions to handle.
+            actions: One action per DOF, shape `(num_envs, num_dofs)`, already
+                fanned out from the policy's slice by `actions_to_dof_targets`.
 
         Returns:
             The processed and converted actions.
@@ -435,16 +454,15 @@ class BaseActionManager(BaseManager):
         # Copy the actions into the manager buffer
         self._raw_actions = actions
 
-        # Convert actions to the dof indices they control
-        dof_actions = self._actions_for_dofs(actions)
-
         if self._actions is None:
-            self._actions = torch.zeros_like(dof_actions, device=gs.device)
-            self._last_actions = torch.zeros_like(dof_actions, device=gs.device)
+            shape = (actions.shape[0], self.num_dofs)
+            self._actions = torch.zeros(shape, device=gs.device, dtype=actions.dtype)
+            self._last_actions = torch.zeros(
+                shape, device=gs.device, dtype=actions.dtype
+            )
         self._last_actions[:] = self._actions[:]
 
-        # Process the actions
-        self._actions[:] = self.process_actions(dof_actions)
+        self._actions[:] = self.actions_to_dof_targets(actions)
 
         return self._actions
 

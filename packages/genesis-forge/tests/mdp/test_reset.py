@@ -1,5 +1,4 @@
-"""Numerical behavior of the reset functions in genesis_forge.mdp.reset.
-"""
+"""Numerical behavior of the reset functions in genesis_forge.mdp.reset."""
 
 import math
 
@@ -23,7 +22,9 @@ class FakeEntity:
         self.quat_calls.append((quat.clone(), list(envs_idx), zero_velocity))
 
     def set_mass_shift(self, mass, links_idx_local, envs_idx):
-        self.mass_shift_calls.append((mass.clone(), list(links_idx_local), list(envs_idx)))
+        self.mass_shift_calls.append(
+            (mass.clone(), list(links_idx_local), list(envs_idx))
+        )
 
 
 class FakeTerrainManager:
@@ -108,7 +109,9 @@ def test_position_sets_pos_and_quat_for_the_given_envs(env):
 
     quat, quat_envs_idx, _ = entity.quat_calls[0]
     assert quat_envs_idx == [1, 3]
-    assert torch.allclose(quat, torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]]))
+    assert torch.allclose(
+        quat, torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]])
+    )
 
 
 def test_position_skips_quat_when_not_provided(env):
@@ -206,7 +209,9 @@ randomize_annulus_position
 def test_randomize_annulus_position_respects_radius_range(env):
     env.num_envs = 64
     entity = FakeEntity()
-    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0), center=(1.0, -1.0), z=0.1)
+    fn = reset.randomize_annulus_position(
+        radius_range=(0.5, 2.0), center=(1.0, -1.0), z=0.1
+    )
     fn.context(env, entity=entity)
     fn.safe_build()
 
@@ -266,7 +271,9 @@ randomize_link_mass_shift
 
 def test_randomize_link_mass_shift_raises_when_no_links_found(env):
     entity = FakeEntity()
-    fn = reset.randomize_link_mass_shift(link_name="nonexistent_.*", mass_range=(-1.0, 1.0))
+    fn = reset.randomize_link_mass_shift(
+        link_name="nonexistent_.*", mass_range=(-1.0, 1.0)
+    )
     with pytest.raises(ValueError, match="No links found"):
         fn.context(env, entity=entity)
         fn.safe_build()
@@ -342,7 +349,9 @@ def test_randomize_link_mass_shift_raises_when_one_of_several_patterns_matches_n
     fn = reset.randomize_link_mass_shift(
         link_name=["front", "nonexistent"], mass_range=(-1.0, 1.0)
     )
-    with pytest.raises(ValueError, match="No links found with name/pattern 'nonexistent'"):
+    with pytest.raises(
+        ValueError, match="No links found with name/pattern 'nonexistent'"
+    ):
         fn.context(env, entity=entity)
         fn.safe_build()
 
@@ -351,6 +360,7 @@ def test_randomize_link_mass_shift_draws_fresh_values_on_each_call(env, monkeypa
     """Regression guard: mass_shift used to be sliced out of a persistent buffer via
     advanced indexing, which writes to a copy and silently no-ops the randomization.
     It's now a freshly allocated tensor per call -- confirm two calls actually vary."""
+
     class FakeLink:
         def __init__(self, idx_local):
             self.idx_local = idx_local

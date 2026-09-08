@@ -30,7 +30,15 @@ class ResetConfigFn(Protocol):
     Return:
         result: torch.Tensor, shape (n_envs, 1)
     """
-    def __call__(self, env: GenesisEnv, entity: RigidEntity, env_ids: torch.Tensor, *params: Any, **kwargs: Any) -> None: ...
+
+    def __call__(
+        self,
+        env: GenesisEnv,
+        entity: RigidEntity,
+        env_ids: torch.Tensor,
+        *params: Any,
+        **kwargs: Any,
+    ) -> None: ...
 
 
 class EntityResetConfig(ConfigItemDict):
@@ -198,7 +206,7 @@ class EntityManager(BaseManager):
                 cfg.execute(envs_idx=envs_idx)
             except Exception as e:
                 print(f"Error resetting entity with config: '{name}'")
-                raise e # noqa
+                raise e  # noqa
 
         self._cached_calcs()
 

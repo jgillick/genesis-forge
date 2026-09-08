@@ -193,9 +193,9 @@ class GenesisEnv:
         Builds the environment before the first step.
         The Genesis scene and all the scene entities must be added before calling this method.
         """
-        assert (
-            self.scene is not None
-        ), "The scene must be constructed and assigned to the <env>.scene attribute before building."
+        assert self.scene is not None, (
+            "The scene must be constructed and assigned to the <env>.scene attribute before building."
+        )
         self.scene.build(n_envs=self.num_envs)
 
     def step(
@@ -271,8 +271,7 @@ class GenesisEnv:
                 self._base_max_episode_length * self._max_episode_random_scaling
             )
             randomization = (
-                torch.empty((env_ids.numel(),)).uniform_(-1.0, 1.0)
-                * max_random_scaling
+                torch.empty((env_ids.numel(),)).uniform_(-1.0, 1.0) * max_random_scaling
             )
             self.max_episode_length[env_ids] = torch.round(
                 self._base_max_episode_length + randomization

@@ -20,7 +20,6 @@ from genesis_forge_runtime import (
     Manifest,
     ObservationEntry,
     ObservationLayout,
-    PolicySpec,
     Provenance,
 )
 
@@ -32,8 +31,8 @@ from genesis_forge_runtime import (
 #: constants.py and WRITES_SCHEMA_VERSION bumped in genesis_forge.deployment.capture.
 MANIFEST_SHAPE = [
     "actions.managers[].config.scale[]",
-    "actions.managers[].delay_step",
     "actions.managers[].deploy_type",
+    "actions.managers[].joint_action_index[]",
     "actions.managers[].joint_names[]",
     "actions.managers[].name",
     "actions.managers[].slice[]",
@@ -50,15 +49,9 @@ MANIFEST_SHAPE = [
     "observations.entries[].size",
     "observations.entries[].units",
     "observations.history_length",
-    "observations.history_order",
     "observations.single_size",
     "observations.total_size",
-    "policy.file",
-    "policy.format",
-    "policy.input_name",
-    "policy.normalizer.mean[]",
-    "policy.output_name",
-    "policy.output_semantics",
+    "policy[]",
     "provenance.additional.checkpoint",
     "provenance.exported_at",
     "provenance.genesis_forge_version",
@@ -91,7 +84,7 @@ def every_field_populated() -> Manifest:
                 slice_start=0,
                 slice_end=1,
                 config={"scale": [0.25]},
-                delay_step=1,
+                joint_action_index=(0,),
             ),
         ),
         actuators=(
@@ -102,14 +95,7 @@ def every_field_populated() -> Manifest:
                 randomized=("kp",),
             ),
         ),
-        policy=PolicySpec(
-            file="policy.onnx",
-            format="onnx",
-            input_name="obs",
-            output_name="actions",
-            output_semantics="raw",
-            normalizer={"mean": [0.0]},
-        ),
+        policy=("policy.onnx",),
         provenance=Provenance(
             exported_at="2026-01-01T00:00:00+00:00",
             genesis_forge_version="1.0.0",

@@ -19,6 +19,7 @@ Available managers:
 - :class:`TerrainManager` — terrain height queries and bounds
 - :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
+
 from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager

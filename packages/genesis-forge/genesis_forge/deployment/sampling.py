@@ -82,8 +82,8 @@ def torch_observations(
     capture: Capture,
     observation_values: dict[str, np.ndarray],
 ) -> torch.Tensor:
-    """Run the training-side observation pipeline on the same inputs."""
-    overrides: dict[str, torch.Tensor] = {}
+    """Run the training-side observation pipeline."""
+    obs_tensor: dict[str, torch.Tensor] = {}
 
     for name in capture.observation_entry_names:
         if name in observation_values:
@@ -92,15 +92,12 @@ def torch_observations(
             # Zero-width entries are skipped by the training pipeline but must
             # still be present in the override dict.
             values = np.zeros(0, dtype=np.float32)
-        # On gs.device, where the manager's own buffers live. The copy into the
-        # output buffer would convert a CPU tensor anyway, but relying on that
-        # would leave the one path that does not convert -- action decoding --
-        # as the only place a device mismatch shows up.
-        overrides[name] = torch.as_tensor(
+        # On gs.device, where the manager's buffers live.
+        obs_tensor[name] = torch.as_tensor(
             np.tile(values, (capture.num_envs, 1)),
             dtype=torch.float32,
             device=gs.device,
         )
 
-    observations = capture.observation_manager.get_observations(values=overrides)
+    observations = capture.observation_manager.get_observations(values=obs_tensor)
     return observations.detach()[0]

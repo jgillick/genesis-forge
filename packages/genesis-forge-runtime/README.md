@@ -11,7 +11,7 @@ After training, export a bundle from your built environment:
 ```python
 from genesis_forge.deployment import export
 
-bundle = export(env, "./my_policy")   # writes ./my_policy.gfb
+bundle = export(env, "./my_policy")  # writes ./my_policy.gfb
 print(bundle.describe())
 ```
 
@@ -20,18 +20,20 @@ Then, on the robot:
 ```python
 from genesis_forge_runtime import load_bundle
 
-bundle = load_bundle("./my_policy.gfb")   # a directory works too
-print(bundle.describe())                 # what to wire up
+bundle = load_bundle("./my_policy.gfb")  # a directory works too
+print(bundle.describe())  # what to wire up
 
 observation_assembler = bundle.create_observation_assembler()
 action_decoder = bundle.create_action_decoder()
 
 while True:
-    observation = observation_assembler.assemble({
-        "robot_ang_vel": imu.gyro,
-        "dof_pos": joints.positions,
-        "actions": action_decoder.last_raw_actions,   # zeros before the first tick
-    })
+    observation = observation_assembler.assemble(
+        {
+            "robot_ang_vel": imu.gyro,
+            "dof_pos": joints.positions,
+            "actions": action_decoder.last_raw_actions,  # zeros before the first tick
+        }
+    )
     targets = action_decoder.decode(policy(observation))
     send_to_motors(targets.by_joint)
 ```

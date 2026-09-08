@@ -20,9 +20,9 @@ class Wrapper:
 
     def __init__(self, env: "GenesisEnv | Wrapper"):
         """Initialize the logging wrapper with the function to use for data logging."""
-        assert (
-            env.can_be_wrapped
-        ), f"An environment wrapped with {self.__class__.__name__} cannot be wrapped"
+        assert env.can_be_wrapped, (
+            f"An environment wrapped with {self.__class__.__name__} cannot be wrapped"
+        )
 
         self.env = env
         if not isinstance(env, GenesisEnv) and not isinstance(env, Wrapper):

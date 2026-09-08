@@ -118,7 +118,9 @@ class VideoWrapper(Wrapper):
         self._out_dir = out_dir
         self._filename = filename
         self._video_length_steps = math.ceil(video_length_sec / self.dt)
-        self._steps_per_frame = max(1, round(1.0 / fps / self.dt)) # max prevents division by zero
+        self._steps_per_frame = max(
+            1, round(1.0 / fps / self.dt)
+        )  # max prevents division by zero
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
 
@@ -147,9 +149,9 @@ class VideoWrapper(Wrapper):
         """Load the camera from the environment."""
         super().build()
         self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-        assert (
-            self._cam is not None
-        ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        assert self._cam is not None, (
+            f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        )
 
     def step(
         self, actions: torch.Tensor
@@ -203,7 +205,8 @@ class VideoWrapper(Wrapper):
 
         filepath = os.path.join(self._tmp_dir, self._recording_name)
         self._cam.start_recording(
-            save_to_filename=filepath, fps=self._actual_fps # pyright: ignore[reportCallIssue]
+            save_to_filename=filepath,
+            fps=self._actual_fps,  # pyright: ignore[reportCallIssue]
         )
 
     def finish_recording(self):
@@ -212,7 +215,6 @@ class VideoWrapper(Wrapper):
         """
         if not self._is_recording or self._cam is None:
             return
-
 
         # Save recording
         filepath = os.path.join(self._out_dir, self._recording_name)

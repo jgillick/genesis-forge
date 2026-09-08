@@ -172,7 +172,9 @@ made, so it would be refused from then on and the bundle would be stuck.
 """
 
 
-def test_a_crash_during_extraction_leaves_the_previous_copy_intact(tmp_path, monkeypatch):
+def test_a_crash_during_extraction_leaves_the_previous_copy_intact(
+    tmp_path, monkeypatch
+):
     import zipfile as zipfile_module
 
     archive = an_archive(tmp_path)

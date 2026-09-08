@@ -97,7 +97,9 @@ def test_step_recomputes_cached_values_after_the_entity_moves(env):
     assert torch.equal(mgr.base_pos, entity._pos)
 
 
-def test_get_linear_velocity_returns_the_same_cached_tensor_across_calls_within_a_step(env):
+def test_get_linear_velocity_returns_the_same_cached_tensor_across_calls_within_a_step(
+    env,
+):
     """Velocity/gravity are cached once per step() -- repeated calls within a step
     must not re-query the entity or return a fresh (differently-identitied) tensor."""
     vel = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
@@ -178,7 +180,9 @@ def test_reset_forwards_to_a_plain_reset_function(env):
         calls.append((env, entity, list(envs_idx), offset))
 
     mgr = EntityManager(
-        env, entity=entity, on_reset={"pos": {"fn": my_reset, "params": {"offset": 1.0}}}
+        env,
+        entity=entity,
+        on_reset={"pos": {"fn": my_reset, "params": {"offset": 1.0}}},
     )
     mgr.build()
 

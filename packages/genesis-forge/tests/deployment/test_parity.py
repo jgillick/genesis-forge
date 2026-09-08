@@ -64,7 +64,10 @@ def test_parity_produces_golden_samples(deployable_env):
     report = check_parity(capture, ticks=4)
 
     assert report.golden["observations"].shape[0] == 4
-    assert report.golden["observations"].shape[1] == capture.manifest.observations.total_size
+    assert (
+        report.golden["observations"].shape[1]
+        == capture.manifest.observations.total_size
+    )
     assert report.golden["raw_actions"].shape == (4, capture.manifest.num_actions)
     assert report.golden["joint_targets"].shape == (4, capture.manifest.num_actions)
 

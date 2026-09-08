@@ -13,7 +13,23 @@ from typing import Any
 import numpy as np
 
 from .errors import MalformedBundleError
-from .serialization import decode_value, encode_value, require
+from .serialization import require
+
+
+def _read_action_index(value: Any, name: str) -> tuple[int, ...] | None:
+    """Read the joint-to-action mapping as integers."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)):
+        raise MalformedBundleError(
+            f"Action manager '{name}' has a 'joint_action_index' that is not a list."
+        )
+    try:
+        return tuple(int(index) for index in value)
+    except (TypeError, ValueError) as error:
+        raise MalformedBundleError(
+            f"Action manager '{name}' has a non-integer entry in 'joint_action_index'."
+        ) from error
 
 
 @dataclass(frozen=True)
@@ -27,11 +43,22 @@ class ActionManagerSpec:
     slice_end: int
     config: dict[str, Any]
     decoder_import_path: str | None = None
-    delay_step: int = 0
+    #: One action index per joint, positionally matched to :attr:`joint_names`.
+    #: None when every joint has its own action.
+    joint_action_index: tuple[int, ...] | None = None
 
     @property
     def num_actions(self) -> int:
+        """How many policy outputs this manager consumes."""
         return self.slice_end - self.slice_start
+
+    @property
+    def num_joints(self) -> int:
+        """How many joint targets it produces.
+
+        Larger than :attr:`num_actions` when joints share an action.
+        """
+        return len(self.joint_names)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, where: str) -> ActionManagerSpec:
@@ -50,14 +77,35 @@ class ActionManagerSpec:
             joint_names=joint_names,
             slice_start=int(bounds[0]),
             slice_end=int(bounds[1]),
-            config=decode_value(data.get("config", {})),
+            config=data.get("config", {}),
             decoder_import_path=data.get("decoder_import_path"),
-            delay_step=int(data.get("delay_step", 0)),
+            joint_action_index=_read_action_index(data.get("joint_action_index"), name),
         )
-        if spec.num_actions != len(joint_names):
+        grouped = spec.joint_action_index is not None
+        if grouped and len(spec.joint_action_index) != len(joint_names):
+            raise MalformedBundleError(
+                f"Action manager '{name}' maps "
+                f"{len(spec.joint_action_index)} joint(s) to actions but names "
+                f"{len(joint_names)}."
+            )
+        if grouped and any(
+            index < 0 or index >= spec.num_actions for index in spec.joint_action_index
+        ):
+            raise MalformedBundleError(
+                f"Action manager '{name}' maps a joint to an action outside its "
+                f"slice of {spec.num_actions} action(s)."
+            )
+        if not grouped and spec.num_actions != len(joint_names):
             raise MalformedBundleError(
                 f"Action manager '{name}' covers {spec.num_actions} actions but names "
-                f"{len(joint_names)} joints; the bundle is inconsistent."
+                f"{len(joint_names)} joints, and records no mapping between them; "
+                f"the bundle is inconsistent."
+            )
+        if grouped and len(joint_names) < spec.num_actions:
+            raise MalformedBundleError(
+                f"Action manager '{name}' groups {len(joint_names)} joints across "
+                f"{spec.num_actions} actions, so at least one action drives nothing; "
+                f"the bundle is inconsistent."
             )
         return spec
 
@@ -67,12 +115,14 @@ class ActionManagerSpec:
             "deploy_type": self.deploy_type,
             "slice": [self.slice_start, self.slice_end],
             "joint_names": list(self.joint_names),
-            "config": encode_value(self.config),
+            "config": self.config,
         }
         if self.decoder_import_path is not None:
             data["decoder_import_path"] = self.decoder_import_path
-        if self.delay_step:
-            data["delay_step"] = self.delay_step
+        if self.joint_action_index is not None:
+            data["joint_action_index"] = [
+                int(index) for index in self.joint_action_index
+            ]
         return data
 
 
@@ -92,7 +142,7 @@ class ActuatorSpec:
         return cls(
             name=name,
             joint_names=tuple(require(data, "joint_names", where=scope)),
-            values=decode_value(data.get("values", {})),
+            values=data.get("values", {}),
             randomized=tuple(data.get("randomized", ())),
         )
 
@@ -100,7 +150,7 @@ class ActuatorSpec:
         data: dict[str, Any] = {
             "name": self.name,
             "joint_names": list(self.joint_names),
-            "values": encode_value(self.values),
+            "values": self.values,
         }
         if self.randomized:
             data["randomized"] = list(self.randomized)

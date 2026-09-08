@@ -109,7 +109,9 @@ def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
     return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
-def shortest_turn_to(target_angle: torch.Tensor, current_angle: torch.Tensor) -> torch.Tensor:
+def shortest_turn_to(
+    target_angle: torch.Tensor, current_angle: torch.Tensor
+) -> torch.Tensor:
     """
     How far `current_angle` has to turn to face `target_angle`, taking the shorter way
     around: turning from 179 degrees to -179 degrees is 2 degrees, not 358.
@@ -138,8 +140,8 @@ class Pose2dCommand(CommandManager):
     `resample_time_sec` (if one is set).
 
     !!! note "Debug Visualization"
-        If you set `debug_visualizer` to True, a marker is drawn at each goal: 
-        an arrow pointing the way to face on arrival when the goal has a heading, 
+        If you set `debug_visualizer` to True, a marker is drawn at each goal:
+        an arrow pointing the way to face on arrival when the goal has a heading,
         and a ball when it does not.
 
     Args:
@@ -152,7 +154,7 @@ class Pose2dCommand(CommandManager):
                                    by a goal with no heading.
         resample_on_reached: Sample a new goal for an environment when its goal is reached.
         resample_time_sec: How long an environment may spend on one goal before it is
-                           given up on and replaced. The clock restarts with each new goal. 
+                           given up on and replaced. The clock restarts with each new goal.
                            Defaults to None: the goal only changes on reset or when reached.
         entity: The entity that is navigating to the goal. Defaults to `env.robot`.
                 This isn't necessary if `entity_manager` is provided.
@@ -352,7 +354,7 @@ class Pose2dCommand(CommandManager):
         """
         Whether each environment's entity has arrived: within `goal_reached_threshold` of
         its goal position, and -- for a goal with a heading -- also facing within
-        `heading_reached_threshold` of the goal heading. 
+        `heading_reached_threshold` of the goal heading.
         Shape is (num_envs,).
         """
         reached = self.distance_to_goal < self.goal_reached_threshold
@@ -419,7 +421,7 @@ class Pose2dCommand(CommandManager):
         if not self.enabled:
             return
 
-        # This value is used for rewards, and rewards for this step have already been computed, 
+        # This value is used for rewards, and rewards for this step have already been computed,
         # so the resampled marks from the previous step have been consumed
         self._resampled_last_step[:] = False
 
@@ -509,7 +511,7 @@ class Pose2dCommand(CommandManager):
         """
         Avoid putting the goal on top of any other entity in the scene.
 
-        The room an entity needs, between it and any other entity, is half 
+        The room an entity needs, between it and any other entity, is half
         the diagonal of its footprint, plus the reach threshold, so that arriving
         at the goal doesn't mean driving into it.
         """
@@ -533,7 +535,7 @@ class Pose2dCommand(CommandManager):
 
         self._avoided_margins = torch.tensor(
             margins, device=gs.device, dtype=gs.tc_float
-        ) # shape (num_entities, 1)
+        )  # shape (num_entities, 1)
 
     def _ground_entities(self) -> list:
         """
@@ -560,10 +562,12 @@ class Pose2dCommand(CommandManager):
         """
 
         # Put the X/Y position of all the entities to avoid in a stack
-        avoid_xy = torch.stack([ 
-            cast(torch.Tensor, entity.get_pos())[:, :2] 
-            for entity in self._avoided_entities
-        ])
+        avoid_xy = torch.stack(
+            [
+                cast(torch.Tensor, entity.get_pos())[:, :2]
+                for entity in self._avoided_entities
+            ]
+        )
 
         remaining = env_ids
         for _ in range(MAX_RESAMPLE_ATTEMPTS):

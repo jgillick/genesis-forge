@@ -209,7 +209,9 @@ class ObservationConfigItem(ConfigItem):
         self.units = cfg.get("units", None)
 
 
-def directional_clamp(value: float, increment: float, limit: float | None = None) -> float:
+def directional_clamp(
+    value: float, increment: float, limit: float | None = None
+) -> float:
     """Clamp an incremented value to `limit`, in whichever direction it moved."""
     if limit is None:
         return value

@@ -59,7 +59,9 @@ def test_a_scale_of_one_passes_values_through():
 
 
 def test_assemble_does_not_mutate_the_callers_array():
-    assembler = ObservationAssembler(layout(ObservationEntry(name="gyro", size=2, scale=10.0)))
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="gyro", size=2, scale=10.0))
+    )
     supplied = np.array([1.0, 2.0], dtype=np.float32)
 
     assembler.assemble({"gyro": supplied})
@@ -264,11 +266,32 @@ def test_a_non_finite_sensor_reading_is_refused_with_the_sensor_named():
     assembler = ObservationAssembler(simple_layout())
 
     with pytest.raises(ObservationError) as error:
-        assembler.assemble(
-            {"gyro": [1.0, float("nan"), 3.0], "dof_pos": [1.0, 2.0]}
-        )
+        assembler.assemble({"gyro": [1.0, float("nan"), 3.0], "dof_pos": [1.0, 2.0]})
 
     message = str(error.value)
     assert "gyro" in message
     assert "non-finite" in message
     assert "[1]" in message  # says which element
+
+
+def test_the_listing_does_not_mention_the_scale():
+    """It lists what to supply, and the caller supplies raw readings."""
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="dof_velocity", size=2, scale=0.05, units="rad/s"))
+    )
+
+    text = assembler.describe_inputs()
+
+    assert "dof_velocity (2 values), in rad/s" in text
+    assert "0.05" not in text  # a scale here would read as an instruction
+
+
+def test_the_caller_supplies_raw_readings():
+    """Pre-scaling would apply the factor twice; this pins which way it works."""
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="dof_velocity", size=2, scale=0.05))
+    )
+
+    np.testing.assert_allclose(
+        assembler.assemble({"dof_velocity": [10.0, 20.0]}), [0.5, 1.0]
+    )

@@ -28,7 +28,6 @@ class BaseManager:
         self,
         env: GenesisEnv,
         type: ManagerType,
-        enabled: bool = True,
     ):
         self.env = env
         self.enabled = True

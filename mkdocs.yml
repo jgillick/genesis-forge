@@ -78,6 +78,8 @@ plugins:
           - api/wrappers/*.md
         Deployment:
           - api/deployment/*.md
+        Runtime:
+          - api/runtime/*.md
         Other:
           - api/other/*.md
   - mkdocstrings:
@@ -115,47 +117,56 @@ nav:
           - Terrain: guide/managers/terrain.md
       - 🤖 Deploy to Robot: guide/deployment.md
   - API Reference:
-    - api/index.md
-    - Environments:
-      - api/environments/index.md
-      - GenesisEnv: api/environments/genesis.md
-      - ManagedEnvironment: api/environments/managed.md
-    - Managers:
-      - api/managers/index.md
-      - ActuatorManager: api/managers/actuator.md
-      - NoisyValue: api/managers/noisy_value.md
-      - ContactManager: api/managers/contact.md
-      - EntityManager: api/managers/entity.md
-      - ObservationManager: api/managers/observation.md
-      - RewardManager: api/managers/reward.md
-      - TerrainManager: api/managers/terrain.md
-      - TerminationManager: api/managers/termination.md
-      - Action Managers:
-        - api/managers/action/index.md
-        - PositionActionManager: api/managers/action/position.md
-        - PositionWithinLimitsActionManager: api/managers/action/position_w_limits.md
-        - VelocityActionManager: api/managers/action/velocity.md
-      - Command Managers:
-        - api/managers/command/index.md
-        - CommandManager: api/managers/command/command.md
-        - VelocityCommandManager: api/managers/command/velocity.md
-        - Pose2dCommand: api/managers/command/pose_2d.md
-    - MDP:
-      - api/mdp/index.md
-      - Observations: api/mdp/observations.md
-      - Reset: api/mdp/reset.md
-      - Rewards: api/mdp/rewards.md
-      - Terminations: api/mdp/terminations.md
-    - Wrappers:
-      - api/wrappers/index.md
-      - RSL-RL: api/wrappers/rsl_rl.md
-      - SKRL: api/wrappers/skrl.md
-      - Video: api/wrappers/video.md
-    - Deployment:
-      - api/deployment/index.md
-      - export: api/deployment/export.md
-      - Parity: api/deployment/parity.md
-      - Contract: api/deployment/contract.md
-    - Other:
-      - Gamepad: api/other/gamepad.md
-      - Meshes: api/other/meshes.md
+      - api/index.md
+      - Environments:
+          - Overview: api/environments/index.md
+          - GenesisEnv: api/environments/genesis.md
+          - ManagedEnvironment: api/environments/managed.md
+      - Managers:
+          - Overview: api/managers/index.md
+          - ActuatorManager: api/managers/actuator.md
+          - NoisyValue: api/managers/noisy_value.md
+          - ContactManager: api/managers/contact.md
+          - EntityManager: api/managers/entity.md
+          - ObservationManager: api/managers/observation.md
+          - RewardManager: api/managers/reward.md
+          - TerrainManager: api/managers/terrain.md
+          - TerminationManager: api/managers/termination.md
+          - Action Managers:
+              - api/managers/action/index.md
+              - PositionActionManager: api/managers/action/position.md
+              - PositionWithinLimitsActionManager: api/managers/action/position_w_limits.md
+              - VelocityActionManager: api/managers/action/velocity.md
+          - Command Managers:
+              - api/managers/command/index.md
+              - CommandManager: api/managers/command/command.md
+              - VelocityCommandManager: api/managers/command/velocity.md
+              - Pose2dCommand: api/managers/command/pose_2d.md
+      - MDP:
+          - Overview: api/mdp/index.md
+          - Observations: api/mdp/observations.md
+          - Reset: api/mdp/reset.md
+          - Rewards: api/mdp/rewards.md
+          - Terminations: api/mdp/terminations.md
+      - Wrappers:
+          - Overview: api/wrappers/index.md
+          - RSL-RL: api/wrappers/rsl_rl.md
+          - SKRL: api/wrappers/skrl.md
+          - Video: api/wrappers/video.md
+      - Deployment:
+          - Overview: api/deployment/index.md
+          - export: api/deployment/export.md
+          - Parity: api/deployment/parity.md
+          - Contract: api/deployment/contract.md
+      - Runtime:
+          - Overview: api/runtime/index.md
+          - Bundle: api/runtime/bundle.md
+          - ObservationAssembler: api/runtime/observations.md
+          - ActionDecoder: api/runtime/actions.md
+          - Decoders: api/runtime/decoders.md
+          - Manifest: api/runtime/manifest.md
+          - Errors: api/runtime/errors.md
+          - Constants: api/runtime/constants.md
+      - Other:
+          - Gamepad: api/other/gamepad.md
+          - Meshes: api/other/meshes.md

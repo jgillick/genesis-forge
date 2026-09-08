@@ -85,7 +85,9 @@ def test_bad_orientation_terminates_past_the_tilt_limit(env):
 def test_bad_orientation_respects_grace_period(env):
     env.episode_length = torch.tensor([2])
     mgr = FakeEntityManager(projected_gravity=torch.tensor([[0.9, 0.0, -0.436]]))
-    fn = terminations.bad_orientation(limit_angle=40.0, entity_manager=mgr, grace_steps=5)
+    fn = terminations.bad_orientation(
+        limit_angle=40.0, entity_manager=mgr, grace_steps=5
+    )
     fn.context(env)
     fn.safe_build()
 
@@ -210,7 +212,9 @@ def test_dof_velocity_limit_converts_rpm_to_rad(env):
 def test_dof_velocity_limit_rejects_unknown_unit_at_build_time(env):
     """The unit is validated once in build() (and again on any param change),
     not on every __call__."""
-    fn = terminations.dof_velocity_limit(actuator_manager=object(), threshold=1.0, unit="bogus")
+    fn = terminations.dof_velocity_limit(
+        actuator_manager=object(), threshold=1.0, unit="bogus"
+    )
     fn.context(env)
     with pytest.raises(AssertionError, match="Unknown velocity unit"):
         fn.safe_build()

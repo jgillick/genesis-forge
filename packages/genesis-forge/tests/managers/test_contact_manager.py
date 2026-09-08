@@ -384,7 +384,9 @@ def test_calculate_air_time_is_a_noop_when_not_tracking(env):
 def test_calculate_air_time_records_last_air_time_on_new_contact(env):
     env.robot = make_robot()
     env.scene = FakeScene(dt=0.02)
-    mgr = ContactManager(env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0)
+    mgr = ContactManager(
+        env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0
+    )
     mgr.build()
     mgr.current_air_time[:] = 0.5  # was in the air
     mgr.contacts[0, 0] = torch.tensor([2.0, 0.0, 0.0])  # now above the threshold
@@ -398,7 +400,9 @@ def test_calculate_air_time_records_last_air_time_on_new_contact(env):
 def test_calculate_air_time_increments_while_not_in_contact(env):
     env.robot = make_robot()
     env.scene = FakeScene(dt=0.02)
-    mgr = ContactManager(env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0)
+    mgr = ContactManager(
+        env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0
+    )
     mgr.build()
     mgr.current_air_time[:] = 0.5
     # contacts stay at zero -- below the threshold
@@ -412,7 +416,9 @@ def test_calculate_air_time_increments_while_not_in_contact(env):
 def test_calculate_air_time_records_last_contact_time_on_detach(env):
     env.robot = make_robot()
     env.scene = FakeScene(dt=0.02)
-    mgr = ContactManager(env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0)
+    mgr = ContactManager(
+        env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0
+    )
     mgr.build()
     mgr.current_contact_time[:] = 0.3  # was in contact
     # contacts stay at zero this step -- now below the threshold (detached)
@@ -426,7 +432,9 @@ def test_calculate_air_time_records_last_contact_time_on_detach(env):
 def test_calculate_air_time_increments_while_in_contact(env):
     env.robot = make_robot()
     env.scene = FakeScene(dt=0.02)
-    mgr = ContactManager(env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0)
+    mgr = ContactManager(
+        env, link_names=[".*_foot"], track_air_time=True, air_time_contact_threshold=1.0
+    )
     mgr.build()
     mgr.current_contact_time[:] = 0.3
     mgr.contacts[0, 0] = torch.tensor([2.0, 0.0, 0.0])  # stays above the threshold

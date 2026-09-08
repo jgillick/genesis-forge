@@ -46,9 +46,7 @@ class ManagerDecoder:
 
     def decode(self, actions: np.ndarray) -> np.ndarray:
         """Convert this manager's slice of the policy output into joint targets."""
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement decode()."
-        )
+        raise NotImplementedError(f"{type(self).__name__} must implement decode().")
 
 
 class AffineDecoder(ManagerDecoder):
@@ -67,6 +65,7 @@ class AffineDecoder(ManagerDecoder):
 
     def reset(self) -> None:
         config = self.spec.config
+        self._joint_action_index = self._group_mapping(self.spec.joint_action_index)
         self._scale = self._vector(config.get("scale"), default=1.0)
         self._offset = self._vector(config.get("offset"), default=0.0)
 
@@ -77,7 +76,9 @@ class AffineDecoder(ManagerDecoder):
 
         low = config.get("post_clip_low")
         high = config.get("post_clip_high")
-        self._post_clip_low = self._vector(low, default=None) if low is not None else None
+        self._post_clip_low = (
+            self._vector(low, default=None) if low is not None else None
+        )
         self._post_clip_high = (
             self._vector(high, default=None) if high is not None else None
         )
@@ -90,6 +91,12 @@ class AffineDecoder(ManagerDecoder):
                 f"action(s), got {values.size}."
             )
 
+        if self._joint_action_index is not None:
+            # Fan out before decoding: every parameter below is per joint, and
+            # grouped joints differ -- mirrored wheels share an action but take
+            # opposite scale.
+            values = values[self._joint_action_index]
+
         if self._pre_clip is not None:
             values = np.clip(values, *self._pre_clip)
 
@@ -100,29 +107,34 @@ class AffineDecoder(ManagerDecoder):
 
         return values.astype(self.dtype, copy=False)
 
+    def _group_mapping(self, value: Any) -> np.ndarray | None:
+        """Which action drives each joint, when the manager groups them."""
+        if value is None:
+            return None
+        # Validated when the manifest is read; this only makes it indexable.
+        return np.asarray(value, dtype=np.intp).ravel()
+
     def _vector(self, value: Any, *, default: float | None) -> np.ndarray | None:
+        """One decode parameter, sized per joint rather than per action."""
+        size = self.spec.num_joints
         if value is None:
             if default is None:
                 return None
-            return np.full(self.spec.num_actions, default, dtype=self.dtype)
+            return np.full(size, default, dtype=self.dtype)
         array = np.asarray(value, dtype=self.dtype).ravel()
         if array.size == 1:
-            return np.full(self.spec.num_actions, array.item(), dtype=self.dtype)
-        if array.size != self.spec.num_actions:
+            return np.full(size, array.item(), dtype=self.dtype)
+        if array.size != size:
             raise DecoderError(
                 f"Action manager '{self.name}' has a decode parameter of length "
-                f"{array.size}, but controls {self.spec.num_actions} joint(s)."
+                f"{array.size}, but controls {size} joint(s)."
             )
         return array
 
 
 #: Type names the runtime ships decoders for. The *name* is the manifest's
-#: contract -- module layout can be refactored without invalidating bundles.
-#:
-#: Every built-in manager decodes with the same affine shape and differs only in
-#: what its numbers mean, which is why one decoder class serves them all. The names
-#: are kept distinct anyway: a robot operator needs to know whether a target is a
-#: joint position or a wheel velocity, since those go to different motor commands.
+#: contract, so it stays stable across refactors. Several map to one class: they
+#: share an arithmetic shape and differ only in what their numbers mean.
 BUILTIN_DECODERS: dict[str, type[ManagerDecoder]] = {
     "affine_dof": AffineDecoder,
     "position": AffineDecoder,
@@ -180,7 +192,9 @@ def resolve_decoder_class(spec: ActionManagerSpec) -> type[ManagerDecoder]:
             f"action manager '{spec.name}')."
         ) from error
 
-    if not (isinstance(decoder_class, type) and issubclass(decoder_class, ManagerDecoder)):
+    if not (
+        isinstance(decoder_class, type) and issubclass(decoder_class, ManagerDecoder)
+    ):
         raise DecoderError(
             f"Decoder '{path}' for action manager '{spec.name}' must be a subclass "
             f"of ManagerDecoder."

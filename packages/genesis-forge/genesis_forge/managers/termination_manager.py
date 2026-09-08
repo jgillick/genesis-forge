@@ -1,4 +1,3 @@
-
 from typing import NotRequired
 
 import genesis as gs
@@ -191,7 +190,7 @@ class TerminationManager(BaseManager):
 
             except Exception as e:
                 print(f"Error calculating termination for '{name}'")
-                raise e # noqa TRY201
+                raise e  # noqa TRY201
 
         self.env.extras["terminations"] = self._terminated_buf
         self.env.extras["time_outs"] = self._truncated_buf

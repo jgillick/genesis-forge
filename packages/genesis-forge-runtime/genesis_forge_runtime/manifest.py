@@ -15,51 +15,7 @@ from .action_schema import ActionManagerSpec, ActuatorSpec
 from .constants import MIN_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION
 from .errors import MalformedBundleError, SchemaVersionError
 from .observation_schema import ObservationLayout
-from .serialization import decode_value, encode_value, require
-
-
-@dataclass(frozen=True)
-class PolicySpec:
-    """Where the exported policy lives, what format it is, and what its output means.
-
-    The bundle records the format rather than requiring one: ONNX is the documented
-    path, but a TorchScript file (or anything else you load yourself) is equally
-    welcome -- the runtime never loads the policy for you.
-    """
-
-    file: str | None = None
-    format: str | None = None
-    input_name: str = "obs"
-    output_name: str = "actions"
-    output_semantics: str = "raw"
-    normalizer: dict[str, Any] | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PolicySpec:
-        return cls(
-            file=data.get("file"),
-            format=data.get("format"),
-            input_name=data.get("input_name", "obs"),
-            output_name=data.get("output_name", "actions"),
-            output_semantics=data.get("output_semantics", "raw"),
-            normalizer=decode_value(data["normalizer"])
-            if data.get("normalizer") is not None
-            else None,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        data: dict[str, Any] = {
-            "input_name": self.input_name,
-            "output_name": self.output_name,
-            "output_semantics": self.output_semantics,
-        }
-        if self.file is not None:
-            data["file"] = self.file
-        if self.format is not None:
-            data["format"] = self.format
-        if self.normalizer is not None:
-            data["normalizer"] = encode_value(self.normalizer)
-        return data
+from .serialization import require
 
 
 @dataclass(frozen=True)
@@ -75,6 +31,10 @@ class Provenance:
     genesis_forge_version: str | None = None
     torch_version: str | None = None
     additional: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Ensure the additional dict is JSON-serializable
+        json.dumps(self.additional)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Provenance:
@@ -114,7 +74,9 @@ class Manifest:
     observations: ObservationLayout
     actions: tuple[ActionManagerSpec, ...]
     actuators: tuple[ActuatorSpec, ...] = ()
-    policy: PolicySpec | None = None
+    #: The policy's files, in the order they were exported. Empty when the bundle
+    #: carries no policy. They live in the bundle's ``policy/`` directory.
+    policy: tuple[str, ...] = ()
     provenance: Provenance = field(default_factory=Provenance)
     schema_version: int = SCHEMA_VERSION
 
@@ -163,9 +125,7 @@ class Manifest:
                 ActuatorSpec.from_dict(item, where="actuators")
                 for item in data.get("actuators", [])
             ),
-            policy=PolicySpec.from_dict(data["policy"])
-            if data.get("policy") is not None
-            else None,
+            policy=tuple(data.get("policy", ())),
             provenance=Provenance.from_dict(data.get("provenance", {})),
         )
 
@@ -182,8 +142,8 @@ class Manifest:
         }
         if self.actuators:
             data["actuators"] = [spec.to_dict() for spec in self.actuators]
-        if self.policy is not None:
-            data["policy"] = self.policy.to_dict()
+        if self.policy:
+            data["policy"] = list(self.policy)
         return data
 
     def to_json(self, *, indent: int = 2) -> str:
@@ -194,7 +154,9 @@ class Manifest:
         try:
             data = json.loads(text)
         except json.JSONDecodeError as error:
-            raise MalformedBundleError(f"manifest.json is not valid JSON: {error}") from error
+            raise MalformedBundleError(
+                f"manifest.json is not valid JSON: {error}"
+            ) from error
         return cls.from_dict(data)
 
 

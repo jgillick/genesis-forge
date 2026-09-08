@@ -43,7 +43,8 @@ class ParityReport:
 
     def summary(self) -> str:
         actions = ", ".join(
-            f"{name}: {error:.2e}" for name, error in sorted(self.max_action_error.items())
+            f"{name}: {error:.2e}"
+            for name, error in sorted(self.max_action_error.items())
         )
         return (
             f"parity over {self.ticks} tick(s) -- observations within "
@@ -125,14 +126,12 @@ def check_parity(
             for spec in manifest.actions:
                 manager = capture.action_managers[spec.name]
                 chunk = raw_actions[spec.slice_start : spec.slice_end]
-                # On gs.device, not the CPU: a manager's buffers were placed
-                # there at build time, and process_actions indexes against them.
                 torch_chunk = torch.as_tensor(
                     np.tile(chunk, (capture.num_envs, 1)),
                     dtype=torch.float32,
                     device=gs.device,
                 )
-                torch_targets = manager.process_actions(torch_chunk).detach()[0]
+                torch_targets = manager.actions_to_dof_targets(torch_chunk).detach()[0]
                 numpy_targets = decoded.by_manager[spec.name]
 
                 error = max_abs_error(numpy_targets, torch_targets)
@@ -147,7 +146,7 @@ def check_parity(
                     component=f"action manager '{spec.name}' ({spec.deploy_type})",
                     detail=(
                         f"tick {tick}: the deployment decoder and the manager's "
-                        f"process_actions produced different joint targets"
+                        f"own decode produced different joint targets"
                     ),
                 )
 

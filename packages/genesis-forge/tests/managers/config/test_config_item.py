@@ -40,10 +40,7 @@ Plain function
 
 
 def test_plain_function_params_are_splatted(env):
-    item = ConfigItem({
-        "fn": plain_reward,
-        "params": {"threshold": 5.0}
-    }, env)
+    item = ConfigItem({"fn": plain_reward, "params": {"threshold": 5.0}}, env)
     item.build()
     assert item.execute() == ("plain", env, 5.0, 2.0)
 

@@ -44,6 +44,7 @@ class FakeActuatorManager:
 entity_projected_gravity
 """
 
+
 def test_entity_projected_gravity_prefers_entity_manager(env):
     mgr = FakeEntityManager(projected_gravity=torch.tensor([[0.1, 0.2, -0.9]]))
     fn = observations.entity_projected_gravity(entity_manager=mgr)
@@ -96,7 +97,9 @@ def test_dofs_position_prefers_actuator_manager_over_entity(env):
 
 def test_dofs_force_clip_to_max_force_is_passed_through(env):
     actuator = FakeActuatorManager(force=torch.tensor([[10.0, 10.0]]))
-    fn = observations.entity_dofs_force(actuator_manager=actuator, clip_to_max_force=True)
+    fn = observations.entity_dofs_force(
+        actuator_manager=actuator, clip_to_max_force=True
+    )
     fn.context(env)
     fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[5.0, 5.0]]))

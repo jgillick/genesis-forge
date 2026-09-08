@@ -320,7 +320,9 @@ def test_override_values_are_used_instead_of_calling_the_function(env):
     result = mgr.get_observations(values={"a": override})
 
     assert calls == []  # the function itself was never called for this round
-    assert torch.equal(result, torch.full((env.num_envs, 1), 6.0))  # scale still applies
+    assert torch.equal(
+        result, torch.full((env.num_envs, 1), 6.0)
+    )  # scale still applies
 
 
 def test_override_values_accepts_a_plain_scalar(env):
@@ -329,7 +331,9 @@ def test_override_values_accepts_a_plain_scalar(env):
 
     result = mgr.get_observations(values={"a": 0.3})
 
-    assert torch.allclose(result, torch.full((env.num_envs, 1), 0.6))  # scale still applies
+    assert torch.allclose(
+        result, torch.full((env.num_envs, 1), 0.6)
+    )  # scale still applies
 
 
 def test_override_values_skip_noise(env):

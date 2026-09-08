@@ -28,7 +28,6 @@ def position_spec(
     offset=(0.0, 1.0, -1.0),
     clip_low=(-10.0, -10.0, -10.0),
     clip_high=(10.0, 10.0, 10.0),
-    delay_step: int = 0,
 ) -> ActionManagerSpec:
     """A `position`-style manager: affine, then clipped to joint limits."""
     return ActionManagerSpec(
@@ -37,7 +36,6 @@ def position_spec(
         joint_names=joints,
         slice_start=start,
         slice_end=start + len(joints),
-        delay_step=delay_step,
         config={
             "scale": np.asarray(scale, dtype=np.float32),
             "offset": np.asarray(offset, dtype=np.float32),
@@ -112,8 +110,14 @@ def test_decoded_targets_are_named_by_joint():
 
 def test_post_clip_bounds_are_honored():
     decoder = ActionDecoder(
-        (position_spec(scale=(1.0, 1.0, 1.0), offset=(0.0, 0.0, 0.0),
-                       clip_low=(-1.0, -1.0, -1.0), clip_high=(1.0, 1.0, 1.0)),)
+        (
+            position_spec(
+                scale=(1.0, 1.0, 1.0),
+                offset=(0.0, 0.0, 0.0),
+                clip_low=(-1.0, -1.0, -1.0),
+                clip_high=(1.0, 1.0, 1.0),
+            ),
+        )
     )
 
     result = decoder.decode([5.0, -5.0, 0.25])
@@ -123,8 +127,14 @@ def test_post_clip_bounds_are_honored():
 
 def test_values_exactly_on_the_clip_boundary_pass_through():
     decoder = ActionDecoder(
-        (position_spec(scale=(1.0, 1.0, 1.0), offset=(0.0, 0.0, 0.0),
-                       clip_low=(-1.0, -1.0, -1.0), clip_high=(1.0, 1.0, 1.0)),)
+        (
+            position_spec(
+                scale=(1.0, 1.0, 1.0),
+                offset=(0.0, 0.0, 0.0),
+                clip_low=(-1.0, -1.0, -1.0),
+                clip_high=(1.0, 1.0, 1.0),
+            ),
+        )
     )
 
     result = decoder.decode([1.0, -1.0, 0.0])
@@ -264,52 +274,6 @@ def test_a_leading_batch_dimension_is_accepted():
     np.testing.assert_allclose(result.targets, [1.0, 2.0, 0.0])
 
 
-"""Delay handling (AE4)"""
-
-
-def test_trained_delay_is_recorded_but_not_applied_by_default():
-    decoder = ActionDecoder((position_spec(delay_step=2),))
-
-    assert decoder.trained_delay_steps == {"action_manager": 2}
-
-    # No lag: the first decode reflects the first input immediately.
-    result = decoder.decode([2.0, 2.0, 2.0])
-    np.testing.assert_allclose(result.targets, [1.0, 2.0, 0.0])
-
-
-def test_delay_can_be_opted_into_and_lags_by_the_trained_amount():
-    decoder = ActionDecoder((position_spec(delay_step=2),), apply_delay=True)
-
-    # The buffer starts full of zeros, so the first two ticks emit decoded zeros.
-    first = decoder.decode([2.0, 2.0, 2.0])
-    np.testing.assert_allclose(first.targets, [0.0, 1.0, -1.0])  # 0*scale + offset
-    second = decoder.decode([4.0, 4.0, 4.0])
-    np.testing.assert_allclose(second.targets, [0.0, 1.0, -1.0])
-
-    # Third tick finally emits the first input.
-    third = decoder.decode([6.0, 6.0, 6.0])
-    np.testing.assert_allclose(third.targets, [1.0, 2.0, 0.0])
-
-
-def test_reset_refills_the_delay_buffer_with_zeros():
-    decoder = ActionDecoder((position_spec(delay_step=1),), apply_delay=True)
-    decoder.decode([2.0, 2.0, 2.0])
-
-    decoder.reset()
-
-    # Back to emitting the zero-action decode, as on a fresh start.
-    np.testing.assert_allclose(decoder.decode([6.0, 6.0, 6.0]).targets, [0.0, 1.0, -1.0])
-
-
-def test_describe_outputs_reports_delay_status():
-    decoder = ActionDecoder((position_spec(delay_step=2),))
-
-    text = decoder.describe_outputs()
-
-    assert "delay_step=2" in text
-    assert "not applied" in text
-
-
 """Decoder resolution"""
 
 
@@ -440,7 +404,9 @@ def custom_decoders(tmp_path, monkeypatch):
     return "third_party_decoders"
 
 
-def custom_spec(module: str, class_name: str, name: str = "custom") -> ActionManagerSpec:
+def custom_spec(
+    module: str, class_name: str, name: str = "custom"
+) -> ActionManagerSpec:
     return ActionManagerSpec(
         name=name,
         deploy_type="third_party_type",
@@ -462,7 +428,7 @@ def test_a_custom_decoder_loads_through_its_import_path(custom_decoders):
 
 
 def test_a_stateful_custom_decoder_keeps_state_across_ticks(custom_decoders):
-    """R12: the contract supports stateful decode beyond delay_step."""
+    """R12: a decoder may carry state across ticks."""
     decoder = ActionDecoder((custom_spec(custom_decoders, "RunningSumDecoder"),))
 
     np.testing.assert_allclose(decoder.decode([1.0, 1.0]).targets, [1.0, 1.0])
@@ -636,64 +602,3 @@ def test_the_decoder_exposes_every_property_the_docs_tell_users_to_read():
             f"ActionDecoder.{attribute} is documented as the value to feed back, "
             f"but no longer exists."
         )
-
-
-"""
-Per-manager raw actions under a trained delay
-
-A manager records its raw actions *after* taking them off its delay buffer, so
-`current_actions(action_manager=...)` observes the delayed value during training.
-The decoder has to record the same thing, or a policy trained on that feedback is
-fed something it never saw.
-"""
-
-
-def delayed_spec(delay_step=2):
-    spec = position_spec()
-    return ActionManagerSpec(
-        name=spec.name,
-        deploy_type=spec.deploy_type,
-        joint_names=spec.joint_names,
-        slice_start=spec.slice_start,
-        slice_end=spec.slice_end,
-        config=spec.config,
-        delay_step=delay_step,
-    )
-
-
-def test_per_manager_raw_actions_follow_the_delay_when_it_is_applied():
-    decoder = ActionDecoder((delayed_spec(),), apply_delay=True)
-
-    decoder.decode([1.0, 1.0, 1.0])
-    first = decoder.last_raw_actions_by_manager["action_manager"]
-    decoder.decode([2.0, 2.0, 2.0])
-    second = decoder.last_raw_actions_by_manager["action_manager"]
-
-    # A delay of two means the first two ticks still emit the zero-filled buffer.
-    np.testing.assert_allclose(first, [0.0, 0.0, 0.0])
-    np.testing.assert_allclose(second, [0.0, 0.0, 0.0])
-
-    decoder.decode([3.0, 3.0, 3.0])
-    np.testing.assert_allclose(
-        decoder.last_raw_actions_by_manager["action_manager"], [1.0, 1.0, 1.0]
-    )
-
-
-def test_the_flat_raw_actions_stay_undelayed():
-    """`current_actions()` with no manager reads env.actions, which is undelayed."""
-    decoder = ActionDecoder((delayed_spec(),), apply_delay=True)
-
-    decoder.decode([1.0, 1.0, 1.0])
-
-    np.testing.assert_allclose(decoder.last_raw_actions, [1.0, 1.0, 1.0])
-
-
-def test_without_the_delay_applied_both_views_agree():
-    decoder = ActionDecoder((delayed_spec(),), apply_delay=False)
-
-    decoder.decode([1.0, 1.0, 1.0])
-
-    np.testing.assert_allclose(
-        decoder.last_raw_actions_by_manager["action_manager"], [1.0, 1.0, 1.0]
-    )
-    np.testing.assert_allclose(decoder.last_raw_actions, [1.0, 1.0, 1.0])

@@ -37,7 +37,11 @@ EXPERIMENT_NAME = "wheeled-robot-command"
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 parser.add_argument(
-    "-o", "--output", type=str, default="./deploy_bundle", help="Where to write the bundle."
+    "-o",
+    "--output",
+    type=str,
+    default="./deploy_bundle",
+    help="Where to write the bundle.",
 )
 args = parser.parse_args()
 
@@ -120,7 +124,7 @@ def verify_onnx_policy(bundle, reference_policy, rtol=1e-4, atol=1e-5):
     # external weights. This unpacks to a temp directory and clears it after.
     with bundle.unpacked() as directory:
         worst = _compare_policies(
-            directory / bundle.policy_file,
+            directory / "policy" / bundle.policy_files[0],
             reference_policy,
             observations,
             rtol=rtol,
@@ -181,6 +185,7 @@ def main():
             "framework": "rsl_rl",
             "framework_version": version("rsl-rl-lib"),
         },
+        archive=False,
     )
 
     verify_onnx_policy(bundle, reference_policy)
@@ -188,8 +193,10 @@ def main():
     print()
     print(bundle.describe())
     print()
-    print(f"Copy {bundle.path.name} to the robot, then: "
-          f"pip install genesis-forge-runtime[onnx]")
+    print(
+        f"Copy {bundle.path.name} to the robot, then: "
+        f"pip install genesis-forge-runtime[onnx]"
+    )
 
 
 if __name__ == "__main__":

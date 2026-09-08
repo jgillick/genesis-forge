@@ -172,9 +172,7 @@ class ContactManager(BaseManager):
         self._with_local_link_ids = None
         if isinstance(with_entity, (list, tuple)) and len(with_entity) == 0:
             raise ValueError("with_entity cannot be an empty list")
-        self._has_with_filter = (
-            with_entity is not None or with_links_names is not None
-        )
+        self._has_with_filter = with_entity is not None or with_links_names is not None
 
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx = None

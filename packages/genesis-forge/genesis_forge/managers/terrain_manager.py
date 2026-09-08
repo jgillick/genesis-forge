@@ -174,9 +174,9 @@ class TerrainManager(BaseManager):
             The positions tensor of shape (num, 3)
         """
         # Prep output buffer
-        assert (
-            output is not None or num is not None
-        ), "Either output or num must be provided"
+        assert output is not None or num is not None, (
+            "Either output or num must be provided"
+        )
         if output is None:
             output = torch.zeros(num, 3, device=gs.device)
         if out_idx is None:

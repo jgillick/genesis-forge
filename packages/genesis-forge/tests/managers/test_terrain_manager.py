@@ -186,7 +186,9 @@ def test_generate_random_positions_stays_within_the_usable_ratio_bounds(env):
     mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
-    output = mgr.generate_random_positions(num=env.num_envs, usable_ratio=0.5, height_offset=0.0)
+    output = mgr.generate_random_positions(
+        num=env.num_envs, usable_ratio=0.5, height_offset=0.0
+    )
 
     assert torch.all(output[:, 0] >= 2.5) and torch.all(output[:, 0] <= 7.5)
     assert torch.all(output[:, 1] >= 2.5) and torch.all(output[:, 1] <= 7.5)
@@ -233,9 +235,7 @@ def test_generate_random_positions_supports_num_greater_than_num_envs(env):
     mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
-    output = mgr.generate_random_positions(
-        num=50, usable_ratio=0.5, height_offset=0.0
-    )
+    output = mgr.generate_random_positions(num=50, usable_ratio=0.5, height_offset=0.0)
 
     assert output.shape == (50, 3)
     assert torch.all(output[:, 0] >= 2.5) and torch.all(output[:, 0] <= 7.5)

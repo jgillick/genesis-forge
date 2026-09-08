@@ -394,7 +394,11 @@ def test_lin_vel_sensitivity_is_derived_from_the_command_range(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.05, 0.0, 0.0]]))
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.1, 0.0, 0.0]]),
-        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+        range={
+            "lin_vel_x": (-0.1, 0.1),
+            "lin_vel_y": (0.0, 0.0),
+            "ang_vel_z": (-0.5, 0.5),
+        },
     )
     fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
     fn.context(env)
@@ -409,7 +413,11 @@ def test_lin_vel_derived_sensitivity_uses_the_diagonal_max_speed(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.15, 0.2, 0.0]]))
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.3, 0.4, 0.0]]),
-        range={"lin_vel_x": (-0.3, 0.3), "lin_vel_y": (-0.4, 0.4), "ang_vel_z": (0.0, 0.0)},
+        range={
+            "lin_vel_x": (-0.3, 0.3),
+            "lin_vel_y": (-0.4, 0.4),
+            "ang_vel_z": (0.0, 0.0),
+        },
     )
     fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
     fn.context(env)
@@ -425,14 +433,21 @@ def test_derived_sensitivity_follows_a_range_change(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.05, 0.0, 0.0]]))
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.1, 0.0, 0.0]]),
-        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+        range={
+            "lin_vel_x": (-0.1, 0.1),
+            "lin_vel_y": (0.0, 0.0),
+            "ang_vel_z": (-0.5, 0.5),
+        },
     )
     fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
     fn.context(env)
     fn.safe_build()
     before = fn(env)
 
-    vel_cmd.range["lin_vel_x"] = (-0.2, 0.2)  # sensitivity -> 0.01, same error -> exp(-0.25)
+    vel_cmd.range["lin_vel_x"] = (
+        -0.2,
+        0.2,
+    )  # sensitivity -> 0.01, same error -> exp(-0.25)
     assert torch.allclose(fn(env), torch.tensor([0.77880078]), atol=1e-6)
     assert fn(env) > before
 
@@ -441,7 +456,11 @@ def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
     mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.25]]))
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.0, 0.0, 0.5]]),
-        range={"lin_vel_x": (-0.1, 0.1), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-0.5, 0.5)},
+        range={
+            "lin_vel_x": (-0.1, 0.1),
+            "lin_vel_y": (0.0, 0.0),
+            "ang_vel_z": (-0.5, 0.5),
+        },
     )
     fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
     fn.context(env)
@@ -453,7 +472,9 @@ def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
 
 def test_sensitivity_falls_back_to_default_without_a_command_manager(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.5, 0.0, 0.0]]))
-    fn = rewards.command_tracking_lin_vel(command=torch.tensor([[1.0, 0.0]]), entity_manager=mgr)
+    fn = rewards.command_tracking_lin_vel(
+        command=torch.tensor([[1.0, 0.0]]), entity_manager=mgr
+    )
     fn.context(env)
     fn.safe_build()
 
@@ -465,7 +486,11 @@ def test_sensitivity_falls_back_to_default_for_a_zero_range(env):
     mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.5]]))
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.0, 0.0, 0.0]]),
-        range={"lin_vel_x": (-1.0, 1.0), "lin_vel_y": (-1.0, 1.0), "ang_vel_z": (0.0, 0.0)},
+        range={
+            "lin_vel_x": (-1.0, 1.0),
+            "lin_vel_y": (-1.0, 1.0),
+            "ang_vel_z": (0.0, 0.0),
+        },
     )
     fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
     fn.context(env)
@@ -504,7 +529,9 @@ def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
 
 
 def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
-    fn = rewards.stopped_joint_deviation_l1(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
+    fn = rewards.stopped_joint_deviation_l1(
+        vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3)))
+    )
     fn.context(env)
     with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
         fn.safe_build()
@@ -858,7 +885,9 @@ def test_has_contact_rewards_envs_with_enough_contacts(env):
 
 def test_contact_force_sums_the_over_threshold_violation(env):
     contacts = torch.tensor([[[3.0, 0.0, 0.0], [0.1, 0.0, 0.0]]])
-    fn = rewards.contact_force(contact_manager=FakeContactManager(contacts), threshold=1.0)
+    fn = rewards.contact_force(
+        contact_manager=FakeContactManager(contacts), threshold=1.0
+    )
     fn.context(env)
     fn.safe_build()
 
@@ -959,7 +988,9 @@ def test_feet_ground_time_ignores_feet_that_have_not_lifted(env):
 
 
 def test_feet_slide_penalizes_moving_feet_that_are_in_contact(env):
-    contacts = torch.tensor([[[3.0, 0.0, 0.0], [0.0, 0.0, 0.0]]])  # foot0 in contact, foot1 not
+    contacts = torch.tensor(
+        [[[3.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
+    )  # foot0 in contact, foot1 not
     mgr = FakeGaitContactManager(contacts=contacts, local_link_ids=[0, 1])
 
     class FakeRobotLinks:
@@ -982,7 +1013,9 @@ Passing an MdpFn subclass uninstantiated
 
 
 def test_mdp_fn_class_passed_uninstantiated_raises_a_clear_error(env):
-    with pytest.raises(TypeError, match="base_height must be constructed, not passed as a class"):
+    with pytest.raises(
+        TypeError, match="base_height must be constructed, not passed as a class"
+    ):
         ConfigItem({"fn": rewards.base_height, "params": {"target_height": 0.3}}, env)
 
 

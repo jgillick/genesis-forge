@@ -449,7 +449,6 @@ class ActuatorManager(BaseManager):
         # The value can either be a single float or a tuple range
         # First normalize them into two dicts: min and max
         if self._max_force_cfg is not None:
-
             # Normalize the max_force values into a min & max dict
             force_min = {}
             force_max = {}

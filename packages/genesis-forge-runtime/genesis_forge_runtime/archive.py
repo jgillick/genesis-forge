@@ -95,10 +95,9 @@ def ensure_extracted(archive: Path) -> Path:
         if marker.read_text().strip() == expected:
             return destination
 
-    # Unpack somewhere else first, then swap it in. A robot can lose power
-    # part-way through; that must leave either the previous extraction or nothing
-    # at all, never a half-filled directory with no marker -- which would look
-    # like a directory somebody else made, and be refused from then on.
+    # Unpack elsewhere and swap it in, so an interrupted unpack leaves either the
+    # previous extraction or nothing -- never a half-filled directory, which the
+    # next load would mistake for someone else's and refuse.
     staging = destination.with_name(f"{destination.name}.unpacking")
     try:
         if staging.exists():

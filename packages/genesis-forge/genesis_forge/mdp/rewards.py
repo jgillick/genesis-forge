@@ -524,9 +524,9 @@ class command_tracking_lin_vel(MdpFn):
     entity_manager: EntityManager = None
 
     def build(self):
-        assert (
-            self.command is not None or self.vel_cmd_manager is not None
-        ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        assert self.command is not None or self.vel_cmd_manager is not None, (
+            "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -589,9 +589,9 @@ class command_tracking_ang_vel(MdpFn):
     entity_manager: EntityManager = None
 
     def build(self):
-        assert (
-            self.commanded_ang_vel is not None or self.vel_cmd_manager is not None
-        ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
+            "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -642,9 +642,9 @@ class stopped_joint_deviation_l1(MdpFn):
     action_manager: PositionActionManager = None
 
     def build(self):
-        assert (
-            self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
+        assert self.actuator_manager is not None or self.action_manager is not None, (
+            "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:

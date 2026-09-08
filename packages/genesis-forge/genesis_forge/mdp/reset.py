@@ -113,6 +113,7 @@ class position(ResetMdpFn):
                 zero_velocity=self.zero_velocity,
             )
 
+
 @dataclass(kw_only=True, eq=False)
 class randomize_terrain_position(ResetMdpFn):
     """
@@ -240,9 +241,9 @@ class randomize_annulus_position(ResetMdpFn):
         r_min, r_max = self.radius_range
 
         # Sample uniformly by area: r = sqrt(U(r_min^2, r_max^2))
-        radius = torch.empty(n_envs, device=gs.device).uniform_(
-            r_min**2, r_max**2
-        ).sqrt()
+        radius = (
+            torch.empty(n_envs, device=gs.device).uniform_(r_min**2, r_max**2).sqrt()
+        )
         theta = torch.empty(n_envs, device=gs.device).uniform_(0, 2 * math.pi)
 
         self._pos_buffer[envs_idx, 0] = self.center[0] + radius * torch.cos(theta)

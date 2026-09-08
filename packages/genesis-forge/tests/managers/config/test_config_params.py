@@ -41,7 +41,11 @@ def mdp_item(env):
 @pytest.fixture
 def dict_item(env):
     item = RewardConfigItem(
-        {"fn": plain, "params": {"threshold": 1.0, "sensitivity": 0.25}, "weight": -2.0},
+        {
+            "fn": plain,
+            "params": {"threshold": 1.0, "sensitivity": 0.25},
+            "weight": -2.0,
+        },
         env,
     )
     item.build()

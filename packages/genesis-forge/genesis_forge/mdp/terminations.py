@@ -171,8 +171,14 @@ class out_of_bounds(MdpFn):
 
         # Get terrain bounds
         (x_min, x_max, y_min, y_max) = self.terrain_manager.get_bounds(self.subterrain)
-        x_min_bound, x_max_bound = x_min + self.border_margin, x_max - self.border_margin
-        y_min_bound, y_max_bound = y_min + self.border_margin, y_max - self.border_margin
+        x_min_bound, x_max_bound = (
+            x_min + self.border_margin,
+            x_max - self.border_margin,
+        )
+        y_min_bound, y_max_bound = (
+            y_min + self.border_margin,
+            y_max - self.border_margin,
+        )
 
         # Check bounds
         x_pos, y_pos = position[:, 0], position[:, 1]

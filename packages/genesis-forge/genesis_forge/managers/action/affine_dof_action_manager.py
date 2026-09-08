@@ -81,7 +81,11 @@ class AffineDofActionManager(BaseActionManager):
         Returns:
             The processed and converted actions.
         """
-        if self._scale_values is None or self._offset_values is None or self._clip_values is None:
+        if (
+            self._scale_values is None
+            or self._offset_values is None
+            or self._clip_values is None
+        ):
             raise RuntimeError(
                 "AffineDofActionManager: _scale_values, _offset_values, and _clip_values must be set by a subclass's build() before calling process_actions()"
             )
@@ -128,11 +132,12 @@ class AffineDofActionManager(BaseActionManager):
         else:  # (num_envs, 2, num_joints) -- per-environment bounds
             clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
 
+        # Per joint, which is not the policy's width once joints share an action.
         def nominal(tensor, name):
             return to_nominal_array(
                 tensor,
                 name=name,
-                num_joints=self.num_actions,
+                num_joints=len(self.dofs),
                 num_envs=self.env.num_envs,
                 manager_name=type(self).__name__,
             )
@@ -152,7 +157,11 @@ class AffineDofActionManager(BaseActionManager):
         if any(value != float("inf") for value in high):
             config["post_clip_high"] = high
 
-        return DeploymentActionConfig(deploy_type=self.deploy_type, config=config)
+        return DeploymentActionConfig(
+            deploy_type=self.deploy_type,
+            config=config,
+            joint_action_index=self.joint_action_index,
+        )
 
     """
     Internal methods

@@ -137,44 +137,10 @@ uv run ./deploy.py
 python ./deploy.py
 ```
 
-This writes `./deploy_bundle.gfb` — a single file holding a readable
-`manifest.json`, the policy as `policy.onnx` (plus the companion file its weights
-live in), and recorded input/output pairs for an on-robot smoke test. Before writing
-anything it runs the deployment code against the live training pipeline and refuses
-to produce a bundle if the two disagree, then checks the packaged ONNX graph against
-the policy it came from.
+This writes `trained_bundle.gfb` - a portable bundle containing your trained policy
+and meta data necessary for `genesis_forge_runtime` to easily run it on your robot.
 
-The script prints exactly what to wire up on the robot:
+Check out the [on_robot/README.md](./on_robot/README.md) for instructions on how to run this
+on your own [Freenove 4WD car](https://store.freenove.com/products/fnk0043).
 
-```
-Bundle: ./.deploy_bundle
-  control rate: 50.0 Hz (dt=0.02)
-  observation vector: 18 values (18 per tick x 1 history)
-  values you supply each tick:
-    - velocity_cmd (3 values)
-    - angle_velocity (3 values)
-    ...
-    - actions (3 values)
-  joint targets produced (3):
-    - [velocity] base_back_wheel_joint, base_right_wheel_joint, base_left_wheel_joint
-```
-
-Note the `[velocity]` tag: this robot's action manager produces wheel *velocities*,
-so those targets go to a velocity command rather than a position one.
-
-Copy that one file to the robot and install just the runtime — it needs numpy only,
-no simulator:
-
-```shell
-pip install genesis-forge-runtime[onnx]
-```
-
-See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/)
-for the full control loop.
-
-To export the pipeline contract before you have a trained checkpoint — useful for
-wiring up the robot side early — skip the policy:
-
-```shell
-uv run ./deploy.py --skip-policy
-```
+For more information, check out the full [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/).

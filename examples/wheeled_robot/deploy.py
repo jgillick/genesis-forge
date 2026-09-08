@@ -40,7 +40,7 @@ parser.add_argument(
     "-o",
     "--output",
     type=str,
-    default="./deploy_bundle",
+    default="./on_robot/trained_bundle",
     help="Where to write the bundle.",
 )
 args = parser.parse_args()
@@ -185,7 +185,6 @@ def main():
             "framework": "rsl_rl",
             "framework_version": version("rsl-rl-lib"),
         },
-        archive=False,
     )
 
     verify_onnx_policy(bundle, reference_policy)
@@ -194,8 +193,8 @@ def main():
     print(bundle.describe())
     print()
     print(
-        f"Copy {bundle.path.name} to the robot, then: "
-        f"pip install genesis-forge-runtime[onnx]"
+        f"Copy {bundle.path.name} to the robot, then "
+        f"follow the instructions in examples/wheeled_robot/on_robot/README.md."
     )
 
 

@@ -48,6 +48,17 @@ class ManagerDecoder:
         """Convert this manager's slice of the policy output into joint targets."""
         raise NotImplementedError(f"{type(self).__name__} must implement decode().")
 
+    @property
+    def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
+        """The clip this decoder applies to each joint's target, where it clips.
+
+        A joint appears only if its target is bounded on at least one side, and
+        an unbounded side reads as an infinity -- the exporter drops a bound of
+        infinity rather than writing one JSON cannot hold. Decoders that do not
+        clip return nothing, which is why this is empty by default.
+        """
+        return {}
+
 
 class AffineDecoder(ManagerDecoder):
     """Optional raw-action clip, ``actions * scale + offset``, then optional clip.
@@ -102,6 +113,19 @@ class AffineDecoder(ManagerDecoder):
             values = np.clip(values, self._clip_low, self._clip_high)
 
         return values.astype(self.dtype, copy=False)
+
+    @property
+    def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
+        low, high = self._clip_low, self._clip_high
+        if low is None and high is None:
+            return {}
+        return {
+            name: (
+                float(low[index]) if low is not None else -np.inf,
+                float(high[index]) if high is not None else np.inf,
+            )
+            for index, name in enumerate(self.joint_names)
+        }
 
     def _group_mapping(self, value: Any) -> np.ndarray | None:
         """Which action drives each joint, when the manager groups them."""

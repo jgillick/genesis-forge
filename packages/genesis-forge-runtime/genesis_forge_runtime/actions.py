@@ -101,6 +101,19 @@ class ActionDecoder:
         return self._joint_names
 
     @property
+    def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
+        """Per joint, the clip its decoder applies to the target it produces.
+
+        The range a joint's targets can span, which is what a robot needs to map
+        them onto whatever its motors take. Joints whose targets are unbounded
+        are absent; see :meth:`ManagerDecoder.clip_range_by_joint`.
+        """
+        clips: dict[str, tuple[float, float]] = {}
+        for decoder in self._decoders:
+            clips.update(decoder.clip_range_by_joint)
+        return clips
+
+    @property
     def decoders(self) -> tuple[ManagerDecoder, ...]:
         return tuple(self._decoders)
 

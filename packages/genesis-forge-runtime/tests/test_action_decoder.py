@@ -602,3 +602,67 @@ def test_the_decoder_exposes_every_property_the_docs_tell_users_to_read():
             f"ActionDecoder.{attribute} is documented as the value to feed back, "
             f"but no longer exists."
         )
+
+
+"""Reading a joint's clip range back off the decoder"""
+
+
+def test_clip_range_by_joint_reports_the_bounds_the_decoder_applies():
+    decoder = ActionDecoder(
+        (position_spec(clip_low=(-1.0, -2.0, -3.0), clip_high=(1.0, 2.0, 3.0)),)
+    )
+
+    assert decoder.clip_range_by_joint == {
+        "hip": (-1.0, 1.0),
+        "knee": (-2.0, 2.0),
+        "ankle": (-3.0, 3.0),
+    }
+
+
+def test_an_unbounded_side_reads_as_infinite():
+    """The exporter omits a bound of infinity, so the decoder restores it."""
+    spec = position_spec()
+    del spec.config[
+        "post_clip_high" if "post_clip_high" in spec.config else "clip_high"
+    ]
+
+    decoder = ActionDecoder((spec,))
+
+    assert decoder.clip_range_by_joint["hip"] == (-10.0, float("inf"))
+
+
+def test_a_joint_with_no_clip_at_all_is_absent():
+    spec = position_spec()
+    del spec.config["clip_low"]
+    del spec.config["clip_high"]
+
+    decoder = ActionDecoder((spec,))
+
+    assert decoder.clip_range_by_joint == {}
+
+
+def test_clip_ranges_merge_across_managers():
+    decoder = ActionDecoder(
+        (
+            position_spec(
+                name="front",
+                joints=("hip",),
+                scale=(1.0,),
+                offset=(0.0,),
+                clip_low=(-5.0,),
+                clip_high=(5.0,),
+                start=0,
+            ),
+            position_spec(
+                name="rear",
+                joints=("tail",),
+                scale=(1.0,),
+                offset=(0.0,),
+                clip_low=(-9.0,),
+                clip_high=(9.0,),
+                start=1,
+            ),
+        )
+    )
+
+    assert decoder.clip_range_by_joint == {"hip": (-5.0, 5.0), "tail": (-9.0, 9.0)}

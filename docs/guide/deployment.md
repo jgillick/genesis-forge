@@ -321,10 +321,11 @@ anything that takes a float32 vector. The bundle carries the policy files; runni
 them is yours to choose.
 
 ONNX with `onnxruntime` is the usual choice on a Pi or Jetson, because it installs
-without pulling in torch:
+without pulling in torch. The runtime does not depend on it -- install whichever
+engine you decide to run:
 
 ```bash
-pip install genesis-forge-runtime[onnx]
+pip install genesis-forge-runtime onnxruntime
 ```
 
 ```python

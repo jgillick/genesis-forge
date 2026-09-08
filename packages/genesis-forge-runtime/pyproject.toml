@@ -17,9 +17,6 @@ classifiers = [
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 
-[project.optional-dependencies]
-onnx = ["onnxruntime>=1.17"]
-
 [project.urls]
 Homepage = "https://github.com/jgillick/genesis-forge"
 Issues = "https://github.com/jgillick/genesis-forge/issues"

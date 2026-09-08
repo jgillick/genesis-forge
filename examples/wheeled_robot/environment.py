@@ -158,10 +158,10 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             range={
                 "lin_vel_x": (-0.5, 0.5),  # forward/backward
                 "lin_vel_y": (-0.0, 0.0),  # cannot move side-to-side
-                "ang_vel_z": (-0.5, 0.5),  # turning
+                "ang_vel_z": (-2.0, 2.0),  # turning
             },
             stopped_probability=0.02,
-            resample_time_sec=5.0,
+            resample_time_sec=4.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],

@@ -1,0 +1,19 @@
+# Everything run.py needs on the Raspberry Pi.
+#
+#     sudo apt install libsdl2-2.0-0
+#     python3 -m venv .venv
+#     source .venv/bin/activate
+#     pip install -r requirements.txt
+
+# Reads the bundle: observation assembly and action decoding. Pulls in numpy.
+genesis-forge-runtime>=1.0.0
+
+# Runs the policy. run.py imports this directly -- the runtime never does, it
+# only hands you a float32 vector and leaves inference to you.
+onnxruntime
+
+# Gamepad. Same backend the simulator uses, so the sticks map the same way.
+pysdl2
+
+# I2C, for the PCA9685 motor driver.
+smbus

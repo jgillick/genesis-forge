@@ -834,11 +834,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.17" },
-]
-provides-extras = ["onnx"]
+requires-dist = [{ name = "numpy", specifier = ">=1.26" }]
 
 [[package]]
 name = "genesis-forge-wheeled-robot-example"

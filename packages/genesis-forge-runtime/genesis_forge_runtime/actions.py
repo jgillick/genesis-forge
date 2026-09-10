@@ -169,9 +169,9 @@ class ActionDecoder:
         for decoder in self._decoders:
             decoder.reset()
         self._last_raw_actions = np.zeros(self.num_actions, dtype=self._dtype)
-        self._last_target_actions = np.zeros(self.num_actions, dtype=self._dtype)
+        self._last_target_actions = np.zeros(self.num_joints, dtype=self._dtype)
         self._last_by_manager = {
-            spec.name: np.zeros(spec.num_actions, dtype=self._dtype)
+            spec.name: np.zeros(spec.num_joints, dtype=self._dtype)
             for spec in self._specs
         }
         self._last_raw_by_manager = {

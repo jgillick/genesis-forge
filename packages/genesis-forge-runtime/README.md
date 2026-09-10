@@ -11,7 +11,7 @@ After training, export a bundle from your built environment:
 ```python
 from genesis_forge.deployment import export
 
-bundle = export(env, "./my_policy")  # writes ./my_policy.gfb
+bundle = export(env, "./go2_walk", policy_path="policy.onnx")  # writes ./go2_walk.gfb
 print(bundle.describe())
 ```
 
@@ -20,7 +20,7 @@ Then, on the robot:
 ```python
 from genesis_forge_runtime import load_bundle
 
-bundle = load_bundle("./my_policy.gfb")  # a directory works too
+bundle = load_bundle("./go2_walk.gfb")  # a directory works too
 print(bundle.describe())  # what to wire up
 
 observation_assembler = bundle.create_observation_assembler()
@@ -34,11 +34,13 @@ while True:
             "actions": action_decoder.last_raw_actions,  # zeros before the first tick
         }
     )
-    targets = action_decoder.decode(policy(observation))
+    actions = policy(observation)
+    targets = action_decoder.decode()  # your onnxruntime session
     send_to_motors(targets.by_joint)
 ```
 
-See the Genesis Forge deployment guide for the full control-loop walkthrough.
+See the [deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html)
+for the full control-loop walkthrough, including how to run the policy itself.
 
 ## Trust model
 

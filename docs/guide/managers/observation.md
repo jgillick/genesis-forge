@@ -57,7 +57,7 @@ ObservationManager(
             ),
         },
         "actions": { # Use lambda for simple data returns
-            "fn": lambda env: self.action_manager.get_actions(),
+            "fn": lambda env: self.action_manager.get_dofs_position(),
         },
     },
 )

@@ -83,7 +83,7 @@ def export(
         env = MyEnv(num_envs=1)
         env.build()
 
-        bundle = export(env, "./my_policy", policy_path="policy.onnx")
+        bundle = export(env, "./go2_walk", policy_path="policy.onnx")
         print(bundle.describe())
     """
     destination = _resolve_destination(path, archive=archive, overwrite=overwrite)

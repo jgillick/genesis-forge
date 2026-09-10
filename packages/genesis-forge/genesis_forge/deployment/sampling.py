@@ -66,9 +66,9 @@ def sample_actions(
 ) -> np.ndarray:
     """Random policy output, with clip-boundary values mixed in.
 
-    Every third tick pushes values well outside the usual range, so the clipping
-    branches -- where two implementations most easily disagree -- are exercised
-    rather than only the linear region.
+    Two ticks in every three are pushed well outside the usual range, so the
+    clipping branches -- where two implementations most easily disagree -- get more
+    of the budget than the linear region does.
     """
     size = manifest.num_actions
     if tick % 3 == 1:

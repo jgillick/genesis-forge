@@ -10,8 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-
 from .errors import MalformedBundleError
 from .serialization import require
 
@@ -132,7 +130,7 @@ class ActuatorSpec:
 
     name: str
     joint_names: tuple[str, ...]
-    values: dict[str, np.ndarray]
+    values: dict[str, list[float]]
     randomized: tuple[str, ...] = ()
 
     @classmethod

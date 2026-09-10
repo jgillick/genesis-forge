@@ -9,6 +9,8 @@ Uses the same FakeActuatorManager shape as test_action_manager.py -- DOF indices
 deliberately differ from their column positions.
 """
 
+import json
+
 import pytest
 import torch
 
@@ -240,8 +242,14 @@ def test_a_partially_clipped_velocity_manager_keeps_both_sides(env):
 
     assert config["clip_low"][0] == pytest.approx(-5.0)
     assert config["clip_high"][0] == pytest.approx(5.0)
-    # The unmatched joint stays unbounded.
-    assert config["clip_low"][1] == float("-inf")
+    # The unmatched joint stays unbounded, written as null rather than an infinity
+    # so the manifest is still JSON a non-Python reader can parse.
+    assert config["clip_low"][1] is None
+    assert config["clip_high"][1] is None
+    json.loads(
+        json.dumps(config),
+        parse_constant=lambda token: pytest.fail(f"manifest holds {token}, not JSON"),
+    )
 
 
 def test_every_builtin_action_manager_publishes_a_distinct_type(env):

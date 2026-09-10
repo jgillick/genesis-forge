@@ -3,10 +3,17 @@
 A modular robotics RL training framework built on the Genesis physics simulator.
 Provides a manager-based architecture for building Gymnasium-compatible parallel environments.
 
+A uv workspace publishing two packages, released in lockstep:
+
+| Path | Package | Runs on |
+|------|---------|---------|
+| `packages/genesis-forge/` | `genesis-forge` | the training machine; needs Genesis and torch |
+| `packages/genesis-forge-runtime/` | `genesis-forge-runtime` | the robot; numpy only, never imports torch or Genesis |
+
 ## Setup
 
 ```bash
-pip install -e .
+uv sync
 ```
 
 Run the tests, which cover the pure-Python framework (config item dispatch, MDP
@@ -26,7 +33,7 @@ Each example has its own venv holding a **non-editable** copy of genesis-forge,
 so repo changes are not picked up by default. Either shadow it:
 
 ```bash
-PYTHONPATH=$PWD uv run --directory examples/stand_up python train.py -n 16 --max_iterations 1
+PYTHONPATH=$PWD/packages/genesis-forge uv run --directory examples/stand_up python train.py -n 16 --max_iterations 1
 ```
 
 or refresh the copy with `uv sync --directory examples/stand_up --reinstall-package genesis-forge`.
@@ -65,7 +72,7 @@ class MyEnv(ManagedEnvironment):
 Every manager calls `super().__init__(env, type="<type>")` — this triggers
 `env.add_manager(type, self)` automatically. **Never call `env.add_manager()`
 directly.** The `type` string must match one of the `ManagerType` literals in
-`genesis_forge/managers/base.py`:
+`packages/genesis-forge/genesis_forge/managers/base.py`:
 
 ```
 "action" | "actuator" | "reward" | "termination" |
@@ -183,13 +190,18 @@ recipe if you have code still using them.
 
 ## Naming and file conventions
 
+Paths in this section and the next are relative to
+`packages/genesis-forge/genesis_forge/`, except the two marked from the repo root.
+
 | What | Where |
 |------|-------|
-| Manager classes | `genesis_forge/managers/` (flat layout) |
-| MDP functions | `genesis_forge/mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py` |
-| Config TypedDicts | Subclass `ConfigItemDict` from `genesis_forge/managers/config/` |
-| Wrappers | `genesis_forge/wrappers/` |
-| Examples | `examples/<name>/environment.py` |
+| Manager classes | `managers/` (flat layout) |
+| MDP functions | `mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py` |
+| Config TypedDicts | Subclass `ConfigItemDict` from `managers/config/` |
+| Wrappers | `wrappers/` |
+| Deployment export | `deployment/` — reads the contract off managers, gates it on parity |
+| Robot-side runtime | `packages/genesis-forge-runtime/genesis_forge_runtime/` (from the repo root) |
+| Examples | `examples/<name>/environment.py` (from the repo root) |
 
 ## Key classes at a glance
 

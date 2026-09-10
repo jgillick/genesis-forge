@@ -3,45 +3,75 @@
 Once a policy is trained, getting it onto a real robot means reproducing two
 pipelines exactly as training built them:
 
-- **Observation assembly** — the order the values go in, what each is scaled by, and
-  how many past ticks are stacked.
+- **Observation assembly** — where each value sits in the vector, the scale applied to
+  it, and how many previous ticks are stacked alongside the current one.
 - **Action decoding** — the scale, offset, and clipping applied to the policy's
   output, and which joint each number belongs to.
 
 Recreating those by hand is tedious and easy to get subtly wrong, and a subtle
-mistake shows up as a robot that misbehaves for no obvious reason. Genesis Forge
+mistake shows up as a robot misbehaving for no obvious reason. Genesis Forge
 captures both pipelines from your built environment and gives you a simulation-free
 runtime that applies them on the robot, between your sensors and your motors.
 
 ## The two pieces
 
-| Package                 | Where it runs         | Depends on                               |
-| ----------------------- | --------------------- | ---------------------------------------- |
-| `genesis-forge`         | Your training machine | Genesis, torch, the RL framework         |
-| [`genesis-forge-runtime`](../api/runtime/index.md) | The robot             | numpy (plus `onnxruntime` if you use it) |
+| Package                                                                                                        | Where it runs         | Depends on                               |
+| -------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------- |
+| `genesis-forge`                                                                                                | Your training machine | Genesis, torch, the RL framework         |
+| [`genesis-forge-runtime`](https://github.com/jgillick/genesis-forge/tree/main/packages/genesis-forge-runtime/) | The robot             | numpy (plus `onnxruntime` if you use it) |
 
 The robot never installs the simulator. That is the point of the split: a Raspberry
 Pi has no business downloading a physics engine.
 
-## Exporting
+## The whole flow
 
-After your environment is built, export it:
+On the training machine, once your environment is built:
 
 ```python
 from genesis_forge.deployment import export
 
+# Build your environment
 env = MyEnv(num_envs=1)
 env.build()
 
-bundle = export(env, "./my_policy", policy_path="policy.onnx")
-print(bundle.describe())
+# Export trained policy to a portable format (onnx, TensorScript, etc)
+# ...
+
+# Export
+bundle = export(env, "./go2_walk.gfb", policy_path="policy.onnx")
+print(bundle.describe())   # bundle summary
 ```
 
-`export()` returns the bundle it wrote, carrying the manifest and golden samples in
-memory — so describing or checking what you just exported reads nothing back off
-disk, and never unpacks the archive.
+Copy the single file it wrote to your robot:
 
-It writes `my_policy.gfb`, a **bundle**, holding:
+```bash
+scp go2_walk.gfb robot:~/
+```
+
+Then, on the robot:
+
+```python
+from genesis_forge_runtime import load_bundle
+
+bundle = load_bundle("~/go2_walk.gfb")
+observation_assembler = bundle.create_observation_assembler()
+action_decoder = bundle.create_action_decoder()
+
+while True:
+    observation = observation_assembler.assemble({...})   # your sensor readings
+    actions = policy(observation) # get actions from your policy
+    targets = action_decoder.decode() # decode the actions into DOF values
+    send_to_motors(targets.by_joint)
+```
+
+[`examples/wheeled_robot`](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot)
+is that whole path working on a real four-wheeled car: `train.py`, then `deploy.py`,
+and finally `on_robot/run.py` on a Raspberry Pi. It is worth reading once end to end before
+you build your own loop.
+
+## Exporting
+
+By default `export()` writes a `.gfb` file, which is a **bundle** archive, holding:
 
 ```
 manifest.json         # the deployment contract, human readable
@@ -51,73 +81,37 @@ policy/               # your exported policy, if you passed one
   policy.onnx.data    # its weights, when the export put them in a separate file
 ```
 
-Re-exporting replaces a bundle already at that path, since doing it after every
-training run is the normal thing to do. It will only ever replace a bundle, though:
-a path holding anything else is refused, so a mistyped destination cannot cost you
-a file.
-
-Policy files are copied into `policy/` under the names you gave them — nothing is
-renamed, and nothing about their format is recorded, because the runtime never
-opens them. Name them whatever you like before calling `export`.
-
-A policy is not always one file. ONNX keeps tensors above a size threshold in a
-companion file, so `policy.onnx` can be a small skeleton whose weights live beside
-it; OpenVINO always splits into `.xml` and `.bin`. Hand over everything the export
-produced:
+A policy is not always one file: ONNX keeps tensors above a size threshold in a
+companion `.onnx.data`, and the graph is useless without it. Give all policy file paths
+to the export function:
 
 ```python
-export(env, "./my_policy", policy_path=["policy.onnx", "policy.onnx.data"])
+export(env, "./go2_walk",
+  policy_path=[
+    "./policy.onnx",
+    "./policy.onnx.data",
+  ]
+)
 ```
 
-Every name is recorded in the manifest in the order you listed them, so
-`bundle.policy_files` gives them back the same way. Opening one is yours to do;
-`bundle.policy_dir` is where they landed.
+Then, on the robot, `bundle.policy_files` gives the policy file names, in the order you listed them, and
+`bundle.policy_dir` is the folder they sit in, relative to the bundle's root.
 
-Genesis Forge does not try to work out which files belong together — the naming
-differs per format, and a wrong guess produces a bundle whose policy loads on your
-machine, where the companion is still next door, and fails on the robot. Verifying
-the _bundled_ policy, as below, is what catches a file left behind.
-
-### One file instead of a folder
-
-By default a bundle is written as a single `my_policy.gfb` file — one thing to
-`scp`, and a transfer that either arrives whole or fails, rather than a folder that
-can arrive missing a file and look fine until the robot loads it.
-
-While you are working, a plain directory is easier to poke at — you can read
-`manifest.json` straight out of it:
+To look at `manifest.json` while you are working, pass `archive=False` for a plain
+directory instead of the single file:
 
 ```python
-export(env, "./my_policy", policy_path="policy.onnx", archive=False)
+export(env, "./go2_walk", policy_path="policy.onnx", archive=False)
 ```
 
-`load_bundle` reads either form, so nothing in your control loop changes:
-
-```python
-bundle = load_bundle("./my_policy.gfb")
-```
-
-An archive is unpacked beside itself into `.my_policy/` and reused on later loads,
-so the files sit in one predictable place for as long as anything needs them —
-`bundle.policy_path` stays valid, and nothing disappears from under a running
-robot. Replacing the archive unpacks it again: the bundle you just deployed is
-never masked by the one that was there before.
-
-A `.gfb` is a zip. `unzip my_policy.gfb` works if you would rather unpack it
-yourself and load the directory, and the format is recognised by content rather
-than by name, so a bundle renamed to `.zip` still loads. Expect the archive to be
-about the same size as the directory — the bulk is model weights and `golden.npz`,
-both of which are already dense — so this is about handling, not space. And note
-that keeping both the archive and its extraction roughly doubles the disk it uses,
-which is worth knowing on a small SD card.
+`load_bundle` can read either form (`.gfb` file or plain directory), so nothing in your control loop changes. A `.gfb` is
+just a zip, so `unzip go2_walk.gfb` works too.
 
 ### The parity gate
 
-Export does not simply write out what it found. Before anything reaches disk, it
-runs the actual deployment classes — the same code the robot imports — against your
-live training pipeline on identical inputs, over several ticks, including values
-that sit right on the clipping boundaries. If the two disagree, the export fails and
-names the component that diverged:
+Before anything reaches disk, export runs the deployment classes — the same code the
+robot imports — against your live training pipeline, and refuses to write if they
+disagree:
 
 ```
 ParityError: Parity failed in action manager 'action_manager' (position). tick 2: the
@@ -128,31 +122,28 @@ Largest difference 4.500e-01 at index 1: deployment produced 1.35, training prod
 
 A bundle that exists is a bundle that passed.
 
-What each half of the gate covers is worth being precise about, because they are not
-equally strong:
+The two halves are not equally strong:
 
 - **Action decoding is verified end to end.** The numpy decoder is compared against
-  the manager's own `process_actions`, so the scale, offset, clipping, and joint
-  order cannot drift apart unnoticed.
-- **Observation assembly is verified as far as the layout.** The gate feeds both
-  sides the same values, so it proves the ordering, per-entry scaling, and history
-  stacking match. It does _not_ run your observation functions — supplying the
-  values is what bypasses them — so it cannot tell you that the `dof_pos` your robot
-  reads means the same thing as the `dof_pos` training computed. Matching units and
-  frames on the robot is still yours to get right, and `bundle.describe()` prints the
-  units it recorded to help.
+  the manager's own `process_actions`, so scale, offset, clipping and joint order
+  cannot drift apart unnoticed.
+- **Observation assembly is verified only as far as the layout.** Feeding both sides
+  the same values proves that ordering, scaling and history stacking agree. It also
+  means your observation functions never run, so nothing checks that the `dof_pos`
+  your robot reports uses the same units, sign and zero point as training did — see
+  [Where each observation comes from](#where-each-observation-comes-from).
 
 ### Recording where the bundle came from
 
-Every bundle carries a `provenance` block. The exporter stamps what it can measure
-for itself — when the export ran, and the Genesis Forge and torch versions it ran
-under. Everything else depends on how you train, so you state it rather than the
-library guessing:
+When a robot misbehaves, the first question is which export produced the bundle it is
+running. Every bundle answers half of that itself: the exporter stamps the time and
+the Genesis Forge and torch versions. It cannot know which checkpoint you trained, so
+pass that yourself:
 
 ```python
 export(
     env,
-    "./my_policy",
+    "./go2_walk",
     policy_path="policy.onnx",
     additional_provenance={
         "checkpoint": "logs/my_run/model_500.pt",
@@ -162,28 +153,18 @@ export(
 )
 ```
 
+And those values land under `additional`:
+
 ```json
 "provenance": {
   "exported_at": "2026-08-27T18:02:27+00:00",
   "genesis_forge_version": "1.0.0",
   "torch_version": "2.13.0",
-  "additional": {
-    "checkpoint": "logs/my_run/model_500.pt",
-    "framework": "rsl_rl",
-    "framework_version": "5.4.2"
-  }
+  "additional": { "checkpoint": "logs/my_run/model_500.pt", ... }
 }
 ```
 
-Your entries stay under `additional` rather than being merged in, so a reader can
-tell a version the tooling observed from a value a person typed — and so a key of
-yours can never quietly overwrite one of the measured ones.
-
-`checkpoint`, `framework` and `framework_version` are the conventional keys and are
-worth recording; beyond those the field is open, and a git commit, a robot serial,
-or a dataset version are all reasonable things to put there. It goes into the
-manifest as given, so it has to be JSON serializable — pass `str(path)` rather than
-a `Path`.
+Anything JSON-serializable works — a git commit, a robot serial number, etc.
 
 ## Running on the robot
 
@@ -193,17 +174,17 @@ Install just the runtime:
 pip install genesis-forge-runtime
 ```
 
-Copy the bundle over, and ask it what to wire up:
+Copy the bundle over, and load it:
 
 ```python
 from genesis_forge_runtime import load_bundle
 
-bundle = load_bundle("./my_policy")
+bundle = load_bundle("./go2_walk.gfb")
 print(bundle.describe())
 ```
 
 ```
-Bundle: my_policy
+Bundle: go2_walk
   control rate: 50.0 Hz (dt=0.02)
   observation vector: 45 values (15 per tick x 3 history)
   values you supply each tick:
@@ -214,81 +195,62 @@ Bundle: my_policy
     - [position] FL_hip, FL_thigh, FL_calf, ...
 ```
 
-Supply raw readings. Any scaling your observation config applied during training is
-applied here too, by the assembler — the listing does not mention it because it is
-not yours to do, and doing it yourself would apply it twice.
-
 Then the control loop:
 
 ```python
 import numpy as np
 from genesis_forge_runtime import load_bundle
 
-bundle = load_bundle("./my_policy")
+bundle = load_bundle("./go2_walk")
 observation_assembler = bundle.create_observation_assembler()
 action_decoder = bundle.create_action_decoder()
 policy = ...  # see "Running the policy" below
 
 while True:
     observation = observation_assembler.assemble({
-        "robot_ang_vel": imu.gyro,        # rad/s, body frame
-        "dof_pos": joints.positions,      # rad, relative to default pose
-        # This one is not a sensor -- see "Feeding the policy's output back" below.
+        "robot_ang_vel": my_imu.read(),
+        "dof_pos": my_actuators.positions(),
         "actions": action_decoder.last_raw_actions,
     })
 
-    targets = action_decoder.decode(policy(observation))
-
+    actions = policy(observation)
+    targets = action_decoder.decode(actions)
     for joint_name, target in targets.by_joint.items():
-        motors[joint_name].set_position(target)   # a position manager -> position
-
-    sleep_until_next_tick(bundle.manifest.dt)
+        my_actuators.set_position(joint_name, target)
 ```
 
-### Feeding the policy's output back
+You address everything by name, never by index, and nothing is filled in for you: a
+missing, mis-sized or unrecognized entry raises, as does a policy output containing
+`NaN` or infinity.
 
-That `"actions"` entry is not a sensor reading — it is the policy's own previous
-output fed back in, a common input in locomotion policies. You read it off the
-decoder instead of off your hardware, and pass it exactly like any other value.
+### Where each observation comes from
 
-The bundle does not mark these entries out, because nothing about _supplying_ them
-differs: every entry in `bundle.describe()` is a value you pass each tick. What
-differs is where you get it, and that follows from how you wrote the observation in
-training:
+`bundle.describe()` lists what to supply each tick, but not where to get it. Every
+entry falls into one of three groups, and the third is where deployments usually go
+wrong.
 
-| In training                           | On the robot                                           |
-| ------------------------------------- | ------------------------------------------------------ |
-| `current_actions()`                   | `action_decoder.last_raw_actions`                      |
-| `current_actions(action_manager=mgr)` | `action_decoder.last_raw_actions_by_manager["<name>"]` |
+**1. Read straight off a sensor.** Joint positions and velocities from your encoders,
+angular velocity from an IMU. Pass the raw reading — the assembler applies whatever
+scaling training used, so scaling it yourself applies it twice.
 
-The per-manager form matters once you have more than one action manager, since the
-flat property holds the whole policy vector. The manager name is the attribute you
-assigned it to in `config()`, and `bundle.describe()` lists those under the joint
-targets.
+**2. Previous actions.** An entry that echoes the policy's own previous output —
+common in locomotion policies. You read it off the decoder rather than off hardware.
+Which property depends on how you wrote the observation in training:
 
-If you leave one out, the assembler raises and names it — it never quietly feeds
-zeros — so a forgotten feedback wire fails on the bench rather than on the robot.
+| In training                                        | On the robot                                           |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| `observations.current_actions()`                   | `action_decoder.last_raw_actions`                      |
+| `observations.current_actions(action_manager=mgr)` | `action_decoder.last_raw_actions_by_manager["<name>"]` |
+| `action_manager.get_actions()`                     | `action_decoder.last_target_actions`                   |
 
-!!! note "`delay_step` is a training-only setting"
-    A manager's `delay_step` stands in for the latency between issuing a command and
-    the joint acting on it. Real hardware has that latency for real, so the runtime
-    does not reproduce it — replaying it on the robot would stack a second delay on
-    top of the physical one. Nothing about it is carried into the bundle.
+The first two are raw policy output, the third decoded joint targets. Getting this
+wrong is quiet: with one action manager the two are often the same width, so the
+assembler accepts either.
 
-A few things the runtime does for you:
-
-- **Names, not indices.** You supply values by name and get targets back by joint
-  name, so there is no index arithmetic to get wrong.
-- **It refuses bad input.** A missing entry or a wrong-length value raises
-  immediately and says which one — silence there would mean a misaligned vector. An
-  unrecognized name raises too: it could not corrupt the vector, since entries are
-  read by name, but it means your loop and the bundle disagree about what this
-  policy consumes.
-- **It refuses bad output.** If the policy emits `NaN` or infinity, the decoder raises
-  rather than passing it to your motors.
-- **Nothing is filled in behind your back.** Every entry is supplied by you,
-  including the ones fed back from the decoder. A wire you forget raises
-  immediately instead of quietly feeding zeros forever.
+**3. Derived, with no sensor behind it.** `projected_gravity`, `base_lin_vel` and
+similar read simulator state no sensor reports, so you compute them — from an
+IMU's orientation, a state estimator, or similar. If an entry has no plausible source
+on your robot at all (e.g. your robot does not have an IMU), you might be able to effectively move those observations to a privileged observer in training, to keep them off the deployed observation list (see the [wheeled_robot example](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot))
 
 ### Match the control rate and gains
 
@@ -297,32 +259,63 @@ and the actuator gains from training:
 
 ```python
 for actuator in bundle.manifest.actuators:
-    print(actuator.joint_names, actuator.values["kp"], actuator.values["kv"])
+    print(
+      actuator.joint_names,
+      actuator.values["kp"],
+      actuator.values["kv"],
+    )
 ```
 
-A policy trained at 50 Hz behaves differently at 200 Hz, and one trained against
-particular PD gains behaves differently against others. Both are worth matching
-before blaming the policy.
+The policy has no clock — it maps observations to actions. The rate matters because
+each action is _held_ until the next tick, so a slower loop applies every command for
+longer; and because stacked history spans a wall-clock window, so the same slots cover
+a different span of time. Balancing and locomotion policies are sensitive to both; a
+velocity-command robot much less so.
+
+Match the gains for the same reason: the policy learned what a given target does to a
+joint driven at those gains. Match both before blaming the policy.
 
 ### Reset when you restart control
 
-History starts zero-filled, which is exactly what training does at the start of every
-episode -- so it is a state the policy knows well. Call `observation_assembler.reset()` and
-`action_decoder.reset()` whenever you (re)start the control loop, so the robot begins from
-the same state an episode began from in training.
+Call `observation_assembler.reset()` and `action_decoder.reset()` whenever you
+(re)start the loop. Observation history (when applicable) starts zero-filled, which is where every training episode
+began, so the robot resumes from a state the policy knows.
 
-The first `history_length` ticks still carry less information than a full buffer, so
-it is worth holding the robot in a safe posture until it fills.
+### The first run
+
+A policy that behaved in simulation can still do something violent on a real floor.
+Put the robot on a stand or a harness, keep a hand on the power, and leave the
+decoder's `check_finite` on so a `NaN` stops the loop instead of reaching a motor.
+
+Before any of that, `golden.npz` is a free bench check: it holds the observations and
+joint targets the parity gate ran on, so you can feed the recorded observations
+through your policy and decoder with the motors disconnected and confirm you get the
+recorded targets back.
+
+### Troubleshooting
+
+If the robot misbehaves, here's what to look for, in rough order of likelihood:
+
+- **A wrong observation** — units, frame or sign disagreeing with training. Much the
+  most common, and the export cannot catch it. See
+  [Where each observation comes from](#where-each-observation-comes-from).
+- **The wrong action feedback sent to observations** — `last_raw_actions` and `last_target_actions` are
+  different vectors, and often the same width, so the wrong one passes silently.
+- **Control rate** — a loop at 30 Hz because inference and I/O were not counted is not
+  the 50 Hz the policy trained at. Pace off `bundle.manifest.dt`; see
+  [Match the control rate and gains](#match-the-control-rate-and-gains).
+- **Actuator gains** — match `bundle.manifest.actuators`.
+- **No reset** — stale history from a previous run or a long pause.
+- **The exported graph** — a normalizer left out of the ONNX graph looks fine at every
+  step above. See [Verifying the exported policy](#verifying-the-exported-policy).
 
 ## Running the policy
 
-The runtime does not care how you run inference — hand `assemble()`'s output to
-anything that takes a float32 vector. The bundle carries the policy files; running
-them is yours to choose.
+The runtime doesn't care how you run inference. In the example above, we just used
+a fake function `policy()` to represent sending observations to the policy and receiving
+actions. Run your exported graph with whatever engine you like — ONNX is the usual choice on a Pi or Jetson, because `onnxruntime` installs without pulling in torch.
 
-ONNX with `onnxruntime` is the usual choice on a Pi or Jetson, because it installs
-without pulling in torch. The runtime does not depend on it -- install whichever
-engine you decide to run:
+For example, with onnx:
 
 ```bash
 pip install genesis-forge-runtime onnxruntime
@@ -331,35 +324,44 @@ pip install genesis-forge-runtime onnxruntime
 ```python
 import onnxruntime
 
-session = onnxruntime.InferenceSession("my_policy/policy.onnx",
-                                       providers=["CPUExecutionProvider"])
+session = onnxruntime.InferenceSession(
+    str(bundle.path / bundle.policy_path),
+    providers=["CPUExecutionProvider"]
+)
 
-def policy(observation):
-    return session.run(None, {"obs": observation[None, :].astype("float32")})[0].ravel()
+actions = session.run(
+    None,
+    {"obs": observation[None, :].astype("float32")}
+)[0].ravel()
 ```
 
-TorchScript works too, if you would rather keep torch on the robot:
+TorchScript works too:
 
 ```python
 import torch
 
-module = torch.jit.load("my_policy/policy.pt").eval()
+module = torch.jit.load(
+    bundle.path / bundle.policy_path
+).eval()
 
-def policy(observation):
-    with torch.no_grad():
-        return module(torch.from_numpy(observation)[None, :]).numpy().ravel()
+with torch.no_grad():
+    actions = module(
+        torch.from_numpy(observation)[None, :]
+    ).numpy().ravel()
 ```
-
-That is a real trade: torch is a large install and slower to start, but it removes
-the export step as a place for things to go wrong. ONNX is the recommendation on
-small boards; TorchScript is reasonable on a Jetson or an x86 robot PC.
 
 ### Exporting the policy
 
 **rsl_rl** ships an ONNX exporter:
 
 ```python
-runner.export_policy_to_onnx(path="./my_policy", filename="policy.onnx")
+runner = OnPolicyRunner(env, cfg)
+runner.load(checkpoint)
+
+runner.export_policy_to_onnx(
+    path="./exported",
+    filename="policy.onnx",
+)
 ```
 
 It fuses the observation normalizer into the graph and names the input `obs` and the
@@ -377,60 +379,15 @@ for ONNX.
 
 ### Verifying the exported policy
 
-Genesis Forge packages the policy files but never opens them. Confirming the exported file still computes what the trained policy
-computes is yours to do, in the same script that exported it — that code already
-knows which framework produced the file and how to run it.
+Genesis Forge packages the policy files but never opens them, so checking that the
+exported graph still computes what the trained policy computes is yours — and worth
+doing: a normalizer that silently failed to make it into the graph is the classic
+sim-to-real failure, and nothing else would catch it.
 
-It is worth doing. An observation normalizer that silently failed to make it into
-the graph is the classic sim-to-real failure, and no other check would see it.
+`bundle.golden["observations"]` holds the vectors the parity gate ran on, which
+are exactly the right inputs to compare against:
 
-`export()` hands back the bundle it wrote, with everything you need already in
-memory: `golden["observations"]` holds the vectors the parity gate ran on, which are
-exactly the right inputs to compare against.
-
-Check the copy _inside the bundle_, not the file you passed in. That is the artifact
-going to the robot, and it is the only way to notice a companion file you forgot to
-list — the original graph would load perfectly, with its weights still sitting beside
-it. `bundle.unpacked()` gives you the contents in a temporary directory and clears it
-afterwards, so nothing is left next to your archive:
-
-```python
-import numpy as np, onnxruntime, torch
-
-bundle = export(env, "./my_policy", policy_path="policy.onnx")
-
-with bundle.unpacked() as directory:
-    session = onnxruntime.InferenceSession(
-        str(directory / "policy" / bundle.policy_files[0]),
-        providers=["CPUExecutionProvider"],
-    )
-    name = session.get_inputs()[0].name
-
-    for observation in bundle.golden["observations"]:
-        batched = observation[None, :].astype("float32")
-        exported = np.asarray(session.run(None, {name: batched})[0]).ravel()
-        with torch.no_grad():
-            reference = policy(torch.from_numpy(batched)).cpu().numpy().ravel()
-        assert np.allclose(exported, reference, rtol=1e-4, atol=1e-5), "graph differs"
-```
-
-Compare **relatively**, not with a fixed absolute bound. Exporting reorders
-floating-point accumulation, and that drift grows with how large your actions are —
-a policy emitting wheel velocities around 50 drifts roughly fifty times further than
-one emitting joint angles around 1, for exactly the same graph. On a trained
-wheeled-robot policy the drift measures ~3e-05, while the _closest_ wrong checkpoint
-diverges by at least 2e-01, so real faults sit orders of magnitude clear of rounding.
-
-`examples/wheeled_robot/deploy.py` does this end to end, including the error message
-worth printing when it fails.
-
-## Installing on a Pi or Jetson
-
-- A **64-bit OS is required** — `onnxruntime` publishes no 32-bit ARM wheels.
-- `CPUExecutionProvider` is the supported baseline. A small MLP policy at control
-  rates does not need a GPU.
-- On Jetson, CUDA/TensorRT execution providers exist but come from NVIDIA's own
-  builds rather than PyPI. They are optional and unsupported here.
+To see an example of verifying an onnx policy, look at the [`verify_onnx_policy` function](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot/deploy.py)
 
 ## Action managers and what their targets mean
 
@@ -443,20 +400,14 @@ one produced each target, because that determines what you do with the number:
 | `PositionWithinLimitsActionManager` | `position_within_limits` | Joint positions, mapped into each joint's limits |
 | `VelocityActionManager`             | `velocity`               | Joint/wheel velocities                           |
 
-The first two go to a position command, the third to a velocity command — the
-arithmetic that produces them is identical, which is exactly why the bundle names the
-type rather than leaving you to infer it. `targets.by_joint` is keyed by joint name
-either way; what the _value_ means is what changes, so check the type before wiring
-it to a motor call:
+The arithmetic behind all three is identical, which is why the bundle names the type
+rather than leaving you to infer it. `targets.by_joint` is keyed by joint name either
+way, so check the type before wiring it to a motor call:
 
 ```python
 for spec in bundle.manifest.actions:
     print(spec.deploy_type, spec.joint_names)
 ```
-
-`PositionActionManager` and `VelocityActionManager` both inherit their deployment
-contract from `AffineDofActionManager`, so any future affine manager is deployable
-without new runtime code — it only declares its own `deploy_type`.
 
 ### Grouped joints
 
@@ -471,17 +422,15 @@ per joint:
     - [velocity] TT_Motor-1_axel, TT_Motor-2_axel, TT_Motor-3_axel, TT_Motor-4_axel
 ```
 
-Grouping shares the *action*, not the decode. Every scale, offset and clip bound
-stays per joint, which is what lets mirrored wheels take one command and turn
-opposite ways — the wheeled-robot example exports `scale: [-20, 20, -20, 20]` behind
-two actions. The parity gate compares the whole path, fan-out included, so a
-mapping that disagreed with training would fail the export rather than reach a robot.
+Grouping shares the _action_, not the decode: every scale, offset and clip bound
+stays per joint. That is what lets mirrored wheels take one command and turn opposite
+ways — the wheeled-robot example exports `scale: [-20, 20, -20, 20]` behind two
+actions.
 
 ## Custom action managers
 
-If you have written your own `BaseActionManager` subclass, it participates in
-deployment by describing its decode as plain data and shipping a decoder that reproduces
-it. On the training side:
+A `BaseActionManager` subclass participates in deployment by describing its decode as
+plain data and shipping a decoder that reproduces it. On the training side:
 
 ```python
 from genesis_forge.managers.action.base import BaseActionManager, DeploymentActionConfig
@@ -514,23 +463,19 @@ class CartesianImpedanceDecoder(ManagerDecoder):
 ```
 
 If your manager is an affine one (scale, offset, clip), subclass
-`AffineDofActionManager` instead and you inherit the contract — just set
-`deploy_type`, and the runtime's built-in decoder handles it with no extra code.
+`AffineDofActionManager` instead: set `deploy_type` and the built-in decoder handles
+it with no extra code. Either way the parity gate checks your decoder against your
+`process_actions` like any other.
 
-Nothing in Genesis Forge needs to know your type exists. The parity gate checks your
-decoder against your `process_actions` like any other, so the two cannot drift apart
-unnoticed.
+!!! note "This contract is still settling"
 
-!!! note "This contract is provisional"
-The deployment contract has not yet been through a real hardware deployment. It
-may change once it has. The bundle carries a `schema_version` so an out-of-date
-bundle fails loudly rather than misbehaving.
+    The deployment contract has been through one real hardware deployment so far,
+    and may still change. The bundle carries a `schema_version` so an out-of-date
+    bundle fails loudly rather than misbehaving.
 
 ## Trust model
 
-**Only load bundles you produced.** A bundle whose action manager is a custom one
-records the import path of its decoder class, and `create_action_decoder()` imports
-that module — running whatever is at its top level. `load_bundle` itself imports
-nothing, and a bundle using only built-in managers never imports anything either,
-since those resolve from a table. But a bundle from elsewhere can name any module on
-the robot's path, so treat one the way you would treat a checkpoint from a stranger.
+**Only load bundles you produced.** A bundle naming a custom decoder records its
+import path, and `create_action_decoder()` imports that module — running whatever is
+at its top level. Since a bundle from elsewhere can name any module on the robot's
+path, treat one the way you would treat a checkpoint from a stranger.

@@ -243,10 +243,16 @@ def _capture_actuators(
     for index, manager in enumerate(managers.get("actuator", [])):
         if not hasattr(manager, "get_deployment_values"):
             continue
-        values = manager.get_deployment_values()
+        name = names.get(id(manager)) or f"actuator_manager_{index}"
+        try:
+            values = manager.get_deployment_values()
+        except ValueError as error:
+            raise ExportError(
+                f"Actuator manager '{name}' cannot be described in a bundle. {error}"
+            ) from error
         specs.append(
             {
-                "name": names.get(id(manager)) or f"actuator_manager_{index}",
+                "name": name,
                 "joint_names": values["joint_names"],
                 "values": values["values"],
                 "randomized": values["randomized"],

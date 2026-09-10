@@ -1388,6 +1388,12 @@ Returns:
 | `dict[str, Any]` | randomized during training (recorded so the difference is visible    |
 | `dict[str, Any]` | rather than silently flattened).                                     |
 
+Raises:
+
+| Type         | Description                                                                      |
+| ------------ | -------------------------------------------------------------------------------- |
+| `ValueError` | A configured parameter is not one value per DOF, so the bundle cannot record it. |
+
 Source code in `packages/genesis-forge/genesis_forge/managers/actuator/actuator_manager.py`
 
 ```
@@ -1404,6 +1410,10 @@ def get_deployment_values(self) -> dict[str, Any]:
         actuator parameter, and the names of any parameters that were
         randomized during training (recorded so the difference is visible
         rather than silently flattened).
+
+    Raises:
+        ValueError: A configured parameter is not one value per DOF, so the
+            bundle cannot record it.
     """
     values: dict[str, list[float]] = {}
     randomized: list[str] = []
@@ -1421,7 +1431,13 @@ def get_deployment_values(self) -> dict[str, Any]:
         if tensor.ndim == 2:
             tensor = tensor[0]
         if tensor.ndim != 1 or tensor.shape[0] != self.num_dofs:
-            continue
+            raise ValueError(
+                f"Actuator value '{value_name}' has shape "
+                f"{tuple(buffer.shape)}, which is not one value per DOF for "
+                f"{self.num_dofs} DOF(s). A bundle records one nominal value "
+                f"per joint, and dropping this one would leave the robot "
+                f"configuring its controllers from a partial set of gains."
+            )
         values[value_name] = [float(entry) for entry in tensor.cpu().tolist()]
         if item.get("has_noise", False):
             randomized.append(value_name)
@@ -4106,15 +4122,19 @@ def get_deployment_config(self) -> DeploymentActionConfig:
         "offset": nominal(self._offset_values, "offset"),
     }
 
-    # An unbounded side (every value infinite, as VelocityActionManager defaults
-    # to) is simply omitted: the runtime treats a missing bound as no clip, and
-    # infinities have no portable JSON representation.
+    # JSON has no portable infinity, so an unbounded joint is written as null and
+    # the runtime reads that back as no clip on that side. A side unbounded for
+    # every joint (as VelocityActionManager defaults to) is omitted entirely.
     low = nominal(clip_low, "clip lower bound")
     high = nominal(clip_high, "clip upper bound")
     if any(value != float("-inf") for value in low):
-        config["clip_low"] = low
+        config["clip_low"] = [
+            None if value == float("-inf") else value for value in low
+        ]
     if any(value != float("inf") for value in high):
-        config["clip_high"] = high
+        config["clip_high"] = [
+            None if value == float("inf") else value for value in high
+        ]
 
     return DeploymentActionConfig(
         deploy_type=self.deploy_type,
@@ -5125,15 +5145,19 @@ def get_deployment_config(self) -> DeploymentActionConfig:
         "offset": nominal(self._offset_values, "offset"),
     }
 
-    # An unbounded side (every value infinite, as VelocityActionManager defaults
-    # to) is simply omitted: the runtime treats a missing bound as no clip, and
-    # infinities have no portable JSON representation.
+    # JSON has no portable infinity, so an unbounded joint is written as null and
+    # the runtime reads that back as no clip on that side. A side unbounded for
+    # every joint (as VelocityActionManager defaults to) is omitted entirely.
     low = nominal(clip_low, "clip lower bound")
     high = nominal(clip_high, "clip upper bound")
     if any(value != float("-inf") for value in low):
-        config["clip_low"] = low
+        config["clip_low"] = [
+            None if value == float("-inf") else value for value in low
+        ]
     if any(value != float("inf") for value in high):
-        config["clip_high"] = high
+        config["clip_high"] = [
+            None if value == float("inf") else value for value in high
+        ]
 
     return DeploymentActionConfig(
         deploy_type=self.deploy_type,
@@ -9331,7 +9355,7 @@ def update(self, **params: Any) -> None:
 
 # Resets
 
-These are simple helper functions that can be used in the [EntityManager](https://genesis-forge.readthedocs.io/en/latest/api/managers/entity.html) `on_reset` configuration.
+These are simple helper functions that can be used in the [EntityManager](https://docs.genesisforge.io/en/latest/api/managers/entity.html) `on_reset` configuration.
 
 ## `XYZRotation = dict[Literal['x', 'y', 'z'], float | tuple[float, float]]`
 
@@ -17032,9 +17056,9 @@ def step(
 
 # Deployment Overview
 
-Exporting a trained environment to a real robot, and the simulation-free runtime that stands between the policy and the hardware there. See the [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html) for the end-to-end walkthrough.
+Exporting a trained environment to a real robot, and the simulation-free runtime that stands between the policy and the hardware there. See the [deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html) for the end-to-end walkthrough.
 
-The training-side API lives in `genesis_forge.deployment`; the robot-side runtime is the separate `genesis-forge-runtime` package, documented under [Runtime](https://genesis-forge.readthedocs.io/en/latest/api/runtime/index.html).
+The training-side API lives in `genesis_forge.deployment`; the robot-side runtime is the separate `genesis-forge-runtime` package, documented under [Runtime](https://docs.genesisforge.io/en/latest/api/runtime/index.html).
 
 # Deployment Contract
 
@@ -17482,7 +17506,7 @@ It does that using the ordering, scaling and history the policy was trained with
 pip install genesis-forge-runtime
 ```
 
-The [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html) walks through the whole flow. In brief, a control loop needs three things from here: [`load_bundle`](https://genesis-forge.readthedocs.io/en/latest/api/runtime/bundle.html) to read what training recorded, an [`ObservationAssembler`](https://genesis-forge.readthedocs.io/en/latest/api/runtime/observations.html) to build the policy's input vector, and an [`ActionDecoder`](https://genesis-forge.readthedocs.io/en/latest/api/runtime/actions.html) to turn its output into joint targets.
+The [deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html) walks through the whole flow. In brief, a control loop needs three things from here: [`load_bundle`](https://docs.genesisforge.io/en/latest/api/runtime/bundle.html) to read what training recorded, an [`ObservationAssembler`](https://docs.genesisforge.io/en/latest/api/runtime/observations.html) to build the policy's input vector, and an [`ActionDecoder`](https://docs.genesisforge.io/en/latest/api/runtime/actions.html) to turn its output into joint targets.
 
 ```
 from genesis_forge_runtime import load_bundle
@@ -17530,6 +17554,12 @@ def __init__(
     )
     self.reset()
 ```
+
+## `clip_range_by_joint`
+
+Per joint, the clip its decoder applies to the target it produces.
+
+The range a joint's targets can span, which is what a robot needs to map them onto whatever its motors take. Joints whose targets are unbounded are absent; see :meth:`ManagerDecoder.clip_range_by_joint`.
 
 ## `decoders`
 
@@ -17680,9 +17710,11 @@ def reset(self) -> None:
     for decoder in self._decoders:
         decoder.reset()
     self._last_raw_actions = np.zeros(self.num_actions, dtype=self._dtype)
-    self._last_target_actions = np.zeros(self.num_actions, dtype=self._dtype)
+    # Targets are per joint, which is wider than the policy output once joints
+    # share an action; raw actions below stay at the policy's own width.
+    self._last_target_actions = np.zeros(self.num_joints, dtype=self._dtype)
     self._last_by_manager = {
-        spec.name: np.zeros(spec.num_actions, dtype=self._dtype)
+        spec.name: np.zeros(spec.num_joints, dtype=self._dtype)
         for spec in self._specs
     }
     self._last_raw_by_manager = {
@@ -17810,7 +17842,9 @@ True when the files are still packed into a single file.
 
 ## `policy_dir`
 
-Directory holding the policy files, if the bundle carries any.
+Where the policy files sit, relative to the bundle's own root.
+
+Join it onto the directory :meth:`unpacked` yields, which works whether the bundle arrived as a directory or an archive.
 
 ## `policy_files`
 
@@ -17818,15 +17852,16 @@ Every policy file in the bundle, in the order it was exported.
 
 ## `policy_path`
 
-Absolute path to the first policy file, when the bundle carries any.
+The first policy file, relative to the bundle's own root.
 
-A convenience for the common single-file case; :attr:`policy_files` has them all.
+A convenience for the common single-file case; :attr:`policy_files` has them all. Relative rather than absolute so that an archive and a directory are used the same way::
 
-Raises:
-
-| Type                   | Description                                                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MalformedBundleError` | The bundle is still an archive, so its files are not on disk. Use :meth:unpacked to get at them, or load the archive with load_bundle for a directory that persists. |
+```
+with bundle.unpacked() as directory:
+    session = onnxruntime.InferenceSession(
+        str(directory / bundle.policy_path)
+    )
+```
 
 ## `create_action_decoder(**kwargs)`
 
@@ -17990,7 +18025,7 @@ These strings and numbers are the manifest's contract. They are deliberately sep
 
 One decoder reproduces one action manager's decode. The runtime ships decoders for every built-in manager; a custom action manager supplies its own by subclassing `ManagerDecoder` and naming it in its deployment contract.
 
-See [custom action managers](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html#custom-action-managers) in the guide.
+See [custom action managers](https://docs.genesisforge.io/en/latest/guide/deployment.html#custom-action-managers) in the guide.
 
 Base class for one action manager's deployment-side decode.
 
@@ -18006,6 +18041,12 @@ def __init__(self, spec: ActionManagerSpec, *, dtype: Any = np.float32) -> None:
     self.dtype = np.dtype(dtype)
     self.reset()
 ```
+
+## `clip_range_by_joint`
+
+The clip this decoder applies to each joint's target, where it clips.
+
+A joint appears only if its target is bounded on at least one side, and an unbounded side reads as an infinity. Decoders that do not clip return nothing, which is why this is empty by default.
 
 ## `dtype = np.dtype(dtype)`
 
@@ -18057,6 +18098,8 @@ def __init__(self, spec: ActionManagerSpec, *, dtype: Any = np.float32) -> None:
     self.dtype = np.dtype(dtype)
     self.reset()
 ```
+
+## `clip_range_by_joint`
 
 ## `dtype = np.dtype(dtype)`
 
@@ -18114,8 +18157,8 @@ def reset(self) -> None:
 
     low = config.get("clip_low")
     high = config.get("clip_high")
-    self._clip_low = self._vector(low, default=None) if low is not None else None
-    self._clip_high = self._vector(high, default=None) if high is not None else None
+    self._clip_low = self._clip_vector(low, unbounded=-np.inf)
+    self._clip_high = self._clip_vector(high, unbounded=np.inf)
 ```
 
 # Errors
@@ -18716,7 +18759,8 @@ def assemble(self, values: dict[str, Any] | None = None) -> np.ndarray:
         start, end = self._offsets[entry.name]
         current[start:end] = self._value_for(entry, values)
 
-    # Rotate newest-first, reusing the oldest buffer -- the same rotation
+    # Rotate newest-first, reusing the oldest buffer, exactly as training's
+    # ObservationManager.get_observations() does.
     buffer = self._history.pop()
     buffer[:] = current
     self._history.insert(0, buffer)

@@ -52,10 +52,9 @@ class ManagerDecoder:
     def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
         """The clip this decoder applies to each joint's target, where it clips.
 
-        A joint appears only if its target is bounded on at least one side, and
-        an unbounded side reads as an infinity -- the exporter drops a bound of
-        infinity rather than writing one JSON cannot hold. Decoders that do not
-        clip return nothing, which is why this is empty by default.
+        A joint appears only if its target is bounded on at least one side, and an
+        unbounded side reads as an infinity. Decoders that do not clip return
+        nothing, which is why this is empty by default.
         """
         return {}
 
@@ -87,8 +86,8 @@ class AffineDecoder(ManagerDecoder):
 
         low = config.get("clip_low")
         high = config.get("clip_high")
-        self._clip_low = self._vector(low, default=None) if low is not None else None
-        self._clip_high = self._vector(high, default=None) if high is not None else None
+        self._clip_low = self._clip_vector(low, unbounded=-np.inf)
+        self._clip_high = self._clip_vector(high, unbounded=np.inf)
 
     def decode(self, actions: np.ndarray) -> np.ndarray:
         values = np.asarray(actions, dtype=self.dtype).ravel()
@@ -133,6 +132,18 @@ class AffineDecoder(ManagerDecoder):
             return None
         # Validated when the manifest is read; this only makes it indexable.
         return np.asarray(value, dtype=np.intp).ravel()
+
+    def _clip_vector(self, value: Any, *, unbounded: float) -> np.ndarray | None:
+        """One clip bound, or None when this side clips nothing.
+
+        A null entry marks a single joint as unbounded on this side, which is how
+        the exporter writes an infinity JSON cannot hold.
+        """
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            value = [unbounded if item is None else item for item in value]
+        return self._vector(value, default=None)
 
     def _vector(self, value: Any, *, default: float | None) -> np.ndarray | None:
         """One decode parameter, sized per joint rather than per action."""

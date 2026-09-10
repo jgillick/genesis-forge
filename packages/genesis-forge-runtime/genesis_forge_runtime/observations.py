@@ -121,7 +121,8 @@ class ObservationAssembler:
             start, end = self._offsets[entry.name]
             current[start:end] = self._value_for(entry, values)
 
-        # Rotate newest-first, reusing the oldest buffer -- the same rotation
+        # Rotate newest-first, reusing the oldest buffer, exactly as training's
+        # ObservationManager.get_observations() does.
         buffer = self._history.pop()
         buffer[:] = current
         self._history.insert(0, buffer)
@@ -164,9 +165,8 @@ class ObservationAssembler:
             )
 
         if entry.scale != 1.0:
-            # Multiply out-of-place: the caller's array must not be mutated, and
-            # the training-side override path has an in-place-scaling quirk we
-            # deliberately do not reproduce.
+            # `raw` can be a view of the caller's array (np.asarray does not copy one
+            # that is already float32), so `*=` would rescale their sensor buffer.
             return raw * np.asarray(entry.scale, dtype=self._dtype)
         return raw
 

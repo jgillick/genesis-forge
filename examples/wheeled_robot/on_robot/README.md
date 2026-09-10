@@ -11,9 +11,9 @@ If you haven't trained the [wheeled_robot environment](../README.md) yet, do tha
 - [Two 18650 batteries](https://www.18650batterystore.com/collections/18650-batteries)
 - [Logitech F710 gamepad](https://www.logitechg.com/en-us/shop/p/f710-wireless-gamepad)
 
-## Instructions
+## Train/Export
 
-Run the training program (if you haven't already), and then run the deploy script:
+If you haven't already, on your main computer, train the model and export the bundle to the `on_robot` directory:
 
 ```bash
 cd examples/wheeled_robot
@@ -21,28 +21,42 @@ uv run ./train.py
 uv run ./deploy.py
 ```
 
-Then, copy the entire `on_robot` directory to your Raspberry Pi.
+## Setup your Raspberry Pi
 
-Now login to your Raspberry Pi and setup the python environment:
+Before you can run this on the car, you need to make sure the Rapsberry Pi is setup.
+There are only a few steps:
+
+1. Install the [Raspberry Pi Base OS](https://www.raspberrypi.com/documentation/computers/getting-started.html).
+   I set mine up as headless (Raspberry Pi Lite 64-bit) with SSH enabled.
+2. [Configure Raspberry Pi](https://www.raspberrypi.com/documentation/computers/configuration.html#config-methods) and
+   enable I2C (under Interfaces or Interface Options)
+3. Run this command from the terminal: `sudo apt install python3-dev python3-smbus libsdl2-2.0-0`
+
+## Setup robot env and run
+
+Copy the entire `on_robot` directory to your Raspberry Pi. We'll assume you put it in your home directory at `~/on_robot/`
+
+Setup the python environment with the following shell commands:
 
 ```bash
-cd ~/on_robot # <~~ or wherever you copied the `on_robot` directory
+cd ~/on_robot
 
-sudo apt install libsdl2-2.0-0
+# Create a python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
+# Install the required python packages
 pip install -r requirements.txt
 ```
 
-Finally, plug the Logitech F710 gamepad USB dongle into the Raspberry Pi, and fire up the run program:
+Now, plug the Logitech F710 gamepad USB dongle into the Raspberry Pi, and run the program:
 
 ```bash
 python ./run.py
 ```
 
-If everything worked, you should be able to drive your car around using the Logitech gamepad.
-The left stick is forwards/backwards, and use the right stick to turn left/right.
+If everything worked, the program will prompt you to press the gamepad's start button.
+Once pressed, the left stick controls the robot's movement.
 
 ## How it works
 
@@ -51,7 +65,7 @@ Here are the important bits from [run.py](./run.py).
 Load the deployed `trained_bundle.gfb` bundle file containing the trained policy and important genesis forge metadata.
 
 ```python
-bundle = load_bundle(args.bundle)
+bundle = load_bundle("./trained_bundle.gfb")
 ```
 
 Create functions to assemble observations and convert the raw policy actions into actuator velocities.
@@ -64,20 +78,19 @@ action_decoder = bundle.create_action_decoder()
 Here we construct the observations which will soon be passed to the onnx policy runtime.
 
 ```python
-observation = obs_assembler.assemble({
-      "velocity_cmd": gamepad.command(),
-      "actions": action_decoder.last_raw_actions,
-})
+observation = obs_assembler.assemble(
+    {
+        "velocity_cmd": gamepad.command(),
+        "actions": action_decoder.last_raw_actions,
+    }
+)
 ```
 
-Pass the observations to your policy, which then returns the raw actions.
-Those actions are decoded by the `action_decoder` to convert them into
-velocity inputs (using the same algorithms as `VelocityActionManager`)
+When we pass the observations to the policy, it returns the raw actions.
+then `action_decoder` converts them into velocity inputs (using the same algorithms as `VelocityActionManager`)
 
 ```python
-raw_action = session.run(
-    None, {input_name: observation[None, :].astype("float32")}
-)[0]
+raw_action = session.run(None, {input_name: observation[None, :].astype("float32")})[0]
 action_targets = action_decoder.decode(np.ravel(raw_action))
 ```
 
@@ -86,7 +99,10 @@ them to PWM values used by the motors.
 
 ```python
 pwm = (
-    calculate_motor_pwm(action_targets.by_joint[name], joint_clip[name])
+    calculate_motor_pwm(
+        action_targets.by_joint[name],
+        action_decoder.clip_range_by_joint[name],
+    )
     for name in [
         "TT_Motor-1_axel",
         "TT_Motor-2_axel",

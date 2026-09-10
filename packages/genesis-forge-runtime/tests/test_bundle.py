@@ -299,7 +299,9 @@ def test_bundle_with_policy_resolves_its_path(tmp_path):
 
     bundle = load_bundle(path)
 
-    assert bundle.policy_path == path / "policy" / "policy.onnx"
+    # Relative to the bundle root, so an archive and a directory join the same.
+    assert bundle.policy_path == Path("policy") / "policy.onnx"
+    assert (bundle.path / bundle.policy_path).read_bytes() == b"not-a-real-onnx-file"
     assert bundle.policy_files == ("policy.onnx",)
 
 

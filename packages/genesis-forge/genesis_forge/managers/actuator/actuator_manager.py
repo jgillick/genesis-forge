@@ -202,6 +202,10 @@ class ActuatorManager(BaseManager):
             actuator parameter, and the names of any parameters that were
             randomized during training (recorded so the difference is visible
             rather than silently flattened).
+
+        Raises:
+            ValueError: A configured parameter is not one value per DOF, so the
+                bundle cannot record it.
         """
         values: dict[str, list[float]] = {}
         randomized: list[str] = []
@@ -219,7 +223,13 @@ class ActuatorManager(BaseManager):
             if tensor.ndim == 2:
                 tensor = tensor[0]
             if tensor.ndim != 1 or tensor.shape[0] != self.num_dofs:
-                continue
+                raise ValueError(
+                    f"Actuator value '{value_name}' has shape "
+                    f"{tuple(buffer.shape)}, which is not one value per DOF for "
+                    f"{self.num_dofs} DOF(s). A bundle records one nominal value "
+                    f"per joint, and dropping this one would leave the robot "
+                    f"configuring its controllers from a partial set of gains."
+                )
             values[value_name] = [float(entry) for entry in tensor.cpu().tolist()]
             if item.get("has_noise", False):
                 randomized.append(value_name)

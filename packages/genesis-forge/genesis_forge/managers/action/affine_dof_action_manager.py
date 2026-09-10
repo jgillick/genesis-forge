@@ -147,15 +147,23 @@ class AffineDofActionManager(BaseActionManager):
             "offset": nominal(self._offset_values, "offset"),
         }
 
-        # An unbounded side (every value infinite, as VelocityActionManager defaults
-        # to) is simply omitted: the runtime treats a missing bound as no clip, and
-        # infinities have no portable JSON representation.
         low = nominal(clip_low, "clip lower bound")
         high = nominal(clip_high, "clip upper bound")
-        if any(value != float("-inf") for value in low):
-            config["clip_low"] = low
-        if any(value != float("inf") for value in high):
-            config["clip_high"] = high
+
+        # JSON has no portable infinity, so an unbounded joint is written as null and
+        # the runtime reads that back as no clip for that joint. A side no joint bounds
+        # (VelocityActionManager's default) is left out entirely, which is what keeps
+        # those joints out of the runtime's `clip_range_by_joint`.
+        has_lower_bound = any(value != float("-inf") for value in low)
+        has_upper_bound = any(value != float("inf") for value in high)
+        if has_lower_bound:
+            config["clip_low"] = [
+                None if value == float("-inf") else value for value in low
+            ]
+        if has_upper_bound:
+            config["clip_high"] = [
+                None if value == float("inf") else value for value in high
+            ]
 
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,

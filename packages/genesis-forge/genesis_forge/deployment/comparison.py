@@ -1,13 +1,9 @@
 """Deciding whether two pipelines agree.
 
-Tolerances are tiered by what can legitimately differ:
-
-* numpy vs torch pipeline math -- the same operations in two libraries, so
-  near-bit-exact. Ordering and scale bugs produce large errors, which means a
-  tight bound costs nothing and catches everything.
-Verifying an exported policy file against the policy it came from is the
-developer's job, in the script that exports it -- so no tolerance for that
-comparison lives here.
+The tolerances here cover one comparison: the numpy deployment pipeline against
+the torch training pipeline. That is the same arithmetic in two libraries, so the
+results are near-bit-exact and the bound can be tight -- ordering and scale bugs
+produce errors orders of magnitude larger than the rounding it has to allow.
 """
 
 from __future__ import annotations

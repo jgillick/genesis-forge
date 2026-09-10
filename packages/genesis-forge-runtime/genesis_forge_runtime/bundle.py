@@ -2,7 +2,7 @@
 
 A bundle is what export writes and the robot reads::
 
-    my_policy/
+    go2_walk/
       manifest.json   # the deployment contract, human readable
       golden.npz      # recorded input/output pairs for the on-robot smoke test
       policy.onnx     # optional: the exported policy
@@ -57,32 +57,32 @@ class Bundle:
 
     @property
     def policy_dir(self) -> Path | None:
-        """Directory holding the policy files, if the bundle carries any."""
+        """Where the policy files sit, relative to the bundle's own root.
+
+        Join it onto the directory :meth:`unpacked` yields, which works whether
+        the bundle arrived as a directory or an archive.
+        """
         if not self.policy_files:
             return None
-        return self.path / POLICY_DIRNAME
+        return Path(POLICY_DIRNAME)
 
     @property
     def policy_path(self) -> Path | None:
-        """Absolute path to the first policy file, when the bundle carries any.
+        """The first policy file, relative to the bundle's own root.
 
         A convenience for the common single-file case; :attr:`policy_files` has
         them all.
 
-        Raises:
-            MalformedBundleError: The bundle is still an archive, so its files
-                are not on disk. Use :meth:`unpacked` to get at them, or load the
-                archive with ``load_bundle`` for a directory that persists.
+        Example::
+
+            with bundle.unpacked() as directory:
+                session = onnxruntime.InferenceSession(
+                    str(directory / bundle.policy_path)
+                )
         """
         if not self.policy_files:
             return None
-        if self.is_archive:
-            raise MalformedBundleError(
-                f"'{self.path.name}' is an archive, so its policy is not a file on "
-                f"disk yet. Use `with bundle.unpacked() as directory:` to work with "
-                f"the contents, or load_bundle() to unpack it beside itself."
-            )
-        return self.path / POLICY_DIRNAME / self.policy_files[0]
+        return Path(POLICY_DIRNAME) / self.policy_files[0]
 
     @contextmanager
     def unpacked(self) -> Iterator[Path]:

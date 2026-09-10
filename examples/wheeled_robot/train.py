@@ -1,7 +1,6 @@
 import argparse
 import copy
-import os
-import pickle
+from pathlib import Path
 import shutil
 
 import genesis as gs
@@ -14,13 +13,13 @@ from genesis_forge.wrappers import (
     VideoWrapper,
 )
 
-EXPERIMENT_NAME = "wheeled-robot-command"
+from utils import save_config_pickle
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
 parser.add_argument("--max_iterations", type=int, default=500)
 parser.add_argument("-d", "--device", type=str, default="gpu")
-parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
+parser.add_argument("-e", "--exp_name", type=str, default="wheeled-robot-command")
 args = parser.parse_args()
 
 
@@ -78,16 +77,15 @@ def main():
     # Logging directory
     log_base_dir = "./logs"
     experiment_name = args.exp_name
-    log_path = os.path.join(log_base_dir, experiment_name)
-    if os.path.exists(log_path):
+    log_path = Path(log_base_dir) / experiment_name
+    if log_path.exists():
         shutil.rmtree(log_path)
-    os.makedirs(log_path, exist_ok=True)
+    log_path.mkdir(parents=True, exist_ok=True)
     print(f"Logging to: {log_path}")
 
     # Load training configuration and save snapshot of training configs
     cfg = training_cfg()
-    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
-        pickle.dump([cfg], f)
+    save_config_pickle(log_path, cfg)
 
     # Create environment
     env = WheeledRobotCommandDirectionEnv(num_envs=args.num_envs, headless=True)
@@ -96,7 +94,7 @@ def main():
     env = VideoWrapper(
         env,
         video_length_sec=12,
-        out_dir=os.path.join(log_path, "videos"),
+        out_dir=log_path / "videos",
         episode_trigger=lambda episode_id: episode_id % 2 == 0,
     )
 

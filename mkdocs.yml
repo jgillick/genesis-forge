@@ -1,5 +1,5 @@
 site_name: Genesis Forge
-site_url: https://genesis-forge.readthedocs.io/en/latest/
+site_url: https://docs.genesisforge.io/en/latest/
 site_description: A modular robotics RL training framework built on the Genesis physics simulator.
 repo_url: https://github.com/jgillick/genesis-forge
 repo_name: jgillick/genesis-forge

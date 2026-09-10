@@ -8,7 +8,7 @@ reproduces them exactly, and writes a bundle the robot can load::
 
     env = MyEnv(num_envs=1)
     env.build()
-    export(env, "./my_policy")
+    export(env, "./go2_walk")
 
 The robot-side half is the separate ``genesis-forge-runtime`` package, which depends
 only on numpy so it installs on a Raspberry Pi or Jetson.

@@ -9,7 +9,7 @@ Typical robot-side use::
 
     from genesis_forge_runtime import load_bundle
 
-    bundle = load_bundle("./my_policy")
+    bundle = load_bundle("./go2_walk")
     print(bundle.describe())          # what to wire up
 
     observation_assembler = bundle.create_observation_assembler()

@@ -5,6 +5,7 @@ runtime, and that a failed export leaves nothing behind.
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -16,7 +17,7 @@ from genesis_forge.managers import (
     PositionActionManager,
     PositionWithinLimitsActionManager,
 )
-from genesis_forge_runtime import MalformedBundleError, load_bundle
+from genesis_forge_runtime import load_bundle
 
 """
 A successful export
@@ -327,7 +328,9 @@ def test_a_supplied_policy_file_is_copied_into_the_bundle(deployable_env, tmp_pa
 
     bundle = load_bundle(path)
     assert bundle.policy_path is not None
-    assert bundle.policy_path.read_bytes() == b"stand-in for an exported graph"
+    assert (bundle.path / bundle.policy_path).read_bytes() == (
+        b"stand-in for an exported graph"
+    )
 
 
 """
@@ -394,7 +397,7 @@ def test_the_policy_keeps_the_name_it_was_given(deployable_env, tmp_path):
     assert bundle.manifest.policy == ("trained.pt",)
     assert bundle.policy_path.name == "trained.pt"
     assert bundle.policy_path.parent.name == "policy"
-    assert bundle.policy_path.read_bytes() == policy.read_bytes()
+    assert (bundle.path / bundle.policy_path).read_bytes() == policy.read_bytes()
 
 
 def test_describe_points_at_the_policy(deployable_env, tmp_path):
@@ -521,7 +524,7 @@ def test_an_archive_round_trips_through_the_runtime(deployable_env, tmp_path):
 
     bundle = load_bundle(path)
     assert bundle.manifest.num_actions == 3
-    assert bundle.policy_path.read_bytes() == source.read_bytes()
+    assert (bundle.path / bundle.policy_path).read_bytes() == source.read_bytes()
     assert bundle.golden is not None
 
 
@@ -666,7 +669,7 @@ def test_describing_an_archive_does_not_unpack_it(deployable_env, tmp_path):
     ]
 
 
-def test_the_policy_of_an_unopened_archive_says_how_to_get_at_it(
+def test_the_policy_of_an_archive_is_a_path_relative_to_the_bundle(
     deployable_env, tmp_path
 ):
     source = tmp_path / "trained.onnx"
@@ -675,10 +678,11 @@ def test_the_policy_of_an_unopened_archive_says_how_to_get_at_it(
         deployable_env, tmp_path / "my_policy", policy_path=source, verbose=False
     )
 
-    with pytest.raises(MalformedBundleError) as error:
-        _ = bundle.policy_path
-
-    assert "unpacked()" in str(error.value)
+    # Relative, so it needs no unpacking to be useful, and the same expression
+    # works once the archive is opened.
+    assert bundle.policy_path == Path("policy") / "trained.onnx"
+    with bundle.unpacked() as directory:
+        assert (directory / bundle.policy_path).read_bytes() == b"graph"
 
 
 def test_unpacked_yields_the_contents_and_cleans_up_after_itself(

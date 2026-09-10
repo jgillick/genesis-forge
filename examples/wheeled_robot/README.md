@@ -116,10 +116,10 @@ Simply connect your gamepad and run:
 
 ```shell
 # With uv
-uv run ./gamepad.py
+uv run ./play.py
 
 # Without uv
-python ./gamepad.py
+python ./play.py
 ```
 
 You should now be able to use the joysticks to control the wheeled robot.
@@ -137,10 +137,10 @@ uv run ./deploy.py
 python ./deploy.py
 ```
 
-This writes `trained_bundle.gfb` - a portable bundle containing your trained policy
-and meta data necessary for `genesis_forge_runtime` to easily run it on your robot.
+This writes `on_robot/trained_bundle.gfb` - a portable bundle containing your trained
+policy and the metadata `genesis_forge_runtime` needs to run it on your robot. Then you can copy the `on_robot/` directory to the Raspberry Pi and run it!
 
 Check out the [on_robot/README.md](./on_robot/README.md) for instructions on how to run this
 on your own [Freenove 4WD car](https://store.freenove.com/products/fnk0043).
 
-For more information, check out the full [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment/).
+For more information, check out the full [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html).

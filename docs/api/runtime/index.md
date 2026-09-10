@@ -21,7 +21,7 @@ into joint targets.
 ```python
 from genesis_forge_runtime import load_bundle
 
-bundle = load_bundle("./my_policy.gfb")
+bundle = load_bundle("./go2_walk.gfb")
 print(bundle.describe())
 
 observation_assembler = bundle.create_observation_assembler()

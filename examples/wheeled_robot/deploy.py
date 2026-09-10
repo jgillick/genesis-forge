@@ -10,19 +10,18 @@ the built environment, plus the policy as ONNX -- that the simulation-free
 import argparse
 import os
 from importlib.metadata import version
+from pathlib import Path
 
 import genesis as gs
 import numpy as np
-from pathlib import Path
 import onnxruntime
 import torch
 from environment import WheeledRobotCommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+from utils import get_latest_model, load_config_pickle
 
 from genesis_forge.deployment import export
 from genesis_forge.wrappers import RslRlWrapper
-
-from utils import get_latest_model, load_config_pickle
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-e", "--exp_name", type=str, default="wheeled-robot-command")
@@ -145,8 +144,8 @@ def main():
     print(bundle.describe())
     print()
     print(
-        f"Copy the on_robot directory to the robot, then "
-        f"follow the instructions in examples/wheeled_robot/on_robot/README.md."
+        "Copy the on_robot directory to the robot, then "
+        "follow the instructions in examples/wheeled_robot/on_robot/README.md."
     )
 
 

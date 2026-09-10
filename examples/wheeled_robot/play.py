@@ -1,15 +1,14 @@
 import argparse
+from pathlib import Path
 
 import genesis as gs
 import torch
-from pathlib import Path
 from environment import WheeledRobotCommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+from utils import get_latest_model, load_config_pickle
 
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.wrappers import RslRlWrapper
-
-from utils import get_latest_model, load_config_pickle
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")

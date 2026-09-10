@@ -16,7 +16,7 @@ from genesis_forge.utils import name_matches
 
 @dataclass
 class DeploymentActionConfig:
-    """How an action manager's decode is reproduced on a robot.
+    """How an action manager's process is reproduced on a robot.
 
     Returned by :meth:`BaseActionManager.get_deployment_config` and written into
     the deployment bundle. Everything here must be plain data -- no tensors, no
@@ -24,15 +24,15 @@ class DeploymentActionConfig:
     runtime that never imports Genesis or torch.
 
     Args:
-        deploy_type: Stable name for this manager's decode. The runtime resolves
-            its decoder by this name, so it is the manifest's contract: keep it
+        deploy_type: Stable name for this manager's process. The runtime resolves
+            its processor by this name, so it is the manifest's contract: keep it
             stable across refactors. Built-in names are ``"position"`` and
             ``"position_within_limits"``.
-        config: Plain-data parameters the decoder needs (numbers, lists of
-            numbers, strings). The schema belongs to the decoder, not to the
+        config: Plain-data parameters the processor needs (numbers, lists of
+            numbers, strings). The schema belongs to the processor, not to the
             exporter, so custom managers are free to define their own.
-        decoder_import_path: For custom managers, where the matching decoder
-            class lives, written as ``"my_package.decoders:MyDecoder"``. Leave
+        processor_import_path: For custom managers, where the matching processor
+            class lives, written as ``"my_package.processors:MyProcessor"``. Leave
             unset for built-in types, which the runtime already ships.
         joint_action_index: One action index per joint, in the manager's joint
             order, when ``action_groups`` has several joints sharing an action.
@@ -41,7 +41,7 @@ class DeploymentActionConfig:
 
     deploy_type: str
     config: dict[str, Any] = field(default_factory=dict)
-    decoder_import_path: str | None = None
+    processor_import_path: str | None = None
     joint_action_index: list[int] | None = None
 
 
@@ -55,7 +55,7 @@ def to_nominal_array(
 ) -> list[float]:
     """Reduce a possibly per-environment tensor to one nominal value per joint.
 
-    Decode parameters are stored per-environment, and domain randomization may
+    Process parameters are stored per-environment, and domain randomization may
     perturb them differently in each one. A bundle describes a single robot, so
     export refuses to guess which environment is authoritative: if the values
     diverge across environments, this raises instead of silently baking in
@@ -485,14 +485,14 @@ class BaseActionManager(BaseManager):
     """
 
     def get_deployment_config(self) -> DeploymentActionConfig:
-        """Describe this manager's decode so it can be reproduced on a robot.
+        """Describe this manager's process so it can be reproduced on a robot.
 
         Called by :func:`genesis_forge.deployment.export` after the environment is
-        built, when every decode parameter has been resolved. Implementations
+        built, when every process parameter has been resolved. Implementations
         return plain data only -- see :class:`DeploymentActionConfig`.
 
         Custom action managers opt in by overriding this method and shipping a
-        matching :class:`~genesis_forge_runtime.ManagerDecoder` subclass.
+        matching :class:`~genesis_forge_runtime.ActionManagerProcessor` subclass.
 
         Raises:
             NotImplementedError: This manager has not opted in to deployment export.
@@ -500,6 +500,6 @@ class BaseActionManager(BaseManager):
         raise NotImplementedError(
             f"{type(self).__name__} does not support deployment export. Override "
             f"get_deployment_config() to return a DeploymentActionConfig describing "
-            f"this manager's decode as plain data, and ship a ManagerDecoder "
+            f"this manager's process as plain data, and ship a ActionManagerProcessor "
             f"subclass that replays it on the robot."
         )

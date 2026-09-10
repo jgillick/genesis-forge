@@ -34,7 +34,7 @@ def test_export_writes_a_loadable_bundle(deployable_env, tmp_path):
     assert bundle.manifest.joint_names == ("FL_hip", "FL_knee", "FR_hip")
 
 
-def test_export_records_the_decode_parameters(deployable_env, tmp_path):
+def test_export_records_the_process_parameters(deployable_env, tmp_path):
     path = export(deployable_env, tmp_path / "bundle", verbose=False).path
 
     spec = load_bundle(path).manifest.actions[0]
@@ -124,7 +124,7 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
     path = export(deployable_env, tmp_path / "bundle", verbose=False).path
     bundle = load_bundle(path)
     assembler = bundle.create_observation_assembler()
-    decoder = bundle.create_action_decoder()
+    processor = bundle.create_action_processor()
 
     sensors = {
         "gyro": np.array([0.3, -0.4, 0.5], dtype=np.float32),
@@ -145,7 +145,7 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
     np.testing.assert_allclose(numpy_obs, torch_obs.numpy(), rtol=1.3e-6, atol=1e-5)
 
     raw = np.array([0.6, -0.6, 0.2], dtype=np.float32)
-    numpy_targets = decoder.decode(raw).targets
+    numpy_targets = processor.process(raw).targets
     torch_targets = action_manager.process_actions(
         torch.as_tensor(np.tile(raw, (deployable_env.num_envs, 1)), dtype=torch.float32)
     )[0]
@@ -155,15 +155,15 @@ def test_the_written_bundle_reproduces_the_training_pipeline(deployable_env, tmp
 
 
 def test_golden_samples_replay_through_the_loaded_runtime(deployable_env, tmp_path):
-    """The on-robot smoke test: recorded actions must decode to recorded targets."""
+    """The on-robot smoke test: recorded actions must process to recorded targets."""
     path = export(deployable_env, tmp_path / "bundle", verbose=False).path
     bundle = load_bundle(path)
-    decoder = bundle.create_action_decoder()
+    processor = bundle.create_action_processor()
 
     for raw, expected in zip(
         bundle.golden["raw_actions"], bundle.golden["joint_targets"], strict=True
     ):
-        np.testing.assert_allclose(decoder.decode(raw).targets, expected, rtol=1e-6)
+        np.testing.assert_allclose(processor.process(raw).targets, expected, rtol=1e-6)
 
 
 """
@@ -176,7 +176,7 @@ def test_a_parity_failure_aborts_before_writing_anything(
 ):
     destination = tmp_path / "bundle"
 
-    # Make the exported decode disagree with process_actions.
+    # Make the exported process disagree with process_actions.
     original = deployable_env.action_manager.get_deployment_config
 
     def drifted():

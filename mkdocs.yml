@@ -162,8 +162,8 @@ nav:
           - Overview: api/runtime/index.md
           - Bundle: api/runtime/bundle.md
           - ObservationAssembler: api/runtime/observations.md
-          - ActionDecoder: api/runtime/actions.md
-          - Decoders: api/runtime/decoders.md
+          - ActionProcessor: api/runtime/actions.md
+          - Processors: api/runtime/processors.md
           - Manifest: api/runtime/manifest.md
           - Errors: api/runtime/errors.md
           - Constants: api/runtime/constants.md

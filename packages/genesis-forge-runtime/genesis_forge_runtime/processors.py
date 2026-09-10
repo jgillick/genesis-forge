@@ -1,7 +1,7 @@
-"""Decoding one action manager's slice of the policy output.
+"""Processing one action manager's slice of the policy output.
 
-A custom action manager ships a :class:`ManagerDecoder` subclass beside it and
-names it in the manifest; the built-ins all share :class:`AffineDecoder`, which is
+A custom action manager ships a :class:`ActionManagerProcessor` subclass beside it and
+names it in the manifest; the built-ins all share :class:`AffineProcessor`, which is
 driven entirely by the parameters export recorded rather than by subclass
 switching.
 """
@@ -14,17 +14,17 @@ from typing import Any
 import numpy as np
 
 from .action_schema import ActionManagerSpec
-from .errors import DecoderError
+from .errors import ActionError
 
 
-class ManagerDecoder:
-    """Base class for one action manager's deployment-side decode.
+class ActionManagerProcessor:
+    """Base class for one action manager's deployment-side process.
 
     A custom action manager supports deployment by shipping a subclass of this
     alongside it -- in a module that imports cleanly without torch or Genesis --
     and naming it in the export contract.
 
-    Subclasses override :meth:`decode`, and may keep per-step state as long as
+    Subclasses override :meth:`process`, and may keep per-step state as long as
     :meth:`reset` clears it.
     """
 
@@ -44,22 +44,22 @@ class ManagerDecoder:
     def reset(self) -> None:
         """Clear any per-step state. Called on construction and by the composer."""
 
-    def decode(self, actions: np.ndarray) -> np.ndarray:
+    def process(self, actions: np.ndarray) -> np.ndarray:
         """Convert this manager's slice of the policy output into joint targets."""
-        raise NotImplementedError(f"{type(self).__name__} must implement decode().")
+        raise NotImplementedError(f"{type(self).__name__} must implement process().")
 
     @property
     def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
-        """The clip this decoder applies to each joint's target, where it clips.
+        """The clip this processor applies to each joint's target, where it clips.
 
         A joint appears only if its target is bounded on at least one side, and an
-        unbounded side reads as an infinity. Decoders that do not clip return
+        unbounded side reads as an infinity. Processors that do not clip return
         nothing, which is why this is empty by default.
         """
         return {}
 
 
-class AffineDecoder(ManagerDecoder):
+class AffineProcessor(ActionManagerProcessor):
     """Optional raw-action clip, ``actions * scale + offset``, then optional clip.
 
     This single shape covers both built-in managers:
@@ -89,16 +89,16 @@ class AffineDecoder(ManagerDecoder):
         self._clip_low = self._clip_vector(low, unbounded=-np.inf)
         self._clip_high = self._clip_vector(high, unbounded=np.inf)
 
-    def decode(self, actions: np.ndarray) -> np.ndarray:
+    def process(self, actions: np.ndarray) -> np.ndarray:
         values = np.asarray(actions, dtype=self.dtype).ravel()
         if values.size != self.spec.num_actions:
-            raise DecoderError(
+            raise ActionError(
                 f"Action manager '{self.name}' expects {self.spec.num_actions} "
                 f"action(s), got {values.size}."
             )
 
         if self._joint_action_index is not None:
-            # Fan out before decoding: every parameter below is per joint, and
+            # Fan out before processing: every parameter below is per joint, and
             # grouped joints differ -- mirrored wheels share an action but take
             # opposite scale.
             values = values[self._joint_action_index]
@@ -146,7 +146,7 @@ class AffineDecoder(ManagerDecoder):
         return self._vector(value, default=None)
 
     def _vector(self, value: Any, *, default: float | None) -> np.ndarray | None:
-        """One decode parameter, sized per joint rather than per action."""
+        """One process parameter, sized per joint rather than per action."""
         size = self.spec.num_joints
         if value is None:
             if default is None:
@@ -156,78 +156,79 @@ class AffineDecoder(ManagerDecoder):
         if array.size == 1:
             return np.full(size, array.item(), dtype=self.dtype)
         if array.size != size:
-            raise DecoderError(
-                f"Action manager '{self.name}' has a decode parameter of length "
+            raise ActionError(
+                f"Action manager '{self.name}' has a processing parameter of length "
                 f"{array.size}, but controls {size} joint(s)."
             )
         return array
 
 
-#: Type names the runtime ships decoders for. The *name* is the manifest's
+#: Type names the runtime ships processors for. The *name* is the manifest's
 #: contract, so it stays stable across refactors. Several map to one class: they
 #: share an arithmetic shape and differ only in what their numbers mean.
-BUILTIN_DECODERS: dict[str, type[ManagerDecoder]] = {
-    "affine_dof": AffineDecoder,
-    "position": AffineDecoder,
-    "position_within_limits": AffineDecoder,
-    "velocity": AffineDecoder,
+BUILTIN_PROCESSORS: dict[str, type[ActionManagerProcessor]] = {
+    "affine_dof": AffineProcessor,
+    "position": AffineProcessor,
+    "position_within_limits": AffineProcessor,
+    "velocity": AffineProcessor,
 }
 
 
-def resolve_decoder_class(spec: ActionManagerSpec) -> type[ManagerDecoder]:
-    """Find the decoder class for one action manager.
+def resolve_processor_class(spec: ActionManagerSpec) -> type[ActionManagerProcessor]:
+    """Find the processor class for one action manager.
 
-    Built-in type names resolve against :data:`BUILTIN_DECODERS`. Anything else
-    resolves through the ``decoder_import_path`` the exporter recorded, written
+    Built-in type names resolve against :data:`BUILTIN_PROCESSORS`. Anything else
+    resolves through the ``processor_import_path`` the exporter recorded, written
     as ``"module.path:ClassName"``.
 
     Raises:
-        DecoderError: The type is unknown and no import path was supplied, or the
+        ActionError: The type is unknown and no import path was supplied, or the
             import path could not be loaded.
     """
-    builtin = BUILTIN_DECODERS.get(spec.deploy_type)
+    builtin = BUILTIN_PROCESSORS.get(spec.deploy_type)
     if builtin is not None:
         return builtin
 
-    path = spec.decoder_import_path
+    path = spec.processor_import_path
     if not path:
-        raise DecoderError(
-            f"No decoder available for action type '{spec.deploy_type}' (action "
+        raise ActionError(
+            f"No processor available for action type '{spec.deploy_type}' (action "
             f"manager '{spec.name}'). Built-in types are: "
-            f"{', '.join(sorted(BUILTIN_DECODERS))}. A custom action manager must "
-            f"record its decoder's import path when it exports, as "
-            f"'my_package.decoders:MyDecoder'."
+            f"{', '.join(sorted(BUILTIN_PROCESSORS))}. A custom action manager must "
+            f"record its processor's import path when it exports, as "
+            f"'my_package.processors:MyProcessor'."
         )
 
     module_name, _, class_name = path.partition(":")
     if not module_name or not class_name:
-        raise DecoderError(
-            f"Decoder import path '{path}' for action manager '{spec.name}' is "
+        raise ActionError(
+            f"Processor import path '{path}' for action manager '{spec.name}' is "
             f"malformed. Expected 'module.path:ClassName'."
         )
 
     try:
         module = importlib.import_module(module_name)
     except ImportError as error:
-        raise DecoderError(
-            f"Could not import '{module_name}' to load the decoder for action "
+        raise ActionError(
+            f"Could not import '{module_name}' to load the processor for action "
             f"manager '{spec.name}'. Install the package that provides it on this "
             f"machine. Original error: {error}"
         ) from error
 
     try:
-        decoder_class = getattr(module, class_name)
+        processor_class = getattr(module, class_name)
     except AttributeError as error:
-        raise DecoderError(
-            f"Module '{module_name}' has no attribute '{class_name}' (decoder for "
+        raise ActionError(
+            f"Module '{module_name}' has no attribute '{class_name}' (processor for "
             f"action manager '{spec.name}')."
         ) from error
 
     if not (
-        isinstance(decoder_class, type) and issubclass(decoder_class, ManagerDecoder)
+        isinstance(processor_class, type)
+        and issubclass(processor_class, ActionManagerProcessor)
     ):
-        raise DecoderError(
-            f"Decoder '{path}' for action manager '{spec.name}' must be a subclass "
-            f"of ManagerDecoder."
+        raise ActionError(
+            f"Processor '{path}' for action manager '{spec.name}' must be a subclass "
+            f"of ActionManagerProcessor."
         )
-    return decoder_class
+    return processor_class

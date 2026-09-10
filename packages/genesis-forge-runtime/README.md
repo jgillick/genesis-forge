@@ -24,18 +24,18 @@ bundle = load_bundle("./go2_walk.gfb")  # a directory works too
 print(bundle.describe())  # what to wire up
 
 observation_assembler = bundle.create_observation_assembler()
-action_decoder = bundle.create_action_decoder()
+action_processor = bundle.create_action_processor()
 
 while True:
     observation = observation_assembler.assemble(
         {
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
-            "actions": action_decoder.last_raw_actions,  # zeros before the first tick
+            "actions": action_processor.last_raw_actions,  # zeros before the first tick
         }
     )
     actions = policy(observation)
-    targets = action_decoder.decode()  # your onnxruntime session
+    targets = action_processor.process()  # your onnxruntime session
     send_to_motors(targets.by_joint)
 ```
 
@@ -45,5 +45,5 @@ for the full control-loop walkthrough, including how to run the policy itself.
 ## Trust model
 
 A bundle is **trusted input, equivalent to executable code**: loading one may import
-decoder classes named inside it. Only load bundles you produced yourself. Treat a
+processor classes named inside it. Only load bundles you produced yourself. Treat a
 bundle from a third party the same way you would treat an unpickled checkpoint.

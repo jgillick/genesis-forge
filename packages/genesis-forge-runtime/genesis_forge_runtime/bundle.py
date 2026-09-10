@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from .actions import ActionDecoder
+from .actions import ActionProcessor
 from .archive import ensure_extracted, is_archive
 from .constants import GOLDEN_FILENAME, MANIFEST_FILENAME, POLICY_DIRNAME
 from .errors import MalformedBundleError
@@ -110,13 +110,13 @@ class Bundle:
         """
         return ObservationAssembler(self.manifest.observations, **kwargs)
 
-    def create_action_decoder(self, **kwargs: Any) -> ActionDecoder:
-        """Build a new :class:`ActionDecoder` for this bundle.
+    def create_action_processor(self, **kwargs: Any) -> ActionProcessor:
+        """Build a new :class:`ActionProcessor` for this bundle.
 
-        Each call returns a fresh decoder with its own remembered actions, so
+        Each call returns a fresh processor with its own remembered actions, so
         create one and keep it for the life of the control loop.
         """
-        return ActionDecoder(self.manifest.actions, **kwargs)
+        return ActionProcessor(self.manifest.actions, **kwargs)
 
     def describe(self) -> str:
         """Human-readable summary of what to wire up. Print this first."""

@@ -90,7 +90,7 @@ Catching real divergence
 """
 
 
-def test_a_wrong_decode_parameter_is_caught_and_named(deployable_env, monkeypatch):
+def test_a_wrong_process_parameter_is_caught_and_named(deployable_env, monkeypatch):
     """Covers AE1: the gate names the component that diverged."""
     capture = capture_environment(deployable_env)
     # Simulate a hand-written counterpart drifting from process_actions.

@@ -1,6 +1,6 @@
 """The deployment export contract on managers.
 
-Each action manager describes its own decode as plain data, so the exporter never
+Each action manager describes its own processing as plain data, so the exporter never
 inspects a subclass's internals. These tests check what each built-in manager
 publishes, that custom managers can opt in without library changes, and that
 per-environment divergence (domain randomization) is refused rather than guessed at.
@@ -57,7 +57,7 @@ PositionActionManager export
 """
 
 
-def test_position_manager_exports_its_affine_decode(env):
+def test_position_manager_exports_its_affine_process(env):
     actuator = make_actuator_manager()
     manager = PositionActionManager(env, actuator_manager=actuator, scale=0.5)
     manager.build()
@@ -127,11 +127,11 @@ PositionWithinLimitsActionManager export
 
 It subclasses PositionActionManager but overrides process_actions with different
 math, so it must override the export too -- otherwise it would publish the
-parent's parameters, which its own decode never uses.
+parent's parameters, which its own `process_actions` never uses.
 """
 
 
-def test_within_limits_manager_exports_its_own_decode(env):
+def test_within_limits_manager_exports_its_own_process(env):
     manager = PositionWithinLimitsActionManager(
         env, actuator_manager=make_actuator_manager()
     )
@@ -190,12 +190,12 @@ def test_the_two_managers_publish_different_deploy_types(env):
 """
 VelocityActionManager export
 
-Shares AffineDofActionManager's decode with the position managers, so it becomes
+Shares AffineDofActionManager's process with the position managers, so it becomes
 deployable through the shared contract rather than through anything velocity-specific.
 """
 
 
-def test_velocity_manager_exports_its_affine_decode(env):
+def test_velocity_manager_exports_its_affine_process(env):
     manager = VelocityActionManager(
         env, actuator_manager=make_actuator_manager(), scale=8.0
     )
@@ -283,7 +283,7 @@ def test_the_shared_affine_contract_is_inherited_not_reimplemented(env):
         VelocityActionManager.get_deployment_config
         is AffineDofActionManager.get_deployment_config
     )
-    # Within-limits decodes differently, so it must NOT share the inherited version.
+    # Within-limits processes differently, so it must NOT share the inherited version.
     assert (
         PositionWithinLimitsActionManager.get_deployment_config
         is not AffineDofActionManager.get_deployment_config
@@ -327,7 +327,7 @@ def test_a_custom_manager_can_opt_in_without_library_changes(env):
             return DeploymentActionConfig(
                 deploy_type="velocity",
                 config={"max_velocity": [1.0] * self.num_actions},
-                decoder_import_path="my_robot.decoders:VelocityDecoder",
+                processor_import_path="my_robot.processors:VelocityProcessor",
             )
 
     manager = VelocityActionManager(env, actuator_manager=make_actuator_manager())
@@ -336,7 +336,7 @@ def test_a_custom_manager_can_opt_in_without_library_changes(env):
     exported = manager.get_deployment_config()
 
     assert exported.deploy_type == "velocity"
-    assert exported.decoder_import_path == "my_robot.decoders:VelocityDecoder"
+    assert exported.processor_import_path == "my_robot.processors:VelocityProcessor"
     assert exported.config["max_velocity"] == [1.0, 1.0, 1.0]
 
 
@@ -344,7 +344,7 @@ def test_builtin_managers_need_no_import_path(env):
     manager = PositionActionManager(env, actuator_manager=make_actuator_manager())
     manager.build()
 
-    assert manager.get_deployment_config().decoder_import_path is None
+    assert manager.get_deployment_config().processor_import_path is None
 
 
 """

@@ -140,12 +140,12 @@ def _check_runtime_can_read_what_we_write() -> None:
 def _capture_actions(
     env: Any, managers: dict[str, Any], names: dict[int, str]
 ) -> tuple[tuple[ActionManagerSpec, ...], dict[str, BaseActionManager]]:
-    """Ask each action manager to describe its own decode."""
+    """Ask each action manager to describe its own processing."""
     action_managers = managers.get("action", [])
     if not action_managers:
         raise ExportError(
             "The environment has no action managers, so there is no policy output to "
-            "decode. Deployment export needs at least one."
+            "process. Deployment export needs at least one."
         )
 
     ranges = getattr(env, "action_ranges", None)
@@ -178,7 +178,7 @@ def _capture_actions(
                 "joint_names": list(manager.dofs.keys()),
                 "joint_action_index": contract.joint_action_index,
                 "config": contract.config,
-                "decoder_import_path": contract.decoder_import_path,
+                "processor_import_path": contract.processor_import_path,
             }
         )
         resolved[name] = manager

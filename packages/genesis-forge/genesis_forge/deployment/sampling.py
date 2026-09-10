@@ -3,7 +3,7 @@
 Random values alone would only ever exercise the linear middle of each transform,
 so the samples deliberately include clip-boundary values -- clipping is where two
 implementations most easily disagree -- and run as a multi-tick sequence so history
-stacking and per-step decoder state are exercised too.
+stacking and per-step processor state are exercised too.
 """
 
 from __future__ import annotations

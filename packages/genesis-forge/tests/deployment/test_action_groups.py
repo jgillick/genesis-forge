@@ -2,7 +2,7 @@
 
 `action_groups` lets one policy output drive several joints -- a robot's wheels on
 one side, say -- so the manager's slice is narrower than its joint list while every
-decode parameter stays per joint. The bundle has to carry the mapping between them,
+process parameter stays per joint. The bundle has to carry the mapping between them,
 and the parity gate has to compare the whole path, fan-out included.
 """
 
@@ -49,7 +49,7 @@ def test_the_bundle_records_the_mapping(grouped_env, tmp_path):
     assert spec.num_joints == 3
     assert spec.joint_action_index is not None
     assert len(spec.joint_action_index) == 3
-    # Decode parameters are sized per joint, not per action.
+    # Process parameters are sized per joint, not per action.
     assert len(spec.config["scale"]) == 3
 
 
@@ -62,16 +62,16 @@ def test_parity_covers_the_fan_out(grouped_env):
 
 def test_the_runtime_reproduces_the_grouping(grouped_env, tmp_path):
     path = export(grouped_env, tmp_path / "bundle", verbose=False).path
-    decoder = load_bundle(path).create_action_decoder()
+    processor = load_bundle(path).create_action_processor()
 
-    decoded = decoder.decode([1.0, -1.0])
+    processed = processor.process([1.0, -1.0])
 
-    assert decoder.num_actions == 2
-    assert decoder.num_joints == 3
+    assert processor.num_actions == 2
+    assert processor.num_joints == 3
 
     # Both hips are driven by action 0, but with mirrored scale -- grouping shares
-    # the action, not the decode, which is why the parameters stay per joint.
-    targets = decoded.by_joint
+    # the action, not the process, which is why the parameters stay per joint.
+    targets = processed.by_joint
     assert targets["FL_hip"] == pytest.approx(2.0)
     assert targets["FR_hip"] == pytest.approx(-2.0)
     # The knee is driven by action 1, which was -1.0.

@@ -28,5 +28,5 @@ class ObservationError(Exception):
     """A value handed to the assembler was missing, mis-sized, or unexpected."""
 
 
-class DecoderError(Exception):
-    """A decoder could not be resolved, or was handed unusable policy output."""
+class ActionError(Exception):
+    """A processor could not be resolved, or was handed unusable policy output."""

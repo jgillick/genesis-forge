@@ -43,7 +43,7 @@ class AffineDofActionManager(BaseActionManager):
 
     deploy_type: str = "affine_dof"
     """Stable name recorded in a deployment bundle so the robot can find this
-    manager's decoder. Subclasses override it to say what their values *mean*
+    manager's processor. Subclasses override it to say what their values *mean*
     (positions vs velocities), which is what a robot operator needs to know --
     the arithmetic is identical either way."""
 
@@ -109,7 +109,7 @@ class AffineDofActionManager(BaseActionManager):
     """
 
     def get_deployment_config(self) -> DeploymentActionConfig:
-        """Export the affine decode: scale, offset, and the clip bounds.
+        """Export the affine transform: scale, offset, and the clip bounds.
 
         Shared by every affine manager, so `PositionActionManager`,
         `VelocityActionManager`, and any future affine subclass are deployable
@@ -122,7 +122,7 @@ class AffineDofActionManager(BaseActionManager):
             or self._clip_values is None
         ):
             raise RuntimeError(
-                f"{type(self).__name__} has not been built, so its decode parameters "
+                f"{type(self).__name__} has not been built, so its processing parameters "
                 f"are unknown. Build the environment before exporting."
             )
 

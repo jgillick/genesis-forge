@@ -114,7 +114,7 @@ def test_round_trip_preserves_observation_layout(tmp_path):
 
 
 def test_config_and_actuator_values_load_as_plain_json_data(tmp_path):
-    """Nothing is reshaped on load -- a decoder converts what it needs itself."""
+    """Nothing is reshaped on load -- a processor converts what it needs itself."""
     manifest = load_bundle(write_bundle(tmp_path)).manifest
 
     assert manifest.actions[0].config["scale"] == [0.5, 0.5]
@@ -407,7 +407,7 @@ def grouped_manager(**overrides):
 
 
 def test_the_mapping_round_trips_as_integers(tmp_path):
-    """Indices stay integers -- they address joints, they are not decode values."""
+    """Indices stay integers -- they address joints, they are not process values."""
     manifest = make_manifest(actions=(grouped_manager(),))
     path = write_bundle(tmp_path, manifest)
 

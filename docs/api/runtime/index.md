@@ -15,7 +15,7 @@ pip install genesis-forge-runtime
 The [deployment guide](../../guide/deployment.md) walks through the whole flow. In
 brief, a control loop needs three things from here: [`load_bundle`](bundle.md) to
 read what training recorded, an [`ObservationAssembler`](observations.md) to build
-the policy's input vector, and an [`ActionDecoder`](actions.md) to turn its output
+the policy's input vector, and an [`ActionProcessor`](actions.md) to turn its output
 into joint targets.
 
 ```python
@@ -25,5 +25,5 @@ bundle = load_bundle("./go2_walk.gfb")
 print(bundle.describe())
 
 observation_assembler = bundle.create_observation_assembler()
-action_decoder = bundle.create_action_decoder()
+action_processor = bundle.create_action_processor()
 ```

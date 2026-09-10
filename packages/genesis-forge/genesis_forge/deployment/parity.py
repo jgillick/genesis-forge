@@ -1,7 +1,7 @@
 """Prove the deployment runtime reproduces the training pipeline, before export.
 
 Manager-owned deployment counterparts are written by hand, so nothing structural
-guarantees the numpy decode matches the torch ``process_actions`` it mirrors. This
+guarantees the numpy processing matches the torch ``process_actions`` it mirrors. This
 gate closes that: it runs the *actual* ``genesis_forge_runtime`` classes -- the same
 code the robot imports -- against the live torch pipeline on identical inputs, and
 refuses the export if they disagree.
@@ -16,7 +16,7 @@ import genesis as gs
 import numpy as np
 import torch
 
-from genesis_forge_runtime import ActionDecoder, ObservationAssembler
+from genesis_forge_runtime import ActionProcessor, ObservationAssembler
 
 from .comparison import PIPELINE_ATOL, PIPELINE_RTOL, max_abs_error, require_close
 from .sampling import (
@@ -63,7 +63,7 @@ def check_parity(
 ) -> ParityReport:
     """Compare the numpy deployment pipeline against the live torch pipeline.
 
-    Runs a multi-tick sequence so history stacking and any per-step decoder state
+    Runs a multi-tick sequence so history stacking and any per-step processor state
     are exercised, not just a single snapshot. Inputs mix seeded random values with
     clip-boundary values, since clipping is where the two implementations are most
     likely to diverge.
@@ -83,7 +83,7 @@ def check_parity(
     """
     manifest: Manifest = capture.manifest
     assembler = ObservationAssembler(manifest.observations)
-    decoder = ActionDecoder(manifest.actions)
+    processor = ActionProcessor(manifest.actions)
 
     rng = np.random.default_rng(seed)
     report = ParityReport(ticks=ticks)
@@ -96,7 +96,7 @@ def check_parity(
     # snapshot it and put it back -- exporting must not disturb the environment.
     with preserved_observation_history(capture.observation_manager):
         assembler.reset()
-        decoder.reset()
+        processor.reset()
 
         for tick in range(ticks):
             # Every entry is caller-supplied now -- including the ones that echo the
@@ -121,7 +121,7 @@ def check_parity(
             )
 
             raw_actions = sample_actions(manifest, rng, tick=tick)
-            decoded = decoder.decode(raw_actions)
+            processed = processor.process(raw_actions)
 
             for spec in manifest.actions:
                 manager = capture.action_managers[spec.name]
@@ -132,7 +132,7 @@ def check_parity(
                     device=gs.device,
                 )
                 torch_targets = manager.actions_to_dof_targets(torch_chunk).detach()[0]
-                numpy_targets = decoded.by_manager[spec.name]
+                numpy_targets = processed.by_manager[spec.name]
 
                 error = max_abs_error(numpy_targets, torch_targets)
                 report.max_action_error[spec.name] = max(
@@ -145,14 +145,14 @@ def check_parity(
                     atol=atol,
                     component=f"action manager '{spec.name}' ({spec.deploy_type})",
                     detail=(
-                        f"tick {tick}: the deployment decoder and the manager's "
-                        f"own decode produced different joint targets"
+                        f"tick {tick}: the deployment processor and the manager's "
+                        f"own process produced different joint targets"
                     ),
                 )
 
             golden_observations.append(numpy_obs)
             golden_actions.append(raw_actions)
-            golden_targets.append(decoded.targets)
+            golden_targets.append(processed.targets)
 
     report.golden = {
         "observations": np.asarray(golden_observations, dtype=np.float32),

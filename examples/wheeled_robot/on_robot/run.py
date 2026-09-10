@@ -61,7 +61,7 @@ def main() -> None:
 
     # Create observation and action handlers
     obs_assembler = bundle.create_observation_assembler()
-    action_decoder = bundle.create_action_decoder()
+    action_processor = bundle.create_action_processor()
 
     # Connect to the gamepad and motors
     gamepad = Gamepad.wait_for_connection()
@@ -79,7 +79,7 @@ def main() -> None:
             # Start the control loop
             print("Running. Ctrl-C to stop.")
             obs_assembler.reset()
-            action_decoder.reset()
+            action_processor.reset()
             while True:
                 # If the gamepad disconnects, stop the motors and wait for reconnection.
                 if not gamepad.connected:
@@ -90,7 +90,7 @@ def main() -> None:
                 observation = obs_assembler.assemble(
                     {
                         "velocity_cmd": gamepad.command(),
-                        "actions": action_decoder.last_raw_actions,
+                        "actions": action_processor.last_raw_actions,
                     }
                 )
 
@@ -98,13 +98,13 @@ def main() -> None:
                 [raw_action] = session.run(
                     None, {input_name: observation[None, :].astype("float32")}
                 )
-                action_targets = action_decoder.decode(np.ravel(raw_action))
+                action_targets = action_processor.process(np.ravel(raw_action))
 
                 # Send actions to the car
                 pwm = (
                     calculate_motor_pwm(
                         action_targets.by_joint[name],
-                        action_decoder.clip_range_by_joint[name],
+                        action_processor.clip_range_by_joint[name],
                     )
                     for name in [
                         "TT_Motor-1_axel",

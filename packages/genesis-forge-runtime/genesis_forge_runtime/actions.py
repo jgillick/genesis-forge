@@ -1,6 +1,6 @@
 """Turning a full policy output vector into named joint targets.
 
-Slices the vector across every action manager, hands each slice to its decoder,
+Slices the vector across every action manager, hands each slice to its processor,
 and remembers the result so the caller can feed it back into the next observation.
 """
 
@@ -11,12 +11,12 @@ from typing import Any
 import numpy as np
 
 from .action_schema import ActionManagerSpec
-from .decoders import ManagerDecoder, resolve_decoder_class
-from .errors import DecoderError
+from .errors import ActionError
+from .processors import ActionManagerProcessor, resolve_processor_class
 
 
-class DecodedActions:
-    """The result of one decode, viewable per joint, per manager, or as a vector."""
+class ProcessedActions:
+    """The result of one process, viewable per joint, per manager, or as a vector."""
 
     __slots__ = ("_joint_names", "by_manager", "targets")
 
@@ -46,11 +46,11 @@ class DecodedActions:
         return int(self.targets.size)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"DecodedActions({self.by_joint})"
+        return f"ProcessedActions({self.by_joint})"
 
 
-class ActionDecoder:
-    """Decodes a full policy output vector across every action manager.
+class ActionProcessor:
+    """Processes a full policy output vector across every action manager.
 
     Args:
         specs: The action manager specs from a loaded bundle's manifest.
@@ -70,8 +70,9 @@ class ActionDecoder:
         self._check_finite = check_finite
         self._dtype = np.dtype(dtype)
 
-        self._decoders: list[ManagerDecoder] = [
-            resolve_decoder_class(spec)(spec, dtype=self._dtype) for spec in self._specs
+        self._processors: list[ActionManagerProcessor] = [
+            resolve_processor_class(spec)(spec, dtype=self._dtype)
+            for spec in self._specs
         ]
         self._joint_names = tuple(
             name for spec in self._specs for name in spec.joint_names
@@ -84,12 +85,12 @@ class ActionDecoder:
 
     @property
     def num_actions(self) -> int:
-        """Width of the policy output vector this decoder consumes."""
+        """Width of the policy output vector this processor consumes."""
         return self._specs[-1].slice_end if self._specs else 0
 
     @property
     def num_joints(self) -> int:
-        """How many joint targets a decode produces.
+        """How many joint targets one call produces.
 
         Larger than :attr:`num_actions` when joints share an action.
         """
@@ -97,31 +98,31 @@ class ActionDecoder:
 
     @property
     def joint_names(self) -> tuple[str, ...]:
-        """Every joint this decoder produces a target for, in output order."""
+        """Every joint this processor produces a target for, in output order."""
         return self._joint_names
 
     @property
     def clip_range_by_joint(self) -> dict[str, tuple[float, float]]:
-        """Per joint, the clip its decoder applies to the target it produces.
+        """Per joint, the clip its processor applies to the target it produces.
 
         The range a joint's targets can span, which is what a robot needs to map
         them onto whatever its motors take. Joints whose targets are unbounded
-        are absent; see :meth:`ManagerDecoder.clip_range_by_joint`.
+        are absent; see :meth:`ActionManagerProcessor.clip_range_by_joint`.
         """
         clips: dict[str, tuple[float, float]] = {}
-        for decoder in self._decoders:
-            clips.update(decoder.clip_range_by_joint)
+        for processor in self._processors:
+            clips.update(processor.clip_range_by_joint)
         return clips
 
     @property
-    def decoders(self) -> tuple[ManagerDecoder, ...]:
-        return tuple(self._decoders)
+    def processors(self) -> tuple[ActionManagerProcessor, ...]:
+        return tuple(self._processors)
 
     @property
     def last_raw_actions(self) -> np.ndarray:
-        """The policy's raw output from the previous decode.
+        """The policy's raw output from the previous process.
 
-        Zeros before the first decode, matching how training starts an episode.
+        Zeros before the first process, matching how training starts an episode.
         Pass this to :meth:`ObservationAssembler.assemble` for an observation entry
         that echoes raw policy output.
         """
@@ -129,14 +130,14 @@ class ActionDecoder:
 
     @property
     def last_target_actions(self) -> np.ndarray:
-        """The decoded joint targets from the previous decode.
+        """The processed joint targets from the previous process.
 
-        Zeros before the first decode.
+        Zeros before the first process.
 
         Note this is *not* what the built-in ``current_actions`` observation feeds
         back -- that one is raw policy output at both of its call shapes, so use
         :attr:`last_raw_actions` or :attr:`last_raw_actions_by_manager`. This
-        property is for an observation that genuinely echoes decoded targets,
+        property is for an observation that genuinely echoes processed targets,
         which you would have written yourself.
         """
         return self._last_target_actions.copy()
@@ -145,14 +146,14 @@ class ActionDecoder:
     def last_target_actions_by_manager(self) -> dict[str, np.ndarray]:
         """Per-manager view of :attr:`last_target_actions`, for multi-manager robots.
 
-        As with :attr:`last_target_actions`, this is decoded output -- not what
+        As with :attr:`last_target_actions`, this is processed output -- not what
         ``current_actions`` feeds back.
         """
         return {name: values.copy() for name, values in self._last_by_manager.items()}
 
     @property
     def last_raw_actions_by_manager(self) -> dict[str, np.ndarray]:
-        """What each manager last consumed, before its own decode.
+        """What each manager last consumed, before it was processed.
 
         This is what ``current_actions(action_manager=...)`` feeds back during
         training, and it is the whole policy vector only when a single manager is
@@ -165,9 +166,9 @@ class ActionDecoder:
     """
 
     def reset(self) -> None:
-        """Clear decoder state and remembered outputs."""
-        for decoder in self._decoders:
-            decoder.reset()
+        """Clear processor state and remembered outputs."""
+        for processor in self._processors:
+            processor.reset()
         self._last_raw_actions = np.zeros(self.num_actions, dtype=self._dtype)
         self._last_target_actions = np.zeros(self.num_joints, dtype=self._dtype)
         self._last_by_manager = {
@@ -179,29 +180,29 @@ class ActionDecoder:
             for spec in self._specs
         }
 
-    def decode(self, actions: Any) -> DecodedActions:
-        """Decode one policy output vector into joint targets.
+    def process(self, actions: Any) -> ProcessedActions:
+        """Process one policy output vector into joint targets.
 
         Args:
             actions: The policy's raw output, length :attr:`num_actions`. A
                 leading batch dimension of 1 is accepted and squeezed.
 
         Returns:
-            A :class:`DecodedActions` view of the result.
+            A :class:`ProcessedActions` view of the result.
 
         Raises:
-            DecoderError: Wrong length, or non-finite values when
+            ActionError: Wrong length, or non-finite values when
                 ``check_finite`` is on.
         """
         values = np.asarray(actions, dtype=self._dtype).ravel()
         if values.size != self.num_actions:
-            raise DecoderError(
+            raise ActionError(
                 f"Expected {self.num_actions} action(s) from the policy, got "
                 f"{values.size}."
             )
         if self._check_finite and not np.all(np.isfinite(values)):
             bad = np.flatnonzero(~np.isfinite(values))
-            raise DecoderError(
+            raise ActionError(
                 f"Policy produced non-finite action(s) at index/indices "
                 f"{bad.tolist()}: {values[bad].tolist()}. Refusing to send these to "
                 f"the actuators. Pass check_finite=False to override for debugging."
@@ -210,12 +211,12 @@ class ActionDecoder:
         by_manager: dict[str, np.ndarray] = {}
         raw_by_manager: dict[str, np.ndarray] = {}
         pieces: list[np.ndarray] = []
-        for spec, decoder in zip(self._specs, self._decoders, strict=True):
+        for spec, processor in zip(self._specs, self._processors, strict=True):
             chunk = values[spec.slice_start : spec.slice_end]
             raw_by_manager[spec.name] = chunk.copy()
-            decoded = decoder.decode(chunk)
-            by_manager[spec.name] = decoded
-            pieces.append(decoded)
+            processed = processor.process(chunk)
+            by_manager[spec.name] = processed
+            pieces.append(processed)
 
         # copy() so `targets` does not alias `by_manager[name]`; concatenate
         # already returns a fresh array.
@@ -230,10 +231,10 @@ class ActionDecoder:
             name: chunk.copy() for name, chunk in by_manager.items()
         }
 
-        return DecodedActions(targets, by_manager, self._joint_names)
+        return ProcessedActions(targets, by_manager, self._joint_names)
 
     def describe_outputs(self) -> str:
-        """Human-readable listing of the joint targets this decoder produces."""
+        """Human-readable listing of the joint targets this processor produces."""
         lines = [f"Joint targets produced ({self.num_joints}):"]
         for spec in self._specs:
             joints = ", ".join(spec.joint_names)

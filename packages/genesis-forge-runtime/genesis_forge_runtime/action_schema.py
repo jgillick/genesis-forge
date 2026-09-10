@@ -1,7 +1,7 @@
 """How the policy's output maps onto real joints.
 
-The half of the manifest that :mod:`genesis_forge_runtime.decoders` consumes: which
-slice of the policy vector belongs to each action manager, how to decode it, and
+The half of the manifest that :mod:`genesis_forge_runtime.processors` consumes: which
+slice of the policy vector belongs to each action manager, how to process it, and
 the actuator settings the robot should match.
 """
 
@@ -32,7 +32,7 @@ def _read_action_index(value: Any, name: str) -> tuple[int, ...] | None:
 
 @dataclass(frozen=True)
 class ActionManagerSpec:
-    """How one action manager's slice of the policy output is decoded."""
+    """How one action manager's slice of the policy output is processed."""
 
     name: str
     deploy_type: str
@@ -40,7 +40,7 @@ class ActionManagerSpec:
     slice_start: int
     slice_end: int
     config: dict[str, Any]
-    decoder_import_path: str | None = None
+    processor_import_path: str | None = None
     #: One action index per joint, positionally matched to :attr:`joint_names`.
     #: None when every joint has its own action.
     joint_action_index: tuple[int, ...] | None = None
@@ -76,7 +76,7 @@ class ActionManagerSpec:
             slice_start=int(bounds[0]),
             slice_end=int(bounds[1]),
             config=data.get("config", {}),
-            decoder_import_path=data.get("decoder_import_path"),
+            processor_import_path=data.get("processor_import_path"),
             joint_action_index=_read_action_index(data.get("joint_action_index"), name),
         )
         grouped = spec.joint_action_index is not None
@@ -115,8 +115,8 @@ class ActionManagerSpec:
             "joint_names": list(self.joint_names),
             "config": self.config,
         }
-        if self.decoder_import_path is not None:
-            data["decoder_import_path"] = self.decoder_import_path
+        if self.processor_import_path is not None:
+            data["processor_import_path"] = self.processor_import_path
         if self.joint_action_index is not None:
             data["joint_action_index"] = [
                 int(index) for index in self.joint_action_index

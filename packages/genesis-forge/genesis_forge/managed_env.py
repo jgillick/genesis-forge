@@ -425,7 +425,7 @@ class ManagedEnvironment(GenesisEnv):
         Indices line up with ``managers["action"]`` in registration order, which is
         the same order :meth:`step` slices the incoming actions in. Deployment
         export records these so a robot can route the policy's output to the right
-        decoder.
+        processor.
         """
         return list(self._action_ranges)
 

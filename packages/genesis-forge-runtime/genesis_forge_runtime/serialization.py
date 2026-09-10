@@ -1,6 +1,6 @@
 """Reading required fields out of manifest JSON.
 
-Numeric data stays as plain JSON lists, both on disk and once loaded -- a decoder
+Numeric data stays as plain JSON lists, both on disk and once loaded -- a processor
 converts what it needs with ``np.asarray``. Nothing here reshapes values behind
 your back; it only reports a missing field in terms a reader can act on.
 """

@@ -12,4 +12,4 @@ field.
 
 ::: genesis_forge_runtime.ObservationError
 
-::: genesis_forge_runtime.DecoderError
+::: genesis_forge_runtime.ActionError

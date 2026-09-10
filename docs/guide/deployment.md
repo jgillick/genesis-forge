@@ -5,7 +5,7 @@ pipelines exactly as training built them:
 
 - **Observation assembly** — where each value sits in the vector, the scale applied to
   it, and how many previous ticks are stacked alongside the current one.
-- **Action decoding** — the scale, offset, and clipping applied to the policy's
+- **Action processing** — the scale, offset, and clipping applied to the policy's
   output, and which joint each number belongs to.
 
 Recreating those by hand is tedious and easy to get subtly wrong, and a subtle
@@ -55,12 +55,12 @@ from genesis_forge_runtime import load_bundle
 
 bundle = load_bundle("~/go2_walk.gfb")
 observation_assembler = bundle.create_observation_assembler()
-action_decoder = bundle.create_action_decoder()
+action_processor = bundle.create_action_processor()
 
 while True:
     observation = observation_assembler.assemble({...})   # your sensor readings
     actions = policy(observation) # get actions from your policy
-    targets = action_decoder.decode() # decode the actions into DOF values
+    targets = action_processor.process(actions)  # actions -> DOF targets
     send_to_motors(targets.by_joint)
 ```
 
@@ -115,7 +115,7 @@ disagree:
 
 ```
 ParityError: Parity failed in action manager 'action_manager' (position). tick 2: the
-deployment decoder and the manager's process_actions produced different joint targets.
+deployment processor and the manager's process_actions produced different joint targets.
 Largest difference 4.500e-01 at index 1: deployment produced 1.35, training produced
 0.9 (tolerance rtol=1.3e-06, atol=1e-05). The bundle was not written.
 ```
@@ -124,7 +124,7 @@ A bundle that exists is a bundle that passed.
 
 The two halves are not equally strong:
 
-- **Action decoding is verified end to end.** The numpy decoder is compared against
+- **Action processing is verified end to end.** The numpy processor is compared against
   the manager's own `process_actions`, so scale, offset, clipping and joint order
   cannot drift apart unnoticed.
 - **Observation assembly is verified only as far as the layout.** Feeding both sides
@@ -203,18 +203,18 @@ from genesis_forge_runtime import load_bundle
 
 bundle = load_bundle("./go2_walk")
 observation_assembler = bundle.create_observation_assembler()
-action_decoder = bundle.create_action_decoder()
+action_processor = bundle.create_action_processor()
 policy = ...  # see "Running the policy" below
 
 while True:
     observation = observation_assembler.assemble({
         "robot_ang_vel": my_imu.read(),
         "dof_pos": my_actuators.positions(),
-        "actions": action_decoder.last_raw_actions,
+        "actions": action_processor.last_raw_actions,
     })
 
     actions = policy(observation)
-    targets = action_decoder.decode(actions)
+    targets = action_processor.process(actions)
     for joint_name, target in targets.by_joint.items():
         my_actuators.set_position(joint_name, target)
 ```
@@ -234,16 +234,16 @@ angular velocity from an IMU. Pass the raw reading — the assembler applies wha
 scaling training used, so scaling it yourself applies it twice.
 
 **2. Previous actions.** An entry that echoes the policy's own previous output —
-common in locomotion policies. You read it off the decoder rather than off hardware.
+common in locomotion policies. You read it off the processor rather than off hardware.
 Which property depends on how you wrote the observation in training:
 
-| In training                                        | On the robot                                           |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| `observations.current_actions()`                   | `action_decoder.last_raw_actions`                      |
-| `observations.current_actions(action_manager=mgr)` | `action_decoder.last_raw_actions_by_manager["<name>"]` |
-| `action_manager.get_actions()`                     | `action_decoder.last_target_actions`                   |
+| In training                                        | On the robot                                             |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| `observations.current_actions()`                   | `action_processor.last_raw_actions`                      |
+| `observations.current_actions(action_manager=mgr)` | `action_processor.last_raw_actions_by_manager["<name>"]` |
+| `action_manager.get_actions()`                     | `action_processor.last_target_actions`                   |
 
-The first two are raw policy output, the third decoded joint targets. Getting this
+The first two are raw policy output, the third processed joint targets. Getting this
 wrong is quiet: with one action manager the two are often the same width, so the
 assembler accepts either.
 
@@ -277,7 +277,7 @@ joint driven at those gains. Match both before blaming the policy.
 
 ### Reset when you restart control
 
-Call `observation_assembler.reset()` and `action_decoder.reset()` whenever you
+Call `observation_assembler.reset()` and `action_processor.reset()` whenever you
 (re)start the loop. Observation history (when applicable) starts zero-filled, which is where every training episode
 began, so the robot resumes from a state the policy knows.
 
@@ -285,11 +285,11 @@ began, so the robot resumes from a state the policy knows.
 
 A policy that behaved in simulation can still do something violent on a real floor.
 Put the robot on a stand or a harness, keep a hand on the power, and leave the
-decoder's `check_finite` on so a `NaN` stops the loop instead of reaching a motor.
+processor's `check_finite` on so a `NaN` stops the loop instead of reaching a motor.
 
 Before any of that, `golden.npz` is a free bench check: it holds the observations and
 joint targets the parity gate ran on, so you can feed the recorded observations
-through your policy and decoder with the motors disconnected and confirm you get the
+through your policy and processor with the motors disconnected and confirm you get the
 recorded targets back.
 
 ### Troubleshooting
@@ -389,8 +389,9 @@ To see an example of verifying an onnx policy, look at the [`verify_onnx_policy`
 
 ## Action managers and what their targets mean
 
-Every built-in action manager is deployable out of the box. The bundle records which
-one produced each target, because that determines what you do with the number:
+Every built-in action manager is deployable out of the box. Processing gives you one
+value per joint, but the value alone does not say what kind of command it is — so the
+bundle records the manager that produced it:
 
 | Manager                             | `deploy_type`            | Targets are                                      |
 | ----------------------------------- | ------------------------ | ------------------------------------------------ |
@@ -398,37 +399,28 @@ one produced each target, because that determines what you do with the number:
 | `PositionWithinLimitsActionManager` | `position_within_limits` | Joint positions, mapped into each joint's limits |
 | `VelocityActionManager`             | `velocity`               | Joint/wheel velocities                           |
 
-The arithmetic behind all three is identical, which is why the bundle names the type
-rather than leaving you to infer it. `targets.by_joint` is keyed by joint name either
-way, so check the type before wiring it to a motor call:
+A target of `0.42` from a `position` manager is an angle in radians; the same `0.42`
+from a `velocity` manager is rad/s. Read `deploy_type` to know which motor call to
+make — `bundle.describe()` prints it, or branch on it in code:
 
 ```python
 for spec in bundle.manifest.actions:
     print(spec.deploy_type, spec.joint_names)
 ```
 
-### Grouped joints
-
-`action_groups` lets one policy output drive several joints — a robot's wheels on
-one side, say. The bundle records which action drives each joint, and the runtime
-fans them out the same way before decoding, so `targets.by_joint` still has an entry
-per joint:
-
-```
-  actions: 2 policy output(s) -> 4 joint target(s)
-  joint targets produced (4, from 2 policy outputs):
-    - [velocity] TT_Motor-1_axel, TT_Motor-2_axel, TT_Motor-3_axel, TT_Motor-4_axel
-```
-
-Grouping shares the _action_, not the decode: every scale, offset and clip bound
-stays per joint. That is what lets mirrored wheels take one command and turn opposite
-ways — the wheeled-robot example exports `scale: [-20, 20, -20, 20]` behind two
-actions.
+If `describe()` reports more joint targets than policy outputs — `4, from 2 policy
+outputs` — the environment used `action_groups` to drive several joints from one
+action. The runtime fans them out for you, so `targets.by_joint` still has an entry
+per joint and there is nothing extra to wire.
 
 ## Custom action managers
 
-A `BaseActionManager` subclass participates in deployment by describing its decode as
-plain data and shipping a decoder that reproduces it. On the training side:
+First check whether you need one. If your manager only scales, offsets and clips,
+subclass `AffineDofActionManager` and set `deploy_type` — `AffineProcessor` already
+handles that shape, and you write no robot-side code at all.
+
+For anything else, the manager describes its processing as plain data and ships a
+processor that reproduces it. On the training side:
 
 ```python
 from genesis_forge.managers.action.base import BaseActionManager, DeploymentActionConfig
@@ -439,41 +431,35 @@ class CartesianImpedanceActionManager(BaseActionManager):
     def get_deployment_config(self):
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,
-            config={"stiffness": self._stiffness.tolist()},
-            decoder_import_path="my_robot.decoders:CartesianImpedanceDecoder",
+            config={
+              "stiffness": self._stiffness.tolist(),
+            },
+            processor_import_path="my_robot.processors:CartesianImpedanceProcessor",
         )
 ```
 
-And on the robot, in a module that imports without torch:
+And on the robot, in a module that uses numpy instead of pytorch:
 
 ```python
 import numpy as np
-from genesis_forge_runtime import ManagerDecoder
+from genesis_forge_runtime import ActionManagerProcessor
 
-class CartesianImpedanceDecoder(ManagerDecoder):
+class CartesianImpedanceProcessor(ActionManagerProcessor):
     def reset(self):
         # Config arrives as plain JSON data, so convert once here rather than
         # on every tick. `reset` runs at construction and at episode start.
         self._stiffness = np.asarray(self.spec.config["stiffness"], dtype=np.float32)
 
-    def decode(self, actions):
+    def process(self, actions):
         return np.asarray(actions, dtype=np.float32) * self._stiffness
 ```
 
-If your manager is an affine one (scale, offset, clip), subclass
-`AffineDofActionManager` instead: set `deploy_type` and the built-in decoder handles
-it with no extra code. Either way the parity gate checks your decoder against your
-`process_actions` like any other.
-
-!!! note "This contract is still settling"
-
-    The deployment contract has been through one real hardware deployment so far,
-    and may still change. The bundle carries a `schema_version` so an out-of-date
-    bundle fails loudly rather than misbehaving.
+The parity gate checks your processor against your `process_actions` exactly as it
+checks the built-in ones, so the two cannot drift apart unnoticed.
 
 ## Trust model
 
-**Only load bundles you produced.** A bundle naming a custom decoder records its
-import path, and `create_action_decoder()` imports that module — running whatever is
+**Only load bundles you produced.** A bundle naming a custom processor records its
+import path, and `create_action_processor()` imports that module — running whatever is
 at its top level. Since a bundle from elsewhere can name any module on the robot's
 path, treat one the way you would treat a checkpoint from a stranger.

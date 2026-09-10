@@ -6,7 +6,7 @@ simulator lookups and minus the training noise. The parity gate on the export
 side proves the two agree before a bundle is ever written.
 
 Every entry is supplied by the caller. Most come from sensors; an entry that echoes
-the policy's own previous output is read off the decoder and passed in exactly the
+the policy's own previous output is read off the processor and passed in exactly the
 same way. Nothing is filled in silently: a value you forget raises, rather than
 quietly reading zeros forever.
 """
@@ -36,13 +36,13 @@ class ObservationAssembler:
     Example::
 
         observation_assembler = bundle.create_observation_assembler()
-        action_decoder = bundle.create_action_decoder()
+        action_processor = bundle.create_action_processor()
         print(observation_assembler.describe_inputs())
 
         obs = observation_assembler.assemble({
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
-            "actions": action_decoder.last_raw_actions,
+            "actions": action_processor.last_raw_actions,
         })
     """
 

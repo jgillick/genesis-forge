@@ -127,13 +127,13 @@ class PositionWithinLimitsActionManager(PositionActionManager):
     """
 
     def get_deployment_config(self) -> DeploymentActionConfig:
-        """Export this manager's decode: pre-clip to [-1, 1], then map into limits.
+        """Export this manager's process: pre-clip to [-1, 1], then map into limits.
 
         Overrides :class:`PositionActionManager` deliberately. This manager
         inherits the parent's ``build()`` -- so ``_scale_values``, ``_offset_values``
         and ``_clip_values`` all exist -- but its ``process_actions`` ignores them
         in favour of ``_scale``/``_offset`` and applies no post-clip. Exporting the
-        parent's parameters would describe a decode this manager never performs.
+        parent's parameters would describe processing this manager never performs.
         """
 
         def nominal(tensor, name):

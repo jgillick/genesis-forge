@@ -72,7 +72,7 @@ Create functions to assemble observations and convert the raw policy actions int
 
 ```python
 obs_assembler = bundle.create_observation_assembler()
-action_decoder = bundle.create_action_decoder()
+action_processor = bundle.create_action_processor()
 ```
 
 Here we construct the observations which will soon be passed to the onnx policy runtime.
@@ -81,17 +81,17 @@ Here we construct the observations which will soon be passed to the onnx policy 
 observation = obs_assembler.assemble(
     {
         "velocity_cmd": gamepad.command(),
-        "actions": action_decoder.last_raw_actions,
+        "actions": action_processor.last_raw_actions,
     }
 )
 ```
 
 When we pass the observations to the policy, it returns the raw actions.
-then `action_decoder` converts them into velocity inputs (using the same algorithms as `VelocityActionManager`)
+then `action_processor` converts them into velocity inputs (using the same algorithms as `VelocityActionManager`)
 
 ```python
 raw_action = session.run(None, {input_name: observation[None, :].astype("float32")})[0]
-action_targets = action_decoder.decode(np.ravel(raw_action))
+action_targets = action_processor.process(np.ravel(raw_action))
 ```
 
 Finally, we fetch the motor velocity values by joint name, and convert
@@ -101,7 +101,7 @@ them to PWM values used by the motors.
 pwm = (
     calculate_motor_pwm(
         action_targets.by_joint[name],
-        action_decoder.clip_range_by_joint[name],
+        action_processor.clip_range_by_joint[name],
     )
     for name in [
         "TT_Motor-1_axel",

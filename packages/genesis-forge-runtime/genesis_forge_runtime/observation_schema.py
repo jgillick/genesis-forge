@@ -4,7 +4,7 @@ The half of the manifest that :mod:`genesis_forge_runtime.observations` consumes
 what each slot holds, how wide it is, and what it is scaled by.
 
 Every slot is an input you supply each tick. Most come from sensors; some echo the
-policy's own previous output, which you read off the decoder. The bundle does not
+policy's own previous output, which you read off the processor. The bundle does not
 distinguish them -- from the assembler's side they are passed in the same way, and
 the deployment guide covers which of your entries is which.
 """

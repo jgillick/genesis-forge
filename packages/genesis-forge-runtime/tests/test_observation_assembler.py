@@ -156,7 +156,7 @@ def test_reset_clears_history_back_to_zeros():
 """Entries that echo the policy's own previous output (R15)
 
 The bundle does not mark these out -- they are ordinary inputs, passed the same
-way as a sensor reading, just read off the decoder instead. What matters is that
+way as a sensor reading, just read off the processor instead. What matters is that
 the caller passes them at all, so a forgotten feedback wire raises instead of
 silently feeding zeros forever.
 """

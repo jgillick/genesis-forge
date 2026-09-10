@@ -1,6 +1,6 @@
 # Deployment Contract
 
-The plain-data description an action manager publishes so its decode can be
+The plain-data description an action manager publishes so its processing can be
 reproduced on a robot.
 
 ::: genesis_forge.managers.action.base.DeploymentActionConfig

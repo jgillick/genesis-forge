@@ -742,9 +742,10 @@ wheels = [
 [[package]]
 name = "genesis-forge"
 version = "1.0.0"
-source = { directory = "../../" }
+source = { directory = "../../packages/genesis-forge" }
 dependencies = [
     { name = "deprecated" },
+    { name = "genesis-forge-runtime" },
     { name = "genesis-world" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -759,6 +760,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "deprecated", specifier = ">=1.3.1" },
+    { name = "genesis-forge-runtime", editable = "../../packages/genesis-forge-runtime" },
     { name = "genesis-world", specifier = ">=1.3.0" },
     { name = "gymnasium" },
     { name = "pysdl2" },
@@ -770,12 +772,21 @@ requires-dist = [
     { name = "trimesh" },
 ]
 
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "ruff", specifier = ">=0.16.4" },
-    { name = "twine", specifier = ">=7.0.0" },
+[[package]]
+name = "genesis-forge-runtime"
+version = "1.0.0"
+source = { editable = "../../packages/genesis-forge-runtime" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.17" },
+]
+provides-extras = ["onnx"]
 
 [[package]]
 name = "genesis-forge-stand-up"
@@ -789,7 +800,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "genesis-forge", directory = "../../" },
+    { name = "genesis-forge", directory = "../../packages/genesis-forge" },
     { name = "rsl-rl-lib", specifier = "~=5.0" },
     { name = "tensorboard" },
 ]

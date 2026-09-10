@@ -17,4 +17,6 @@ python:
   install:
     - requirements: docs/requirements.txt
     - method: pip
-      path: .
+      path: packages/genesis-forge-runtime
+    - method: pip
+      path: packages/genesis-forge

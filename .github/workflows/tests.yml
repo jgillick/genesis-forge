@@ -20,7 +20,7 @@ jobs:
         run: uv sync --locked
 
       - name: Run lint
-        run: uv run ruff check genesis_forge examples tests
+        run: uv run ruff check .
 
       - name: Run tests
         run: uv run pytest -v

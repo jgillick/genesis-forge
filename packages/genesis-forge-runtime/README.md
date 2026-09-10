@@ -1,0 +1,49 @@
+# Genesis Forge Deployment Runtime
+
+Simulation-free runtime for deploying [Genesis Forge](https://github.com/jgillick/genesis-forge)
+policies to real robots.
+
+This package deliberately depends on **numpy only** — no torch, no Genesis simulator —
+so it installs cleanly on a Raspberry Pi or Jetson.
+
+After training, export a bundle from your built environment:
+
+```python
+from genesis_forge.deployment import export
+
+bundle = export(env, "./go2_walk", policy_path="policy.onnx")  # writes ./go2_walk.gfb
+print(bundle.describe())
+```
+
+Then, on the robot:
+
+```python
+from genesis_forge_runtime import load_bundle
+
+bundle = load_bundle("./go2_walk.gfb")  # a directory works too
+print(bundle.describe())  # what to wire up
+
+observation_assembler = bundle.create_observation_assembler()
+action_processor = bundle.create_action_processor()
+
+while True:
+    observation = observation_assembler.assemble(
+        {
+            "robot_ang_vel": imu.gyro,
+            "dof_pos": joints.positions,
+            "actions": action_processor.last_raw_actions,  # zeros before the first tick
+        }
+    )
+    actions = policy(observation)
+    targets = action_processor.process()  # your onnxruntime session
+    send_to_motors(targets.by_joint)
+```
+
+See the [deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html)
+for the full control-loop walkthrough, including how to run the policy itself.
+
+## Trust model
+
+A bundle is **trusted input, equivalent to executable code**: loading one may import
+processor classes named inside it. Only load bundles you produced yourself. Treat a
+bundle from a third party the same way you would treat an unpickled checkpoint.

@@ -1,40 +1,18 @@
 import argparse
-import glob
-import os
-import pickle
-import sys
+from pathlib import Path
 
 import genesis as gs
 import torch
 from environment import WheeledRobotCommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+from utils import get_latest_model, load_config_pickle
 
 from genesis_forge.wrappers import RslRlWrapper
 
-EXPERIMENT_NAME = "wheeled-robot-command"
-
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-d", "--device", type=str, default="gpu")
-parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
+parser.add_argument("-e", "--exp_name", type=str, default="wheeled-robot-command")
 args = parser.parse_args()
-
-
-def get_latest_model(log_dir: str) -> str:
-    """
-    Get the last model from the log directory
-    """
-    model_checkpoints = glob.glob(os.path.join(log_dir, "model_*.pt"))
-    if len(model_checkpoints) == 0:
-        print(
-            f"Warning: No model files found at '{log_dir}' (you might need to train more)."
-        )
-        sys.exit(1)
-    # Sort by the file with the highest number
-    sorted_models = sorted(
-        model_checkpoints,
-        key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
-    )
-    return sorted_models[-1]
 
 
 def main():
@@ -46,9 +24,8 @@ def main():
     gs.init(logging_level="warning", backend=backend)
 
     # Load training configuration
-    log_path = f"./logs/{args.exp_name}"
-    with open(f"{log_path}/cfgs.pkl", "rb") as f:
-        [cfg] = pickle.load(f)
+    log_path = Path("./logs") / args.exp_name
+    cfg = load_config_pickle(log_path)
     model = get_latest_model(log_path)
 
     # Setup environment

@@ -387,31 +387,16 @@ are exactly the right inputs to compare against:
 
 To see an example of verifying an onnx policy, look at the [`verify_onnx_policy` function](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot/deploy.py)
 
-## Action managers and what their targets mean
+## Built-in action managers
 
-Every built-in action manager is deployable out of the box. Processing gives you one
-value per joint, but the value alone does not say what kind of command it is — so the
-bundle records the manager that produced it:
+All three deploy with no extra work. The bundle records which one produced each target
+as `deploy_type`:
 
 | Manager                             | `deploy_type`            | Targets are                                      |
 | ----------------------------------- | ------------------------ | ------------------------------------------------ |
 | `PositionActionManager`             | `position`               | Joint positions                                  |
 | `PositionWithinLimitsActionManager` | `position_within_limits` | Joint positions, mapped into each joint's limits |
 | `VelocityActionManager`             | `velocity`               | Joint/wheel velocities                           |
-
-A target of `0.42` from a `position` manager is an angle in radians; the same `0.42`
-from a `velocity` manager is rad/s. Read `deploy_type` to know which motor call to
-make — `bundle.describe()` prints it, or branch on it in code:
-
-```python
-for spec in bundle.manifest.actions:
-    print(spec.deploy_type, spec.joint_names)
-```
-
-If `describe()` reports more joint targets than policy outputs — `4, from 2 policy
-outputs` — the environment used `action_groups` to drive several joints from one
-action. The runtime fans them out for you, so `targets.by_joint` still has an entry
-per joint and there is nothing extra to wire.
 
 ## Custom action managers
 

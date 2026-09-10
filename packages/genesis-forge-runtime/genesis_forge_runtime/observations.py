@@ -99,16 +99,13 @@ class ObservationAssembler:
         """Build one observation vector.
 
         Args:
-            values: One entry per name in :attr:`inputs`. Sensor readings
-                come from your hardware; entries that echo the pipeline's own output
-                come from the decoder -- ``action_decoder.last_raw_actions`` for
-                the built-in ``current_actions`` observation. Values may be
-                scalars, sequences, or
-                numpy arrays; each is flattened and must match the declared size.
+            values: One value per name in :attr:`inputs` Scalars, sequences and
+                numpy arrays are all accepted; each is flattened and must match
+                that entry's declared size.
 
         Returns:
-            The policy input vector, shape ``(output_size,)``. Add a batch
-            dimension (``obs[None, :]``) before handing it to onnxruntime.
+            The policy input vector, shape ``(output_size,)``.
+            Add a batch dimension (``obs[None, :]``) before handing it to onnxruntime.
 
         Raises:
             ObservationError: A required entry is missing, mis-sized, or unknown.

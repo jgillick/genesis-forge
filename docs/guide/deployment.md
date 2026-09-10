@@ -324,10 +324,8 @@ pip install genesis-forge-runtime onnxruntime
 ```python
 import onnxruntime
 
-session = onnxruntime.InferenceSession(
-    str(bundle.path / bundle.policy_path),
-    providers=["CPUExecutionProvider"]
-)
+policy_file = str(directory / bundle.policy_path)
+session = onnxruntime.InferenceSession(policy_file)
 
 actions = session.run(
     None,

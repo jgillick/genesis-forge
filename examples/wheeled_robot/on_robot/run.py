@@ -95,9 +95,9 @@ def main() -> None:
                 )
 
                 # Get actions
-                raw_action = session.run(
+                [raw_action] = session.run(
                     None, {input_name: observation[None, :].astype("float32")}
-                )[0]
+                )
                 action_targets = action_decoder.decode(np.ravel(raw_action))
 
                 # Send actions to the car

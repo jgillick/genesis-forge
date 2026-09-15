@@ -19,6 +19,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Check package versions agree
+        run: make check-version
+
       - name: Run lint
         run: uv run ruff check .
 

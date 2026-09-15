@@ -45,11 +45,15 @@ make docs        # builds docs + copies llms files to repo root
 make serve       # live-reloading docs preview
 ```
 
-Build and publish the package:
+Cut a release. Both packages ship at the same version, so the number is set in
+one place: `make version` rewrites both pyprojects, the exact runtime pin, and
+`uv.lock`, then commits and tags `vX.Y.Z`. `make build` refuses if those
+disagree, and `make deploy` refuses unless HEAD carries the matching tag.
 
 ```bash
-make build       # runs uv build into dist/
-make deploy      # uploads to PyPI via twine
+make version V=1.1.0   # bump everywhere, commit, tag v1.1.0
+make build             # lint + test + uv build into dist/
+make deploy            # uploads to PyPI via twine
 ```
 
 ## Architecture

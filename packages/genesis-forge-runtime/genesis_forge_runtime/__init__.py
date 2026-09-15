@@ -40,6 +40,8 @@ The modules behind it, roughly in dependency order:
 loading one may import processor classes it names. Only load bundles you produced.
 """
 
+from importlib.metadata import version
+
 from .action_schema import ActionManagerSpec, ActuatorSpec
 from .actions import ActionProcessor, ProcessedActions
 from .bundle import Bundle, load_bundle, load_manifest, save_bundle
@@ -64,7 +66,7 @@ from .observation_schema import ObservationEntry, ObservationLayout
 from .observations import ObservationAssembler
 from .processors import ActionManagerProcessor, AffineProcessor
 
-__version__ = "1.0.0"
+__version__ = version("genesis-forge-runtime")
 
 __all__ = [
     "ARCHIVE_SUFFIX",

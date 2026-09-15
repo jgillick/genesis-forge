@@ -13,7 +13,7 @@ pip install genesis-forge
 For training, you'll also need an RL library. We recommend RSL-RL:
 
 ```bash
-pip install tensorboard rsl-rl-lib>=2.2.4
+pip install tensorboard rsl-rl-lib
 ```
 
 ## Genesis Simulator

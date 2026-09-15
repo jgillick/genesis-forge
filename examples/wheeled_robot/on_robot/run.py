@@ -16,7 +16,7 @@ virtual environment::
 
 Left stick drives, right stick turns -- the same axes `eval.py` steers the
 simulator with. The car only moves while a gamepad is connected, and only once
-the driver has armed it by pressing X.
+the driver has armed it by pressing the gamepad start button.
 """
 
 from __future__ import annotations

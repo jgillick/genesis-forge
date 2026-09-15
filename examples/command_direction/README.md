@@ -2,7 +2,7 @@
 
 Train a Go2 robot to move in a commanded direction, controlled programmatically or through a gamepad controller.
 
-This builds on the [simple example](../simple/) example. The only thing necessary to convert that example from a robot that walks in a straight line on the X-axis, is adding the `VelocityCommandManager`, and related rewards and observations.
+This builds on the [basic example](../basic/) example. The only thing necessary to convert that example from a robot that walks in a straight line on the X-axis, is adding the `VelocityCommandManager`, and related rewards and observations.
 
 ```python
 def config(self):

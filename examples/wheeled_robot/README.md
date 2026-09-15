@@ -52,9 +52,9 @@ Lastly, since the robot can only move forwards and backwards, but not side-to-si
     self.velocity_command = VelocityCommandManager(
         self,
         range={
-            "lin_vel_x": (-0.1, 0.1), # forward/backward
+            "lin_vel_x": (-0.5, 0.5), # forward/backward
             "lin_vel_y": (-0.0, 0.0), # cannot move side-to-side
-            "ang_vel_z": (-0.2, 0.2), # turning
+            "ang_vel_z": (-2.0, 2.0), # turning
         },
         ...
     )

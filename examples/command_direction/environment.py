@@ -19,7 +19,8 @@ INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 class Go2CommandDirectionEnv(ManagedEnvironment):
     """
-    Example training environment for the Go2 robot.
+    Example training environment for the Go2 robot, which is commanded
+    to move in a specific direction (linear and angular velocity).
     """
 
     def __init__(
@@ -51,8 +52,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
             ),
         )
@@ -152,32 +151,42 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height(target_height=0.3, entity=self.robot),
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -1.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
+                # Discourage the robot from making large actuator movements too frequently
                 "action_rate": {
                     "weight": -0.005,
                     "fn": rewards.action_rate_l2(),
                 },
+                # Encourage the robot to keep the joints close to their default positions (standing pose)
+                # This is a common technique to prevent the robot from drifting into extreme
+                # joint positions that may be unsafe or unstable.
                 "similar_to_default": {
                     "weight": -0.1,
                     "fn": rewards.dof_similar_to_default(

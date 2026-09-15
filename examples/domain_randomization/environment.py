@@ -52,8 +52,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
                 #
                 # Batching must be enabled to enable domain randomization of the DOF armature settings.

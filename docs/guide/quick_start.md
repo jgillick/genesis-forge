@@ -39,7 +39,7 @@ from genesis_forge.managers import (
     ActuatorManager,
     PositionActionManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import reset, rewards, terminations, observations
 
 
 class MyFirstEnv(ManagedEnvironment):
@@ -182,7 +182,7 @@ class MyFirstEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

@@ -14,13 +14,17 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
+          version: "0.12.12"
           enable-cache: true
 
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Check package versions agree
+        run: make check-version
+
       - name: Run lint
-        run: uv run ruff check genesis_forge examples tests
+        run: uv run ruff check .
 
       - name: Run tests
         run: uv run pytest -v

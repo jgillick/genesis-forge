@@ -1,0 +1,4 @@
+genesis-forge-runtime>=1.0.0
+onnxruntime
+pysdl2
+smbus

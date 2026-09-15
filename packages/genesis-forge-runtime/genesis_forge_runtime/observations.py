@@ -1,0 +1,186 @@
+"""Rebuild the policy's observation vector from real sensor readings.
+
+This mirrors ``genesis_forge.managers.ObservationManager`` exactly -- same entry
+order, same per-entry scaling, same newest-first history stacking -- minus the
+simulator lookups and minus the training noise. The parity gate on the export
+side proves the two agree before a bundle is ever written.
+
+Every entry is supplied by the caller. Most come from sensors; an entry that echoes
+the policy's own previous output is read off the processor and passed in exactly the
+same way. Nothing is filled in silently: a value you forget raises, rather than
+quietly reading zeros forever.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from .errors import ObservationError
+from .observation_schema import ObservationEntry, ObservationLayout
+
+
+class ObservationAssembler:
+    """Assembles the policy input vector from named values.
+
+    Args:
+        layout: The observation layout from a loaded bundle's manifest.
+        dtype: Output dtype. Defaults to float32, what the policy expects.
+
+    A name the layout does not define is always rejected. It could not corrupt
+    the vector -- assembly reads entries by name, so a stray key is inert -- but
+    it means the control loop and the bundle disagree about what this policy
+    consumes, and that is worth hearing about on the bench rather than later.
+
+    Example::
+
+        observation_assembler = bundle.create_observation_assembler()
+        action_processor = bundle.create_action_processor()
+        print(observation_assembler.describe_inputs())
+
+        obs = observation_assembler.assemble({
+            "robot_ang_vel": imu.gyro,
+            "dof_pos": joints.positions,
+            "actions": action_processor.last_raw_actions,
+        })
+    """
+
+    def __init__(
+        self,
+        layout: ObservationLayout,
+        *,
+        dtype: Any = np.float32,
+    ) -> None:
+        self._layout = layout
+        self._dtype = np.dtype(dtype)
+
+        # Determine where each entry lives in the flat vector
+        self._offsets: dict[str, tuple[int, int]] = {}
+        cursor = 0
+        for entry in layout.entries:
+            self._offsets[entry.name] = (cursor, cursor + entry.size)
+            cursor += entry.size
+
+        self._history: list[np.ndarray] = []
+        self.reset()
+
+    """
+    Properties
+    """
+
+    @property
+    def inputs(self) -> tuple[ObservationEntry, ...]:
+        """Everything you pass to :meth:`assemble` each tick, in vector order."""
+        return self._layout.entries
+
+    @property
+    def output_size(self) -> int:
+        """Length of the vector :meth:`assemble` returns."""
+        return self._layout.total_size
+
+    """
+    Public methods
+    """
+
+    def reset(self) -> None:
+        """Clear the stacked history back to zeros.
+
+        This is exactly what training's ``ObservationManager.reset()`` does at the
+        start of every episode. Call it whenever you (re)start control so the robot
+        begins from the same state an episode began from in training.
+        """
+        self._history = [
+            np.zeros(self._layout.single_size, dtype=self._dtype)
+            for _ in range(self._layout.history_length)
+        ]
+
+    def assemble(self, values: dict[str, Any] | None = None) -> np.ndarray:
+        """Build one observation vector.
+
+        Args:
+            values: One value per name in :attr:`inputs` Scalars, sequences and
+                numpy arrays are all accepted; each is flattened and must match
+                that entry's declared size.
+
+        Returns:
+            The policy input vector, shape ``(output_size,)``.
+            Add a batch dimension (``obs[None, :]``) before handing it to onnxruntime.
+
+        Raises:
+            ObservationError: A required entry is missing, mis-sized, or unknown.
+        """
+        values = values or {}
+        self._check_for_unknown_names(values)
+
+        current = np.empty(self._layout.single_size, dtype=self._dtype)
+        for entry in self._layout.entries:
+            start, end = self._offsets[entry.name]
+            current[start:end] = self._value_for(entry, values)
+
+        # Rotate newest-first, reusing the oldest buffer, exactly as training's
+        # ObservationManager.get_observations() does.
+        buffer = self._history.pop()
+        buffer[:] = current
+        self._history.insert(0, buffer)
+
+        if self._layout.history_length == 1:
+            return self._history[0].copy()
+        return np.concatenate(self._history)
+
+    def describe_inputs(self) -> str:
+        """Human-readable listing of everything the caller must supply."""
+        lines = ["Values to supply each tick:"]
+        lines.extend(f"  - {entry.describe()}" for entry in self.inputs)
+        return "\n".join(lines)
+
+    """
+    Internal methods
+    """
+
+    def _value_for(self, entry: ObservationEntry, values: dict[str, Any]) -> np.ndarray:
+        if entry.name not in values:
+            raise ObservationError(
+                f"Missing observation value '{entry.name}'. This layout requires: "
+                f"{', '.join(item.name for item in self.inputs)}."
+            )
+
+        raw = self._to_array(values[entry.name], name=entry.name)
+        if raw.size != entry.size:
+            raise ObservationError(
+                f"Observation '{entry.name}' expects {entry.size} value(s), got "
+                f"{raw.size}."
+            )
+        if not np.all(np.isfinite(raw)):
+            # Caught here this names the sensor; carried into the policy it
+            # surfaces a step later as "policy produced NaN".
+            bad = np.flatnonzero(~np.isfinite(raw))
+            raise ObservationError(
+                f"Observation '{entry.name}' has non-finite value(s) at "
+                f"index/indices {bad.tolist()}: {raw[bad].tolist()}. A sensor is "
+                f"probably not reporting."
+            )
+
+        if entry.scale != 1.0:
+            # `raw` can be a view of the caller's array (np.asarray does not copy one
+            # that is already float32), so `*=` would rescale their sensor buffer.
+            return raw * np.asarray(entry.scale, dtype=self._dtype)
+        return raw
+
+    def _check_for_unknown_names(self, values: dict[str, Any]) -> None:
+        known = {entry.name for entry in self._layout.entries}
+        unknown = sorted(set(values) - known)
+        if unknown:
+            raise ObservationError(
+                f"Unknown observation name(s): {', '.join(unknown)}. Expected one of: "
+                f"{', '.join(entry.name for entry in self.inputs)}."
+            )
+
+    def _to_array(self, value: Any, *, name: str) -> np.ndarray:
+        try:
+            array = np.asarray(value, dtype=self._dtype)
+        except (TypeError, ValueError) as error:
+            raise ObservationError(
+                f"Observation '{name}' could not be read as numbers: {error}"
+            ) from error
+        return np.atleast_1d(array).ravel()

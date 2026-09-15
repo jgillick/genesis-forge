@@ -158,10 +158,10 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
             range={
                 "lin_vel_x": (-0.5, 0.5),  # forward/backward
                 "lin_vel_y": (-0.0, 0.0),  # cannot move side-to-side
-                "ang_vel_z": (-0.5, 0.5),  # turning
+                "ang_vel_z": (-2.0, 2.0),  # turning
             },
             stopped_probability=0.02,
-            resample_time_sec=5.0,
+            resample_time_sec=4.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
                 "envs_idx": [0],
@@ -234,10 +234,25 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
 
         ##
         # Observations
+        # The robot has no IMU or wheel velocity sensors, so there is only so much the robot can actually observe
+
+        # Policy observations containing what the policy can see
         ObservationManager(
             self,
+            name="policy",
             cfg={
                 "velocity_cmd": {"fn": self.velocity_command.observation},
+                "actions": {
+                    "fn": observations.current_actions(),
+                },
+            },
+        )
+
+        # Privileged observations containing what the robot cannot see, but used to shape training by the PPO critic
+        ObservationManager(
+            self,
+            name="privileged",
+            cfg={
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
                 },
@@ -250,9 +265,6 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.05,
-                },
-                "actions": {
-                    "fn": observations.current_actions(),
                 },
             },
         )

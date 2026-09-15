@@ -15,6 +15,8 @@ bundle = export(env, "./go2_walk", policy_path="policy.onnx")  # writes ./go2_wa
 print(bundle.describe())
 ```
 
+_(see the [wheeled_robot deploy.py](https://github.com/jgillick/genesis-forge/examples/wheeled_robot/deploy.py) for a comprehensive example)_
+
 Then, on the robot:
 
 ```python
@@ -31,7 +33,7 @@ while True:
         {
             "robot_ang_vel": imu.gyro,
             "dof_pos": joints.positions,
-            "actions": action_processor.last_raw_actions,  # zeros before the first tick
+            "actions": action_processor.last_raw_actions,
         }
     )
     actions = policy(observation)

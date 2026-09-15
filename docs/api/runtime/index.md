@@ -1,12 +1,11 @@
 # Runtime
 
 `genesis-forge-runtime` is the package installed on the robot. It sits between your
-policy and your hardware: hand it sensor readings and it returns the observation
-vector the policy expects; hand it the policy's output and it returns named joint
-targets for your motors.
+policy and your hardware and handles packaging observations for the model, as then
+processing the returned actions into target values for your actuators.
 
-It does that using the ordering, scaling and history the policy was trained with,
-and numpy alone — no Genesis, no torch, no simulator.
+It defaults to using numpy, and does not have any dependency on pytorch,
+or the Genesis simulator.
 
 ```bash
 pip install genesis-forge-runtime
@@ -26,4 +25,13 @@ print(bundle.describe())
 
 observation_assembler = bundle.create_observation_assembler()
 action_processor = bundle.create_action_processor()
+
+while True:
+  # Package observations and get actions from your policy
+  observation = observation_assembler.assemble({...})
+  actions = policy(observation)
+
+  # Convert raw actions to joint values that are sent to your motors
+  targets = action_processor.process(actions)
+  send_to_motors(targets.by_joint)
 ```

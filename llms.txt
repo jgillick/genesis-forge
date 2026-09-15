@@ -65,13 +65,13 @@ Source: https://github.com/jgillick/genesis-forge
 ## Runtime
 
 - [Overview](https://docs.genesisforge.io/en/latest/api/runtime/index.md)
-- [ActionDecoder](https://docs.genesisforge.io/en/latest/api/runtime/actions.md)
+- [ActionProcessor](https://docs.genesisforge.io/en/latest/api/runtime/actions.md)
 - [Bundle](https://docs.genesisforge.io/en/latest/api/runtime/bundle.md)
 - [Constants](https://docs.genesisforge.io/en/latest/api/runtime/constants.md)
-- [Decoders](https://docs.genesisforge.io/en/latest/api/runtime/decoders.md)
 - [Errors](https://docs.genesisforge.io/en/latest/api/runtime/errors.md)
 - [Manifest](https://docs.genesisforge.io/en/latest/api/runtime/manifest.md)
 - [ObservationAssembler](https://docs.genesisforge.io/en/latest/api/runtime/observations.md)
+- [Processors](https://docs.genesisforge.io/en/latest/api/runtime/processors.md)
 
 ## Other
 

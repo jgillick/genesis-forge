@@ -39,22 +39,35 @@ class VideoWrapper(Wrapper):
 
     Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
 
-    To control how frequently recordings are made specify **either** ``episode_trigger`` **or** ``step_trigger`` (not both).
-    They should be functions returning a boolean that indicates whether a recording should be started at the
-    current episode or step, respectively. If neither :attr:`episode_trigger` nor ``step_trigger`` is passed,
+    To control how frequently recordings are made specify **one** of ``episode_trigger``, ``step_trigger``, or
+    ``iteration_trigger``. They should be functions returning a boolean that indicates whether a recording should
+    be started at the current episode, step, or training iteration, respectively. If no trigger is passed,
     a default ``episode_trigger`` will be used, which records at the episode indices 0, 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
+
+    The training iteration is derived from the step count: each learning iteration steps the environment a fixed
+    number of times (``num_steps_per_env`` in RSL-RL). Pass that value as ``steps_per_iteration`` and ``iteration_trigger``
+    will be called once at the start of every iteration. The iteration count starts at ``iteration_offset`` (default 0).
+    When resuming from a checkpoint, set ``iteration_offset`` to the checkpoint's iteration so the count, and the video filenames,
+    line up with the framework's (see the example below).
 
     Args:
         env: GenesisEnv
         camera_attr: The attribute of the base environment that contains the camera to use for recording.
         episode_trigger: Function that accepts an episode count integer and returns ``True`` if a recording should be started at this episode
         step_trigger: Function that accepts a step count integer and returns ``True`` if a recording should be started at this step
+        iteration_trigger: Function that accepts a training iteration integer and returns ``True`` if a recording should be started at this iteration.
+                           Requires ``steps_per_iteration``.
+        steps_per_iteration: The number of environment steps per training iteration (RSL-RL's ``num_steps_per_env``).
+                             Only used with ``iteration_trigger``.
+        iteration_offset: The training iteration the first step belongs to. Set this when resuming from a checkpoint.
+                          Only used with ``iteration_trigger``. Can also be assigned after construction via the
+                          :attr:`iteration_offset` property, as long as it is set before the first step.
         video_length_sec: Length of each video, in seconds.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
         filename: The filename for the video.
-                  If None, the video will automatically be named for the current step.
+                  If None, the video will automatically be named for the episode, step, or iteration the recording started on.
                   If defined, each video will overwrite the previous video with this name.
 
     Example::
@@ -89,6 +102,35 @@ class VideoWrapper(Wrapper):
             out_dir="./videos",
             step_trigger=lambda step: step % 1500 == 0
         )
+
+    Record every 50 RSL-RL training iterations::
+
+        train_cfg = {"num_steps_per_env": 24, ...}
+        env = MyEnv()
+        env = VideoWrapper(
+            env,
+            camera_attr="camera",
+            out_dir="./videos",
+            iteration_trigger=lambda it: it % 50 == 0,
+            steps_per_iteration=train_cfg["num_steps_per_env"],
+        )
+
+    Resuming from a checkpoint with and iteration offset from RSL-RL::
+
+        video_env = VideoWrapper(
+            env,
+            camera_attr="camera",
+            out_dir="./videos",
+            iteration_trigger=lambda it: it % 50 == 0,
+            steps_per_iteration=train_cfg["num_steps_per_env"],
+        )
+        env = RslRlWrapper(video_env)
+        env.build()
+
+        runner = OnPolicyRunner(env, train_cfg, log_dir)
+        runner.load("./logs/model_1000.pt")
+        video_env.iteration_offset = runner.current_learning_iteration
+        runner.learn(num_learning_iterations=500)
     """
 
     def __init__(
@@ -98,6 +140,9 @@ class VideoWrapper(Wrapper):
         video_length_sec: int = 8,
         episode_trigger: Callable[[int], bool] | None = None,
         step_trigger: Callable[[int], bool] | None = None,
+        iteration_trigger: Callable[[int], bool] | None = None,
+        steps_per_iteration: int | None = None,
+        iteration_offset: int = 0,
         out_dir: str = "./videos",
         fps: int = 60,
         env_idx: int = 0,
@@ -124,14 +169,27 @@ class VideoWrapper(Wrapper):
         self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
         self._env_idx = env_idx
 
-        if episode_trigger is None and step_trigger is None:
+        if (
+            episode_trigger is None
+            and step_trigger is None
+            and iteration_trigger is None
+        ):
             episode_trigger = capped_cubic_episode_trigger
 
-        trigger_count = sum(x is not None for x in [episode_trigger, step_trigger])
+        trigger_count = sum(
+            x is not None for x in [episode_trigger, step_trigger, iteration_trigger]
+        )
         assert trigger_count == 1, "Must specify only one trigger"
+        if iteration_trigger is not None:
+            assert (
+                steps_per_iteration is not None and steps_per_iteration > 0
+            ), "steps_per_iteration is required with iteration_trigger"
 
         self.episode_trigger = episode_trigger
         self.step_trigger = step_trigger
+        self.iteration_trigger = iteration_trigger
+        self._steps_per_iteration = steps_per_iteration
+        self._iteration_offset = iteration_offset
 
         # Videos are encoded into a scratch directory and moved into place once complete.
         self._tmp_dir = os.path.join(self._out_dir, ".tmp")
@@ -145,13 +203,25 @@ class VideoWrapper(Wrapper):
         """
         return self._video_length_steps
 
+    @property
+    def iteration_offset(self) -> int:
+        """
+        The training iteration the first step belongs to.
+        Set this when resuming from a checkpoint so the iteration count, and the video filenames, match the framework's.
+        """
+        return self._iteration_offset
+
+    @iteration_offset.setter
+    def iteration_offset(self, value: int) -> None:
+        self._iteration_offset = value
+
     def build(self) -> None:
         """Load the camera from the environment."""
         super().build()
         self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-        assert self._cam is not None, (
-            f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
-        )
+        assert (
+            self._cam is not None
+        ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
 
     def step(
         self, actions: torch.Tensor
@@ -165,14 +235,14 @@ class VideoWrapper(Wrapper):
             extras,
         ) = super().step(actions)
 
+        # Stop recording if the recording stop step is reached
+        if self._is_recording and self._recording_stop_step <= self._current_step:
+            self.finish_recording()
+
         self._check_recording_trigger()
         if self._is_recording:
             if self._current_step % self._steps_per_frame == 0 and self._cam:
                 self._cam.render()
-
-            # Stop recording if the recording stop step is reached
-            if self._recording_stop_step <= self._current_step:
-                self.finish_recording()
 
         # Increment episode count if the watched environment has terminated or truncated
         if self._is_done(terminateds) or self._is_done(truncateds):
@@ -240,6 +310,14 @@ class VideoWrapper(Wrapper):
             elif self.step_trigger is not None:
                 record = self.step_trigger(self._current_step)
                 index = self._current_step
+            elif (
+                self.iteration_trigger is not None
+                and self._steps_per_iteration is not None
+                and self._current_step % self._steps_per_iteration == 0
+            ):
+                iteration = self._current_step // self._steps_per_iteration
+                index = self._iteration_offset + iteration
+                record = self.iteration_trigger(index)
 
         if record and index is not None:
             self.start_recording(index)

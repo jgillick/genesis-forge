@@ -3,24 +3,24 @@ import genesis as gs
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
-
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
 class Go2CommandDirectionEnv(ManagedEnvironment):
     """
-    Example training environment for the Go2 robot.
+    Example training environment for the Go2 robot, which is commanded
+    to move in a specific direction (linear and angular velocity).
     """
 
     def __init__(
@@ -42,7 +42,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -53,8 +52,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
             ),
         )
@@ -77,7 +74,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.0, -1.5, 1.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -95,16 +92,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
             },
         )
@@ -137,11 +133,11 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
-            standing_probability=0.02,
+            stopped_probability=0.02,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -155,47 +151,47 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
+                # Discourage the robot from making large actuator movements too frequently
                 "action_rate": {
                     "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
+                # Encourage the robot to keep the joints close to their default positions (standing pose)
+                # This is a common technique to prevent the robot from drifting into extreme
+                # joint positions that may be unsafe or unstable.
                 "similar_to_default": {
                     "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
             },
         )
@@ -208,16 +204,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 10.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=10.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
             },
         )
@@ -245,7 +240,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

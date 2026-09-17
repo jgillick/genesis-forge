@@ -105,6 +105,48 @@ self.action_manager = PositionWithinLimitsActionManager(
 )
 ```
 
+## VelocityActionManager
+
+For continuously-rotating joints, like wheels, use `VelocityActionManager` to set a target velocity for each controlled DOF.
+
+```{math}
+velocity = offset + scaling * action
+```
+
+Unlike `PositionActionManager`, there is no default-offset and no limits-based fallback for clipping -- continuously-rotating joints typically report unbounded position limits. You can limit the max velocity with the `clip` parameter
+
+```python
+from genesis_forge.managers import VelocityActionManager, ActuatorManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.actuator_manager = ActuatorManager(
+            self,
+            joint_names=["wheel1", "wheel2"],
+            kv=5.0,
+        )
+        self.action_manager = VelocityActionManager(
+            self,
+            clip=(-16.0, 16.0), # The actuator's physical velocity range
+            actuator_manager=self.actuator_manager,
+        )
+```
+
+Scale, offset, and per-joint overrides work the same way as `PositionActionManager`:
+
+```python
+self.action_manager = VelocityActionManager(
+    self,
+    clip={
+        "wheel1": (-16.0, 16.0),
+        "wheel2": (-16.0, 16.0),
+    },
+    scale=5.0,   # All actions multiplied by 5.0
+    offset=0.0,  # No offset by default
+    actuator_manager=self.actuator_manager,
+)
+```
+
 ## Sim2Real - Action latency
 
 In most robots, there is some latency between when the action is received, and when it is acted upon by the actuator. To roughly emulate this, you can set the `delay_step` parameter.

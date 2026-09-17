@@ -3,20 +3,17 @@
 from __future__ import annotations
 
 import argparse
-import os
 import glob
+import os
 import pickle
+import sys
 
 import genesis as gs
 import torch
-
-from skrl.multi_agents.torch import ExperimentCfg
-from skrl.multi_agents.torch.mappo import MAPPO
-from skrl.multi_agents.torch.mappo.mappo_cfg import MAPPO_CFG
-
 from env_wrapper import SkrlMasqWrapper
 from environment import Go2MasqLocomotionEnv
 from models import MasqGaussianPolicy, MasqValue
+from skrl.multi_agents.torch.mappo import MAPPO
 
 EXPERIMENT_NAME = "go2-multi-agent"
 
@@ -36,7 +33,7 @@ def get_latest_model(log_dir: str) -> str | None:
         print(
             f"Warning: No model files found at '{log_dir}' (you might need to train more)."
         )
-        exit(1)
+        sys.exit(1)
     # Sort by the file with the highest number
     sorted_models = sorted(
         model_checkpoints,
@@ -56,7 +53,8 @@ def main() -> None:
     # Load training configuration
     log_path = f"./logs/{args.exp_name}"
     model = args.checkpoint or get_latest_model(log_path)
-    [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
+    with open(f"{log_path}/cfgs.pkl", "rb") as f:
+        [cfg] = pickle.load(f)
     print(f"Loading checkpoint: {model}")
 
     # Setup environment
@@ -122,7 +120,7 @@ def main() -> None:
         for t in range(steps):
             states = wrapped.state()
             actions, _ = agent.act(obs, states, timestep=t, timesteps=steps)
-            obs, rewards, terminated, truncated, info = wrapped.step(actions)
+            obs, rewards, _terminated, _truncated, _info = wrapped.step(actions)
             # team reward is duplicated per agent; take first agent's reward
             r0 = rewards[agents[0]].view(-1)
             cumulative += r0
@@ -130,9 +128,9 @@ def main() -> None:
         pass
     except gs.GenesisException as e:
         if str(e) != "Viewer closed.":
-            raise e
-    except Exception as e:
-        raise e
+            raise
+    except Exception:
+        raise
     wrapped.close()
 
 

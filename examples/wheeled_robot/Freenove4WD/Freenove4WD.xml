@@ -1,0 +1,363 @@
+<!-- Generated using Fusion2Mujoco v1.0 -->
+<!-- https://github.com/jgillick/Fusion2Mujoco -->
+<mujoco model="Freenove4WD">
+    <compiler angle="radian" />
+    <default>
+        <mesh scale="0.001 0.001 0.001" />
+        <geom contype="0" conaffinity="0" group="2" />
+        <default class="collision">
+            <geom contype="1" conaffinity="1" group="3" pos="0 0 0" mass="0.0" />
+        </default>
+    </default>
+    <custom>
+        <numeric name="ground_offset" data="0.0457855" />
+    </custom>
+    <asset>
+        <mesh name="MainPCB_visual" file="meshes/MainPCB/visual.stl" />
+        <mesh name="MainPCB_collision00" file="meshes/MainPCB/collision00.stl" />
+        <mesh name="motor_visual" file="meshes/motor/visual.stl" />
+        <mesh name="gearbox_visual" file="meshes/gearbox/visual.stl" />
+        <mesh name="gearbox_collision00" file="meshes/gearbox/collision00.stl" />
+        <mesh name="motor_bottom_visual" file="meshes/motor_bottom/visual.stl" />
+        <mesh name="axel_visual" file="meshes/axel/visual.stl" />
+        <mesh name="tire_visual" file="meshes/tire/visual.stl" />
+        <mesh name="tire_collision00" file="meshes/tire/collision00.stl" />
+        <mesh name="tire_collision01" file="meshes/tire/collision01.stl" />
+        <mesh name="tire_collision02" file="meshes/tire/collision02.stl" />
+        <mesh name="tire_collision03" file="meshes/tire/collision03.stl" />
+        <mesh name="wheel_hub_visual" file="meshes/wheel_hub/visual.stl" />
+        <mesh name="wheel_hub_collision00" file="meshes/wheel_hub/collision00.stl" />
+        <mesh name="PiSpacers_visual" file="meshes/PiSpacers/visual.stl" />
+        <mesh name="servo_visual" file="meshes/servo/visual.stl" />
+        <mesh name="baseplate_visual" file="meshes/baseplate/visual.stl" />
+        <mesh name="vertical_plate_visual" file="meshes/vertical_plate/visual.stl" />
+        <mesh name="horizontal_plate_visual" file="meshes/horizontal_plate/visual.stl" />
+        <mesh name="camera_visual" file="meshes/camera/visual.stl" />
+        <mesh name="Ultrasonic_HC-SR04_PCB_visual" file="meshes/Ultrasonic_HC-SR04_PCB/visual.stl" />
+        <mesh name="Ultrasonic_Can_visual" file="meshes/Ultrasonic_Can/visual.stl" />
+        <mesh name="servo_horn_visual" file="meshes/servo_horn/visual.stl" />
+        <mesh name="headplate_rear_visual" file="meshes/headplate_rear/visual.stl" />
+        <mesh name="headplate_front_visual" file="meshes/headplate_front/visual.stl" />
+        <mesh name="headplate_front_collision00" file="meshes/headplate_front/collision00.stl" />
+        <mesh name="servo2_holder_visual" file="meshes/servo2_holder/visual.stl" />
+        <mesh name="headplate_spacer_visual" file="meshes/headplate_spacer/visual.stl" />
+        <mesh name="PLATE_RASPBERRY_PI_5_visual" file="meshes/PLATE_RASPBERRY_PI_5/visual.stl" />
+        <mesh name="METAL_PLATE._visual" file="meshes/METAL_PLATE./visual.stl" />
+        <mesh name="USB_Ethernet_visual" file="meshes/USB_Ethernet/visual.stl" />
+        <mesh name="FEMALE_MICRO_HDMI_CONNECTOR_visual" file="meshes/FEMALE_MICRO_HDMI_CONNECTOR/visual.stl" />
+        <mesh name="FEMALE_USB_CONNECTOR_visual" file="meshes/FEMALE_USB_CONNECTOR/visual.stl" />
+        <mesh name="3.0_PIN_HEADER_10_visual" file="meshes/3.0_PIN_HEADER_10/visual.stl" />
+        <mesh name="9FD77_D9WHV_visual" file="meshes/9FD77_D9WHV/visual.stl" />
+        <mesh name="GIGABIT_ETHERNET_TRANSCEIVER_visual" file="meshes/GIGABIT_ETHERNET_TRANSCEIVER/visual.stl" />
+        <mesh name="RP1_CO_CONTROLLER_visual" file="meshes/RP1_CO_CONTROLLER/visual.stl" />
+        <mesh name="BROADCOM_1_visual" file="meshes/BROADCOM_1/visual.stl" />
+        <mesh name="MxL_visual" file="meshes/MxL/visual.stl" />
+        <mesh name="CAMERA_DISPLAY_1_visual" file="meshes/CAMERA_DISPLAY_1/visual.stl" />
+        <mesh name="BUTTON_2_visual" file="meshes/BUTTON_2/visual.stl" />
+        <mesh name="CAMERA_DISPLAY_2_visual" file="meshes/CAMERA_DISPLAY_2/visual.stl" />
+        <material name="MainPCB_mat" rgba="0.0980 0.0980 0.0980 1.0000" roughness="0.7071" />
+        <material name="motor_mat" rgba="0.6275 0.6275 0.6275 1.0000" roughness="0.2000" />
+        <material name="gearbox_mat" rgba="0.9137 0.9137 0.0706 1.0000" roughness="0.2000" />
+        <material name="motor_bottom_mat" rgba="0.1961 0.1961 0.1961 1.0000" roughness="0.2000" />
+        <material name="axel_mat" rgba="0.9725 0.9686 0.9294 1.0000" roughness="0.2000" />
+        <material name="tire_mat" rgba="0.2275 0.2275 0.2275 1.0000" roughness="0.2000" />
+        <material name="wheel_hub_mat" rgba="1.0000 1.0000 0.0000 1.0000" roughness="0.2000" />
+        <material name="PiSpacers_mat" rgba="0.9608 0.9608 0.9647 1.0000" roughness="0.2646" />
+        <material name="servo_mat" rgba="0.0039 0.0980 0.5765 1.0000" roughness="0.2646" />
+        <material name="baseplate_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="vertical_plate_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="horizontal_plate_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="camera_mat" rgba="0.1804 0.3451 0.1333 1.0000" roughness="0.2646" />
+        <material name="Ultrasonic_HC-SR04_PCB_mat" rgba="0.0039 0.0980 0.5765 1.0000" roughness="0.2646" />
+        <material name="Ultrasonic_Can_mat" rgba="0.6275 0.6275 0.6275 1.0000" roughness="0.2646" />
+        <material name="servo_horn_mat" rgba="0.6275 0.6275 0.6275 1.0000" roughness="0.2646" />
+        <material name="headplate_rear_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="headplate_front_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="servo2_holder_mat" rgba="0.0000 0.0000 0.0000 1.0000" roughness="0.2646" />
+        <material name="headplate_spacer_mat" rgba="0.6275 0.6275 0.6275 1.0000" roughness="0.2646" />
+        <material name="PLATE_RASPBERRY_PI_5_mat" rgba="0.3412 0.8392 0.4118 1.0000" roughness="0.2000" />
+        <material name="METAL_PLATE._mat" rgba="0.6431 0.6157 0.6000 1.0000" roughness="0.2000" />
+        <material name="USB_Ethernet_mat" rgba="0.4980 0.4980 0.4980 1.0000" roughness="0.2000" />
+        <material name="FEMALE_MICRO_HDMI_CONNECTOR_mat" rgba="0.7922 0.8196 0.9333 1.0000" roughness="0.2000" />
+        <material name="FEMALE_USB_CONNECTOR_mat" rgba="0.5686 0.5686 0.5882 1.0000" roughness="0.2000" />
+        <material name="3.0_PIN_HEADER_10_mat" rgba="1.0000 0.7569 0.5647 1.0000" roughness="0.2000" />
+        <material name="9FD77_D9WHV_mat" rgba="0.7922 0.8196 0.9333 1.0000" roughness="0.2000" />
+        <material name="GIGABIT_ETHERNET_TRANSCEIVER_mat" rgba="0.2980 0.2980 0.2980 1.0000" roughness="0.2000" />
+        <material name="RP1_CO_CONTROLLER_mat" rgba="0.2980 0.2980 0.2980 1.0000" roughness="0.2000" />
+        <material name="BROADCOM_1_mat" rgba="0.6667 0.6980 0.7686 1.0000" roughness="0.2000" />
+        <material name="MxL_mat" rgba="0.7922 0.8196 0.9333 1.0000" roughness="0.2000" />
+        <material name="CAMERA_DISPLAY_1_mat" rgba="0.7922 0.8196 0.9333 1.0000" roughness="0.2000" />
+        <material name="BUTTON_2_mat" rgba="0.2980 0.2980 0.2980 1.0000" roughness="0.2000" />
+        <material name="CAMERA_DISPLAY_2_mat" rgba="0.7922 0.8196 0.9333 1.0000" roughness="0.2000" />
+    </asset>
+    <worldbody>
+        <!-- Lowest point of the model is at z = -0.0457855m in this frame. -->
+        <!-- Lift the model by 0.0457855m to rest it on a z=0 ground plane. -->
+        <!-- See <custom><numeric name="ground_offset">. -->
+        <body name="MainPCB" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+            <freejoint />
+            <geom mesh="MainPCB_visual" name="MainPCB_MainPCB_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="MainPCB_mat" />
+            <geom mesh="MainPCB_collision00" name="MainPCB_MainPCB_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+            <inertial mass="0.04969745696436134" pos="0.003940462596438171 4.8292006786886e-16 -0.0011763349216851915" fullinertia="3.3674045969796535e-05 0.0001465633094517653 0.00017757150983492432 1.42267499867892e-18 -3.968191338793067e-07 -4.792103110425506e-20" />
+            <body name="TT_Motor-1_gearbox" pos="0.06975000000000005 -0.035500000000000004 -0.010750000000000004" quat="1.1102230246251482e-16 6.123233995736757e-17 -6.798155367234502e-33 1.0000000000000004">
+                <geom mesh="gearbox_visual" name="TT_Motor-1_gearbox_gearbox_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="gearbox_mat" />
+                <geom mesh="gearbox_collision00" name="TT_Motor-1_gearbox_gearbox_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918707 1.2362785200822959e-05 1.2838560109171476e-18" fullinertia="1.1035802615155104e-06 2.7495869785205253e-06 2.517636816068929e-06 -6.530352080899404e-10 1.8672378778433224e-21 8.471129210020342e-22" />
+                <body name="TT_Motor-1_motor" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                    <geom mesh="motor_visual" name="TT_Motor-1_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <inertial mass="0.002505457365802741" pos="0.040581087769524064 7.106717631643122e-16 -5.288578257858985e-19" fullinertia="1.1337249067247854e-07 8.727071603245999e-08 6.066235498198957e-08 -2.0322994975865508e-20 -6.455129895597942e-24 2.4888490746281334e-36" />
+                    <body name="TT_Motor-1_motor_bottom" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                        <geom mesh="motor_bottom_visual" name="TT_Motor-1_motor_bottom_motor_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_bottom_mat" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861434 -2.610931162777616e-05 8.593536034065558e-19" fullinertia="6.115472408212138e-08 4.147877758584176e-08 2.7657843116737904e-08 1.1593560654261818e-10 1.5471649280461399e-22 -1.4198016945927107e-26" />
+                    </body>
+                </body>
+                <body name="TT_Motor-1_axel" pos="0.0 0.0 0.0" quat="1.0 -1.1588236309358302e-48 0.0 -2.0198403645931934e-45">
+                    <joint type="hinge" name="TT_Motor-1_axel" axis="-2.2204460492502973e-16 1.000000000000002 2.7192621468937766e-32" pos="4.363176486776873e-17 -0.009000000000000022 5.204170427930416e-18" />
+                    <geom mesh="axel_visual" name="TT_Motor-1_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <inertial mass="0.0006461241749733425" pos="-7.007727731434003e-15 -1.5560281355484349e-30 5.551115123125869e-17" fullinertia="5.830431374187014e-08 2.0548936501902375e-09 5.84600810556203e-08 4.36006353888671e-22 1.9075994219620194e-26 -5.33953785697667e-38" />
+                    <body name="Wheel-1_wheel_hub" pos="2.6645352591003756e-17 0.03949999999999996 2.220446049250313e-18" quat="0.5 -0.4999999999999996 -0.5000000000000006 -0.499999999999999">
+                        <geom mesh="wheel_hub_visual" name="Wheel-1_wheel_hub_wheel_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="wheel_hub_mat" />
+                        <geom mesh="wheel_hub_collision00" name="Wheel-1_wheel_hub_wheel_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543562e-09 -6.36977149885815e-09 -0.011307235755000157" fullinertia="3.1229404558114746e-06 3.1224416351565473e-06 4.85821032072987e-06 1.1158639709805023e-12 -4.956449001767603e-13 -4.454134276639007e-13" />
+                        <body name="Wheel-1_tire" pos="0.0 0.0 0.0" quat="1.0 -1.1235958579290084e-45 -3.239600292441965e-48 -2.9870780960627204e-33">
+                            <geom mesh="tire_visual" name="Wheel-1_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-1_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-1_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-1_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-1_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104754e-08 5.2862387714403266e-08 -0.01250121014581524" fullinertia="6.022496836837409e-06 6.022546174471783e-06 1.052643674515779e-05 2.873002085123115e-12 -1.3900669682906549e-12 -2.0127280725037815e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="TT_Motor-2_gearbox" pos="-0.06975000000000003 -0.03549999999999997 -0.01125" quat="1.0000000000000002 0.0 0.0 -1.1102230246251543e-16">
+                <geom mesh="gearbox_visual" name="TT_Motor-2_gearbox_gearbox_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="gearbox_mat" />
+                <geom mesh="gearbox_collision00" name="TT_Motor-2_gearbox_gearbox_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918702 1.236278520082295e-05 2.220446049250313e-18" fullinertia="1.1035802615155023e-06 2.7495869785205084e-06 2.5176368160689154e-06 -6.530352080831631e-10 -1.8807909613156567e-37 8.470329472543015e-22" />
+                <body name="TT_Motor-2_motor" pos="0.0 -4.440892098500626e-18 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                    <geom mesh="motor_visual" name="TT_Motor-2_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <inertial mass="0.002505457365802741" pos="0.04058108776952402 7.017899789673106e-16 0.0" fullinertia="1.1337249067247795e-07 8.727071603245988e-08 6.06623549819955e-08 -1.9475962028611178e-20 0.0 0.0" />
+                    <body name="TT_Motor-2_motor_bottom" pos="0.0 -4.440892098500626e-18 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                        <geom mesh="motor_bottom_visual" name="TT_Motor-2_motor_bottom_motor_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_bottom_mat" />
+                        <inertial mass="0.0014785534866922744" pos="0.047376799158614265 -2.610931162777614e-05 0.0" fullinertia="6.11547240821213e-08 4.147877758584063e-08 2.7657843116741715e-08 1.1593560654261802e-10 1.058791184067877e-22 -1.0587911840678766e-22" />
+                    </body>
+                </body>
+                <body name="TT_Motor-2_axel" pos="0.0 -4.440892098500626e-18 0.0" quat="1.0 0.0 0.0 -4.598010586065806e-46">
+                    <joint type="hinge" name="TT_Motor-2_axel" axis="-2.2204460492503091e-16 1.0000000000000013 0.0" pos="2.9753977059954234e-17 -0.009000000000000041 0.0" />
+                    <geom mesh="axel_visual" name="TT_Motor-2_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <inertial mass="0.0006461241749733425" pos="-7.016609515630999e-15 4.440892098499074e-18 5.551115123125783e-17" fullinertia="5.8304313741869957e-08 2.054893650188541e-09 5.8460081055618603e-08 2.2424811707509513e-22 1.0587911840678768e-22 -5.293955920339382e-23" />
+                    <body name="Wheel-2_wheel_hub" pos="-8.881784197001253e-18 -0.03949999999999999 -4.440892098500626e-18" quat="0.5 0.5 0.5000000000000007 -0.49999999999999933">
+                        <geom mesh="wheel_hub_visual" name="Wheel-2_wheel_hub_wheel_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="wheel_hub_mat" />
+                        <geom mesh="wheel_hub_collision00" name="Wheel-2_wheel_hub_wheel_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543565e-09 -6.369771494997785e-09 -0.01130723575500016" fullinertia="3.1229404558114763e-06 3.1224416351565337e-06 4.858210320729867e-06 1.1158639709804411e-12 -4.956449035648929e-13 -4.4541345399811886e-13" />
+                        <body name="Wheel-2_tire" pos="0.0 0.0 -8.881784197001253e-18" quat="1.0 5.020340165244845e-46 -7.184391540726713e-48 2.351898550868226e-33">
+                            <geom mesh="tire_visual" name="Wheel-2_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-2_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-2_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-2_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-2_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104757e-08 5.286238769996982e-08 -0.012501210145815253" fullinertia="6.022496836837397e-06 6.022546174471783e-06 1.0526436745157787e-05 2.873002086817187e-12 -1.39006696913769e-12 -2.012728077279916e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="TT_Motor-3_gearbox" pos="0.06975000000000002 0.03550000000000001 -0.011250000000000003" quat="1.1102230246251565e-16 6.123233995736766e-17 -6.798155367234455e-33 1.0">
+                <geom mesh="gearbox_visual" name="TT_Motor-3_gearbox_gearbox_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="gearbox_mat" />
+                <geom mesh="gearbox_collision00" name="TT_Motor-3_gearbox_gearbox_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918674 1.2362785200822933e-05 1.2838560109171478e-18" fullinertia="1.1035802615154994e-06 2.7495869785204872e-06 2.5176368160689154e-06 -6.530352080831615e-10 1.7317198333471756e-22 7.997374773095694e-26" />
+                <body name="TT_Motor-3_motor" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                    <geom mesh="motor_visual" name="TT_Motor-3_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <inertial mass="0.002505457365802741" pos="0.04058108776952391 7.017899789673097e-16 -5.288578257859001e-19" fullinertia="1.1337249067247724e-07 8.727071603245964e-08 6.066235498200651e-08 -1.9899478502238274e-20 9.942398851119172e-23 2.1175823681357753e-22" />
+                    <body name="TT_Motor-3_motor_bottom" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                        <geom mesh="motor_bottom_visual" name="TT_Motor-3_motor_bottom_motor_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_bottom_mat" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861415 -2.6109311627776105e-05 8.593536034065558e-19" fullinertia="6.115472408212156e-08 4.1478777585841373e-08 2.7657843116751456e-08 1.1593560654282947e-10 1.5471649280461528e-22 -1.4198016945953042e-26" />
+                    </body>
+                </body>
+                <body name="TT_Motor-3_axel" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0">
+                    <joint type="hinge" name="TT_Motor-3_axel" axis="-2.220446049250313e-16 1.0 2.719262146893782e-32" pos="1.5876189252139734e-17 -0.008999999999999987 3.4694469519536123e-18" />
+                    <geom mesh="axel_visual" name="TT_Motor-3_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <inertial mass="0.0006461241749733425" pos="-7.0077277314339886e-15 -1.5560281355484459e-30 5.551115123125869e-17" fullinertia="5.830431374186927e-08 2.0548936501898057e-09 5.84600810556203e-08 2.242481170750942e-22 1.9075994219686315e-26 5.293955920339374e-23" />
+                    <body name="Wheel-3_wheel_hub" pos="1.7763568394002505e-17 -0.039499999999999924 -6.661338147750939e-18" quat="0.5 0.5000000000000002 -0.5000000000000002 0.5">
+                        <geom mesh="wheel_hub_visual" name="Wheel-3_wheel_hub_wheel_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="wheel_hub_mat" />
+                        <geom mesh="wheel_hub_collision00" name="Wheel-3_wheel_hub_wheel_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543557e-09 -6.369771507739932e-09 -0.011307235755000141" fullinertia="3.1229404558114704e-06 3.12244163515652e-06 4.858210320729885e-06 1.1158639726745064e-12 -4.956449052589574e-13 -4.454134344401639e-13" />
+                        <body name="Wheel-3_tire" pos="0.0 0.0 0.0" quat="1.0 -4.766246943736055e-48 5.131708243377006e-48 -1.2703590903905792e-33">
+                            <geom mesh="tire_visual" name="Wheel-3_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-3_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-3_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-3_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-3_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104747e-08 5.286238770552147e-08 -0.012501210145815223" fullinertia="6.022496836837347e-06 6.02254617447179e-06 1.0526436745157757e-05 2.8730020851231195e-12 -1.3900669691376864e-12 -2.01272807250378e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="TT_Motor-4_gearbox" pos="-0.06975000000000009 0.035500000000000045 -0.01125" quat="1.0000000000000004 0.0 0.0 -1.1102230246251595e-16">
+                <geom mesh="gearbox_visual" name="TT_Motor-4_gearbox_gearbox_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="gearbox_mat" />
+                <geom mesh="gearbox_collision00" name="TT_Motor-4_gearbox_gearbox_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                <inertial mass="0.01575778898400723" pos="0.007647838045918707 1.2362785200822959e-05 2.220446049250313e-18" fullinertia="1.1035802615155171e-06 2.749586978520512e-06 2.517636816068929e-06 -6.530352080763879e-10 1.880790961315666e-37 -8.47032947254302e-22" />
+                <body name="TT_Motor-4_motor" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                    <geom mesh="motor_visual" name="TT_Motor-4_motor_motor_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_mat" />
+                    <inertial mass="0.002505457365802741" pos="0.040581087769524064 7.062308710658117e-16 0.0" fullinertia="1.1337249067247854e-07 8.727071603245999e-08 6.066235498199042e-08 -2.0322994975865508e-20 1.0587911840678775e-22 2.3509887016445823e-38" />
+                    <body name="TT_Motor-4_motor_bottom" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                        <geom mesh="motor_bottom_visual" name="TT_Motor-4_motor_bottom_motor_bottom_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="motor_bottom_mat" />
+                        <inertial mass="0.0014785534866922744" pos="0.04737679915861434 -2.61093116277806e-05 0.0" fullinertia="6.11547240821218e-08 4.147877758584197e-08 2.765784311673748e-08 1.1593560654282993e-10 1.5881867761018162e-22 1.058791184067878e-22" />
+                    </body>
+                </body>
+                <body name="TT_Motor-4_axel" pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 2.4632199568209675e-46">
+                    <joint type="hinge" name="TT_Motor-4_axel" axis="-2.22044604925032e-16 1.000000000000002 0.0" pos="8.526512829121221e-17 -0.009000000000000064 0.0" />
+                    <geom mesh="axel_visual" name="TT_Motor-4_axel_axel_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="axel_mat" />
+                    <inertial mass="0.0006461241749733425" pos="-7.016609515631004e-15 4.440892098499077e-18 5.551115123125783e-17" fullinertia="5.830431374186972e-08 2.0548936501893905e-09 5.846008105561945e-08 1.2489880261519289e-23 -1.0587911840678775e-22 -2.3509887016445823e-38" />
+                    <body name="Wheel-4_wheel_hub" pos="2.6645352591003756e-17 0.03949999999999995 0.0" quat="0.5 -0.4999999999999987 0.49999999999999967 0.499999999999999">
+                        <geom mesh="wheel_hub_visual" name="Wheel-4_wheel_hub_wheel_hub_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="wheel_hub_mat" />
+                        <geom mesh="wheel_hub_collision00" name="Wheel-4_wheel_hub_wheel_hub_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                        <inertial mass="0.011938919494955614" pos="-7.819421472543549e-09 -6.369771494997787e-09 -0.01130723575500012" fullinertia="3.1229404558115042e-06 3.1224416351565405e-06 4.85821032072984e-06 1.1158639709805e-12 -4.956449035648908e-13 -4.4541343366932737e-13" />
+                        <body name="Wheel-4_tire" pos="0.0 0.0 0.0" quat="1.0 8.121106999615741e-47 7.247281110916916e-49 -1.9055386355858462e-33">
+                            <geom mesh="tire_visual" name="Wheel-4_tire_tire_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="tire_mat" />
+                            <geom mesh="tire_collision00" name="Wheel-4_tire_tire_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision01" name="Wheel-4_tire_tire_collision01_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision02" name="Wheel-4_tire_tire_collision02_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <geom mesh="tire_collision03" name="Wheel-4_tire_tire_collision03_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                            <inertial mass="0.010748872242976432" pos="9.273393769104737e-08 5.286238769996983e-08 -0.0125012101458152" fullinertia="6.022496836837347e-06 6.02254617447179e-06 1.0526436745157706e-05 2.8730020851231094e-12 -1.3900669691376844e-12 -2.012728077279912e-12" />
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="servo_horn-2" pos="0.062250000000000014 8.881784197001253e-18 0.0016999999999999993" quat="0.5 0.5000000000000008 -0.5 -0.5000000000000008">
+                <geom mesh="servo_horn_visual" name="servo_horn-2_servo_horn_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="servo_horn_mat" />
+                <inertial mass="0.0018784057300893977" pos="-2.319853108330522e-18 0.0011856424877559953 1.0606626688058896e-13" fullinertia="6.745551917590005e-09 1.1805202726927926e-07 1.1463638105962948e-07 5.727477642778224e-24 -2.1788126860317075e-23 -1.0688497003165219e-19" />
+                <body name="servo-2" pos="1.7763568394002505e-17 0.03199999999999994 0.0052000000000000665" quat="-7.451937132874994e-16 0.7071067811865474 7.451937132874983e-16 -0.7071067811865474">
+                    <joint type="hinge" name="servo-2" axis="2.107726111852697e-15 -1.0000000000000004 6.776263578034395e-21" pos="0.0051999999999999885 0.03020000000000001 9.200204561987517e-18" range="-1.570796 1.570796" limited="true" />
+                    <geom mesh="servo_visual" name="servo-2_servo_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="servo_mat" />
+                    <inertial mass="0.007635909596826658" pos="0.0004087928164055472 0.012858551669205187 -2.6383960880616063e-10" fullinertia="5.076103465663985e-07 4.551936909041343e-07 7.783858203243506e-07 -3.902525156972801e-08 9.652630069806546e-15 3.350039191702096e-14" />
+                    <body name="baseplate" pos="1.7763568394002505e-17 0.01859999999999998 3.1086244689504417e-17" quat="0.4999999999999998 -0.4999999999999998 0.5000000000000002 0.5000000000000002">
+                        <geom mesh="baseplate_visual" name="baseplate_baseplate_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="baseplate_mat" />
+                        <inertial mass="0.001771560833840395" pos="0.0029809520666862644 1.7170150896058107e-19 0.001500000000000002" fullinertia="2.021633014185345e-07 1.4460033548428384e-07 3.441062956520576e-07 -2.6927519394675154e-22 -1.227881771771867e-23 2.0724031918993953e-22" />
+                        <body name="vertical_plate" pos="0.009100000000000009 -8.881784197001253e-18 -0.04000000000000001" quat="2.0903917151689066e-18 0.7071067811865475 1.198473261164518e-16 0.7071067811865476">
+                            <geom mesh="vertical_plate_visual" name="vertical_plate_vertical_plate_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="vertical_plate_mat" />
+                            <inertial mass="0.0031953952785162367" pos="0.023020744667572778 1.7796346201753098e-18 0.0015000000000000013" fullinertia="3.328165386884044e-07 4.461152908091287e-07 7.741387365797589e-07 -1.4756559619594466e-21 -2.1952161514438034e-22 -4.112833240443694e-23" />
+                            <body name="servo2_holder" pos="0.009999999999999992 -8.881784197001253e-18 -0.003000000000000007" quat="0.7071067811865475 -3.361985393174642e-17 8.41370804695367e-17 0.7071067811865476">
+                                <geom mesh="servo2_holder_visual" name="servo2_holder_servo2_holder_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="servo2_holder_mat" />
+                                <inertial mass="0.0011647422524689078" pos="-1.8103851751050115e-15 9.015334187732764e-18 0.001500000000000001" fullinertia="5.738313745046927e-08 1.4062653041232587e-07 1.9626255448409266e-07 1.7535737355907432e-22 3.2889295387469326e-23 4.953460332607074e-24" />
+                                <body name="servo-1" pos="0.0 -1.7763568394002505e-17 -0.01859999999999999" quat="0.7071067811865476 0.7071067811865474 1.2754543707599446e-31 -7.269247928676059e-32">
+                                    <geom mesh="servo_visual" name="servo-1_servo_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="servo_mat" />
+                                    <inertial mass="0.007635909596826658" pos="0.00040879281640554267 0.012858551669205185 -2.6383960822276814e-10" fullinertia="5.076103465663989e-07 4.551936909041312e-07 7.783858203243436e-07 -3.902525156972832e-08 9.652631045916954e-15 3.350039192670404e-14" />
+                                    <body name="servo_horn-1" pos="0.005200000000000005 0.03199999999999999 -8.881784197001253e-18" quat="3.4604276220676403e-16 0.7071067811865476 -7.756428283098845e-16 0.7071067811865475">
+                                        <joint type="hinge" name="servo_horn-1" axis="-6.965795670312038e-16 -1.0000000000000004 -5.871022526644805e-16" pos="3.5948312740192516e-17 0.0017999999999999934 8.43235109016827e-17" range="-0.418879 1.570796" limited="true" />
+                                        <geom mesh="servo_horn_visual" name="servo_horn-1_servo_horn_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="servo_horn_mat" />
+                                        <inertial mass="0.0018784057300893977" pos="8.2589433103363e-19 0.0011856424877559916 1.0606696297396437e-13" fullinertia="6.7455519175891395e-09 1.1805202726928069e-07 1.1463638105962969e-07 -1.3422442040558362e-22 -5.838193549048305e-22 -1.063006295468322e-19" />
+                                        <body name="horizontal_plate" pos="1.7763568394002505e-17 -0.0029999999999999983 -8.881784197001253e-18" quat="0.7071067811865469 0.7071067811865481 -1.3622739705228914e-30 1.2180414820475802e-30">
+                                            <geom mesh="horizontal_plate_visual" name="horizontal_plate_horizontal_plate_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="horizontal_plate_mat" />
+                                            <inertial mass="0.003191531724526138" pos="0.0005004452917532727 0.006579633169384437 -0.001500000000000002" fullinertia="3.034133653166434e-07 2.7670301355723e-07 5.753290812870863e-07 -2.702960782634281e-08 2.638090898419561e-22 1.1563727254364062e-21" />
+                                            <body name="headplate_rear" pos="-0.013999999999999995 0.023800000000000036 -0.02250000000000001" quat="1.6155402338626614e-16 -3.1856326925464324e-16 0.7071067811865476 0.7071067811865475">
+                                                <geom mesh="headplate_rear_visual" name="headplate_rear_headplate_rear_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="headplate_rear_mat" />
+                                                <inertial mass="0.004303762556573995" pos="-0.013775176906218524 -0.0004654996584185977 0.001500000000000002" fullinertia="1.1911300162272665e-06 1.1032871208908584e-06 2.287961493283258e-06 -1.1469110586078e-08 4.561207229388613e-22 4.1460855676757374e-22" />
+                                                <body name="headplate_front" pos="0.0 -2.4724520454785915e-17 0.006000000000000014" quat="1.0 -9.208878106485826e-32 -4.163336342344326e-17 1.040834085586085e-16">
+                                                    <geom mesh="headplate_front_visual" name="headplate_front_headplate_front_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="headplate_front_mat" />
+                                                    <geom mesh="headplate_front_collision00" name="headplate_front_headplate_front_collision00_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" class="collision" />
+                                                    <inertial mass="0.005929894492605302" pos="-0.012337027542701034 1.2701327162668184e-17 0.0015000000000000072" fullinertia="1.2822667476794532e-06 1.3315178002860257e-06 2.604889706226567e-06 1.3303314577752415e-21 1.0142267062603813e-20 1.1297629504793061e-22" />
+                                                    <body name="headplate_spacer-1" pos="-0.01949999999999999 0.020999999999999998 -1.7763568394002505e-17" quat="3.122769040385238e-17 0.7071067811865476 -0.7071067811865474 -2.0739009292902116e-17">
+                                                        <geom mesh="headplate_spacer_visual" name="headplate_spacer-1_headplate_spacer_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="headplate_spacer_mat" />
+                                                        <inertial mass="0.0004993954221962891" pos="3.6598556987437433e-13 4.630438095482869e-19 0.0015000000000000035" fullinertia="1.7790959194837055e-09 1.779096282271305e-09 2.809099068460244e-09 5.2939559100607963e-23 -1.1471758662426139e-24 -2.7314632138430168e-24" />
+                                                    </body>
+                                                    <body name="headplate_spacer-2" pos="-0.01950000000000001 -0.021000000000000022 -0.003000000000000007" quat="0.7071067811865476 3.122769040385253e-17 2.0739009292902388e-17 0.7071067811865474">
+                                                        <geom mesh="headplate_spacer_visual" name="headplate_spacer-2_headplate_spacer_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="headplate_spacer_mat" />
+                                                        <inertial mass="0.0004993954221962891" pos="3.6598561437407954e-13 -4.630438095178127e-19 0.0015000000000000035" fullinertia="1.7790959194837055e-09 1.7790962822721528e-09 2.809099068460456e-09 7.257809231090126e-32 -1.1166193085622736e-24 -2.0902677359973378e-22" />
+                                                    </body>
+                                                </body>
+                                                <body name="camera" pos="-0.022797188755020063 -7.320750543413469e-18 -0.0010000000000000143" quat="0.7071067811865476 1.9677664809263798e-17 1.9677664809264063e-17 -0.7071067811865475">
+                                                    <geom mesh="camera_visual" name="camera_camera_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="camera_mat" />
+                                                    <inertial mass="0.0009911384849047905" pos="1.2728917429581171e-05 -0.00014525355422996203 0.001402216812399199" fullinertia="3.6536694994653776e-08 3.442719941128548e-08 6.700775788350389e-08 -1.0651177634742297e-10 1.9203856288129993e-12 7.376435790969821e-10" />
+                                                </body>
+                                                <body name="Ultrasonic_HC-SR04_PCB" pos="8.881784197001253e-18 -2.0348206609627576e-17 -0.0016000000000000014" quat="0.7071067811865474 1.967646692378202e-17 1.9676466923782146e-17 -0.7071067811865477">
+                                                    <geom mesh="Ultrasonic_HC-SR04_PCB_visual" name="Ultrasonic_HC-SR04_PCB_Ultrasonic_HC-SR04_PCB_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="Ultrasonic_HC-SR04_PCB_mat" />
+                                                    <inertial mass="0.001750878359191598" pos="-9.953915935179518e-05 -1.0588829112371458e-17 0.0006276566053741741" fullinertia="5.585240567027819e-08 3.112577247672591e-07 3.655014916186226e-07 1.2670776090187501e-21 -2.4881336373474344e-10 1.54959563653871e-21" />
+                                                    <body name="Ultrasonic_Can-2" pos="0.012999999999999996 0.0 0.0014999999999999682" quat="0.5 0.49999999999999994 0.5000000000000001 0.5">
+                                                        <geom mesh="Ultrasonic_Can_visual" name="Ultrasonic_Can-2_Ultrasonic_Can_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="Ultrasonic_Can_mat" />
+                                                        <inertial mass="0.005422799953896927" pos="8.977255368416716e-11 0.0032443609264433348 -3.809297132742861e-10" fullinertia="1.1739621143972101e-07 1.6174891949329904e-07 1.1872792973753902e-07 -2.214117142552593e-15 9.050981823456458e-14 9.767156441430012e-15" />
+                                                    </body>
+                                                    <body name="Ultrasonic_Can-1" pos="-0.01300000000000001 -8.881784197001253e-18 0.0015000000000000035" quat="0.5 0.5000000000000001 0.5000000000000001 0.5">
+                                                        <geom mesh="Ultrasonic_Can_visual" name="Ultrasonic_Can-1_Ultrasonic_Can_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="Ultrasonic_Can_mat" />
+                                                        <inertial mass="0.005422799953896927" pos="8.977255368416707e-11 0.0032443609264433348 -3.8092971327428614e-10" fullinertia="1.1739621143970745e-07 1.6174891949329566e-07 1.1872792973753902e-07 -2.2141171425525905e-15 9.050981908192371e-14 9.767155594397066e-15" />
+                                                    </body>
+                                                </body>
+                                            </body>
+                                        </body>
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+            <body name="PiSpacers" pos="0.005750000000000002 -3.944304526105059e-33 -2.220446049250313e-18" quat="1.0 -8.758115402030107e-47 -7.778384726050997e-48 0.0">
+                <geom mesh="PiSpacers_visual" name="PiSpacers_PiSpacers_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="PiSpacers_mat" />
+                <inertial mass="0.003898153658927287" pos="-0.036641000000614266 2.2250578450185823e-18 0.007967499999999999" fullinertia="2.402576241961358e-06 3.341056736900983e-06 5.6415492840461436e-06 1.083429353176424e-20 -1.0587911840678754e-21 2.5738959574805848e-23" />
+                <body name="PLATE_RASPBERRY_PI_5" pos="-0.0466410000000001 1.2684298056342414e-16 0.014484999999999451" quat="-4.215038172160215e-17 -6.9829626776862746e-15 9.154897966759079e-29 1.0000000000000009">
+                    <geom mesh="PLATE_RASPBERRY_PI_5_visual" name="PLATE_RASPBERRY_PI_5_PLATE_RASPBERRY_PI_5_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="PLATE_RASPBERRY_PI_5_mat" />
+                    <inertial mass="0.053506682002526784" pos="0.00010652334843020196 -0.00016063092176509905 0.0007221750982718499" fullinertia="1.3786602810250358e-05 3.215227584976413e-05 4.591993338438278e-05 -9.367198711154732e-10 -1.547749195200496e-09 4.129174139542261e-11" />
+                    <body name="METAL_PLATE." pos="-0.03000000000000002 0.014200000000000011 0.0028500000000000014" quat="1.0 1.076624693464876e-44 2.991188361583108e-31 -7.415191002309163e-29">
+                        <geom mesh="METAL_PLATE._visual" name="METAL_PLATE._METAL_PLATE._visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="METAL_PLATE._mat" />
+                        <inertial mass="0.0003039761641170146" pos="2.3796297990969528e-17 -1.5543122344752273e-17 -0.00011398009497838341" fullinertia="5.4507561841429645e-09 3.764531787486773e-09 9.11614753619922e-09 6.826986376860397e-24 2.160131188362098e-23 -1.3234889800847666e-23" />
+                    </body>
+                    <body name="USB_Ethernet" pos="0.0455 -0.017799999999999993 0.008374999999999995" quat="0.5 0.5 0.5 0.5000000000000001">
+                        <geom mesh="USB_Ethernet_visual" name="USB_Ethernet_USB_Ethernet_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="USB_Ethernet_mat" />
+                        <inertial mass="0.068756787947681" pos="0.01669700808964882 0.0006976232708880569 -0.010863236937883372" fullinertia="3.2881594373065373e-06 1.914376396726221e-05 1.8540842822588273e-05 -5.112883537176981e-07 -1.079764252952329e-06 -8.138773694171238e-08" />
+                    </body>
+                    <body name="FEMALE_MICRO_HDMI_CONNECTOR-1" pos="-0.01670000000000036 -0.02149999999999972 0.002899999999968339" quat="0.7071067811865512 0.7071067811865438 -9.875400524329061e-15 -5.299184507199962e-29">
+                        <geom mesh="FEMALE_MICRO_HDMI_CONNECTOR_visual" name="FEMALE_MICRO_HDMI_CONNECTOR-1_FEMALE_MICRO_HDMI_CONNECTOR_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="FEMALE_MICRO_HDMI_CONNECTOR_mat" />
+                        <inertial mass="0.0005084888358175555" pos="-1.0164323008461442e-06 0.00015843348201624227 0.0032395883923271034" fullinertia="2.0562656442686804e-09 3.6860893988674097e-09 2.4374015859389904e-09 -3.1196541272515146e-13 1.6182154589149828e-13 1.0956364207642061e-10" />
+                    </body>
+                    <body name="FEMALE_MICRO_HDMI_CONNECTOR-2" pos="-0.003300000000000356 -0.02149999999999991 0.0028999999999685232" quat="0.7071067811865512 0.7071067811865438 -9.875400524329061e-15 -5.299184507199962e-29">
+                        <geom mesh="FEMALE_MICRO_HDMI_CONNECTOR_visual" name="FEMALE_MICRO_HDMI_CONNECTOR-2_FEMALE_MICRO_HDMI_CONNECTOR_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="FEMALE_MICRO_HDMI_CONNECTOR_mat" />
+                        <inertial mass="0.0005084888358175555" pos="-1.0164323008461442e-06 0.00015843348201624227 0.0032395883923271034" fullinertia="2.0562656442685746e-09 3.6860893988675156e-09 2.437401585939202e-09 -3.119654128045608e-13 1.6182154578561916e-13 1.0956364207644708e-10" />
+                    </body>
+                    <body name="FEMALE_USB_CONNECTOR" pos="-0.03130000000000037 -0.021579999999999513 0.003029999999999797" quat="0.7071067811865512 0.7071067811865438 -9.875400524329061e-15 -5.299184507199962e-29">
+                        <geom mesh="FEMALE_USB_CONNECTOR_visual" name="FEMALE_USB_CONNECTOR_FEMALE_USB_CONNECTOR_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="FEMALE_USB_CONNECTOR_mat" />
+                        <inertial mass="0.0010186253515518948" pos="-6.41576458184468e-07 1.2851641310739828e-05 0.0028189870976713196" fullinertia="5.375937121199247e-09 1.0870011983507297e-08 7.196365547384996e-09 -3.121656872931086e-14 1.8997992937780985e-12 -3.6708994527618197e-11" />
+                    </body>
+                    <body name="3.0_PIN_HEADER_10" pos="-0.032860000000000035 0.024500000000000022 0.003949999999999996" quat="0.7071067811865481 2.7093882137398477e-17 -4.4358296965938615e-17 0.7071067811865469">
+                        <geom mesh="3.0_PIN_HEADER_10_visual" name="3.0_PIN_HEADER_10_3.0_PIN_HEADER_10_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="3.0_PIN_HEADER_10_mat" />
+                        <inertial mass="0.00539346027890533" pos="2.488040100205104e-19 -0.022860000000000057 -0.0008098629513017616" fullinertia="1.1794007698368065e-06 3.012099825510699e-08 1.1710821768193403e-06 -6.051162516935118e-22 -4.243570561445159e-22 6.60128385565836e-22" />
+                    </body>
+                    <body name="9FD77_D9WHV" pos="-0.009250000000000026 0.011000000000000003 0.0014500000000000047" quat="0.7071067811865476 4.504730982808397e-17 -5.639812217720087e-17 -0.7071067811865475">
+                        <geom mesh="9FD77_D9WHV_visual" name="9FD77_D9WHV_9FD77_D9WHV_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="9FD77_D9WHV_mat" />
+                        <inertial mass="0.0009088498134760561" pos="-1.3395471931731954e-06 -7.285014614765954e-07 0.0003992539309831576" fullinertia="1.5975390445147512e-08 7.627206708396327e-09 2.350599270818064e-08 -3.2988596274813315e-12 4.7410101646005e-13 2.5801459541172896e-13" />
+                    </body>
+                    <body name="GIGABIT_ETHERNET_TRANSCEIVER" pos="0.021531526527127233 -0.004557271098903822 0.001449999999999998" quat="0.9238795325112865 2.6846241430325305e-30 2.1881872453657565e-30 -0.38268343236509056">
+                        <geom mesh="GIGABIT_ETHERNET_TRANSCEIVER_visual" name="GIGABIT_ETHERNET_TRANSCEIVER_GIGABIT_ETHERNET_TRANSCEIVER_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="GIGABIT_ETHERNET_TRANSCEIVER_mat" />
+                        <inertial mass="0.00029995062974476415" pos="4.81537806707231e-07 9.754389524625059e-07 0.0004675534024376073" fullinertia="9.128949074991554e-10 9.134955790123768e-10 1.7698686902747856e-09 2.9962152770662085e-13 -7.553436797512548e-14 -1.5705846870154118e-13" />
+                    </body>
+                    <body name="RP1_CO_CONTROLLER" pos="0.01589999999999998 0.006950000000000011 0.0014500000000000068" quat="0.7071067811865476 -1.9198439515309122e-16 -6.80905382102853e-17 -0.7071067811865475">
+                        <geom mesh="RP1_CO_CONTROLLER_visual" name="RP1_CO_CONTROLLER_RP1_CO_CONTROLLER_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="RP1_CO_CONTROLLER_mat" />
+                        <inertial mass="0.0006777646982030709" pos="-1.374461291512203e-06 9.194317014717758e-07 0.00029983194886100314" fullinertia="8.151913792951794e-09 8.152080624080794e-09 1.6263372226990368e-08 -1.2976234130666761e-12 2.2426514694343404e-13 -1.3399559581770313e-13" />
+                    </body>
+                    <body name="BROADCOM_1" pos="-0.0008250000000000224 -0.005304999575896018 0.0046299999713854964" quat="-0.4999999999999999 -0.5 0.5 0.5000000000000001">
+                        <geom mesh="BROADCOM_1_visual" name="BROADCOM_1_BROADCOM_1_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="BROADCOM_1_mat" />
+                        <inertial mass="0.003978153398858382" pos="1.3093013662177758e-06 -0.002100980642647873 0.00849856297215054" fullinertia="1.1166658412883042e-07 2.004414073602828e-07 9.49931457185613e-08 -2.9850943644320337e-12 -3.639382316025364e-11 5.075215951976082e-12" />
+                    </body>
+                    <body name="MxL" pos="-0.03124000000000002 -0.012879999999999996 0.0014500000000000068" quat="0.7071067811865476 -4.669725206797032e-17 -1.4926356009743037e-17 -0.7071067811865475">
+                        <geom mesh="MxL_visual" name="MxL_MxL_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="MxL_mat" />
+                        <inertial mass="0.0001423979902795981" pos="4.725995465193712e-07 2.744450233581487e-07 0.00024652394714314523" fullinertia="4.3029041590238307e-10 4.3106209915961914e-10 8.553181276967777e-10 5.712394841064352e-14 -1.6610143211562348e-14 -1.0619270796349183e-14" />
+                    </body>
+                    <body name="CAMERA_DISPLAY_1" pos="-0.04585160398483278 0.020082103347778334 -0.0001504979610443047" quat="1.0 1.076624693464876e-44 2.991188361583108e-31 -7.415191002309163e-29">
+                        <geom mesh="CAMERA_DISPLAY_1_visual" name="CAMERA_DISPLAY_1_CAMERA_DISPLAY_1_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="CAMERA_DISPLAY_1_mat" />
+                        <inertial mass="0.0008629563230236492" pos="0.006418856515425381 -0.018280214070425606 0.003708614135685219" fullinertia="1.2716847695126053e-08 1.4996969331886666e-09 1.2162374235629405e-08 -6.133969092850573e-13 9.353564894615261e-11 1.6015854065663029e-12" />
+                    </body>
+                    <body name="BUTTON_2" pos="-0.041000000000000016 -0.00960063465279573 0.0014500000000000068" quat="0.7071067811865476 -1.5808228510950102e-17 -2.6558428428518325e-18 -0.7071067811865475">
+                        <geom mesh="BUTTON_2_visual" name="BUTTON_2_BUTTON_2_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="BUTTON_2_mat" />
+                        <inertial mass="0.0003277856056303155" pos="3.602712123715901e-15 -8.015799541761372e-05 0.0017466995719191247" fullinertia="5.125408996498952e-10 8.871771683857118e-10 7.454365300856935e-10 1.591800186163768e-21 1.8529439872135648e-22 -1.5571744702323425e-12" />
+                    </body>
+                    <body name="CAMERA_DISPLAY_2-1" pos="4.839601516721359e-05 0.0005921033477783318 -0.00015049796104431358" quat="1.0 1.076624693464876e-44 2.991188361583108e-31 -7.415191002309163e-29">
+                        <geom mesh="CAMERA_DISPLAY_2_visual" name="CAMERA_DISPLAY_2-1_CAMERA_DISPLAY_2_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="CAMERA_DISPLAY_2_mat" />
+                        <inertial mass="0.0010667679736946975" pos="0.006417078913657634 -0.019780049770736333 0.0037047342926384754" fullinertia="2.328872461621082e-08 1.8505476730009432e-09 2.2613688115035763e-08 -7.918232177804045e-13 1.209237298864908e-10 2.2825236610924693e-12" />
+                    </body>
+                    <body name="CAMERA_DISPLAY_2-2" pos="0.0062483960151672145 0.0005921033477783319 -0.00015049796104431358" quat="1.0 1.076624693464876e-44 2.991188361583108e-31 -7.415191002309163e-29">
+                        <geom mesh="CAMERA_DISPLAY_2_visual" name="CAMERA_DISPLAY_2-2_CAMERA_DISPLAY_2_visual_geom" type="mesh" pos="0 0 0" quat="1 0 0 0" material="CAMERA_DISPLAY_2_mat" />
+                        <inertial mass="0.0010667679736946975" pos="0.006417078913657634 -0.019780049770736333 0.0037047342926384754" fullinertia="2.3288724616211032e-08 1.8505476730022137e-09 2.261368811503661e-08 -7.91823217356888e-13 1.2092372988659667e-10 2.2825236610395298e-12" />
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+</mujoco>

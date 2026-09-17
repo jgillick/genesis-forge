@@ -8,6 +8,7 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh
+from genesis_forge.utils import scene_rendered_envs_idx
 
 from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
@@ -604,13 +605,12 @@ class Pose2dCommand(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+        # If debug envs_idx is not set, use the envs the scene renders
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-            if self.env.scene.vis_options.rendered_envs_idx is not None:
-                self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
-            else:
-                self.debug_envs_idx = list[int](range(self.env.num_envs))
+        if self.debug_envs_idx is None:
+            self.debug_envs_idx = scene_rendered_envs_idx(
+                self.env.scene, self.env.num_envs
+            )
 
         self._debug_envs_tensor = torch.tensor(
             self.debug_envs_idx or [], dtype=torch.long, device=gs.device

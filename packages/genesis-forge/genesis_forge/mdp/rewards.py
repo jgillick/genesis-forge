@@ -309,6 +309,13 @@ class action_rate_l2(MdpFn):
     """
     Penalize the rate of change of the actions using L2 squared kernel.
 
+    This penalizes the *change* between consecutive actions, ``(action_t - action_{t-1})^2``,
+    not their magnitude -- a large action held steady costs nothing, while rapid
+    back-and-forth changes are heavily penalized. Use it to smooth out jittery,
+    high-frequency policy output (e.g. when observation noise is enabled). Too high
+    a weight also suppresses legitimate fast corrections, making the gait sluggish;
+    weights around -0.005 to -0.05 are typical.
+
     Args:
         action_manager: Only count the actions belonging to this action manager, instead of
                         every action the policy produces. Use this when part of the robot is

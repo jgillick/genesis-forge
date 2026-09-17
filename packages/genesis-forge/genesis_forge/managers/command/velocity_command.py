@@ -11,7 +11,7 @@ from genesis.utils.geom import quat_to_xyz
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh, flat_arc_arrow_mesh
-from genesis_forge.utils import transform_by_quat
+from genesis_forge.utils import scene_rendered_envs_idx, transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
 
@@ -294,13 +294,12 @@ class VelocityCommandManager(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+        # If debug envs_idx is not set, use the envs the scene renders
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-            if self.env.scene.vis_options.rendered_envs_idx is not None:
-                self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
-            else:
-                self.debug_envs_idx = list[int](range(self.env.num_envs))
+        if self.debug_envs_idx is None:
+            self.debug_envs_idx = scene_rendered_envs_idx(
+                self.env.scene, self.env.num_envs
+            )
 
         # Calculate the number of steps per debug render
         self._steps_per_debug_render = math.ceil(

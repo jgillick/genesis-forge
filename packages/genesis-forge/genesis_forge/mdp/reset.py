@@ -284,9 +284,12 @@ class randomize_annulus_position(ResetMdpFn):
 class randomize_link_mass_shift(ResetMdpFn):
     """
     Randomly add/subtract mass to one or more links of the entity.
-    This picks a random value from `mass_range` and passes it to `set_mass_shift` for each environment.
+    This picks a random value from `mass_range` and adds it to the link's original mass for each environment.
 
-    See: https://genesis-world.readthedocs.io/en/latest/api_reference/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_mass_shift
+    On genesis-world >= 1.4 requires your scene to be built with `RigidOptions(batch_links_info=True)`.
+
+    See:
+        https://genesis-world.readthedocs.io/en/latest/api_reference/engine/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_links_mass
 
     Args:
         link_name: The name, or regex pattern, of the link(s) to set the mass for.
@@ -310,6 +313,20 @@ class randomize_link_mass_shift(ResetMdpFn):
                 raise ValueError(f"No links found with name/pattern '{name}'")
             self._links_idx_local.extend(link.idx_local for link in links)
 
+        self._use_mass_shift = hasattr(self.entity, "set_mass_shift")
+        if not self._use_mass_shift:
+            if not self.entity.solver.is_links_info_batched:
+                raise ValueError(
+                    "randomize_link_mass_shift requires the scene to be created with "
+                    "gs.options.RigidOptions(batch_links_info=True) on this version of genesis-world."
+                )
+            # Save the original masses, so shifts stay relative to them instead of accumulating
+            # across resets. Kept across rebuilds since the masses at a rebuild may
+            # already be shifted.
+            if not hasattr(self, "_base_mass"):
+                mass = self.entity.get_links_mass(links_idx_local=self._links_idx_local)
+                self._base_mass = mass[0] if mass.dim() == 2 else mass
+
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         # Randomize mass
         mass_shift = torch.empty(
@@ -317,8 +334,15 @@ class randomize_link_mass_shift(ResetMdpFn):
         ).uniform_(*self.mass_range)
 
         # Set mass on entity
-        entity.set_mass_shift(
-            mass_shift,
-            links_idx_local=self._links_idx_local,
-            envs_idx=envs_idx,
-        )
+        if self._use_mass_shift:
+            entity.set_mass_shift(
+                mass_shift,
+                links_idx_local=self._links_idx_local,
+                envs_idx=envs_idx,
+            )
+        else:
+            entity.set_links_mass(
+                self._base_mass + mass_shift,
+                links_idx_local=self._links_idx_local,
+                envs_idx=envs_idx,
+            )

@@ -123,11 +123,7 @@ class ActuatorManager(BaseManager):
         self._stiffness_cfg = ensure_dof_pattern(stiffness)
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
         self._armature_cfg = ensure_dof_pattern(armature)
-
-        self._batch_dofs_enabled = (
-            env.scene.rigid_options.batch_dofs_info
-            and env.scene.rigid_options.batch_links_info
-        )
+        self._batch_dofs_enabled = False  # determined at build
 
         self._values: ValueBuffers = {
             "default_pos": None,
@@ -438,6 +434,17 @@ class ActuatorManager(BaseManager):
         """
         Builds the manager and initialized all the buffers.
         """
+        # Whether DOF batching is enabled, which allows some DOF
+        # properties to vary per environment. Every DOF setter this manager
+        # uses gates per-env values on batch_dofs_info alone; batch_links_info
+        # only affects link properties (e.g. link mass), which are not set here.
+        solver = getattr(self._robot, "solver", None)
+        if hasattr(solver, "is_links_info_batched"):
+            # genesis-world >= 1.4
+            self._batch_dofs_enabled = self._robot.get_dofs_armature().dim() == 2
+        else:
+            self._batch_dofs_enabled = self.env.scene.rigid_options.batch_dofs_info
+
         # Find all configured joints by names/patterns
         for joint in self._robot.joints:
             if joint.type != gs.JOINT_TYPE.REVOLUTE:
@@ -484,7 +491,7 @@ class ActuatorManager(BaseManager):
                 armature = self._values["armature"]
                 if torch.any(armature["noise"] != 0.0):
                     print(
-                        "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' and 'batch_links_info' are True in RigidOptions."
+                        "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' is True in RigidOptions."
                     )
                 self._robot.set_dofs_armature(armature["buffer"], self.dofs_idx)
 
@@ -604,7 +611,7 @@ class ActuatorManager(BaseManager):
             else:
                 value_buffer[i] = cfg_value
 
-        # Expand the default postion buffer to the number of environments
+        # Expand the default position buffer to the number of environments
         if value_name == "default_pos" or self._batch_dofs_enabled:
             value_buffer = value_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
             noise = noise.unsqueeze(0).repeat(self.env.num_envs, 1)

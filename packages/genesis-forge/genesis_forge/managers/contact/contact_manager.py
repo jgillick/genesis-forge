@@ -13,7 +13,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
 )
 from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
-from genesis_forge.utils import name_matches
+from genesis_forge.utils import name_matches, scene_rendered_envs_idx
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -301,12 +301,12 @@ class ContactManager(BaseManager):
         """Initialize link indices and buffers."""
         super().build()
 
-        # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+        # If debug envs_idx is not set, use the envs the scene renders
         self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-            self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
         if self.debug_envs_idx is None:
-            self.debug_envs_idx = list[int](range(self.env.num_envs))
+            self.debug_envs_idx = scene_rendered_envs_idx(
+                self.env.scene, self.env.num_envs
+            )
 
         # Calculate the number of steps per debug render
         fps = self.visualizer_cfg.get("fps", 30)

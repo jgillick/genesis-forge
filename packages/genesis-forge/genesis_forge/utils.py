@@ -17,6 +17,30 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+def scene_rendered_envs_idx(scene: gs.Scene, num_envs: int) -> list[int]:
+    """
+    Get the indices of the environments the scene renders, as a list.
+
+    Falls back to all environments when the scene's VisOptions do not restrict
+    rendering.
+
+    Args:
+        scene: The Genesis scene
+        num_envs: The total number of parallel environments
+
+    Returns:
+        The rendered environment indices
+    """
+    # Genesis < 1.4 exposed the VisOptions as `scene.vis_options`; 1.4 moved
+    # them to `scene.options.vis`.
+    vis_options = getattr(scene, "vis_options", None)
+    if vis_options is None:
+        vis_options = getattr(getattr(scene, "options", None), "vis", None)
+    if vis_options is not None and vis_options.rendered_envs_idx is not None:
+        return [int(i) for i in vis_options.rendered_envs_idx]
+    return list(range(num_envs))
+
+
 def entity_lin_vel(entity: RigidEntity) -> torch.Tensor:
     """
     Calculate an entity's linear velocity in its local frame.

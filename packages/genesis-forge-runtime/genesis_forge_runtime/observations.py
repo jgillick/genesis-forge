@@ -1,8 +1,8 @@
 """Rebuild the policy's observation vector from real sensor readings.
 
 This mirrors ``genesis_forge.managers.ObservationManager`` exactly -- same entry
-order, same per-entry scaling, same newest-first history stacking -- minus the
-simulator lookups and minus the training noise. The parity gate on the export
+order, same per-entry clipping and scaling, same newest-first history stacking --
+minus the simulator lookups and minus the training noise. The parity gate on the export
 side proves the two agree before a bundle is ever written.
 
 Every entry is supplied by the caller. Most come from sensors; an entry that echoes
@@ -161,9 +161,10 @@ class ObservationAssembler:
                 f"probably not reporting."
             )
 
+        if entry.clip is not None:
+            raw = np.clip(raw, entry.clip[0], entry.clip[1])
+
         if entry.scale != 1.0:
-            # `raw` can be a view of the caller's array (np.asarray does not copy one
-            # that is already float32), so `*=` would rescale their sensor buffer.
             return raw * np.asarray(entry.scale, dtype=self._dtype)
         return raw
 

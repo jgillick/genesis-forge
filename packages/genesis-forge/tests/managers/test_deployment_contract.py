@@ -516,6 +516,35 @@ def test_noise_is_never_exported(env):
     assert "noise" not in entry
 
 
+def test_a_clip_is_exported_as_a_min_max_pair(env):
+    """The robot must clamp exactly as training did."""
+    manager = ObservationManager(
+        env,
+        cfg={
+            "dof_vel": {
+                "fn": lambda env: torch.ones((env.num_envs, 3)),
+                "clip": (-100, 100),
+                "scale": 0.05,
+            }
+        },
+    )
+    manager.build()
+
+    entry = manager.get_deployment_layout()["entries"][0]
+
+    assert entry["clip"] == [-100.0, 100.0]
+    assert all(isinstance(bound, float) for bound in entry["clip"])
+    json.dumps(entry)  # plain data, ready for the manifest
+
+
+def test_an_unclipped_entry_omits_the_key(env):
+    manager = observation_manager(env)
+    manager.build()
+
+    for entry in manager.get_deployment_layout()["entries"]:
+        assert "clip" not in entry
+
+
 def actuator_with_values(values, dofs=None):
     """An ActuatorManager with buffers set directly.
 

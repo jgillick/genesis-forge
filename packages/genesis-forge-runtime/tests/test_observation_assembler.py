@@ -89,6 +89,46 @@ def test_accepts_scalars_lists_and_arrays():
     np.testing.assert_allclose(obs, [5.0, 1.0, 2.0, 3.0, 4.0])
 
 
+"""Clipping -- before the scale, in the raw units the caller supplies"""
+
+
+def test_a_clipped_entry_is_bounded_before_it_is_scaled():
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="dof_vel", size=3, clip=(-10.0, 10.0), scale=0.1))
+    )
+
+    obs = assembler.assemble({"dof_vel": [50.0, 0.0, -50.0]})
+
+    # clip first: (10, 0, -10) * 0.1. Scale first would leave (5, 0, -5).
+    np.testing.assert_allclose(obs, [1.0, 0.0, -1.0])
+
+
+def test_an_unclipped_entry_passes_large_values_through():
+    assembler = ObservationAssembler(layout(ObservationEntry(name="raw", size=1)))
+
+    np.testing.assert_allclose(assembler.assemble({"raw": [1e6]}), [1e6])
+
+
+def test_clipping_does_not_mutate_the_callers_array():
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="dof_vel", size=2, clip=(-1.0, 1.0)))
+    )
+    supplied = np.array([5.0, -5.0], dtype=np.float32)
+
+    assembler.assemble({"dof_vel": supplied})
+
+    np.testing.assert_allclose(supplied, [5.0, -5.0])
+
+
+def test_the_listing_does_not_mention_the_clip():
+    """Like the scale: the caller supplies raw readings, the assembler bounds them."""
+    assembler = ObservationAssembler(
+        layout(ObservationEntry(name="dof_vel", size=2, clip=(-100.0, 100.0)))
+    )
+
+    assert "100" not in assembler.describe_inputs()
+
+
 """History stacking"""
 
 

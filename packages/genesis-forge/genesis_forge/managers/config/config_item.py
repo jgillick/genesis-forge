@@ -1,4 +1,5 @@
 import inspect
+import math
 from types import MappingProxyType
 
 import torch
@@ -202,11 +203,39 @@ class ObservationConfigItem(ConfigItem):
         super().__init__(cfg, env)
         self.scale = cfg.get("scale", 1.0)
         self.noise = cfg.get("noise", None)
+        self.clip = self._validated_clip(cfg.get("clip", None))
 
         # Deployment metadata. Inert during training; recorded into the bundle so
         # the robot-side listing says what each value means and where it comes from.
         self.description = cfg.get("description", None)
         self.units = cfg.get("units", None)
+
+    @staticmethod
+    def _validated_clip(clip) -> tuple[float, float] | None:
+        """A ``(min, max)`` pair of finite floats, or None for no clipping.
+
+        Checked when the config is read rather than on the first step, so a typo
+        such as ``"clip": 100.0`` is reported where it was written. Infinite bounds
+        are refused too: one side unbounded is spelled with a generous finite number,
+        which the deployment bundle can carry as plain JSON.
+        """
+        if clip is None:
+            return None
+        try:
+            low, high = clip
+            low, high = float(low), float(high)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"clip must be a (min, max) pair of numbers, got {clip!r}"
+            ) from error
+        if not (math.isfinite(low) and math.isfinite(high)):
+            raise ValueError(
+                f"clip bounds must be finite, got {clip!r}. Use a generous finite "
+                f"bound for a side that should effectively stay open."
+            )
+        if not low < high:
+            raise ValueError(f"clip must satisfy min < max, got {clip!r}")
+        return (low, high)
 
 
 def directional_clamp(

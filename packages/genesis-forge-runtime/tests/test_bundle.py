@@ -215,6 +215,24 @@ def test_missing_directory_raises(tmp_path):
         load_bundle(tmp_path / "does_not_exist")
 
 
+def test_an_observation_clip_round_trips(tmp_path):
+    manifest = make_manifest(
+        observations=ObservationLayout(
+            entries=(ObservationEntry(name="dof_vel", size=2, clip=(-100.0, 100.0)),)
+        )
+    )
+
+    loaded = load_bundle(write_bundle(tmp_path, manifest)).manifest.observations
+
+    assert loaded.entry("dof_vel").clip == (-100.0, 100.0)
+
+
+def test_a_bundle_without_clips_loads_them_as_none(tmp_path):
+    loaded = load_bundle(write_bundle(tmp_path)).manifest.observations
+
+    assert all(entry.clip is None for entry in loaded.entries)
+
+
 def test_duplicate_observation_names_are_rejected(tmp_path):
     manifest = make_manifest(
         observations=ObservationLayout(

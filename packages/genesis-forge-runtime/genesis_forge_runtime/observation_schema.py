@@ -1,7 +1,7 @@
 """How the policy's observation vector is laid out.
 
 The half of the manifest that :mod:`genesis_forge_runtime.observations` consumes:
-what each slot holds, how wide it is, and what it is scaled by.
+what each slot holds, how wide it is, what it is clipped to, and what it is scaled by.
 
 Every slot is an input you supply each tick. Most come from sensors; some echo the
 policy's own previous output, which you read off the processor. The bundle does not
@@ -25,6 +25,7 @@ class ObservationEntry:
     name: str
     size: int
     scale: float = 1.0
+    clip: tuple[float, float] | None = None
     description: str | None = None
     units: str | None = None
 
@@ -33,8 +34,8 @@ class ObservationEntry:
         parts = [f"{self.name} ({self.size} value{'s' if self.size != 1 else ''})"]
         if self.units:
             parts.append(f"in {self.units}")
-        # No scale here: this listing is what the caller supplies, and the caller
-        # supplies raw readings. The assembler scales them afterwards.
+        # No scale or clip here: this listing is what the caller supplies, and the
+        # caller supplies raw readings. The assembler clips and scales them afterwards.
         summary = ", ".join(parts)
         if self.description:
             summary = f"{summary} -- {self.description}"
@@ -43,10 +44,12 @@ class ObservationEntry:
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, where: str) -> ObservationEntry:
         name = require(data, "name", where=where)
+        clip = data.get("clip")
         entry = cls(
             name=name,
             size=int(require(data, "size", where=f"{where}.{name}")),
             scale=float(data.get("scale", 1.0)),
+            clip=None if clip is None else (float(clip[0]), float(clip[1])),
             description=data.get("description"),
             units=data.get("units"),
         )
@@ -58,6 +61,8 @@ class ObservationEntry:
             "size": self.size,
             "scale": self.scale,
         }
+        if self.clip is not None:
+            data["clip"] = [float(self.clip[0]), float(self.clip[1])]
         if self.description is not None:
             data["description"] = self.description
         if self.units is not None:

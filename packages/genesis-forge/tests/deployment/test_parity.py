@@ -50,6 +50,23 @@ def test_parity_ignores_training_noise(make_env):
     assert report.max_observation_error < 1e-6
 
 
+def test_parity_holds_for_a_clipped_entry(make_env):
+    """Samples span [-2, 2], so a tighter clip is hit on both sides by both pipelines."""
+    cfg = {
+        "gyro": {
+            "fn": lambda env: torch.ones((env.num_envs, 3)) * 0.5,
+            "clip": (-1.0, 1.0),
+            "scale": 0.25,
+        }
+    }
+    capture = capture_environment(make_env(cfg=cfg))
+
+    report = check_parity(capture, ticks=6)
+
+    assert report.max_observation_error < 1e-6
+    assert capture.manifest.observations.entry("gyro").clip == (-1.0, 1.0)
+
+
 def test_parity_covers_every_action_manager(deployable_env):
     capture = capture_environment(deployable_env)
 

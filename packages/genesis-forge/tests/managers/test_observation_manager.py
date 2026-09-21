@@ -223,6 +223,238 @@ def test_noise_is_applied_before_scale(env):
 
 
 """
+Clip -- a wide safety bound in the raw units, between noise and scale
+"""
+
+
+def test_clip_bounds_the_value(env):
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": const, "params": {"value": 50.0}, "clip": (-10.0, 10.0)}}
+    )
+    mgr.build()
+    result = mgr.get_observations()
+    assert torch.equal(result, torch.full((env.num_envs, 1), 10.0))
+
+
+def test_clip_applies_before_scale(env):
+    """The bound is written in the units `fn` returns, so `clip` then `scale`."""
+    mgr = ObservationManager(
+        env,
+        cfg={
+            "a": {
+                "fn": const,
+                "params": {"value": 50.0},
+                "clip": (-10.0, 10.0),
+                "scale": 0.1,
+            }
+        },
+    )
+    mgr.build()
+    result = mgr.get_observations()
+    # clip first: min(50, 10) * 0.1 = 1.0. Scale first would give min(5, 10) = 5.0.
+    assert torch.allclose(result, torch.full((env.num_envs, 1), 1.0))
+
+
+def test_clip_applies_after_noise(env):
+    """Noise is the sensor's own error; the bound must catch the noisy reading too."""
+    mgr = ObservationManager(
+        env,
+        cfg={
+            "a": {
+                "fn": const,
+                "params": {"value": 10.0},
+                "noise": 5.0,
+                "clip": (-10.0, 10.0),
+            }
+        },
+    )
+    mgr.build()
+    result = mgr.get_observations()
+    assert torch.all(result <= 10.0)
+
+
+def test_clip_removes_inf_but_not_nan(env):
+    """inf is the value that poisons a running normalizer; clip stops it. NaN is not
+    a magnitude and still surfaces through the non-finite guard."""
+
+    def with_inf(env):
+        value = torch.ones((env.num_envs, 2))
+        value[0, 0] = float("inf")
+        return value
+
+    mgr = ObservationManager(env, cfg={"a": {"fn": with_inf, "clip": (-100.0, 100.0)}})
+    mgr.build()
+    result = mgr.get_observations()
+    assert result[0, 0] == 100.0
+
+    def with_nan(env):
+        value = torch.ones((env.num_envs, 2))
+        value[0, 0] = float("nan")
+        return value
+
+    mgr = ObservationManager(env, cfg={"a": {"fn": with_nan, "clip": (-100.0, 100.0)}})
+    mgr.build()
+    with pytest.raises(ValueError, match="non-finite"):
+        mgr.get_observations()
+
+
+def test_clip_does_not_mutate_the_buffer_a_function_returned(env):
+    buffer = torch.full((env.num_envs, 1), 50.0)
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "clip": (-10.0, 10.0)}}
+    )
+    mgr.build()
+
+    mgr.get_observations()
+
+    assert torch.equal(buffer, torch.full((env.num_envs, 1), 50.0)), (
+        "clipping reached back into the function's own buffer"
+    )
+
+
+def test_clip_applies_to_override_values(env):
+    """The deployment parity harness feeds values in through this path, and the
+    robot-side assembler clips, so the training side must clip here too."""
+    mgr = ObservationManager(env, cfg={"a": {"fn": const, "clip": (-1.0, 1.0)}})
+    mgr.build()
+    supplied = torch.full((env.num_envs, 1), 7.0)
+
+    result = mgr.get_observations(values={"a": supplied})
+
+    assert torch.equal(result, torch.ones((env.num_envs, 1)))
+    assert torch.equal(supplied, torch.full((env.num_envs, 1), 7.0))
+
+
+@pytest.mark.parametrize(
+    "clip",
+    [100.0, (1.0,), (1.0, 2.0, 3.0), ("lo", "hi"), (10.0, -10.0), (5.0, 5.0)],
+)
+def test_a_malformed_clip_is_refused_when_the_config_is_read(env, clip):
+    with pytest.raises(ValueError, match="Observation 'a'.*clip"):
+        ObservationManager(env, cfg={"a": {"fn": const, "clip": clip}})
+
+
+def test_an_infinite_clip_bound_is_refused(env):
+    """A bundle is plain JSON, which cannot carry inf; spell an open side with a
+    generous finite number instead."""
+    with pytest.raises(ValueError, match="finite"):
+        ObservationManager(env, cfg={"a": {"fn": const, "clip": (-1.0, float("inf"))}})
+
+
+def test_no_clip_is_the_default(env):
+    mgr = ObservationManager(env, cfg={"a": {"fn": const, "params": {"value": 1e6}}})
+    mgr.build()
+    result = mgr.get_observations()
+    assert torch.equal(result, torch.full((env.num_envs, 1), 1e6))
+
+
+"""
+Non-finite guard -- a blow-up is reported the step it happens, naming the culprit
+
+Passed on, one inf from one env silently corrupts an RL library's running
+observation normalizer, and every env's actions turn to NaN a step later. The
+guard lives in get_observations(); build()'s sizing probe only measures widths.
+
+The message counts environments rather than listing them: with thousands of envs a
+list of ids is noise, while "1 of 4096" versus "4096 of 4096" separates a lone
+physics blow-up from something systematic.
+"""
+
+
+def non_finite_in(env_idx, col, value=float("inf"), size=3):
+    def fn(env):
+        out = torch.ones((env.num_envs, size))
+        out[env_idx, col] = value
+        return out
+
+    return fn
+
+
+def test_a_non_finite_observation_raises_naming_the_entry_and_a_count(env):
+    mgr = ObservationManager(
+        env,
+        cfg={
+            "fine": {"fn": const, "params": {"size": 2}},
+            "gyro": {"fn": non_finite_in(env_idx=2, col=1)},
+            "also_fine": {"fn": const},
+        },
+    )
+    mgr.build()
+
+    with pytest.raises(ValueError) as error:
+        mgr.get_observations()
+
+    message = str(error.value)
+    assert "'gyro' (inf in 1 of 4 envs)" in message
+    assert "'fine'" not in message and "'also_fine'" not in message
+    assert "policy" in message  # the manager is named, for asymmetric setups
+
+
+def test_nan_and_inf_are_counted_separately(env):
+    """Clipping cures inf but not NaN, so the reader needs to know which it was."""
+
+    def mixed(env):
+        out = torch.ones((env.num_envs, 2))
+        out[0, 0] = float("nan")
+        out[1, 1] = float("inf")
+        out[2, 0] = float("-inf")
+        return out
+
+    mgr = ObservationManager(env, cfg={"gyro": {"fn": mixed}})
+    mgr.build()
+    with pytest.raises(ValueError) as error:
+        mgr.get_observations()
+
+    assert "'gyro' (inf in 2 of 4 envs, NaN in 1 of 4 envs)" in str(error.value)
+
+
+def test_every_affected_entry_is_listed(env):
+    def two_bad(env):
+        out = torch.ones((env.num_envs, 1))
+        out[1, 0] = float("-inf")
+        out[3, 0] = float("nan")
+        return out
+
+    mgr = ObservationManager(
+        env,
+        cfg={
+            "first": {"fn": two_bad},
+            "second": {"fn": non_finite_in(env_idx=0, col=2)},
+        },
+    )
+    mgr.build()
+    with pytest.raises(ValueError) as error:
+        mgr.get_observations()
+
+    message = str(error.value)
+    assert "'first' (inf in 1 of 4 envs, NaN in 1 of 4 envs)" in message
+    assert "'second' (inf in 1 of 4 envs)" in message
+
+
+def test_the_guard_runs_every_step_not_just_at_build(env):
+    values = iter([1.0, 2.0, float("inf")])  # 1.0 is consumed by build()'s sizing probe
+
+    def sequential(env):
+        return torch.full((env.num_envs, 1), next(values))
+
+    mgr = ObservationManager(env, cfg={"a": {"fn": sequential}})
+    mgr.build()
+    mgr.get_observations()  # 2.0, fine
+
+    with pytest.raises(ValueError, match="non-finite"):
+        mgr.get_observations()
+
+
+def test_finite_observations_pass_the_guard_untouched(env):
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": const, "params": {"value": 3.0e38, "size": 2}}}
+    )
+    mgr.build()
+    result = mgr.get_observations()
+    assert torch.equal(result, torch.full((env.num_envs, 2), 3.0e38))
+
+
+"""
 Scaling and noise must not reach back into the values they were given
 
 Both are applied to a value the manager did not create. An observation function may

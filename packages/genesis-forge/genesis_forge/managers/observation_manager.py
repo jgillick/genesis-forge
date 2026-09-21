@@ -33,6 +33,16 @@ class ObservationConfig(ConfigItemDict):
     independent of whatever scale is chosen for the policy. If None, no noise will be added.
     This will randomly choose a number between -1 and 1, multiply it by the noise scale, and add the result to the observation values."""
 
+    clip: NotRequired[tuple[float, float] | None]
+    """``(min, max)`` bounds the observation is clamped to, after noise and before
+    `scale`. If None, no clipping.
+
+    This is a guard, not a normalizer, to prevent a physics blow-up from passing an
+    ``inf`` or NaN into the RL library and corrupting every environment's actions.
+    Make the bounds several times wider than any value a healthy simulation produces,
+    so they never shape what the policy learns and only catch a simulation that has come apart.
+    """
+
     description: NotRequired[str | None]
     """Human-readable description of what this value is, recorded into the deployment
     bundle so whoever wires up the robot knows what to feed in. Optional, but the
@@ -195,7 +205,10 @@ class ObservationManager(BaseManager):
         # Wrap config items
         self.cfg: dict[str, ObservationConfigItem] = {}
         for cfg_name, item in cfg.items():
-            self.cfg[cfg_name] = ObservationConfigItem(item, env)
+            try:
+                self.cfg[cfg_name] = ObservationConfigItem(item, env)
+            except ValueError as error:
+                raise ValueError(f"Observation '{cfg_name}': {error}") from error
 
     """
     Properties
@@ -291,6 +304,11 @@ class ObservationManager(BaseManager):
 
         Returns:
             The observations for all environments.
+
+        Raises:
+            ValueError: An observation holds a non-finite value (``inf`` or NaN),
+                naming the entry and how many environments. A physics blow-up is the
+                usual cause.
         """
         if not self.enabled:
             return torch.zeros(
@@ -300,6 +318,10 @@ class ObservationManager(BaseManager):
         buffer = self._history.pop()
         self._perform_observation(buffer, values)
         self._history.insert(0, buffer)
+
+        # Throw if any observation contains non-finite values.
+        if not torch.isfinite(buffer).all():
+            raise self._non_finite_error(buffer)
 
         # Concatenate the history buffers into the pre-allocated output buffer
         # This is more performant than torch.cat()
@@ -318,8 +340,8 @@ class ObservationManager(BaseManager):
         """Describe this manager's observation vector for a deployment bundle.
 
         Captures the layout a robot needs to rebuild the policy's input: entry
-        order, per-entry width and scale, the history configuration, and whatever
-        deployment metadata the config supplied. Training noise is deliberately
+        order, per-entry width, clip and scale, the history configuration, and
+        whatever deployment metadata the config supplied. Training noise is deliberately
         excluded -- it exists to harden the policy, not to be replayed.
 
         Must be called after :meth:`build`, when entry widths are known.
@@ -346,6 +368,8 @@ class ObservationManager(BaseManager):
                 "size": size,
                 "scale": _deployable_scale(name, cfg.scale),
             }
+            if cfg.clip is not None:
+                entry["clip"] = [float(cfg.clip[0]), float(cfg.clip[1])]
             if cfg.description:
                 entry["description"] = cfg.description
             if cfg.units:
@@ -413,6 +437,11 @@ class ObservationManager(BaseManager):
                         noise_value = torch.empty_like(value).uniform_(-1, 1) * noise
                         value = value + noise_value
 
+                # Clip value
+                clip = cfg.clip
+                if clip is not None:
+                    value = torch.clamp(value, min=clip[0], max=clip[1])
+
                 # Apply scale
                 scale = cfg.scale
                 if scale is not None and scale != 1.0:
@@ -427,3 +456,42 @@ class ObservationManager(BaseManager):
                 print(f"Error generating observation for '{name}'")
                 raise e  # noqa
         return output
+
+    def _non_finite_error(self, obs: torch.Tensor) -> ValueError:
+        """Name every entry holding a non-finite value, with how many environments
+        and whether it was inf or NaN.
+
+        Counts rather than indices: with thousands of parallel environments a list of
+        ids says nothing, while "inf in 1 of 4096" versus "NaN in 4096 of 4096" points
+        at a lone physics blow-up versus something systematic. inf and NaN are also
+        reported separately because clipping cures one and not the other.
+
+        Args:
+            obs: One tensor of observations, ``(num_envs, single_obs_size)``.
+        """
+        is_nan = torch.isnan(obs)
+        is_inf = torch.isinf(obs)
+        num_envs = obs.shape[0]
+        culprits: list[str] = []
+        offset = 0
+        for name, size in self._entry_sizes.items():
+            if size == 0:
+                continue
+            columns = slice(offset, offset + size)
+            offset += size
+            kinds = []
+            inf_envs = int(is_inf[:, columns].any(dim=1).sum())
+            nan_envs = int(is_nan[:, columns].any(dim=1).sum())
+            if inf_envs:
+                kinds.append(f"inf in {inf_envs} of {num_envs} envs")
+            if nan_envs:
+                kinds.append(f"NaN in {nan_envs} of {num_envs} envs")
+            if kinds:
+                culprits.append(f"'{name}' ({', '.join(kinds)})")
+        return ValueError(
+            f"Observation manager '{self.name}' produced non-finite values: "
+            f"{'; '.join(culprits)}. This usually means the physics in those "
+            f"environments blew up. If an inf reaches the RL library, it corrupts the "
+            f"observation normalizer and every environment's actions become NaN a step "
+            f'later. Try giving the entry a generous "clip" so inf never reaches the policy.'
+        )

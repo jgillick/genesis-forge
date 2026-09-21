@@ -78,6 +78,7 @@ class RewardManager(BaseManager):
 
             def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
                 super().reset(envs_idx)
+                self.reward_manager.reset(envs_idx)
                 # ... other reset logic ...
                 return obs, info
 
@@ -174,13 +175,14 @@ class RewardManager(BaseManager):
         self._reward_buf[:] = 0.0
         self._episode_seconds += dt
         for name, cfg in self.cfg.items():
-            # Don't calculate reward if the weight is zero
+            # Execute the function even at zero weight, so stateful functions
+            # (velocity histories, previous distances) stay current
+            value = cfg.execute()
             if cfg.weight == 0:
                 continue
 
-            # Get reward value from function
-            weight = cfg.weight * dt
-            value = cfg.execute() * weight
+            # Weight the reward value
+            value = value * (cfg.weight * dt)
 
             # Add to reward buffer
             self._reward_buf += value

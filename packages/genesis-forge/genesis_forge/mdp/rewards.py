@@ -268,12 +268,18 @@ class body_acceleration_exp(MdpFn):
     entity_manager: EntityManager = None
     sensitivity: float = 0.10
 
-    def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        sensitivity = self.sensitivity
+    def build(self):
+        self._prev_lin_vel = torch.zeros((self.env.num_envs, 3), device=gs.device)
+        self._prev_ang_vel = torch.zeros((self.env.num_envs, 3), device=gs.device)
+        self._has_prev_vel = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
 
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_vel[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Current velocities
-        curr_lin_vel = None
-        curr_ang_vel = None
         if self.entity_manager is not None:
             curr_lin_vel = self.entity_manager.get_linear_velocity()
             curr_ang_vel = self.entity_manager.get_angular_velocity()
@@ -282,21 +288,20 @@ class body_acceleration_exp(MdpFn):
             curr_lin_vel = entity_lin_vel(robot)
             curr_ang_vel = entity_ang_vel(robot)
 
-        # Calculate acceleration from previous step
-        if hasattr(self, "prev_lin_vel"):
-            lin_acc = (curr_lin_vel - self.prev_lin_vel) / env.dt
-            ang_acc = (curr_ang_vel - self.prev_ang_vel) / env.dt
-        else:
-            lin_acc = torch.zeros_like(curr_lin_vel)
-            ang_acc = torch.zeros_like(curr_ang_vel)
+        # Acceleration since the previous step
+        lin_acc = (curr_lin_vel - self._prev_lin_vel) / env.dt
+        ang_acc = (curr_ang_vel - self._prev_ang_vel) / env.dt
+        acc_magnitude = torch.norm(lin_acc, dim=-1) + torch.norm(ang_acc, dim=-1)
 
         # Store for next step
-        self.prev_lin_vel = curr_lin_vel.clone()
-        self.prev_ang_vel = curr_ang_vel.clone()
+        self._prev_lin_vel.copy_(curr_lin_vel)
+        self._prev_ang_vel.copy_(curr_ang_vel)
+        self._has_prev_vel[:] = True
 
-        # Calculate penalty using exponential kernel
-        pelvis_motion = torch.norm(lin_acc, dim=-1) + torch.norm(ang_acc, dim=-1)
-        return 1 - torch.exp(-sensitivity * pelvis_motion)
+        reward = torch.where(
+            self._has_prev_vel, 1 - torch.exp(-self.sensitivity * acc_magnitude), 0.0
+        )
+        return reward
 
 
 """
@@ -486,6 +491,72 @@ class dof_velocity_l2(MdpFn):
         return torch.sum(torch.square(dof_vel), dim=1)
 
 
+@dataclass(kw_only=True, eq=False)
+class dof_acc_l2(MdpFn):
+    """
+    Penalize joint accelerations using the L2 squared kernel.
+
+    Discourages abrupt joint velocity changes, which translate to high actuator
+    stress and jerky motion on real hardware.
+
+    Genesis doesn't expose joint accelerations, so they are computed as the finite
+    difference of the joint velocities between consecutive steps:
+
+    .. math::
+
+        \\text{acc}_t = (v_t - v_{t-1}) / dt
+
+    Steps without a previous velocity to compare against -- the first step of an
+    episode -- produce zero penalty.
+
+    Args:
+        actuator_manager: The actuator manager to read joint velocities from. Only
+                          the DOFs handled by this manager contribute to the penalty.
+        action_manager: The action manager to read joint velocities from, as an
+                        alternative to `actuator_manager`.
+
+    Returns:
+        torch.Tensor: Penalty for joint accelerations, shape (num_envs,)
+    """
+
+    actuator_manager: ActuatorManager = None
+    action_manager: PositionActionManager = None
+
+    def build(self):
+        assert (
+            self.actuator_manager is not None or self.action_manager is not None
+        ), "Either actuator_manager or action_manager must be provided to dof_acc_l2"
+        self._manager = (
+            self.actuator_manager
+            if self.actuator_manager is not None
+            else self.action_manager
+        )
+        self._prev_dof_vel = torch.zeros(
+            (self.env.num_envs, self._manager.num_dofs), device=gs.device
+        )
+        self._has_prev_vel = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=gs.device
+        )
+        # Precompute a multiplier, so for tensor optimization of the penalty calculation:
+        # sum((dv/dt)^2) == sum(dv^2) / dt^2, so the dt scaling is applied once to
+        # the reduced vector instead of to the full velocity matrix.
+        self._inv_dt_sq = 1.0 / (self.env.dt**2)
+
+    def reset(self, envs_idx: torch.Tensor):
+        self._has_prev_vel[envs_idx] = False
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        dof_vel = self._manager.get_dofs_velocity()
+
+        squared_delta = torch.sum(torch.square(dof_vel - self._prev_dof_vel), dim=1)
+        penalty = torch.where(self._has_prev_vel, squared_delta * self._inv_dt_sq, 0.0)
+
+        self._prev_dof_vel.copy_(dof_vel)
+        self._has_prev_vel[:] = True
+
+        return penalty
+
+
 """
 Velocity Command Rewards
 """
@@ -531,9 +602,9 @@ class command_tracking_lin_vel(MdpFn):
     entity_manager: EntityManager = None
 
     def build(self):
-        assert self.command is not None or self.vel_cmd_manager is not None, (
-            "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
-        )
+        assert (
+            self.command is not None or self.vel_cmd_manager is not None
+        ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -596,9 +667,9 @@ class command_tracking_ang_vel(MdpFn):
     entity_manager: EntityManager = None
 
     def build(self):
-        assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
-            "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
-        )
+        assert (
+            self.commanded_ang_vel is not None or self.vel_cmd_manager is not None
+        ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -649,9 +720,9 @@ class stopped_joint_deviation_l1(MdpFn):
     action_manager: PositionActionManager = None
 
     def build(self):
-        assert self.actuator_manager is not None or self.action_manager is not None, (
-            "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
-        )
+        assert (
+            self.actuator_manager is not None or self.action_manager is not None
+        ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:

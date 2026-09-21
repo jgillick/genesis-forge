@@ -42,18 +42,22 @@ def test_step_sums_weighted_dt_scaled_values(env):
     assert torch.equal(mgr.rewards, result)
 
 
-def test_step_skips_functions_with_zero_weight(env):
+def test_step_executes_zero_weight_functions_but_discards_their_value(env):
+    """Stateful functions (velocity histories, previous distances) must stay current
+    while a curriculum parks a term at weight 0, so the function still runs every
+    step -- only its value is discarded."""
     calls = []
 
     def spy(env):
         calls.append(1)
-        return torch.zeros(env.num_envs)
+        return torch.full((env.num_envs,), 100.0)
 
-    mgr = RewardManager(env, cfg={"never": {"fn": spy, "weight": 0.0}})
+    mgr = RewardManager(env, cfg={"parked": {"fn": spy, "weight": 0.0}})
     mgr.build()
-    mgr.step()
+    result = mgr.step()
 
-    assert calls == []
+    assert calls == [1]
+    assert torch.equal(result, torch.zeros(env.num_envs))
 
 
 def test_step_returns_the_unchanged_buffer_when_disabled(env):

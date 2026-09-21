@@ -120,12 +120,29 @@ dof_similar_to_default
 
 
 class FakeActuatorManager:
-    def __init__(self, pos, default_pos):
+    """One fake for every DOF accessor the reward functions read."""
+
+    def __init__(self, pos=None, default_pos=None, vel=None, control_force=None):
         self._pos = pos
         self.default_dofs_pos = default_pos
+        self.vel = vel
+        self._control_force = control_force
+
+    @property
+    def num_dofs(self):
+        for tensor in (self.vel, self._pos, self._control_force):
+            if tensor is not None:
+                return tensor.shape[-1]
+        raise AssertionError("FakeActuatorManager was constructed with no tensors")
 
     def get_dofs_position(self):
         return self._pos
+
+    def get_dofs_velocity(self):
+        return self.vel
+
+    def get_dofs_control_force(self):
+        return self._control_force
 
 
 def test_dof_similar_to_default_sums_abs_offset_from_default(env):
@@ -236,6 +253,24 @@ def test_body_acceleration_exp_penalizes_the_change_since_the_last_call(env):
     assert torch.allclose(value, torch.tensor([1 - math.exp(-0.1)]), atol=1e-6)
 
 
+def test_body_acceleration_exp_reset_clears_history(env):
+    """A reset teleports the robot, and the velocity jump must not read as a jerk."""
+    mgr = FakeEntityManager(
+        lin_vel=torch.zeros((env.num_envs, 3)), ang_vel=torch.zeros((env.num_envs, 3))
+    )
+    fn = rewards.body_acceleration_exp(entity_manager=mgr, sensitivity=0.1)
+    fn.context(env)
+    fn.safe_build()
+    fn(env)
+
+    fn.reset(torch.tensor([0]))
+    mgr._lin = torch.full((env.num_envs, 3), 1.0)
+
+    value = fn(env)
+    assert torch.equal(value[:1], torch.zeros(1)), "reset env is masked again"
+    assert torch.all(value[1:] > 0), "untouched envs keep their history"
+
+
 """
 Action penalties
 """
@@ -306,23 +341,94 @@ def test_action_acceleration_reset_clears_history(env):
 
 
 def test_dof_torque_l2_sums_the_squared_control_force(env):
-    class FakeActuatorManagerTorque:
-        def get_dofs_control_force(self):
-            return torch.tensor([[3.0, 4.0]])
-
-    fn = rewards.dof_torque_l2(actuator_manager=FakeActuatorManagerTorque())
+    actuator = FakeActuatorManager(control_force=torch.tensor([[3.0, 4.0]]))
+    fn = rewards.dof_torque_l2(actuator_manager=actuator)
     fn.context(env)
     fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([25.0]))
 
 
-def test_dof_velocity_l2_sums_the_squared_dof_velocity(env):
-    class FakeActionManagerVel:
-        def get_dofs_velocity(self):
-            return torch.tensor([[1.0, 2.0]])
+def test_dof_acc_l2_is_zero_on_the_first_call(env):
+    """There's no previous velocity to difference the first step against."""
+    actuator = FakeActuatorManager(vel=torch.ones((env.num_envs, 2)))
+    fn = rewards.dof_acc_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
 
-    fn = rewards.dof_velocity_l2(action_manager=FakeActionManagerVel())
+    assert torch.equal(fn(env), torch.zeros(env.num_envs))
+
+
+def test_dof_acc_l2_sums_the_squared_finite_difference_acceleration(env):
+    actuator = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
+    fn = rewards.dof_acc_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
+    fn(env)  # first call establishes the zero-velocity baseline
+
+    # 1 rad/s^2 on each of two joints over one step
+    actuator.vel = torch.full((env.num_envs, 2), env.dt)
+
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), 2.0), atol=1e-5)
+
+
+def test_dof_acc_l2_is_zero_for_a_constant_velocity(env):
+    actuator = FakeActuatorManager(vel=torch.full((env.num_envs, 2), 3.0))
+    fn = rewards.dof_acc_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
+
+    fn(env)
+    assert torch.allclose(fn(env), torch.zeros(env.num_envs))
+
+
+def test_dof_acc_l2_reset_clears_history(env):
+    actuator = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
+    fn = rewards.dof_acc_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
+    fn(env)
+
+    fn.reset(torch.tensor([0]))
+    actuator.vel = torch.full((env.num_envs, 2), env.dt)
+
+    value = fn(env)
+    assert torch.equal(value[:1], torch.zeros(1)), "reset env is masked again"
+    assert torch.all(value[1:] > 0), "untouched envs keep their history"
+
+
+def test_dof_acc_l2_masks_an_inf_velocity_to_zero_not_nan(env):
+    """A solver blowup on a masked step must not leak NaN into the reward buffer."""
+    actuator = FakeActuatorManager(vel=torch.full((env.num_envs, 2), math.inf))
+    fn = rewards.dof_acc_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.equal(fn(env), torch.zeros(env.num_envs))
+
+
+def test_dof_acc_l2_accepts_an_action_manager_instead(env):
+    action_mgr = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
+    fn = rewards.dof_acc_l2(action_manager=action_mgr)
+    fn.context(env)
+    fn.safe_build()
+    fn(env)
+
+    action_mgr.vel = torch.full((env.num_envs, 2), env.dt)
+
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), 2.0), atol=1e-5)
+
+
+def test_dof_acc_l2_requires_a_manager_at_build_time(env):
+    fn = rewards.dof_acc_l2()
+    fn.context(env)
+    with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
+        fn.safe_build()
+
+
+def test_dof_velocity_l2_sums_the_squared_dof_velocity(env):
+    action_mgr = FakeActuatorManager(vel=torch.tensor([[1.0, 2.0]]))
+    fn = rewards.dof_velocity_l2(action_manager=action_mgr)
     fn.context(env)
     fn.safe_build()
 
@@ -554,16 +660,16 @@ def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
 
 
 def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
-    class FakeActuatorManagerVel:
-        def get_dofs_velocity(self):
-            return torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
+    actuator = FakeActuatorManager(
+        vel=torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
+    )
 
     # env 0: fully stopped, env 1: linear command, env 2: angular-only command
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.0, 0.2]])
     )
     fn = rewards.stopped_dof_velocity_l2(
-        vel_cmd_manager=vel_cmd, actuator_manager=FakeActuatorManagerVel()
+        vel_cmd_manager=vel_cmd, actuator_manager=actuator
     )
     fn.context(env)
     fn.safe_build()

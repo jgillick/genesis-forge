@@ -48,7 +48,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -74,7 +73,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.0, -1.5, 1.5),
+            pos=(-2.0, -1.5, 1.75),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -176,22 +175,19 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 },
                 # Discourage the robot from bounding up and down (z-axis linear velocity)
                 "linear_velocity_penalty": {
-                    "weight": -1.0,
+                    "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                # Discourage the robot from making large actuator movements too frequently
-                "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate_l2(),
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
-                # Encourage the robot to keep the joints close to their default positions (standing pose)
-                # This is a common technique to prevent the robot from drifting into extreme
-                # joint positions that may be unsafe or unstable.
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default(
-                        actuator_manager=self.actuator_manager,
-                    ),
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
+                "action_rate": {
+                    "weight": -0.01,
+                    "fn": rewards.action_rate_l2(),
                 },
             },
         )
@@ -207,10 +203,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
-                # Terminate if the robot's pitch and yaw angles are too large
+                # Terminate if the robot tips over too much
                 "fall_over": {
                     "fn": terminations.bad_orientation(
-                        limit_angle=10.0,
+                        limit_angle=30.0,  # degrees
                         entity_manager=self.robot_manager,
                     ),
                 },

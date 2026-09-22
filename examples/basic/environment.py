@@ -41,12 +41,9 @@ class Go2BasicEnv(ManagedEnvironment):
         )
 
         # Set the target robot direction, along the X axis
-        self.target_command = torch.zeros(
-            (self.num_envs, 3), device=gs.device, dtype=gs.tc_float
-        )
-        self.target_command[:, 0] = (
-            TARGET_X_VELOCITY  # Linear velocity along the X axis
-        )
+        self.target_linear_velocity = torch.tensor(
+            [TARGET_X_VELOCITY, 0.0], device=gs.device, dtype=gs.tc_float
+        ).repeat(self.num_envs, 1)
 
         # Construct the scene
         self.scene = gs.Scene(
@@ -59,7 +56,6 @@ class Go2BasicEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -146,37 +142,36 @@ class Go2BasicEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height(target_height=0.3, entity=self.robot),
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the target linear velocity
+                "target_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
-                        command=self.target_command[:, :2],
+                        command=self.target_linear_velocity,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
-                    "weight": 0.2,
-                    "fn": rewards.command_tracking_ang_vel(
-                        commanded_ang_vel=self.target_command[:, 2],
-                        entity_manager=self.robot_manager,
-                    ),
-                },
-                "lin_vel_z": {
-                    "weight": -1.0,
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
+                    "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate_l2(),
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default(
-                        actuator_manager=self.actuator_manager,
-                    ),
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
+                "action_rate": {
+                    "weight": -0.01,
+                    "fn": rewards.action_rate_l2(),
                 },
             },
         )
@@ -195,7 +190,7 @@ class Go2BasicEnv(ManagedEnvironment):
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
                     "fn": terminations.bad_orientation(
-                        limit_angle=10.0,
+                        limit_angle=20.0,
                         entity_manager=self.robot_manager,
                     ),
                 },

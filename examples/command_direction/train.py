@@ -15,8 +15,8 @@ from genesis_forge.wrappers import (
 )
 
 parser = argparse.ArgumentParser(add_help=True)
-parser.add_argument("-n", "--num_envs", type=int, default=2048)
-parser.add_argument("--max_iterations", type=int, default=250)
+parser.add_argument("-n", "--num_envs", type=int, default=4096)
+parser.add_argument("-i", "--max_iterations", type=int, default=350)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default="go2-command")
 args = parser.parse_args()
@@ -31,7 +31,7 @@ def training_cfg():
             "entropy_coef": 0.01,
             "gamma": 0.99,
             "lam": 0.95,
-            "learning_rate": 0.001,
+            "learning_rate": 1.0e-3,
             "max_grad_norm": 1.0,
             "num_learning_epochs": 5,
             "num_mini_batches": 4,

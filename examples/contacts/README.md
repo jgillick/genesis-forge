@@ -22,12 +22,13 @@ def config(self):
         cfg={
             "foot_air_time": {
                 "weight": 1.25,
-                "fn": rewards.feet_air_time,
-                "params": {
-                    "time_threshold": 0.5, # Target air-time, in seconds
-                    "contact_manager": self.foot_contact_manager,
-                    "vel_cmd_manager": self.velocity_command, # reduces the penalty if the the velocity command is close to zero
-                },
+                "fn": rewards.feet_air_time(
+                    time_threshold=0.5, # Target air-time, in seconds
+                    contact_manager=self.foot_contact_manager,
+
+                    # reduces the penalty if the velocity command is close to zero
+                    vel_cmd_manager=self.velocity_command,
+                ),
             },
             # ... other rewards ...
         },

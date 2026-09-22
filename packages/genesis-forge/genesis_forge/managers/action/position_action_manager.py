@@ -32,8 +32,9 @@ class PositionActionManager(AffineDofActionManager):
         soft_limit_scale_factor: Scales the clip range of all limits by this factor around the midpoint
                                  of each joint's limits to establish a safety region within the limits.
                                  Defaults to 1.0.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: Steps to delay actions by, to emulate actuator/bus latency. This is
+                    either a fixed step value or a min/max range to create random delays
+                    from. See `ActionDelayBuffer`.
 
     Example::
 
@@ -114,7 +115,7 @@ class PositionActionManager(AffineDofActionManager):
         clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
         use_default_offset: bool = True,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
     ):
         super().__init__(
             env,

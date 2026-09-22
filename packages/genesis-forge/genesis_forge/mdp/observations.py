@@ -416,7 +416,8 @@ Actions
 class current_actions(MdpFn):
     """
     The most current step's raw actions.
-    This should be the actions before they've been processed and converted into their target values.
+    This is the raw actions from the current step, without the action delay_step,
+    and before they've been processed and converted into their target values.
 
     Args:
         action_manager: The action manager to source actions from. If not provided,

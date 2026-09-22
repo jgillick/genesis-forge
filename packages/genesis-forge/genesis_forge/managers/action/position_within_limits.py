@@ -7,7 +7,7 @@ from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.utils import assign_by_pattern
 from genesis_forge.values import ensure_dof_pattern
 
-from .base import DeploymentActionConfig, to_nominal_array
+from .base import DeploymentActionConfig
 from .position_action_manager import PositionActionManager
 
 
@@ -23,8 +23,9 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         limit: A dictionary of DOF name patterns and their position limits.
                If omitted, the limits will be set to the limits of the actuators defined in the model.
         soft_limit_scale_factor: Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: Steps to delay actions by, to emulate bus latency. This is
+                    either a fixed step value or a min/max range to create random delays
+                    from. See `ActionDelayBuffer`.
 
     Simple example using the limits defined in the model::
 
@@ -80,7 +81,7 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         actuator_joints: list[str] | str = ".*",
         limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
         soft_limit_scale_factor: float = 1.0,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
     ):
         super().__init__(
             env,
@@ -135,23 +136,14 @@ class PositionWithinLimitsActionManager(PositionActionManager):
         in favour of ``_scale``/``_offset`` and applies no post-clip. Exporting the
         parent's parameters would describe processing this manager never performs.
         """
-
-        def nominal(tensor, name):
-            return to_nominal_array(
-                tensor,
-                name=name,
-                num_joints=self.num_actions,
-                num_envs=self.env.num_envs,
-                manager_name=type(self).__name__,
-            )
-
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,
             config={
                 "raw_action_clip": [-1.0, 1.0],
-                "scale": nominal(self._scale, "scale"),
-                "offset": nominal(self._offset, "offset"),
+                "scale": self.per_joint_deployment_values(self._scale, "scale"),
+                "offset": self.per_joint_deployment_values(self._offset, "offset"),
             },
+            joint_action_index=self.joint_action_index,
         )
 
     """

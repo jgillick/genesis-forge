@@ -9,6 +9,7 @@ import torch
 from gymnasium import spaces
 
 from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.managers.action.action_delay_buffer import ActionDelayBuffer
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.managers.base import BaseManager
 from genesis_forge.utils import name_matches
@@ -45,66 +46,6 @@ class DeploymentActionConfig:
     joint_action_index: list[int] | None = None
 
 
-def to_nominal_array(
-    tensor: torch.Tensor,
-    *,
-    name: str,
-    num_joints: int,
-    num_envs: int,
-    manager_name: str,
-) -> list[float]:
-    """Reduce a possibly per-environment tensor to one nominal value per joint.
-
-    Process parameters are stored per-environment, and domain randomization may
-    perturb them differently in each one. A bundle describes a single robot, so
-    export refuses to guess which environment is authoritative: if the values
-    diverge across environments, this raises instead of silently baking in
-    whatever environment 0 happened to hold.
-
-    Args:
-        tensor: The parameter to reduce, shaped ``(num_joints,)`` or
-            ``(num_envs, num_joints)``.
-        name: Parameter name, used in error messages.
-        num_joints: How many joints this manager controls.
-        num_envs: The environment's parallel environment count.
-        manager_name: Manager name, used in error messages.
-
-    Returns:
-        One plain float per joint.
-
-    Raises:
-        ValueError: The values differ across parallel environments, or the shape
-            is not one this reduction understands.
-    """
-    values = tensor.detach()
-
-    if values.ndim == 1:
-        if values.shape[0] != num_joints:
-            raise ValueError(
-                f"Cannot export '{name}' from action manager '{manager_name}': "
-                f"expected {num_joints} value(s), found {values.shape[0]}."
-            )
-        return [float(item) for item in values.cpu().tolist()]
-
-    if values.ndim == 2 and values.shape[1] == num_joints:
-        if values.shape[0] > 1 and not bool((values == values[0]).all()):
-            spread = float((values.max(dim=0).values - values.min(dim=0).values).max())
-            raise ValueError(
-                f"Cannot export '{name}' from action manager '{manager_name}': the "
-                f"value differs across parallel environments (largest spread "
-                f"{spread:g}). This usually means domain randomization is active. "
-                f"Export from a build with randomization disabled so the bundle "
-                f"records the nominal values the policy was trained against."
-            )
-        return [float(item) for item in values[0].cpu().tolist()]
-
-    raise ValueError(
-        f"Cannot export '{name}' from action manager '{manager_name}': unexpected "
-        f"shape {tuple(values.shape)} for {num_joints} joint(s) across {num_envs} "
-        f"environment(s)."
-    )
-
-
 class BaseActionManager(BaseManager):
     """
     Base for managers that handle actions.
@@ -119,8 +60,9 @@ class BaseActionManager(BaseManager):
                        action controls. For example the wheels down one side of a skid-steer robot,
                        where one action per side matches how the robot actually moves. Every controlled
                        joint must appear in exactly one group. Defaults to None: one action per joint.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: Steps to delay actions by, to emulate actuator/bus latency. This is
+                    either a fixed step value or a min/max range to create random delays
+                    from. See `ActionDelayBuffer`.
     """
 
     def __init__(
@@ -129,14 +71,13 @@ class BaseActionManager(BaseManager):
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
         action_groups: list[list[str] | str] | None = None,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
     ):
         super().__init__(env, type="action")
         self._raw_actions = None
         self._actions = None
         self._last_actions = None
-        self._delay_step = delay_step
-        self._action_delay_buffer = []
+        self._delay = ActionDelayBuffer(delay_step)
         self._actuator_manager = actuator_manager
         self._actuator_joints = (
             [actuator_joints] if isinstance(actuator_joints, str) else actuator_joints
@@ -223,10 +164,7 @@ class BaseActionManager(BaseManager):
     @property
     def raw_actions(self) -> torch.Tensor:
         """
-        The actions received from the policy, before being processed.
-
-        Note this is what the manager *consumed* this step: with a `delay_step`,
-        it is the action taken off the delay buffer, not the one just received.
+        The raw actions the policy emitted for this manager this step, before any processing or delay.
         """
         if self._raw_actions is None:
             return torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
@@ -251,6 +189,14 @@ class BaseActionManager(BaseManager):
         if self._last_actions is None:
             return torch.zeros((self.env.num_envs, self.num_dofs), device=gs.device)
         return self._last_actions
+
+    @property
+    def delay(self) -> ActionDelayBuffer:
+        """
+        The action delay buffer, which holds each environment's current delay in
+        `delay.delay_steps`.
+        """
+        return self._delay
 
     """
     DOF convenience wrappers
@@ -387,13 +333,7 @@ class BaseActionManager(BaseManager):
         )
 
         self._build_action_groups()
-
-        # Seed the action delay buffer with zero actions, so the first `delay_step`
-        # steps send no-op actions while the real ones are still queued
-        self._action_delay_buffer = [
-            torch.zeros((self.env.num_envs, self.num_actions), device=gs.device)
-            for _ in range(self._delay_step)
-        ]
+        self._delay.build(self.env.num_envs, self.num_actions)
 
     def _build_action_groups(self):
         """
@@ -446,13 +386,8 @@ class BaseActionManager(BaseManager):
         """
         Handle actions received in this step.
         """
-        # Action delay buffer: queue a copy of this step's actions and send the oldest
-        if self._delay_step > 0:
-            self._action_delay_buffer.insert(0, actions.clone())
-            actions = self._action_delay_buffer.pop()
-
-        # Copy the actions into the manager buffer
-        self._raw_actions = actions
+        self._raw_actions = actions  # store raw actions before the delay buffer
+        actions = self._delay.push(actions)
 
         if self._actions is None:
             shape = (actions.shape[0], self.num_dofs)
@@ -473,8 +408,7 @@ class BaseActionManager(BaseManager):
         """
         if envs_idx is None:
             envs_idx = self.env.all_envs_idx
-        for delayed_actions in self._action_delay_buffer:
-            delayed_actions[envs_idx] = 0.0
+        self._delay.reset(envs_idx)
         if self._actions is not None:
             self._raw_actions[envs_idx] = 0.0
             self._actions[envs_idx] = 0.0
@@ -503,3 +437,56 @@ class BaseActionManager(BaseManager):
             f"this manager's process as plain data, and ship a ActionManagerProcessor "
             f"subclass that replays it on the robot."
         )
+
+    def per_joint_deployment_values(
+        self, tensor: torch.Tensor, name: str
+    ) -> list[float]:
+        """Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+        ``tensor`` holds one value per controlled joint, either flat as
+        ``(num_dofs,)`` or with a row per environment as ``(num_envs, num_dofs)``.
+
+        A flat tensor is returned as-is. A per-environment tensor is returned as
+        its shared row, and only if every environment holds the same values.
+
+        A bundle describes one robot, so when the environments differ this raises
+        rather than guess which one is right. That only happens when something
+        randomizes this particular parameter per environment.
+
+        Args:
+            tensor: The parameter, such as a scale or offset.
+            name: How to refer to the parameter in error messages.
+
+        Returns:
+            One float per joint, in ``dofs`` order.
+
+        Raises:
+            ValueError: The environments hold different values, or the tensor does
+                not hold one value per joint.
+        """
+        values = tensor.detach()
+        num_dofs = self.num_dofs
+        manager = type(self).__name__
+
+        if values.ndim == 2 and values.shape[1] == num_dofs:
+            if values.shape[0] > 1 and not bool((values == values[0]).all()):
+                spread = float(
+                    (values.max(dim=0).values - values.min(dim=0).values).max()
+                )
+                raise ValueError(
+                    f"Cannot export '{name}' from action manager '{manager}': it is "
+                    f"not the same in every parallel environment (largest spread "
+                    f"{spread:g}), so there is no single value to put in the bundle. "
+                    f"Something is randomizing '{name}' per environment. Keep it "
+                    f"uniform across environments for the export run; randomizing "
+                    f"other things, such as friction or gains, does not affect it."
+                )
+            values = values[0]
+
+        if values.ndim != 1 or values.shape[0] != num_dofs:
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager}': expected "
+                f"one value per joint ({num_dofs}), found shape {tuple(tensor.shape)}."
+            )
+
+        return [float(item) for item in values.cpu().tolist()]

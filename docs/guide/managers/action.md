@@ -149,19 +149,35 @@ self.action_manager = VelocityActionManager(
 
 ## Sim2Real - Action latency
 
-In most robots, there is some latency between when the action is received, and when it is acted upon by the actuator. To roughly emulate this, you can set the `delay_step` parameter.
+In most robots, there is some latency between when the action is received, and when it is acted upon by the actuator: sending the command, and waiting for the motor controller all take time. A policy trained with no latency expects an instant response, and on hardware that shows up as overshoot and oscillation. To roughly emulate this, you can set the `delay_step` parameter.
 
 ```python
 self.action_manager = PositionActionManager(
     self,
-    delay_step=1 # Delay sending actions to actuators by one step (dt)
+    delay_step=1,  # Delay sending actions to actuators by one step (dt)
     scale=0.25,
     use_default_offset=True,
     actuator_manager=self.actuator_manager,
 )
 ```
 
-This parameter lets use delay sending the actions to the actuators by a specific number of training steps.
+This parameter delays sending the actions to the actuators by a specific number of training steps.
+
+### Randomizing the latency
+
+Real latency also varies from step to step and from robot to robot, and a policy trained against one exact delay can overfit to that timing. For domain randomization, give `delay_step` a `(min, max)` range instead. Each parallel environment randomly draws its own delay from the inclusive range when the environment is built and reset, so the policy trains against the whole band of latencies.
+
+```python
+self.action_manager = PositionActionManager(
+    self,
+    delay_step=(0, 2),  # Each env is delayed by 0, 1 or 2 steps
+    scale=0.25,
+    use_default_offset=True,
+    actuator_manager=self.actuator_manager,
+)
+```
+
+This delay never formally enters the [deployment bundle](../deployment), since the real robot supplies its own latency.
 
 ## Get Action Information
 

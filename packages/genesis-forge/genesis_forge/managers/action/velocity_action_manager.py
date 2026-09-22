@@ -33,8 +33,9 @@ class VelocityActionManager(AffineDofActionManager):
                        skid-steer robot, for example. See `BaseActionManager`.
         scale: How much to scale the action.
         offset: Offset factor for the action.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: Steps to delay actions by, to emulate actuator/bus latency. This is
+                    either a fixed step value or a min/max range to create random delays
+                    from. See `ActionDelayBuffer`.
 
     Example::
 
@@ -67,7 +68,7 @@ class VelocityActionManager(AffineDofActionManager):
         action_groups: list[list[str] | str] | None = None,
         scale: float | dict[str, float] = 1.0,
         offset: float | dict[str, float] = 0.0,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
     ):
         super().__init__(
             env,

@@ -3,8 +3,8 @@
 Once a policy is trained, getting it onto a real robot means reproducing two
 pipelines exactly as training built them:
 
-- **Observation assembly** — where each value sits in the vector, the scale applied to
-  it, and how many previous ticks are stacked alongside the current one.
+- **Observation assembly** — where each value sits in the vector, the clip and scale
+  applied to it, and how many previous ticks are stacked alongside the current one.
 - **Action processing** — the scale, offset, and clipping applied to the policy's
   output, and which joint each number belongs to.
 
@@ -417,7 +417,9 @@ class CartesianImpedanceActionManager(BaseActionManager):
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,
             config={
-              "stiffness": self._stiffness.tolist(),
+                # One float per joint. Raises if the environments disagree, so
+                # a value randomized per environment never sneaks into the bundle.
+                "stiffness": self.per_joint_deployment_values(self._stiffness, "stiffness"),
             },
             processor_import_path="my_robot.processors:CartesianImpedanceProcessor",
         )

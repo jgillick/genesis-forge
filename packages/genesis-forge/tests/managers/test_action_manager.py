@@ -598,6 +598,38 @@ def test_delay_buffer_holds_a_copy_of_the_actions(env):
     assert torch.equal(mgr.actions, torch.full((env.num_envs, 2), 0.1))
 
 
+def test_raw_actions_are_the_emitted_actions_even_with_a_delay(env):
+    """The policy observes what it emitted; only the actuators see the delayed value."""
+    mgr = make_delayed_manager(env, delay_step=1)
+    a = torch.full((env.num_envs, 2), 0.1)
+    b = torch.full((env.num_envs, 2), 0.2)
+
+    mgr.step(a)
+    assert torch.equal(mgr.raw_actions, a)
+    assert torch.equal(mgr.actions, torch.zeros((env.num_envs, 2)))
+
+    mgr.step(b)
+    assert torch.equal(mgr.raw_actions, b)
+    assert torch.equal(mgr.actions, a)
+
+
+def test_delay_step_range_is_exposed_on_the_manager(env):
+    """The manager's `delay` is the buffer built for it, per-env delays included."""
+    mgr = make_delayed_manager(env, delay_step=(1, 2))
+    assert mgr.delay.range == (1, 2)
+    assert mgr.delay.delay_steps.shape == (env.num_envs,)
+
+
+def test_invalid_delay_step_is_rejected_at_construction(env):
+    with pytest.raises(ValueError):
+        PositionActionManager(
+            env,
+            actuator_manager=make_actuator_manager(),
+            actuator_joints=["FL_.*"],
+            delay_step=(2, 1),
+        )
+
+
 """
 BaseActionManager -- action groups
 """

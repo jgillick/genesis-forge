@@ -153,7 +153,7 @@ class ActionProcessor:
 
     @property
     def last_raw_actions_by_manager(self) -> dict[str, np.ndarray]:
-        """What each manager last consumed, before it was processed.
+        """What the policy last emitted for each manager, before it was processed.
 
         This is what ``current_actions(action_manager=...)`` feeds back during
         training, and it is the whole policy vector only when a single manager is

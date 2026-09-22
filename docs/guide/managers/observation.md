@@ -1,6 +1,6 @@
 # Observation Manager
 
-The Observation Manager defines what your RL agent observes from the environment. It handles observation space creation, data collection, scaling, and noise injection for training robustness.
+The Observation Manager defines what your RL agent observes from the environment. It handles observation space creation, data collection, clipping, scaling, and noise injection for training robustness.
 
 You can see a full example using the observation manager in [examples/basic](https://github.com/jgillick/genesis-forge/tree/main/examples/basic).
 
@@ -38,8 +38,11 @@ class MyEnv(ManagedEnvironment):
 Each observation configuration dict can have:
 
 - **fn**: Function that returns observation values
-- **scale**: Multiplier to normalize values
-- **noise**: Random noise scale for training robustness
+- **noise**: Random noise scale for training robustness, in the raw units `fn` returns
+- **clip**: `(min, max)` bounds applied after noise
+- **scale**: Multiplier to normalize values, applied last
+
+The processing order is: noise -> clip -> scale.
 
 ```python
 ObservationManager(
@@ -90,6 +93,21 @@ Neural networks work best with inputs roughly in [-1, 1] range:
 - forces : `0.001` - Can be 1000s of N
 - distances: `1.0` - Usually in meters
 - angles: `1.0` - Already in radians
+
+## Clipping
+
+`clip` is a safety bound, not a normalizer. Set it several times wider than any value a healthy simulation produces, so it never shapes what the policy learns and only catches a simulation that has come apart
+and sent absurd/infinite values.
+
+```python
+"joint_velocities": {
+    "fn": lambda env: self.action_manager.get_dofs_velocity(),
+    "clip": (-100.0, 100.0),  # rad/s; a healthy robot stays well inside this
+    "scale": 0.05,
+},
+```
+
+Why it matters: when one of thousands of parallel environments explodes numerically, its velocities come back as huge or infinite numbers, which corrupts your policy's observations. A step later, every environment's actions are NaN and training dies with an error that points nowhere near the cause.
 
 ## Adding Noise
 

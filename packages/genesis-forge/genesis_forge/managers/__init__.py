@@ -20,6 +20,7 @@ Available managers:
 - :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
 
+from .action.action_delay_buffer import ActionDelayBuffer
 from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
@@ -40,6 +41,7 @@ from .terrain_manager import TerrainManager
 
 __all__ = [
     "ActuatorManager",
+    "ActionDelayBuffer",
     "BaseActionManager",
     "BaseManager",
     "CommandManager",

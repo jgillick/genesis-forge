@@ -9,7 +9,6 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.action.base import (
     BaseActionManager,
     DeploymentActionConfig,
-    to_nominal_array,
 )
 from genesis_forge.managers.actuator import ActuatorManager
 from genesis_forge.utils import assign_by_pattern
@@ -37,8 +36,9 @@ class AffineDofActionManager(BaseActionManager):
         actuator_joints: Which joints of the actuator manager that this action manager will control.
                          These can be full names or regular expressions.
         action_groups: Drive several joints from a single action. See `BaseActionManager`.
-        delay_step: The number of steps to delay the actions for.
-                    This is an easy way to emulate the latency in the system.
+        delay_step: Steps to delay actions by, to emulate actuator/bus latency. This is
+                    either a fixed step value or a min/max range to create random delays
+                    from. See `ActionDelayBuffer`.
     """
 
     deploy_type: str = "affine_dof"
@@ -53,7 +53,7 @@ class AffineDofActionManager(BaseActionManager):
         actuator_manager: ActuatorManager | None = None,
         actuator_joints: list[str] | str = ".*",
         action_groups: list[list[str] | str] | None = None,
-        delay_step: int = 0,
+        delay_step: int | tuple[int, int] = 0,
     ):
         super().__init__(
             env,
@@ -132,23 +132,13 @@ class AffineDofActionManager(BaseActionManager):
         else:  # (num_envs, 2, num_joints) -- per-environment bounds
             clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
 
-        # Per joint, which is not the policy's width once joints share an action.
-        def nominal(tensor, name):
-            return to_nominal_array(
-                tensor,
-                name=name,
-                num_joints=len(self.dofs),
-                num_envs=self.env.num_envs,
-                manager_name=type(self).__name__,
-            )
-
         config: dict[str, Any] = {
-            "scale": nominal(self._scale_values, "scale"),
-            "offset": nominal(self._offset_values, "offset"),
+            "scale": self.per_joint_deployment_values(self._scale_values, "scale"),
+            "offset": self.per_joint_deployment_values(self._offset_values, "offset"),
         }
 
-        low = nominal(clip_low, "clip lower bound")
-        high = nominal(clip_high, "clip upper bound")
+        low = self.per_joint_deployment_values(clip_low, "clip lower bound")
+        high = self.per_joint_deployment_values(clip_high, "clip upper bound")
 
         # JSON has no portable infinity, so an unbounded joint is written as null and
         # the runtime reads that back as no clip for that joint. A side no joint bounds

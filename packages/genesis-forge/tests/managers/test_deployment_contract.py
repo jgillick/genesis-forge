@@ -23,7 +23,6 @@ from genesis_forge.managers import (
 from genesis_forge.managers.action.base import (
     BaseActionManager,
     DeploymentActionConfig,
-    to_nominal_array,
 )
 
 
@@ -348,57 +347,53 @@ def test_builtin_managers_need_no_import_path(env):
 
 
 """
-Nominal value reduction -- refusing to guess under domain randomization
+Per-joint value reduction -- refusing to guess under domain randomization
 """
 
 
-def test_per_environment_values_reduce_to_one_row_when_identical():
-    tensor = torch.tensor([[1.0, 2.0]] * 4)
-
-    result = to_nominal_array(
-        tensor, name="offset", num_joints=2, num_envs=4, manager_name="Test"
-    )
-
-    assert result == [1.0, 2.0]
+def built_manager(env):
+    manager = PositionActionManager(env, actuator_manager=make_actuator_manager())
+    manager.build()
+    return manager
 
 
-def test_a_flat_per_joint_tensor_passes_through():
-    result = to_nominal_array(
-        torch.tensor([1.0, 2.0]),
-        name="scale",
-        num_joints=2,
-        num_envs=4,
-        manager_name="Test",
-    )
+def test_per_environment_values_reduce_to_one_row_when_identical(env):
+    tensor = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
 
-    assert result == [1.0, 2.0]
+    result = built_manager(env).per_joint_deployment_values(tensor, "offset")
+
+    assert result == [1.0, 2.0, 3.0]
 
 
-def test_divergent_environments_are_refused_with_actionable_guidance():
-    randomized = torch.tensor([[1.0, 2.0], [1.0, 2.5], [1.0, 2.0], [1.0, 2.0]])
+def test_a_flat_per_joint_tensor_passes_through(env):
+    tensor = torch.tensor([1.0, 2.0, 3.0])
+
+    result = built_manager(env).per_joint_deployment_values(tensor, "scale")
+
+    assert result == [1.0, 2.0, 3.0]
+
+
+def test_divergent_environments_are_refused_with_actionable_guidance(env):
+    randomized = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    randomized[1, 1] = 2.5
 
     with pytest.raises(ValueError) as error:
-        to_nominal_array(
-            randomized, name="offset", num_joints=2, num_envs=4, manager_name="Position"
-        )
+        built_manager(env).per_joint_deployment_values(randomized, "offset")
 
     message = str(error.value)
-    assert "offset" in message
-    assert "Position" in message
-    assert "randomization" in message
+    assert "PositionActionManager" in message
+    assert "randomizing 'offset' per environment" in message
 
 
-def test_an_unexpected_shape_is_refused():
-    with pytest.raises(ValueError) as error:
-        to_nominal_array(
-            torch.zeros(2, 3, 4),
-            name="scale",
-            num_joints=2,
-            num_envs=4,
-            manager_name="X",
-        )
+def test_a_tensor_without_one_value_per_joint_is_refused(env):
+    manager = built_manager(env)
 
-    assert "scale" in str(error.value)
+    with pytest.raises(ValueError, match="one value per joint"):
+        manager.per_joint_deployment_values(torch.zeros(2), "scale")
+    with pytest.raises(ValueError, match="one value per joint"):
+        manager.per_joint_deployment_values(torch.zeros(env.num_envs, 2), "scale")
+    with pytest.raises(ValueError, match="one value per joint"):
+        manager.per_joint_deployment_values(torch.zeros(2, 3, 4), "scale")
 
 
 def test_a_randomized_default_pose_blocks_export(env):
@@ -415,6 +410,47 @@ def test_a_randomized_default_pose_blocks_export(env):
         manager.get_deployment_config()
 
     assert "offset" in str(error.value)
+
+
+"""
+Action groups -- parameters stay per joint while the policy's width shrinks
+"""
+
+
+def test_grouped_affine_manager_exports_per_joint_values_and_the_mapping(env):
+    manager = VelocityActionManager(
+        env,
+        actuator_manager=make_actuator_manager(),
+        action_groups=[["FL_hip", "FL_knee"], ["FR_hip"]],
+    )
+    manager.build()
+
+    exported = manager.get_deployment_config()
+
+    # Two actions drive three joints; the bundle records the joint-side view.
+    assert manager.num_actions == 2
+    assert len(exported.config["scale"]) == 3
+    assert len(exported.config["offset"]) == 3
+    assert exported.joint_action_index == [0, 0, 1]
+
+
+def test_grouped_within_limits_manager_exports_per_joint_values_and_the_mapping(env):
+    # The built-in constructor does not take action_groups, but the base class
+    # does, so a subclass can group joints and its export must still hold up.
+    class GroupedWithinLimits(PositionWithinLimitsActionManager):
+        def __init__(self, env, **kwargs):
+            super().__init__(env, **kwargs)
+            self._action_groups = [["FL_hip", "FL_knee"], ["FR_hip"]]
+
+    manager = GroupedWithinLimits(env, actuator_manager=make_actuator_manager())
+    manager.build()
+
+    exported = manager.get_deployment_config()
+
+    assert manager.num_actions == 2
+    assert exported.config["scale"] == pytest.approx([1.0, 1.5, 2.0])
+    assert exported.config["offset"] == pytest.approx([0.0, 0.0, 0.0])
+    assert exported.joint_action_index == [0, 0, 1]
 
 
 """

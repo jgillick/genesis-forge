@@ -17,7 +17,7 @@ def config(self):
             "lin_vel_y": [-1.0, 1.0],
             "ang_vel_z": [-1.0, 1.0],
         },
-        stopped_probability=0.05,
+        stopped_probability=0.02,
         resample_time_sec=5.0,
         debug_visualizer=True,
         debug_visualizer_cfg={

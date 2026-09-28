@@ -18,7 +18,7 @@ EXPERIMENT_NAME = "go2-gait"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=2000)
+parser.add_argument("-i", "--max_iterations", type=int, default=2000)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -99,7 +99,8 @@ def main():
         env,
         video_length_sec=12,
         out_dir=os.path.join(log_path, "videos"),
-        episode_trigger=lambda episode_id: episode_id % 2 == 0,
+        iteration_trigger=lambda i: i > 0 and i % 2 == 0,
+        steps_per_iteration=cfg["num_steps_per_env"],
     )
 
     # Build the environment

@@ -56,7 +56,6 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -82,7 +81,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.5, -1.5, 1.6),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -114,7 +113,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         )
 
         ##
-        # Joint Actions
+        # Joint Actuators/Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -178,28 +177,33 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.5,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.75,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "ang_vel_xy": {
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
                     "weight": -0.05,
                     "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
+                # Penalize non-foot body parts from contacting the terrain
                 "undesired_contacts": {
                     "weight": -1.0,
                     "fn": rewards.has_contact(
@@ -207,20 +211,25 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                         threshold=5.0,
                     ),
                 },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
                     "weight": -0.01,
                     "fn": rewards.action_rate_l2(),
                 },
+                # Encourage the robot to maintain a pose similar to it's default stable pose
                 "similar_to_default": {
                     "weight": -0.1,
                     "fn": rewards.dof_similar_to_default(
                         actuator_manager=self.actuator_manager,
                     ),
                 },
+                # Discourage the robot from tilting too much
                 "flat_orientation": {
                     "weight": -1.5,
                     "fn": rewards.flat_orientation_l2(),
                 },
+                # Penalize early termination
                 "terminated": {
                     "weight": -100.0,
                     "fn": rewards.terminated(),
@@ -275,7 +284,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 },
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
-                    "scale": 0.05,
+                    "scale": 0.02,
                 },
                 "actions": {
                     "fn": observations.current_actions(),

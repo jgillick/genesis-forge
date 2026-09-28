@@ -64,7 +64,6 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -164,8 +163,13 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
         return {agent: fused for agent in self.AGENTS}
 
     def config(self) -> None:
+        ##
+        # Use the terrain manager to get the terrain height information for rewards
         self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
+        ##
+        # Robot manager
+        # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
             entity=self.robot,
@@ -180,6 +184,8 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             },
         )
 
+        ##
+        # Joint actuators and actions
         for agent in self.AGENTS:
             self.leg_actuator_managers[agent] = ActuatorManager(
                 self,
@@ -203,6 +209,8 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                 actuator_manager=self.leg_actuator_managers[agent],
             )
 
+        ##
+        # Commanded direction
         self.velocity_command = VelocityCommandManager(
             self,
             range={
@@ -216,11 +224,13 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             debug_visualizer_cfg={"envs_idx": [0]},
         )
 
+        ##
+        # Rewards
         RewardManager(
             self,
-            logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -30.0,
                     "fn": rewards.base_height(
                         target_height=0.3,
@@ -228,47 +238,52 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
                         terrain_manager=self.terrain_manager,
                     ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -1.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
+                },
+                # Penalizes actions that change back-and-forth a lot
+                # which discourages the robot from making jittery actuator movements
                 "action_rate": {
                     "weight": -0.005,
                     "fn": rewards.action_rate_l2(),
                 },
-                "similar_to_default": {
-                    "weight": -0.05,
-                    "fn": rewards.dof_similar_to_default(
-                        actuator_manager=[
-                            self.leg_actuator_managers[a] for a in self.AGENTS
-                        ],
-                    ),
-                },
             },
         )
 
+        ##
+        # Termination conditions
         self.termination_manager = TerminationManager(
             self,
-            logging_enabled=True,
             term_cfg={
+                # The episode ended
                 "timeout": {
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
+                # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
                     "fn": terminations.bad_orientation(
                         limit_angle=30.0,
@@ -279,6 +294,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             },
         )
 
+        ##
         # Shared observations with the overall robot state
         ObservationManager(
             self,
@@ -297,6 +313,7 @@ class Go2MasqLocomotionEnv(ManagedEnvironment):
             },
         )
 
+        ##
         # Observations for each leg (bind mgr= per iteration — bare action_manager is late-bound to RR)
         for agent in self.AGENTS:
             action_manager = self.leg_action_managers[agent]

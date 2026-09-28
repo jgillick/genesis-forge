@@ -11,12 +11,11 @@ import genesis as gs
 import torch
 from env_wrapper import SkrlMasqWrapper
 from environment import Go2MasqLocomotionEnv
-from models import MasqGaussianPolicy, MasqValue
+from models import MasqGaussianPolicy, MasqValue, MpsCompatRunningStandardScaler
 from skrl.memories.torch import RandomMemory
 from skrl.multi_agents.torch import ExperimentCfg
 from skrl.multi_agents.torch.mappo import MAPPO
 from skrl.multi_agents.torch.mappo.mappo_cfg import MAPPO_CFG
-from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 
 from genesis_forge.wrappers import VideoWrapper
@@ -38,6 +37,7 @@ parser.add_argument(
 parser.add_argument("-d", "--device", type=str, default="gpu", choices=("gpu", "cpu"))
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
+
 
 def main() -> None:
     # Initialize Genesis
@@ -65,7 +65,7 @@ def main() -> None:
         video_length_sec=12,
         out_dir=os.path.join(log_path, "videos"),
         episode_trigger=lambda episode_id: episode_id % 2 == 0,
-        logging=False
+        logging=False,
     )
     env.build()
     env.reset()
@@ -82,6 +82,7 @@ def main() -> None:
     # MAPPO learning configuration
     def for_each_agent(v):
         return {uid: v for uid in agents}
+
     cfg = MAPPO_CFG(
         rollouts=ROLLOUTS,
         learning_epochs=5,
@@ -98,12 +99,16 @@ def main() -> None:
         # Running mean/std normalization -- keeps the policy/critic robust to the
         # reset-boundary observation jumps in this environment's velocity/gravity
         # channels, and to the value function's own return scale.
-        observation_preprocessor=for_each_agent(RunningStandardScaler),
-        observation_preprocessor_kwargs=for_each_agent({"size": obs_space}),
-        state_preprocessor=for_each_agent(RunningStandardScaler),
-        state_preprocessor_kwargs=for_each_agent({"size": state_space}),
-        value_preprocessor=for_each_agent(RunningStandardScaler),
-        value_preprocessor_kwargs=for_each_agent({"size": 1}),
+        observation_preprocessor=for_each_agent(MpsCompatRunningStandardScaler),
+        observation_preprocessor_kwargs=for_each_agent(
+            {"size": obs_space, "device": gs.device}
+        ),
+        state_preprocessor=for_each_agent(MpsCompatRunningStandardScaler),
+        state_preprocessor_kwargs=for_each_agent(
+            {"size": state_space, "device": gs.device}
+        ),
+        value_preprocessor=for_each_agent(MpsCompatRunningStandardScaler),
+        value_preprocessor_kwargs=for_each_agent({"size": 1, "device": gs.device}),
         experiment=ExperimentCfg(
             directory=log_base_dir,
             experiment_name=args.exp_name,
@@ -119,6 +124,7 @@ def main() -> None:
         uid: RandomMemory(
             memory_size=ROLLOUTS,
             num_envs=args.num_envs,
+            device=gs.device,
         )
         for uid in agents
     }
@@ -127,8 +133,10 @@ def main() -> None:
     models: dict[str, dict] = {}
     for uid in agents:
         models[uid] = {
-            "policy": MasqGaussianPolicy(obs_space, action_space, clip_actions=False),
-            "value": MasqValue(state_space),
+            "policy": MasqGaussianPolicy(
+                obs_space, action_space, clip_actions=False, device=gs.device
+            ),
+            "value": MasqValue(state_space, device=gs.device),
         }
     agent = MAPPO(
         possible_agents=agents,
@@ -137,6 +145,7 @@ def main() -> None:
         observation_spaces=wrapped.observation_spaces,
         state_spaces=wrapped.state_spaces,
         action_spaces=wrapped.action_spaces,
+        device=gs.device,
         cfg=cfg,
     )
     print(agent)

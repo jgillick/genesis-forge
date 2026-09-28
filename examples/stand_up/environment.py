@@ -16,6 +16,7 @@ from genesis_forge.managers import (
     PositionActionManager,
     RewardManager,
     TerminationManager,
+    ContactManager,
 )
 from genesis_forge.mdp import observations, rewards, terminations
 
@@ -49,7 +50,6 @@ class Go2StandUpEnv(ManagedEnvironment):
                 rendered_envs_idx=list(range(min(num_envs, 1)))
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -64,6 +64,7 @@ class Go2StandUpEnv(ManagedEnvironment):
                 file="urdf/go2/urdf/go2.urdf",
                 pos=[0.0, 0.0, 0.4],
                 quat=[1.0, 0.0, 0.0, 0.0],
+                links_to_keep=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
             ),
         )
 
@@ -78,6 +79,8 @@ class Go2StandUpEnv(ManagedEnvironment):
         self.camera.follow_entity(self.robot)
 
     def config(self):
+        ##
+        # Joint Actuators/Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -115,68 +118,112 @@ class Go2StandUpEnv(ManagedEnvironment):
             },
         )
 
+        ##
+        # Rewards
+        self.foot_contact_manager = ContactManager(
+            self,
+            link_names=[".*_foot"],
+            air_time_contact_threshold=1.0,
+        )
+        self.body_contact_manager = ContactManager(
+            self,
+            link_names=["base", ".*_thigh", ".*_calf"],
+            air_time_contact_threshold=1.0,
+        )
+
         RewardManager(
             self,
             logging_enabled=True,
             cfg={
-                "base_height": {
-                    "weight": -50.0,
+                # Make sure the robot stays standing at a reasonable height
+                "height_target": {
+                    "weight": -30.0,
                     "fn": rewards.base_height(
                         target_height=0.25,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "stand_and_balance": {
-                    "weight": 2.0,
-                    "fn": stand_and_balance_reward,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                        "target_height": 0.28,
-                        "max_tilt_deg": 20.0,
-                    },
-                },
+                # "stand_and_balance": {
+                #     "weight": 2.0,
+                #     "fn": stand_and_balance_reward,
+                #     "params": {
+                #         "entity_manager": self.robot_manager,
+                #         "target_height": 0.28,
+                #         "max_tilt_deg": 20.0,
+                #     },
+                # },
                 "flat_orientation": {
-                    "weight": -0.5,
+                    "weight": -0.1,
                     "fn": rewards.flat_orientation_l2(
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_xy": {
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
                     "weight": -0.2,
                     "fn": rewards.lin_vel_xy_l2(entity_manager=self.robot_manager),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -3.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "dof_vel": {
+                # Penalize fast joint angular velocities
+                "joint_velocity": {
                     "weight": -0.02,
                     "fn": rewards.dof_velocity_l2(action_manager=self.action_manager),
                 },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
                     "weight": -0.1,
                     "fn": rewards.action_rate_l2(),
                 },
+                # Discourage abrupt changes in action acceleration (jerky movements)
                 "action_accel": {
                     "weight": -0.02,
                     "fn": rewards.action_acceleration_l2(
                         action_manager=self.action_manager
                     ),
                 },
-                "torque_l2": {
+                # Discourage abrupt joint velocity changes (e.g. jerky joint movements)
+                "joint_acceleration": {
+                    "weight": -5.0e-7,
+                    "fn": rewards.dof_acc_l2(
+                        actuator_manager=self.actuator_manager,
+                    ),
+                },
+                # Penalize large joint torque
+                "joint_torque": {
                     "weight": -0.0003,
                     "fn": rewards.dof_torque_l2(actuator_manager=self.actuator_manager),
                 },
+                # Discourages jerky body motion.
                 "body_acceleration": {
                     "weight": -0.2,
                     "fn": rewards.body_acceleration_exp(
                         entity_manager=self.robot_manager
                     ),
                 },
-                "is_alive": {
-                    "weight": 0.05,
-                    "fn": rewards.is_alive(),
+                # Discourage any body part (beside feet) being in contact with the ground
+                "on_ground": {
+                    "weight": -0.5,
+                    "fn": rewards.has_contact(
+                        contact_manager=self.body_contact_manager,
+                    ),
                 },
+                # Encourage the feet being in contact with the ground
+                "feet_on_ground": {
+                    "weight": 0.5,
+                    "fn": rewards.has_contact(
+                        contact_manager=self.foot_contact_manager,
+                    ),
+                },
+                # Reward for staying alive and not terminating
+                # "is_alive": {
+                #     "weight": 0.05,
+                #     "fn": rewards.is_alive(),
+                # },
             },
         )
 
@@ -188,6 +235,7 @@ class Go2StandUpEnv(ManagedEnvironment):
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
+                # Terminate early if the robot flips over
                 "is_upsidedown": {
                     "fn": terminations.is_upsidedown(
                         entity_manager=self.robot_manager,
@@ -199,7 +247,7 @@ class Go2StandUpEnv(ManagedEnvironment):
 
         ObservationManager(
             self,
-            history_len=4,
+            history_len=10,
             cfg={
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),

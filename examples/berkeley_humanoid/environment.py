@@ -47,7 +47,6 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_self_collision=True,
@@ -172,40 +171,34 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "tracking_lin_vel": {
+                "command_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                "commanded_angular_velocity": {
                     "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_z": {
+                "linear_velocity_penalty": {
                     "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "ang_vel_xy_l2": {
+                "angular_velocity_penalty": {
                     "weight": -0.05,
                     "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 "action_rate": {
-                    "weight": -0.005,
+                    "weight": -0.01,
                     "fn": rewards.action_rate_l2(),
                 },
-                "similar_to_default": {
-                    "weight": -0.05,
-                    "fn": rewards.dof_similar_to_default(
-                        actuator_manager=self.actuator_manager,
-                    ),
-                },
                 "feet_air_time": {
-                    "weight": 2.0,
+                    "weight": 0.5,
                     "fn": rewards.feet_air_time(
                         time_threshold=0.2,
                         time_threshold_max=0.5,
@@ -227,7 +220,7 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
-                # Terminate if the robot's pitch and yaw angles are too large
+                # Terminate if the robot's body hits the ground
                 "torso_contact": {
                     "fn": terminations.contact_force(
                         contact_manager=self.torso_contact_manager,

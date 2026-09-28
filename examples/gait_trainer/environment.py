@@ -54,7 +54,6 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -109,7 +108,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
         )
 
         ##
-        # Joint Actions
+        # Joint Actuators/Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -185,6 +184,7 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
+                # Reward for maintaining the correct gait phase
                 "gait_phase_reward": {
                     "weight": 1.5,
                     "fn": self.gait_command_manager.gait_phase_reward,
@@ -192,46 +192,50 @@ class Go2GaitTrainingEnv(ManagedEnvironment):
                         "contact_manager": self.foot_contact_manager,
                     },
                 },
+                # Gait reward for keeping feet at the correct height
                 "foot_height_reward": {
                     "weight": 0.9,
                     "fn": self.gait_command_manager.foot_height_reward,
                 },
-                "base_height_target": {
+                # Penalize the robot walking on it's legs instead of its feet
+                "bad_contact": {
+                    "weight": -1.0,
+                    "fn": rewards.contact_force(
+                        contact_manager=self.bad_contact_manager,
+                    ),
+                },
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -25.0,
                     "fn": rewards.base_height(target_height=0.35, entity=self.robot),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "body_acceleration": {
-                    "weight": -0.1,
-                    "fn": rewards.body_acceleration_exp(
-                        entity_manager=self.robot_manager
-                    ),
-                },
-                "lin_vel_z": {
-                    "weight": -0.1,
-                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
-                },
+                # Penalizes actions that change back-and-forth a lot
+                # which discourages the robot from making jittery actuator movements
                 "action_rate": {
                     "weight": -0.01,
                     "fn": rewards.action_rate_l2(),
                 },
-                "bad_contact": {
-                    "weight": -1.0,
-                    "fn": rewards.contact_force(
-                        contact_manager=self.bad_contact_manager,
+                # Discourage abrupt joint velocity changes (e.g. jerky joint movements)
+                "dof_acceleration": {
+                    "weight": -5.0e-7,
+                    "fn": rewards.dof_acc_l2(
+                        actuator_manager=self.actuator_manager,
                     ),
                 },
             },

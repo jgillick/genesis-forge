@@ -6,7 +6,7 @@ import sys
 
 import genesis as gs
 import torch
-from environment import Go2CommandDirectionEnv
+from environment import Go2DomainRandomizationEnv
 from rsl_rl.runners import OnPolicyRunner
 
 from genesis_forge.wrappers import RslRlWrapper
@@ -52,7 +52,7 @@ def main():
     model = get_latest_model(log_path)
 
     # Setup environment
-    env = Go2CommandDirectionEnv(num_envs=1, headless=False)
+    env = Go2DomainRandomizationEnv(num_envs=1, headless=False)
     env = RslRlWrapper(env)
     env.build()
 

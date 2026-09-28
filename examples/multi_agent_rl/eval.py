@@ -74,8 +74,10 @@ def main() -> None:
     models: dict[str, dict] = {}
     for uid in agents:
         models[uid] = {
-            "policy": MasqGaussianPolicy(obs_space, action_space, clip_actions=False),
-            "value": MasqValue(state_space),
+            "policy": MasqGaussianPolicy(
+                obs_space, action_space, clip_actions=False, device=gs.device
+            ),
+            "value": MasqValue(state_space, device=gs.device),
         }
 
     # cfg here only needs to be compatible with the checkpoint modules; learning params won't be used.
@@ -107,6 +109,7 @@ def main() -> None:
         observation_spaces=wrapped.observation_spaces,
         state_spaces=wrapped.state_spaces,
         action_spaces=wrapped.action_spaces,
+        device=gs.device,
         cfg=cfg,
     )
     agent.load(model)

@@ -10,7 +10,25 @@ from gymnasium import spaces
 from skrl.models.torch import Model
 from skrl.models.torch.deterministic import DeterministicMixin
 from skrl.models.torch.gaussian import GaussianMixin
+from skrl.resources.preprocessors.torch import RunningStandardScaler
 from torch import nn
+
+
+class MpsCompatRunningStandardScaler(RunningStandardScaler):
+    """RunningStandardScaler whose running statistics fall back to float32 on Mac MPS.
+
+    skrl hardcodes float64 accumulators, which the MPS backend cannot allocate.
+    """
+
+    def __init__(self, size, *, device=None, **kwargs):
+        target = torch.device(device) if device is not None else None
+        if target is not None and target.type == "mps":
+            super().__init__(size, device="cpu", **kwargs)
+            self.device = target
+            for name, buf in list(self.named_buffers()):
+                setattr(self, name, buf.to(device=target, dtype=torch.float32))
+        else:
+            super().__init__(size, device=device, **kwargs)
 
 
 class MasqGaussianPolicy(GaussianMixin, Model):
@@ -46,9 +64,13 @@ class MasqGaussianPolicy(GaussianMixin, Model):
             prev = h
         layers.append(nn.Linear(prev, self.num_actions))
         self.net = nn.Sequential(*layers)
-        self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions, device=device))
+        self.log_std_parameter = nn.Parameter(
+            torch.zeros(self.num_actions, device=device)
+        )
 
-    def compute(self, inputs: dict[str, Any], role: str = "") -> tuple[torch.Tensor, dict[str, Any]]:
+    def compute(
+        self, inputs: dict[str, Any], role: str = ""
+    ) -> tuple[torch.Tensor, dict[str, Any]]:
         x = inputs["observations"]
         mean = self.net(x)
         log_std = self.log_std_parameter.expand_as(mean)
@@ -87,6 +109,8 @@ class MasqValue(DeterministicMixin, Model):
         layers.append(nn.Linear(prev, 1))
         self.net = nn.Sequential(*layers)
 
-    def compute(self, inputs: dict[str, Any], role: str = "") -> tuple[torch.Tensor, dict[str, Any]]:
+    def compute(
+        self, inputs: dict[str, Any], role: str = ""
+    ) -> tuple[torch.Tensor, dict[str, Any]]:
         x = inputs["states"]
         return self.net(x), {}

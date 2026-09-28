@@ -1196,11 +1196,7 @@ def __init__(
     self._stiffness_cfg = ensure_dof_pattern(stiffness)
     self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
     self._armature_cfg = ensure_dof_pattern(armature)
-
-    self._batch_dofs_enabled = (
-        env.scene.rigid_options.batch_dofs_info
-        and env.scene.rigid_options.batch_links_info
-    )
+    self._batch_dofs_enabled = False  # determined at build
 
     self._values: ValueBuffers = {
         "default_pos": None,
@@ -1257,6 +1253,17 @@ def build(self):
     """
     Builds the manager and initialized all the buffers.
     """
+    # Whether DOF batching is enabled, which allows some DOF
+    # properties to vary per environment. Every DOF setter this manager
+    # uses gates per-env values on batch_dofs_info alone; batch_links_info
+    # only affects link properties (e.g. link mass), which are not set here.
+    solver = getattr(self._robot, "solver", None)
+    if hasattr(solver, "is_links_info_batched"):
+        # genesis-world >= 1.4
+        self._batch_dofs_enabled = self._robot.get_dofs_armature().dim() == 2
+    else:
+        self._batch_dofs_enabled = self.env.scene.rigid_options.batch_dofs_info
+
     # Find all configured joints by names/patterns
     for joint in self._robot.joints:
         if joint.type != gs.JOINT_TYPE.REVOLUTE:
@@ -1303,7 +1310,7 @@ def build(self):
             armature = self._values["armature"]
             if torch.any(armature["noise"] != 0.0):
                 print(
-                    "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' and 'batch_links_info' are True in RigidOptions."
+                    "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' is True in RigidOptions."
                 )
             self._robot.set_dofs_armature(armature["buffer"], self.dofs_idx)
 
@@ -2076,12 +2083,12 @@ def build(self):
     """Initialize link indices and buffers."""
     super().build()
 
-    # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+    # If debug envs_idx is not set, use the envs the scene renders
     self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-        self.debug_envs_idx = self.env.scene.vis_options.rendered_envs_idx
     if self.debug_envs_idx is None:
-        self.debug_envs_idx = list[int](range(self.env.num_envs))
+        self.debug_envs_idx = scene_rendered_envs_idx(
+            self.env.scene, self.env.num_envs
+        )
 
     # Calculate the number of steps per debug render
     fps = self.visualizer_cfg.get("fps", 30)
@@ -2698,7 +2705,10 @@ def __init__(
     # Wrap config items
     self.cfg: dict[str, ObservationConfigItem] = {}
     for cfg_name, item in cfg.items():
-        self.cfg[cfg_name] = ObservationConfigItem(item, env)
+        try:
+            self.cfg[cfg_name] = ObservationConfigItem(item, env)
+        except ValueError as error:
+            raise ValueError(f"Observation '{cfg_name}': {error}") from error
 ```
 
 ## `cfg = {}`
@@ -2765,7 +2775,7 @@ def build(self):
 
 Describe this manager's observation vector for a deployment bundle.
 
-Captures the layout a robot needs to rebuild the policy's input: entry order, per-entry width and scale, the history configuration, and whatever deployment metadata the config supplied. Training noise is deliberately excluded -- it exists to harden the policy, not to be replayed.
+Captures the layout a robot needs to rebuild the policy's input: entry order, per-entry width, clip and scale, the history configuration, and whatever deployment metadata the config supplied. Training noise is deliberately excluded -- it exists to harden the policy, not to be replayed.
 
 Must be called after :meth:`build`, when entry widths are known.
 
@@ -2782,8 +2792,8 @@ def get_deployment_layout(self) -> dict[str, Any]:
     """Describe this manager's observation vector for a deployment bundle.
 
     Captures the layout a robot needs to rebuild the policy's input: entry
-    order, per-entry width and scale, the history configuration, and whatever
-    deployment metadata the config supplied. Training noise is deliberately
+    order, per-entry width, clip and scale, the history configuration, and
+    whatever deployment metadata the config supplied. Training noise is deliberately
     excluded -- it exists to harden the policy, not to be replayed.
 
     Must be called after :meth:`build`, when entry widths are known.
@@ -2810,6 +2820,10 @@ def get_deployment_layout(self) -> dict[str, Any]:
             "size": size,
             "scale": _deployable_scale(name, cfg.scale),
         }
+        if cfg.clip is not None:
+            # The robot must clamp exactly as training did, or a spike the
+            # policy never saw in simulation reaches it on hardware.
+            entry["clip"] = [float(cfg.clip[0]), float(cfg.clip[1])]
         if cfg.description:
             entry["description"] = cfg.description
         if cfg.units:
@@ -2840,6 +2854,12 @@ Returns:
 | -------- | -------------------------------------- |
 | `Tensor` | The observations for all environments. |
 
+Raises:
+
+| Type         | Description                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ValueError` | An observation holds a non-finite value (inf or NaN), naming the entry and the environments. A physics blow-up is the usual cause. Raised here because passed on, a single inf silently corrupts the RL library's observation normalizer and every environment's actions become NaN a step later, far from the cause. Bound entries that can explode with clip and reset such environments with a termination such as dof_velocity_limit. |
+
 Source code in `packages/genesis-forge/genesis_forge/managers/observation_manager.py`
 
 ```
@@ -2861,6 +2881,15 @@ def get_observations(
 
     Returns:
         The observations for all environments.
+
+    Raises:
+        ValueError: An observation holds a non-finite value (``inf`` or NaN),
+            naming the entry and the environments. A physics blow-up is the
+            usual cause. Raised here because passed on, a single ``inf`` silently
+            corrupts the RL library's observation normalizer and every
+            environment's actions become NaN a step later, far from the cause.
+            Bound entries that can explode with ``clip`` and reset such
+            environments with a termination such as ``dof_velocity_limit``.
     """
     if not self.enabled:
         return torch.zeros(
@@ -2870,6 +2899,11 @@ def get_observations(
     buffer = self._history.pop()
     self._perform_observation(buffer, values)
     self._history.insert(0, buffer)
+
+    # One check over the whole tick: a single device sync per call, and the
+    # slow path only runs to name the culprits.
+    if not torch.isfinite(buffer).all():
+        raise self._non_finite_error(buffer)
 
     # Concatenate the history buffers into the pre-allocated output buffer
     # This is more performant than torch.cat()
@@ -2994,6 +3028,7 @@ class MyEnv(GenesisEnv):
 
     def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None):
         super().reset(envs_idx)
+        self.reward_manager.reset(envs_idx)
         # ... other reset logic ...
         return obs, info
 ```
@@ -3173,13 +3208,14 @@ def step(self) -> torch.Tensor:
     self._reward_buf[:] = 0.0
     self._episode_seconds += dt
     for name, cfg in self.cfg.items():
-        # Don't calculate reward if the weight is zero
+        # Execute the function even at zero weight, so stateful functions
+        # (velocity histories, previous distances) stay current
+        value = cfg.execute()
         if cfg.weight == 0:
             continue
 
-        # Get reward value from function
-        weight = cfg.weight * dt
-        value = cfg.execute() * weight
+        # Weight the reward value
+        value = value * (cfg.weight * dt)
 
         # Add to reward buffer
         self._reward_buf += value
@@ -6220,13 +6256,12 @@ def build_debug(self):
         gs.device
     )
 
-    # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+    # If debug envs_idx is not set, use the envs the scene renders
     self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-        if self.env.scene.vis_options.rendered_envs_idx is not None:
-            self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
-        else:
-            self.debug_envs_idx = list[int](range(self.env.num_envs))
+    if self.debug_envs_idx is None:
+        self.debug_envs_idx = scene_rendered_envs_idx(
+            self.env.scene, self.env.num_envs
+        )
 
     self._debug_envs_tensor = torch.tensor(
         self.debug_envs_idx or [], dtype=torch.long, device=gs.device
@@ -6911,13 +6946,12 @@ def build_debug(self):
         gs.device
     )
 
-    # If debug envs_idx is not set, attempt to use the vis_options rendered_envs_idx
+    # If debug envs_idx is not set, use the envs the scene renders
     self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None and self.env.scene.vis_options is not None:
-        if self.env.scene.vis_options.rendered_envs_idx is not None:
-            self.debug_envs_idx = list(self.env.scene.vis_options.rendered_envs_idx)
-        else:
-            self.debug_envs_idx = list[int](range(self.env.num_envs))
+    if self.debug_envs_idx is None:
+        self.debug_envs_idx = scene_rendered_envs_idx(
+            self.env.scene, self.env.num_envs
+        )
 
     # Calculate the number of steps per debug render
     self._steps_per_debug_render = math.ceil(
@@ -9698,9 +9732,13 @@ def update(self, **params: Any) -> None:
 
 Bases: `ResetMdpFn`
 
-Randomly add/subtract mass to one or more links of the entity. This picks a random value from `mass_range` and passes it to `set_mass_shift` for each environment.
+Randomly add/subtract mass to one or more links of the entity. This picks a random value from `mass_range` and adds it to the link's original mass for each environment.
 
-See: https://genesis-world.readthedocs.io/en/latest/api_reference/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_mass_shift
+On genesis-world >= 1.4 requires your scene to be built with `RigidOptions(batch_links_info=True)`.
+
+See
+
+https://genesis-world.readthedocs.io/en/latest/api_reference/engine/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_links_mass
 
 Parameters:
 
@@ -9744,6 +9782,20 @@ def build(self):
         if len(links) == 0:
             raise ValueError(f"No links found with name/pattern '{name}'")
         self._links_idx_local.extend(link.idx_local for link in links)
+
+    self._use_mass_shift = hasattr(self.entity, "set_mass_shift")
+    if not self._use_mass_shift:
+        if not self.entity.solver.is_links_info_batched:
+            raise ValueError(
+                "randomize_link_mass_shift requires the scene to be created with "
+                "gs.options.RigidOptions(batch_links_info=True) on this version of genesis-world."
+            )
+        # Save the original masses, so shifts stay relative to them instead of accumulating
+        # across resets. Kept across rebuilds since the masses at a rebuild may
+        # already be shifted.
+        if not hasattr(self, "_base_mass"):
+            mass = self.entity.get_links_mass(links_idx_local=self._links_idx_local)
+            self._base_mass = mass[0] if mass.dim() == 2 else mass
 ```
 
 ### `context(env, entity=None)`
@@ -10535,6 +10587,8 @@ Bases: `MdpFn`
 
 Penalize the rate of change of the actions using L2 squared kernel.
 
+This penalizes the *change* between consecutive actions, `(action_t - action_{t-1})^2`, not their magnitude -- a large action held steady costs nothing, while rapid back-and-forth changes are heavily penalized. Use it to smooth out jittery, high-frequency policy output (e.g. when observation noise is enabled). Too high a weight also suppresses legitimate fast corrections, making the gait sluggish; weights around -0.005 to -0.05 are typical.
+
 Parameters:
 
 | Name             | Type                | Description                                                                                                                                                                                                                                                                                                                                      | Default |
@@ -11039,21 +11093,15 @@ The environment this function is bound to.
 
 ### `build()`
 
-Build/rebuild any state or buffers necessary for the function call.
-
-Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
-
-Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
-def build(self) -> None:
-    """
-    Build/rebuild any state or buffers necessary for the function call.
-
-    Called once by the manager during the environment build phase, and again after
-    any param is changed. Must be idempotent -- it is safe to call any number of
-    times, and re-deriving from scratch is the expected implementation.
-    """
+def build(self):
+    self._prev_lin_vel = torch.zeros((self.env.num_envs, 3), device=gs.device)
+    self._prev_ang_vel = torch.zeros((self.env.num_envs, 3), device=gs.device)
+    self._has_prev_vel = torch.zeros(
+        self.env.num_envs, dtype=torch.bool, device=gs.device
+    )
 ```
 
 ### `context(env)`
@@ -11081,24 +11129,11 @@ def context(self, env: GenesisEnv) -> None:
 
 ### `reset(envs_idx)`
 
-Called every time one or more environments reset.
-
-Parameters:
-
-| Name       | Type     | Description                      | Default    |
-| ---------- | -------- | -------------------------------- | ---------- |
-| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
-
-Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
-def reset(self, envs_idx: torch.Tensor) -> None:
-    """
-    Called every time one or more environments reset.
-
-    Args:
-        envs_idx: The environment ids being reset.
-    """
+def reset(self, envs_idx: torch.Tensor):
+    self._has_prev_vel[envs_idx] = False
 ```
 
 ### `safe_build()`
@@ -11214,9 +11249,9 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
-        "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
-    )
+    assert (
+        self.commanded_ang_vel is not None or self.vel_cmd_manager is not None
+    ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
 ```
 
 ### `context(env)`
@@ -11377,9 +11412,9 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert self.command is not None or self.vel_cmd_manager is not None, (
-        "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
-    )
+    assert (
+        self.command is not None or self.vel_cmd_manager is not None
+    ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
 ```
 
 ### `context(env)`
@@ -11587,6 +11622,174 @@ def reset(self, envs_idx: torch.Tensor) -> None:
     Args:
         envs_idx: The environment ids being reset.
     """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `dof_acc_l2(*, actuator_manager=None, action_manager=None)`
+
+Bases: `MdpFn`
+
+Penalize joint accelerations using the L2 squared kernel.
+
+Discourages abrupt joint velocity changes, which translate to high actuator stress and jerky motion on real hardware.
+
+Genesis doesn't expose joint accelerations, so they are computed as the finite difference of the joint velocities between consecutive steps:
+
+.. math::
+
+```
+\text{acc}_t = (v_t - v_{t-1}) / dt
+```
+
+Steps without a previous velocity to compare against -- the first step of an episode -- produce zero penalty.
+
+Parameters:
+
+| Name               | Type                    | Description                                                                                                          | Default |
+| ------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------- | ------- |
+| `actuator_manager` | `ActuatorManager`       | The actuator manager to read joint velocities from. Only the DOFs handled by this manager contribute to the penalty. | `None`  |
+| `action_manager`   | `PositionActionManager` | The action manager to read joint velocities from, as an alternative to actuator_manager.                             | `None`  |
+
+Returns:
+
+| Type | Description                                                      |
+| ---- | ---------------------------------------------------------------- |
+|      | torch.Tensor: Penalty for joint accelerations, shape (num_envs,) |
+
+### `action_manager = None`
+
+### `actuator_manager = None`
+
+### `env`
+
+The environment this function is bound to.
+
+### `build()`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
+
+```
+def build(self):
+    assert (
+        self.actuator_manager is not None or self.action_manager is not None
+    ), "Either actuator_manager or action_manager must be provided to dof_acc_l2"
+    self._manager = (
+        self.actuator_manager
+        if self.actuator_manager is not None
+        else self.action_manager
+    )
+    self._prev_dof_vel = torch.zeros(
+        (self.env.num_envs, self._manager.num_dofs), device=gs.device
+    )
+    self._has_prev_vel = torch.zeros(
+        self.env.num_envs, dtype=torch.bool, device=gs.device
+    )
+    # Precompute a multiplier, so for tensor optimization of the penalty calculation:
+    # sum((dv/dt)^2) == sum(dv^2) / dt^2, so the dt scaling is applied once to
+    # the reduced vector instead of to the full velocity matrix.
+    self._inv_dt_sq = 1.0 / (self.env.dt**2)
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
+
+```
+def reset(self, envs_idx: torch.Tensor):
+    self._has_prev_vel[envs_idx] = False
 ```
 
 ### `safe_build()`
@@ -14085,9 +14288,9 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert self.actuator_manager is not None or self.action_manager is not None, (
-        "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
-    )
+    assert (
+        self.actuator_manager is not None or self.action_manager is not None
+    ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
 ```
 
 ### `context(env)`
@@ -14410,9 +14613,9 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert self.actuator_manager is not None or self.action_manager is not None, (
-        "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
-    )
+    assert (
+        self.actuator_manager is not None or self.action_manager is not None
+    ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
 ```
 
 ### `context(env)`
@@ -16752,21 +16955,26 @@ Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/ma
 
 Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
 
-To control how frequently recordings are made specify **either** `episode_trigger` **or** `step_trigger` (not both). They should be functions returning a boolean that indicates whether a recording should be started at the current episode or step, respectively. If neither :attr:`episode_trigger` nor `step_trigger` is passed, a default `episode_trigger` will be used, which records at the episode indices 0, 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
+To control how frequently recordings are made specify **one** of `episode_trigger`, `step_trigger`, or `iteration_trigger`. They should be functions returning a boolean that indicates whether a recording should be started at the current episode, step, or training iteration, respectively. If no trigger is passed, a default `episode_trigger` will be used, which records at the episode indices 0, 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
+
+The training iteration is derived from the step count: each learning iteration steps the environment a fixed number of times (`num_steps_per_env` in RSL-RL). Pass that value as `steps_per_iteration` and `iteration_trigger` will be called once at the start of every iteration. The iteration count starts at `iteration_offset` (default 0). When resuming from a checkpoint, set `iteration_offset` to the checkpoint's iteration so the count, and the video filenames, line up with the framework's (see the example below).
 
 Parameters:
 
-| Name               | Type                      | Description                                                                                 | Default                                                                                                                                                                   |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`              | \`GenesisEnv              | Wrapper\`                                                                                   | GenesisEnv                                                                                                                                                                |
-| `camera_attr`      | `str`                     | The attribute of the base environment that contains the camera to use for recording.        | `'camera'`                                                                                                                                                                |
-| `episode_trigger`  | \`Callable\[[int], bool\] | None\`                                                                                      | Function that accepts an episode count integer and returns True if a recording should be started at this episode                                                          |
-| `step_trigger`     | \`Callable\[[int], bool\] | None\`                                                                                      | Function that accepts a step count integer and returns True if a recording should be started at this step                                                                 |
-| `video_length_sec` | `int`                     | Length of each video, in seconds.                                                           | `8`                                                                                                                                                                       |
-| `out_dir`          | `str`                     | Directory to save the videos to.                                                            | `'./videos'`                                                                                                                                                              |
-| `fps`              | `int`                     | Frames per second for the video.                                                            | `60`                                                                                                                                                                      |
-| `env_idx`          | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for. | `0`                                                                                                                                                                       |
-| `filename`         | \`str                     | None\`                                                                                      | The filename for the video. If None, the video will automatically be named for the current step. If defined, each video will overwrite the previous video with this name. |
+| Name                  | Type                      | Description                                                                                                                                                                                                                                                | Default                                                                                                                                                                                                           |
+| --------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`                 | \`GenesisEnv              | Wrapper\`                                                                                                                                                                                                                                                  | GenesisEnv                                                                                                                                                                                                        |
+| `camera_attr`         | `str`                     | The attribute of the base environment that contains the camera to use for recording.                                                                                                                                                                       | `'camera'`                                                                                                                                                                                                        |
+| `episode_trigger`     | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts an episode count integer and returns True if a recording should be started at this episode                                                                                                  |
+| `step_trigger`        | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts a step count integer and returns True if a recording should be started at this step                                                                                                         |
+| `iteration_trigger`   | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts a training iteration integer and returns True if a recording should be started at this iteration. Requires steps_per_iteration.                                                             |
+| `steps_per_iteration` | \`int                     | None\`                                                                                                                                                                                                                                                     | The number of environment steps per training iteration (RSL-RL's num_steps_per_env). Only used with iteration_trigger.                                                                                            |
+| `iteration_offset`    | `int`                     | The training iteration the first step belongs to. Set this when resuming from a checkpoint. Only used with iteration_trigger. Can also be assigned after construction via the :attr:iteration_offset property, as long as it is set before the first step. | `0`                                                                                                                                                                                                               |
+| `video_length_sec`    | `int`                     | Length of each video, in seconds.                                                                                                                                                                                                                          | `8`                                                                                                                                                                                                               |
+| `out_dir`             | `str`                     | Directory to save the videos to.                                                                                                                                                                                                                           | `'./videos'`                                                                                                                                                                                                      |
+| `fps`                 | `int`                     | Frames per second for the video.                                                                                                                                                                                                                           | `60`                                                                                                                                                                                                              |
+| `env_idx`             | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for.                                                                                                                                                                | `0`                                                                                                                                                                                                               |
+| `filename`            | \`str                     | None\`                                                                                                                                                                                                                                                     | The filename for the video. If None, the video will automatically be named for the episode, step, or iteration the recording started on. If defined, each video will overwrite the previous video with this name. |
 
 Example::
 
@@ -16805,6 +17013,39 @@ env = VideoWrapper(
 )
 ```
 
+Record every 50 RSL-RL training iterations::
+
+```
+train_cfg = {"num_steps_per_env": 24, ...}
+env = MyEnv()
+env = VideoWrapper(
+    env,
+    camera_attr="camera",
+    out_dir="./videos",
+    iteration_trigger=lambda it: it % 50 == 0,
+    steps_per_iteration=train_cfg["num_steps_per_env"],
+)
+```
+
+Resuming from a checkpoint with and iteration offset from RSL-RL::
+
+```
+video_env = VideoWrapper(
+    env,
+    camera_attr="camera",
+    out_dir="./videos",
+    iteration_trigger=lambda it: it % 50 == 0,
+    steps_per_iteration=train_cfg["num_steps_per_env"],
+)
+env = RslRlWrapper(video_env)
+env.build()
+
+runner = OnPolicyRunner(env, train_cfg, log_dir)
+runner.load("./logs/model_1000.pt")
+video_env.iteration_offset = runner.current_learning_iteration
+runner.learn(num_learning_iterations=500)
+```
+
 Source code in `packages/genesis-forge/genesis_forge/wrappers/video.py`
 
 ```
@@ -16815,6 +17056,9 @@ def __init__(
     video_length_sec: int = 8,
     episode_trigger: Callable[[int], bool] | None = None,
     step_trigger: Callable[[int], bool] | None = None,
+    iteration_trigger: Callable[[int], bool] | None = None,
+    steps_per_iteration: int | None = None,
+    iteration_offset: int = 0,
     out_dir: str = "./videos",
     fps: int = 60,
     env_idx: int = 0,
@@ -16841,14 +17085,27 @@ def __init__(
     self._actual_fps = round(1.0 / self.dt / self._steps_per_frame)
     self._env_idx = env_idx
 
-    if episode_trigger is None and step_trigger is None:
+    if (
+        episode_trigger is None
+        and step_trigger is None
+        and iteration_trigger is None
+    ):
         episode_trigger = capped_cubic_episode_trigger
 
-    trigger_count = sum(x is not None for x in [episode_trigger, step_trigger])
+    trigger_count = sum(
+        x is not None for x in [episode_trigger, step_trigger, iteration_trigger]
+    )
     assert trigger_count == 1, "Must specify only one trigger"
+    if iteration_trigger is not None:
+        assert (
+            steps_per_iteration is not None and steps_per_iteration > 0
+        ), "steps_per_iteration is required with iteration_trigger"
 
     self.episode_trigger = episode_trigger
     self.step_trigger = step_trigger
+    self.iteration_trigger = iteration_trigger
+    self._steps_per_iteration = steps_per_iteration
+    self._iteration_offset = iteration_offset
 
     # Videos are encoded into a scratch directory and moved into place once complete.
     self._tmp_dir = os.path.join(self._out_dir, ".tmp")
@@ -16873,6 +17130,12 @@ The time step of the environment.
 ## `extras`
 
 The extras/infos dictionary that should be returned by the step and reset functions. This dictionary will be cleared at the start of every step.
+
+## `iteration_offset`
+
+The training iteration the first step belongs to. Set this when resuming from a checkpoint so the iteration count, and the video filenames, match the framework's.
+
+## `iteration_trigger = iteration_trigger`
 
 ## `num_actions`
 
@@ -16921,9 +17184,9 @@ def build(self) -> None:
     """Load the camera from the environment."""
     super().build()
     self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-    assert self._cam is not None, (
-        f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
-    )
+    assert (
+        self._cam is not None
+    ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
 ```
 
 ## `close()`
@@ -17038,14 +17301,14 @@ def step(
         extras,
     ) = super().step(actions)
 
+    # Stop recording if the recording stop step is reached
+    if self._is_recording and self._recording_stop_step <= self._current_step:
+        self.finish_recording()
+
     self._check_recording_trigger()
     if self._is_recording:
         if self._current_step % self._steps_per_frame == 0 and self._cam:
             self._cam.render()
-
-        # Stop recording if the recording stop step is reached
-        if self._recording_stop_step <= self._current_step:
-            self.finish_recording()
 
     # Increment episode count if the watched environment has terminated or truncated
     if self._is_done(terminateds) or self._is_done(truncateds):
@@ -18256,6 +18519,8 @@ def to_dict(self) -> dict[str, Any]:
 
 One named slot in the policy's observation vector.
 
+## `clip = None`
+
 ## `description = None`
 
 ## `name`
@@ -18278,8 +18543,8 @@ def describe(self) -> str:
     parts = [f"{self.name} ({self.size} value{'s' if self.size != 1 else ''})"]
     if self.units:
         parts.append(f"in {self.units}")
-    # No scale here: this listing is what the caller supplies, and the caller
-    # supplies raw readings. The assembler scales them afterwards.
+    # No scale or clip here: this listing is what the caller supplies, and the
+    # caller supplies raw readings. The assembler clips and scales them afterwards.
     summary = ", ".join(parts)
     if self.description:
         summary = f"{summary} -- {self.description}"
@@ -18298,6 +18563,7 @@ def from_dict(cls, data: dict[str, Any], *, where: str) -> ObservationEntry:
         name=name,
         size=int(require(data, "size", where=f"{where}.{name}")),
         scale=float(data.get("scale", 1.0)),
+        clip=_parse_clip(data.get("clip"), where=f"{where}.{name}"),
         description=data.get("description"),
         units=data.get("units"),
     )
@@ -18315,6 +18581,8 @@ def to_dict(self) -> dict[str, Any]:
         "size": self.size,
         "scale": self.scale,
     }
+    if self.clip is not None:
+        data["clip"] = [float(self.clip[0]), float(self.clip[1])]
     if self.description is not None:
         data["description"] = self.description
     if self.units is not None:

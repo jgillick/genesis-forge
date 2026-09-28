@@ -51,7 +51,6 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -164,46 +163,62 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
+                # Encourage longer steps
                 "foot_air_time": {
-                    "weight": 2.5,
+                    "weight": 1.0,
                     "fn": rewards.feet_air_time(
                         contact_manager=self.foot_contact_manager,
                         vel_cmd_manager=self.velocity_command,
                         time_threshold=0.5,
                     ),
                 },
-                "tracking_lin_vel": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
+                    "weight": -50.0,
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
+                },
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
                     "fn": rewards.command_tracking_lin_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
                     "fn": rewards.command_tracking_ang_vel(
                         vel_cmd_manager=self.velocity_command,
                         entity_manager=self.robot_manager,
                     ),
                 },
-                "lin_vel_z": {
-                    "weight": -1.0,
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
+                    "weight": -2.0,
                     "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "ang_vel_xy": {
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
                     "weight": -0.05,
                     "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
-                    "weight": -0.005,
+                    "weight": -0.01,
                     "fn": rewards.action_rate_l2(),
                 },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default(
+                # Discourage abrupt joint velocity changes (e.g. jerky joint movements)
+                "dof_acceleration": {
+                    "weight": -2.5e-7,
+                    "fn": rewards.dof_acc_l2(
                         actuator_manager=self.actuator_manager,
                     ),
                 },
+                # Encourage the robot to walk level, without much body roll
                 "flat_orientation": {
                     "weight": -2.5,
                     "fn": rewards.flat_orientation_l2(),
@@ -225,7 +240,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
                     "fn": terminations.bad_orientation(
-                        limit_angle=20.0,
+                        limit_angle=30.0,  # degrees
                         entity_manager=self.robot_manager,
                     ),
                 },

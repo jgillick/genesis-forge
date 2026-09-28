@@ -15,7 +15,7 @@ EXPERIMENT_NAME = "go2-stand-up"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=600)
+parser.add_argument("-i", "--max_iterations", type=int, default=600)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -41,8 +41,10 @@ def training_cfg():
             "symmetry_cfg": None,
         },
         "actor": {
-            "class_name": "MLPModel",
-            "hidden_dims": [512, 256, 128],
+            "class_name": "RNNModel",
+            "rnn_type": "gru",
+            "rnn_hidden_dim": 256,
+            "hidden_dims": [256, 256, 128],
             "activation": "elu",
             "obs_normalization": True,
             "distribution_cfg": {
@@ -51,8 +53,10 @@ def training_cfg():
             },
         },
         "critic": {
-            "class_name": "MLPModel",
-            "hidden_dims": [512, 256, 128],
+            "class_name": "RNNModel",
+            "rnn_type": "gru",
+            "rnn_hidden_dim": 256,
+            "hidden_dims": [256, 256, 128],
             "activation": "elu",
             "obs_normalization": True,
         },
@@ -94,7 +98,9 @@ def main():
     print("Training stand-up policy...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_path, device=gs.device)
     runner.add_git_repo_to_log(".")
-    runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=False)
+    runner.learn(
+        num_learning_iterations=args.max_iterations, init_at_random_ep_len=False
+    )
     env.close()
 
 

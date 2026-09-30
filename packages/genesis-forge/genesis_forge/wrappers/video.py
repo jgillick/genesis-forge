@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 from collections.abc import Callable
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -12,6 +13,17 @@ from genesis_forge.wrappers.wrapper import Wrapper
 
 if TYPE_CHECKING:
     from genesis.vis.camera import Camera
+
+
+class VideoFilename(Enum):
+    """How the videos files are named"""
+
+    STEP = "step"
+    """Name the video for the step number."""
+    EPISODE = "episode"
+    """Name the video for the episode number of the watched environment."""
+    ITERATION = "iteration"
+    """Name the video for the training iteration. Requires ``steps_per_iteration``."""
 
 
 def capped_cubic_episode_trigger(episode_id: int) -> bool:
@@ -41,8 +53,9 @@ class VideoWrapper(Wrapper):
 
     To control how frequently recordings are made specify **one** of ``episode_trigger``, ``step_trigger``, or
     ``iteration_trigger``. They should be functions returning a boolean that indicates whether a recording should
-    be started at the current episode, step, or training iteration, respectively. If no trigger is passed,
-    a default ``episode_trigger`` will be used, which records at the episode indices 0, 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
+    be started at the current episode, step, or training iteration, respectively. Step and episode counts start at 1,
+    so the first environment step is step 1 of episode 1. If no trigger is passed, a default ``episode_trigger``
+    will be used, which records at the episode indices 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
 
     The training iteration is derived from the step count: each learning iteration steps the environment a fixed
     number of times (``num_steps_per_env`` in RSL-RL). Pass that value as ``steps_per_iteration`` and ``iteration_trigger``
@@ -50,25 +63,38 @@ class VideoWrapper(Wrapper):
     When resuming from a checkpoint, set ``iteration_offset`` to the checkpoint's iteration so the count, and the video filenames,
     line up with the framework's (see the example below).
 
+    Set ``wait_for_episode_start`` to have every video begin at the start of an episode. A trigger then no longer
+    starts the recording immediately; it waits for the next episode of the watched environment to begin. The video
+    is named for the step or iteration it actually started on, which can be later than the one that triggered it.
+    For example,if iteration 10 triggers a recording and the next episode begins in iteration 11, the video
+    is named ``11.mp4``.
+
     Args:
         env: GenesisEnv
         camera_attr: The attribute of the base environment that contains the camera to use for recording.
-        episode_trigger: Function that accepts an episode count integer and returns ``True`` if a recording should be started at this episode
-        step_trigger: Function that accepts a step count integer and returns ``True`` if a recording should be started at this step
+        episode_trigger: Function that accepts an episode count integer (starting at 1) and returns ``True`` if a recording
+                         should be started at this episode. Only called on the first step of an episode.
+        step_trigger: Function that accepts a step count integer (starting at 1) and returns ``True`` if a recording should be started at this step
         iteration_trigger: Function that accepts a training iteration integer and returns ``True`` if a recording should be started at this iteration.
                            Requires ``steps_per_iteration``.
         steps_per_iteration: The number of environment steps per training iteration (RSL-RL's ``num_steps_per_env``).
-                             Only used with ``iteration_trigger``.
+                             Required by ``iteration_trigger`` and ``VideoFilename.ITERATION``, and when set, the
+                             iteration is also passed to a ``filename`` function.
         iteration_offset: The training iteration the first step belongs to. Set this when resuming from a checkpoint.
-                          Only used with ``iteration_trigger``. Can also be assigned after construction via the
+                          Only used when ``steps_per_iteration`` is set. Can also be assigned after construction via the
                           :attr:`iteration_offset` property, as long as it is set before the first step.
+        wait_for_episode_start: Delay each triggered recording until the next episode of the watched environment begins.
+                                Has no effect with ``episode_trigger``, which always starts on the first step of an episode.
         video_length_sec: Length of each video, in seconds.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
-        filename: The filename for the video.
-                  If None, the video will automatically be named for the episode, step, or iteration the recording started on.
-                  If defined, each video will overwrite the previous video with this name.
+        filename: How to name each video, from the step, episode, and iteration the recording started on.
+                  - A ``VideoFilename`` names the video for that count, e.g. ``VideoFilename.STEP`` gives ``1500.mp4``.
+                  - A function is called as ``filename(step, episode, iteration)`` and returns the filename, including
+                    its extension. ``iteration`` is ``None`` unless ``steps_per_iteration`` is set.
+                  - A string is used as the filename for every video, so each one overwrites the last.
+                  - ``None`` (the default) names the video for whichever count the trigger uses.
 
     Example::
 
@@ -101,6 +127,16 @@ class VideoWrapper(Wrapper):
             camera_attr="camera",
             out_dir="./videos",
             step_trigger=lambda step: step % 1500 == 0
+        )
+
+    Create a custom video filename::
+
+        env = VideoWrapper(
+            env,
+            camera_attr="camera",
+            out_dir="./videos",
+            iteration_trigger=lambda it: it % 50 == 0,
+            filename=lambda step, episode, iteration: f"ep{episode}_step{step}.mp4",
         )
 
     Record every 50 RSL-RL training iterations::
@@ -143,25 +179,30 @@ class VideoWrapper(Wrapper):
         iteration_trigger: Callable[[int], bool] | None = None,
         steps_per_iteration: int | None = None,
         iteration_offset: int = 0,
+        wait_for_episode_start: bool = False,
         out_dir: str = "./videos",
         fps: int = 60,
         env_idx: int = 0,
-        filename: str | None = None,
+        filename: (
+            str | VideoFilename | Callable[[int, int, int | None], str] | None
+        ) = None,
         logging: bool = True,
     ):
         super().__init__(env)
         self._is_recording: bool = False
         self._logging: bool = logging
-        self._current_step: int = 0
-        self._current_episode: int = 0
+        self._current_step: int = 1
+        self._current_episode: int = 1
+        self._episode_step: int = 1
         self._recording_start_step: int = 0
         self._recording_stop_step: int = 0
         self._recording_name: str = "recording"
+        self._wait_for_episode_start = wait_for_episode_start
+        self._recording_pending: bool = False
 
         self._cam: Camera | None = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
-        self._filename = filename
         self._video_length_steps = math.ceil(video_length_sec / self.dt)
         self._steps_per_frame = max(
             1, round(1.0 / fps / self.dt)
@@ -184,6 +225,20 @@ class VideoWrapper(Wrapper):
             assert (
                 steps_per_iteration is not None and steps_per_iteration > 0
             ), "steps_per_iteration is required with iteration_trigger"
+
+        # Determine how to name the file
+        if filename is None:
+            if iteration_trigger is not None:
+                filename = VideoFilename.ITERATION
+            elif step_trigger is not None:
+                filename = VideoFilename.STEP
+            else:
+                filename = VideoFilename.EPISODE
+        if filename == VideoFilename.ITERATION:
+            assert (
+                steps_per_iteration is not None and steps_per_iteration > 0
+            ), "steps_per_iteration is required with VideoFilename.ITERATION"
+        self._filename = filename
 
         self.episode_trigger = episode_trigger
         self.step_trigger = step_trigger
@@ -247,6 +302,9 @@ class VideoWrapper(Wrapper):
         # Increment episode count if the watched environment has terminated or truncated
         if self._is_done(terminateds) or self._is_done(truncateds):
             self._current_episode += 1
+            self._episode_step = 1
+        else:
+            self._episode_step += 1
         self._current_step += 1
 
         return (
@@ -263,14 +321,14 @@ class VideoWrapper(Wrapper):
             self.finish_recording()
         super().close()
 
-    def start_recording(self, index: int):
+    def start_recording(self):
         """Start recording a video."""
         if self._cam is None:
             return
 
         self._is_recording = True
         self._recording_start_step = self._current_step
-        self._recording_name = self._filename or f"{index}.mp4"
+        self._recording_name = self._video_filename()
         self._recording_stop_step = self._current_step + self._video_length_steps
 
         filepath = os.path.join(self._tmp_dir, self._recording_name)
@@ -301,27 +359,63 @@ class VideoWrapper(Wrapper):
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""
-        record = False
-        index = None
-        if not self._is_recording:
-            if self.episode_trigger is not None:
-                record = self.episode_trigger(self._current_episode)
-                index = self._current_episode
-            elif self.step_trigger is not None:
-                record = self.step_trigger(self._current_step)
-                index = self._current_step
-            elif (
-                self.iteration_trigger is not None
-                and self._steps_per_iteration is not None
-                and self._current_step % self._steps_per_iteration == 0
-            ):
-                iteration = self._current_step // self._steps_per_iteration
-                index = self._iteration_offset + iteration
-                record = self.iteration_trigger(index)
+        if self._is_recording:
+            return False
 
-        if record and index is not None:
-            self.start_recording(index)
-        return record
+        # Check the recording triggers
+        if not self._recording_pending:
+            self._recording_pending = self._is_triggered()
+        if not self._recording_pending:
+            return False
+
+        # Hold a triggered recording until the watched env starts a new episode
+        if self._wait_for_episode_start and self._episode_step > 1:
+            return False
+
+        self._recording_pending = False
+        self.start_recording()
+        return True
+
+    def _is_triggered(self) -> bool:
+        """Check if the active trigger fires on the current step"""
+        if self.episode_trigger is not None:
+            # Only start on the first step of an episode, never part way through one
+            if self._episode_step > 1:
+                return False
+            return self.episode_trigger(self._current_episode)
+        if self.step_trigger is not None:
+            return self.step_trigger(self._current_step)
+        if self.iteration_trigger is not None and self._steps_per_iteration is not None:
+            # Only trigger on the first step of each iteration
+            step_idx = self._current_step - 1  # make step 0-based count
+            if step_idx % self._steps_per_iteration != 0:
+                return False
+            return self.iteration_trigger(self._current_iteration())
+        return False
+
+    def _current_iteration(self) -> int | None:
+        """The training iteration the current step belongs to, or None without ``steps_per_iteration``"""
+        if self._steps_per_iteration is None:
+            return None
+        # Iterations are counted from `iteration_offset`
+        iteration = (self._current_step - 1) // self._steps_per_iteration
+        return self._iteration_offset + iteration
+
+    def _video_filename(self) -> str:
+        """The filename for a video starting on the current step"""
+        filename = self._filename
+        if isinstance(filename, str):
+            return filename
+        if isinstance(filename, VideoFilename):
+            index = {
+                VideoFilename.STEP: self._current_step,
+                VideoFilename.EPISODE: self._current_episode,
+                VideoFilename.ITERATION: self._current_iteration(),
+            }[filename]
+            return f"{index}.mp4"
+        return filename(
+            self._current_step, self._current_episode, self._current_iteration()
+        )
 
     def _is_done(self, term_buffer: torch.Tensor | None) -> bool:
         """

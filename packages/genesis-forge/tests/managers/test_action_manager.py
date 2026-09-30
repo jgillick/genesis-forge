@@ -21,7 +21,15 @@ from genesis_forge.managers.action.base import BaseActionManager
 
 class FakeActuatorManager:
     def __init__(
-        self, dofs, default_pos, lower, upper, position=None, velocity=None, force=None
+        self,
+        dofs,
+        default_pos,
+        lower,
+        upper,
+        position=None,
+        velocity=None,
+        force=None,
+        control_force=None,
     ):
         self.dofs = dofs
         self._idx_to_col = {idx: col for col, idx in enumerate(dofs.values())}
@@ -31,6 +39,7 @@ class FakeActuatorManager:
         self._position = position
         self._velocity = velocity
         self._force = force
+        self._control_force = control_force
         self.control_calls = []
 
     def _cols(self, dofs_idx):
@@ -52,6 +61,9 @@ class FakeActuatorManager:
     def get_dofs_force(self, clip_to_max_force=False, dofs_idx=None):
         return self._force[:, self._cols(dofs_idx)]
 
+    def get_dofs_control_force(self, clip_to_max_force=False, dofs_idx=None):
+        return self._control_force[:, self._cols(dofs_idx)]
+
     def control_dofs_position(self, position, dofs_idx):
         self.control_calls.append((position.clone(), list(dofs_idx)))
 
@@ -59,13 +71,15 @@ class FakeActuatorManager:
         self.control_calls.append((velocity.clone(), list(dofs_idx)))
 
 
-def make_actuator_manager(num_envs=4, position=None, velocity=None, force=None):
+def make_actuator_manager(
+    num_envs=4, position=None, velocity=None, force=None, control_force=None
+):
     dofs = {"FL_hip": 100, "FL_knee": 101, "FR_hip": 102}
     default_pos = torch.tensor([[0.1, 0.2, 0.3]] * num_envs)
     lower = torch.tensor([-1.0, -1.5, -2.0])
     upper = torch.tensor([1.0, 1.5, 2.0])
     return FakeActuatorManager(
-        dofs, default_pos, lower, upper, position, velocity, force
+        dofs, default_pos, lower, upper, position, velocity, force, control_force
     )
 
 
@@ -223,6 +237,7 @@ def test_get_dofs_wrappers_use_the_filtered_dofs_idx(env):
         position=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs),
         velocity=torch.tensor([[4.0, 5.0, 6.0]] * env.num_envs),
         force=torch.tensor([[7.0, 8.0, 9.0]] * env.num_envs),
+        control_force=torch.tensor([[10.0, 11.0, 12.0]] * env.num_envs),
     )
     mgr = PositionActionManager(
         env, actuator_manager=actuator, actuator_joints=["FL_.*"]
@@ -236,6 +251,9 @@ def test_get_dofs_wrappers_use_the_filtered_dofs_idx(env):
         mgr.get_dofs_velocity(), torch.tensor([[4.0, 5.0]] * env.num_envs)
     )
     assert torch.equal(mgr.get_dofs_force(), torch.tensor([[7.0, 8.0]] * env.num_envs))
+    assert torch.equal(
+        mgr.get_dofs_control_force(), torch.tensor([[10.0, 11.0]] * env.num_envs)
+    )
 
 
 def test_base_send_actions_to_simulation_is_not_implemented(env):

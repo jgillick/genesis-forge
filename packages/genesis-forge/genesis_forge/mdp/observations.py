@@ -47,8 +47,8 @@ class entity_linear_velocity(MdpFn):
         torch.Tensor: The linear velocity of the entity's base link, in the entity's local frame.
     """
 
-    entity_manager: EntityManager = None
-    entity: RigidEntity = None
+    entity_manager: EntityManager | None = None
+    entity: RigidEntity | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -71,8 +71,8 @@ class entity_angular_velocity(MdpFn):
         torch.Tensor: The angular velocity of the entity's base link, in the entity's local frame.
     """
 
-    entity_manager: EntityManager = None
-    entity: RigidEntity = None
+    entity_manager: EntityManager | None = None
+    entity: RigidEntity | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -95,8 +95,8 @@ class entity_projected_gravity(MdpFn):
         torch.Tensor: The projected gravity of the entity's base link, in the entity's local frame.
     """
 
-    entity_manager: EntityManager = None
-    entity: RigidEntity = None
+    entity_manager: EntityManager | None = None
+    entity: RigidEntity | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -316,6 +316,7 @@ class raycaster_distance(MdpFn):
         if self.reduce == "min":
             distances = distances.amin(dim=1, keepdim=True)
         if self.normalize:
+            assert self._max_range is not None
             distances = distances / self._max_range
         return distances
 
@@ -340,9 +341,9 @@ class entity_dofs_position(MdpFn):
         torch.Tensor: The position of the entity's DOFs.
     """
 
-    actuator_manager: ActuatorManager = None
-    entity: RigidEntity = None
-    dofs_idx: list[int] = None
+    actuator_manager: ActuatorManager | None = None
+    entity: RigidEntity | None = None
+    dofs_idx: list[int] | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.actuator_manager is not None:
@@ -366,9 +367,9 @@ class entity_dofs_velocity(MdpFn):
         torch.Tensor: The velocity of the entity's DOFs.
     """
 
-    action_manager: PositionActionManager = None
-    entity: RigidEntity = None
-    dofs_idx: list[int] = None
+    action_manager: PositionActionManager | None = None
+    entity: RigidEntity | None = None
+    dofs_idx: list[int] | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.action_manager is not None:
@@ -393,9 +394,9 @@ class entity_dofs_force(MdpFn):
         torch.Tensor: The force of the entity's DOFs.
     """
 
-    actuator_manager: ActuatorManager = None
-    entity: RigidEntity = None
-    dofs_idx: list[int] = None
+    actuator_manager: ActuatorManager | None = None
+    entity: RigidEntity | None = None
+    dofs_idx: list[int] | None = None
     clip_to_max_force: bool = False
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -454,7 +455,9 @@ class contact_force(MdpFn):
     contact_manager: ContactManager
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        return torch.norm(self.contact_manager.contacts[:, :, :], dim=-1)
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        return torch.norm(contacts, dim=-1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -474,5 +477,7 @@ class has_contact(MdpFn):
     threshold: float = 1.0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        in_contact = self.contact_manager.contacts.norm(dim=-1) > self.threshold
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        in_contact = contacts.norm(dim=-1) > self.threshold
         return in_contact.float()

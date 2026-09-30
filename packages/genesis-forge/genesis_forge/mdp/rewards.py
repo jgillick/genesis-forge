@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import genesis as gs
 import torch
@@ -30,6 +30,26 @@ from genesis_forge.utils import entity_ang_vel, entity_lin_vel, entity_projected
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
+
+    from genesis_forge.managed_env import ManagedEnvironment
+
+
+def _dof_manager(
+    fn: MdpFn,
+    actuator_manager: ActuatorManager | None,
+    action_manager: PositionActionManager | None,
+) -> ActuatorManager | PositionActionManager:
+    """
+    The manager an MDP function reads DOF state from: `actuator_manager` if set,
+    otherwise `action_manager`. Call it from `build()`, so a function missing both
+    fails when the environment is built instead of on the first step.
+    """
+    if actuator_manager is not None:
+        return actuator_manager
+    assert (
+        action_manager is not None
+    ), f"Either actuator_manager or action_manager must be provided to {type(fn).__name__}"
+    return action_manager
 
 
 """
@@ -82,11 +102,11 @@ class base_height(MdpFn):
         torch.Tensor: Penalty for base height away from target
     """
 
-    target_height: float | torch.Tensor = None
-    height_command: CommandManager = None
-    terrain_manager: TerrainManager = None
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    target_height: float | torch.Tensor | None = None
+    height_command: CommandManager | None = None
+    terrain_manager: TerrainManager | None = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -94,50 +114,37 @@ class base_height(MdpFn):
         else:
             robot = self.entity if self.entity is not None else env.robot
 
-        base_pos = robot.get_pos()
+        base_pos = cast(torch.Tensor, robot.get_pos())
         height_offset = 0.0
         if self.terrain_manager is not None:
             height_offset = self.terrain_manager.get_terrain_height(
                 base_pos[:, 0], base_pos[:, 1]
             )
 
-        target_height = self.target_height
+        target_height = 0.0
         if self.height_command is not None:
             target_height = self.height_command.command.squeeze(-1)
+        elif self.target_height is not None:
+            target_height = self.target_height
         return torch.square(base_pos[:, 2] - height_offset - target_height)
 
 
 @dataclass(kw_only=True, eq=False)
 class dof_similar_to_default(MdpFn):
     """
-    Penalize joint poses far away from default pose(s).
-
-    Pass ``actuator_manager`` as one manager or a non-empty list/tuple (e.g. per-limb
-    stacks); penalties are summed per environment across all included DOFs.
+    Penalize joint poses far away from the default pose.
 
     Args:
-        actuator_manager: One or more actuator managers.
+        actuator_manager: The actuator manager to read joint positions and the
+                          default pose from.
 
     Returns:
-        torch.Tensor: Penalty summed over included DOFs, shape ``(num_envs,)``.
+        torch.Tensor: Penalty summed over the actuator manager's DOFs, shape ``(num_envs,)``.
     """
 
-    actuator_manager: ActuatorManager | list[ActuatorManager]
-
-    def build(self):
-        if self.actuator_manager is None:
-            raise ValueError(
-                "dof_similar_to_default: actuator_manager must be provided"
-            )
+    actuator_manager: ActuatorManager
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if isinstance(self.actuator_manager, list):
-            total = None
-            for mgr in self.actuator_manager:
-                dof_pos = mgr.get_dofs_position()
-                part = torch.sum(torch.abs(dof_pos - mgr.default_dofs_pos), dim=1)
-                total = part if total is None else total + part
-            return total
         dof_pos = self.actuator_manager.get_dofs_position()
         default_pos = self.actuator_manager.default_dofs_pos
         return torch.sum(torch.abs(dof_pos - default_pos), dim=1)
@@ -157,8 +164,8 @@ class lin_vel_z_l2(MdpFn):
         torch.Tensor: Penalty for z axis base linear velocity
     """
 
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -182,8 +189,8 @@ class lin_vel_xy_l2(MdpFn):
         torch.Tensor: Penalty for xy axis base linear velocity
     """
 
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -208,8 +215,8 @@ class ang_vel_xy_l2(MdpFn):
         torch.Tensor
     """
 
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -235,8 +242,8 @@ class flat_orientation_l2(MdpFn):
         torch.Tensor: Penalty for non-flat base orientation
     """
 
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the projected gravity vector in the robot's base frame.
@@ -255,17 +262,23 @@ class flat_orientation_l2(MdpFn):
 @dataclass(kw_only=True, eq=False)
 class body_acceleration_exp(MdpFn):
     """
-    Penalize jerky body acceleration to encourage smooth locomotion.
+    Penalize body acceleration to encourage smooth motion.
+
+    The penalty is ``1 - exp(-sensitivity * a)``, where ``a`` is the sum of the base's
+    linear (m/s²) and angular (rad/s²) acceleration magnitudes. It rises from 0 toward
+    1 and levels off once ``a`` exceeds about ``3 / sensitivity``, so accelerations
+    beyond that are all penalized about equally.
 
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
-        sensitivity: The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.
+        sensitivity: Higher values penalize small accelerations more but level off sooner.
+                     Lower it if large accelerations need to be discouraged.
     """
 
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
     sensitivity: float = 0.10
 
     def build(self):
@@ -293,14 +306,16 @@ class body_acceleration_exp(MdpFn):
         ang_acc = (curr_ang_vel - self._prev_ang_vel) / env.dt
         acc_magnitude = torch.norm(lin_acc, dim=-1) + torch.norm(ang_acc, dim=-1)
 
+        # No penalty for envs without a previous velocity to compare against
+        reward = torch.where(
+            self._has_prev_vel, 1 - torch.exp(-self.sensitivity * acc_magnitude), 0.0
+        )
+
         # Store for next step
         self._prev_lin_vel.copy_(curr_lin_vel)
         self._prev_ang_vel.copy_(curr_ang_vel)
         self._has_prev_vel[:] = True
 
-        reward = torch.where(
-            self._has_prev_vel, 1 - torch.exp(-self.sensitivity * acc_magnitude), 0.0
-        )
         return reward
 
 
@@ -332,7 +347,7 @@ class action_rate_l2(MdpFn):
         torch.Tensor: Penalty for changes in actions, shape (num_envs,)
     """
 
-    action_manager: BaseActionManager = None
+    action_manager: BaseActionManager | None = None
 
     def build(self):
         self._action_slice = slice(None)
@@ -348,7 +363,8 @@ class action_rate_l2(MdpFn):
         the managers created before this one.
         """
         start = 0
-        for manager in self.env.managers["action"]:
+        env = cast("ManagedEnvironment", self.env)
+        for manager in env.managers["action"]:
             if manager is self.action_manager:
                 return slice(start, start + manager.num_actions)
             start += manager.num_actions
@@ -398,18 +414,13 @@ class action_acceleration_l2(MdpFn):
                         If not provided, actions are read from ``env.actions``.
     """
 
-    action_manager: PositionActionManager = None
+    action_manager: PositionActionManager | None = None
 
     def build(self):
         # Buffers are sized to the action dimension, which is not known until the first
         # step supplies an action tensor -- so they stay lazily allocated in __call__.
         self._prev_action: torch.Tensor | None = None
         self._prev_prev_action: torch.Tensor | None = None
-        self._action_log_count: torch.Tensor | None = None
-
-    def _init_buffers(self, actions: torch.Tensor):
-        self._prev_action = torch.zeros_like(actions)
-        self._prev_prev_action = torch.zeros_like(actions)
         self._action_log_count = torch.zeros(
             (self.env.num_envs,), dtype=torch.long, device=gs.device
         )
@@ -418,7 +429,7 @@ class action_acceleration_l2(MdpFn):
         """
         Clear the action history for the specified environments.
         """
-        if self._prev_action is None:
+        if self._prev_action is None or self._prev_prev_action is None:
             return
         self._prev_action[envs_idx] = 0.0
         self._prev_prev_action[envs_idx] = 0.0
@@ -431,18 +442,21 @@ class action_acceleration_l2(MdpFn):
             actions = self.action_manager.get_actions()
 
         # Initialize the buffers, if necessary
-        if self._prev_action is None:
-            self._init_buffers(actions)
+        prev_action = self._prev_action
+        prev_prev_action = self._prev_prev_action
+        if prev_action is None or prev_prev_action is None:
+            prev_action = torch.zeros_like(actions)
+            prev_prev_action = torch.zeros_like(actions)
 
         # Calculate the acceleration
-        acceleration = actions - 2.0 * self._prev_action + self._prev_prev_action
+        acceleration = actions - 2.0 * prev_action + prev_prev_action
         penalty = torch.sum(torch.square(acceleration), dim=1)
 
         # Mask out envs that don't yet have two steps of valid history
         penalty = penalty * (self._action_log_count >= 2)
 
         # Shift the actions to the next step
-        self._prev_prev_action = self._prev_action
+        self._prev_prev_action = prev_action
         self._prev_action = actions.clone()
         self._action_log_count.add_(1).clamp_(max=2)
 
@@ -458,37 +472,66 @@ class dof_torque_l2(MdpFn):
     robot is near equilibrium. This helps reduce actuator oscillation when the robot
     is stationary or moving slowly.
 
+    Set `threshold` to penalize only the torque over that limit, which acts as a
+    soft torque limit instead: joints applying less contribute nothing.
+
     Args:
-        actuator_manager: The actuator manager to retrieve DOF forces from.
+        actuator_manager: The actuator manager to read joint torques from.
+        action_manager: The action manager to read joint torques from, as an
+                        alternative to `actuator_manager`.
+        threshold: The joint torque (N·m), in either direction, that is allowed
+                   before the penalty starts (default: 0.0)
 
     Returns:
         torch.Tensor: Penalty for joint torque effort, shape (num_envs,)
     """
 
-    actuator_manager: ActuatorManager
+    actuator_manager: ActuatorManager | None = None
+    action_manager: PositionActionManager | None = None
+    threshold: float = 0.0
+
+    def build(self):
+        self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        torque = self.actuator_manager.get_dofs_control_force()
-        return torch.sum(torch.square(torque), dim=1)
+        torque = self._manager.get_dofs_control_force()
+        over = (torque.abs() - self.threshold).clamp(min=0.0)
+        return torch.sum(torch.square(over), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
 class dof_velocity_l2(MdpFn):
     """
-    Penalize joint angular velocities to encourage slow, deliberate motion.
+    Penalize joint angular velocities using the L2 squared kernel.
+
+    With the default `threshold` of 0, every joint's full velocity is penalized, to
+    encourage slow, deliberate motion. Set `threshold` to penalize only the speed
+    over that limit, which acts as a soft velocity limit: joints moving slower
+    contribute nothing, so velocity spikes are discouraged without penalizing
+    ordinary motion.
 
     Args:
-        action_manager: The action manager to retrieve DOF velocities from.
+        actuator_manager: The actuator manager to read joint velocities from.
+        action_manager: The action manager to read joint velocities from, as an
+                        alternative to `actuator_manager`.
+        threshold: The joint speed (rad/s), in either direction, that is allowed
+                   before the penalty starts (default: 0.0)
 
     Returns:
         torch.Tensor: Penalty for joint angular velocity, shape (num_envs,)
     """
 
-    action_manager: PositionActionManager
+    actuator_manager: ActuatorManager | None = None
+    action_manager: PositionActionManager | None = None
+    threshold: float = 0.0
+
+    def build(self):
+        self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        dof_vel = self.action_manager.get_dofs_velocity()
-        return torch.sum(torch.square(dof_vel), dim=1)
+        dof_vel = self._manager.get_dofs_velocity()
+        over = (dof_vel.abs() - self.threshold).clamp(min=0.0)
+        return torch.sum(torch.square(over), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -519,18 +562,11 @@ class dof_acc_l2(MdpFn):
         torch.Tensor: Penalty for joint accelerations, shape (num_envs,)
     """
 
-    actuator_manager: ActuatorManager = None
-    action_manager: PositionActionManager = None
+    actuator_manager: ActuatorManager | None = None
+    action_manager: PositionActionManager | None = None
 
     def build(self):
-        assert (
-            self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to dof_acc_l2"
-        self._manager = (
-            self.actuator_manager
-            if self.actuator_manager is not None
-            else self.action_manager
-        )
+        self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
         self._prev_dof_vel = torch.zeros(
             (self.env.num_envs, self._manager.num_dofs), device=gs.device
         )
@@ -595,11 +631,11 @@ class command_tracking_lin_vel(MdpFn):
         torch.Tensor: Reward for tracking of linear velocity commands (xy axes)
     """
 
-    command: torch.Tensor = None
-    vel_cmd_manager: VelocityCommandManager = None
+    command: torch.Tensor | None = None
+    vel_cmd_manager: VelocityCommandManager | None = None
     sensitivity: float | None = None
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def build(self):
         assert (
@@ -616,6 +652,7 @@ class command_tracking_lin_vel(MdpFn):
         command = self.command
         if self.vel_cmd_manager is not None:
             command = self.vel_cmd_manager.command[:, :2]
+        assert command is not None
 
         lin_vel_error = torch.sum(
             torch.square(command - linear_vel_local[:, :2]), dim=1
@@ -660,11 +697,11 @@ class command_tracking_ang_vel(MdpFn):
         torch.Tensor: Reward for tracking of angular velocity commands (yaw)
     """
 
-    commanded_ang_vel: torch.Tensor = None
-    vel_cmd_manager: VelocityCommandManager = None
+    commanded_ang_vel: torch.Tensor | None = None
+    vel_cmd_manager: VelocityCommandManager | None = None
     sensitivity: float | None = None
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def build(self):
         assert (
@@ -681,6 +718,7 @@ class command_tracking_ang_vel(MdpFn):
         target = self.commanded_ang_vel
         if self.vel_cmd_manager is not None:
             target = self.vel_cmd_manager.command[:, 2]
+        assert target is not None
 
         ang_vel_error = torch.square(target - angular_vel[:, 2])
         sensitivity = self._get_sensitivity()
@@ -715,22 +753,16 @@ class stopped_joint_deviation_l1(MdpFn):
     """
 
     vel_cmd_manager: VelocityCommandManager
-    actuator_manager: ActuatorManager = None
+    actuator_manager: ActuatorManager | None = None
     command_threshold: float = 0.06
-    action_manager: PositionActionManager = None
+    action_manager: PositionActionManager | None = None
 
     def build(self):
-        assert (
-            self.actuator_manager is not None or self.action_manager is not None
-        ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
+        self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if self.actuator_manager is not None:
-            joint_pos = self.actuator_manager.get_dofs_position()
-            default_pos = self.actuator_manager.default_dofs_pos
-        else:
-            joint_pos = self.action_manager.get_dofs_position()
-            default_pos = self.action_manager.default_dofs_pos
+        joint_pos = self._manager.get_dofs_position()
+        default_pos = self._manager.default_dofs_pos
         joint_deviation = torch.sum(torch.abs(joint_pos - default_pos), dim=1)
 
         # Penalize motion when command is nearly zero.
@@ -970,8 +1002,8 @@ class keep_clear(MdpFn):
 
     entities: list[RigidEntity]
     clearance: float = 0.5
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def build(self):
         if (
@@ -992,15 +1024,13 @@ class keep_clear(MdpFn):
             entity_xy = self.entity_manager.base_pos[:, :2]
         else:
             entity = self.entity if self.entity is not None else env.robot
-            entity_xy = entity.get_pos()[:, :2]
+            entity_xy = cast(torch.Tensor, entity.get_pos())[:, :2]
 
-        # Stack every obstacle's position into one tensor so the distance to all of
-        # them, and the nearest one, are each a single reduction.
-        obstacles_xy = torch.stack(
-            [obstacle.get_pos()[:, :2] for obstacle in self.entities], dim=0
-        )
-        distance = torch.norm(obstacles_xy - entity_xy, dim=-1)
-        nearest_distance = distance.min(dim=0).values
+        # Measure every obstacle at once, rather than one at a time in a loop
+        obstacle_positions = [cast(torch.Tensor, o.get_pos()) for o in self.entities]
+        obstacles_xy = torch.stack(obstacle_positions)[..., :2]  # (obstacles, envs, 2)
+        distances = torch.norm(obstacles_xy - entity_xy, dim=-1)  # (obstacles, envs)
+        nearest_distance = distances.min(dim=0).values  # (envs,)
 
         # 0 at `clearance` and beyond, rising to 1 as the nearest obstacle closes to nothing
         return (1.0 - nearest_distance / self.clearance).clamp(min=0.0)
@@ -1030,9 +1060,37 @@ class has_contact(MdpFn):
     min_contacts: int = 1
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        in_contact = self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        in_contact = contacts.norm(dim=-1) > self.threshold
         result = in_contact.sum(dim=1) >= self.min_contacts
         return result.float()
+
+
+@dataclass(kw_only=True, eq=False)
+class contact_fraction(MdpFn):
+    """
+    Fraction of the links in the contact manager that are in contact with something.
+
+    Unlike `has_contact`, this pays partial credit, so the reward grows with each
+    additional link that makes contact.
+
+    Args:
+        contact_manager: The contact manager to check for contact
+        threshold: The force threshold for contact detection (default: 1.0 N)
+
+    Returns:
+        A value between 0.0 and 1.0 for each environment
+    """
+
+    contact_manager: ContactManager
+    threshold: float = 1.0
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        in_contact = contacts.norm(dim=-1) > self.threshold
+        return in_contact.float().mean(dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -1052,9 +1110,9 @@ class contact_force(MdpFn):
     threshold: float = 1.0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        violation = (
-            torch.norm(self.contact_manager.contacts[:, :, :], dim=-1) - self.threshold
-        )
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        violation = torch.norm(contacts, dim=-1) - self.threshold
         return torch.sum(violation.clip(min=0.0), dim=1)
 
 
@@ -1087,6 +1145,9 @@ class feet_air_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         made_contact = self.contact_manager.has_made_contact(env.dt)
         last_air_time = self.contact_manager.last_air_time
+        assert (
+            last_air_time is not None
+        ), "feet_air_time needs a contact_manager with track_air_time=True"
 
         # Calculate the air time
         air_time = (last_air_time - self.time_threshold) * made_contact
@@ -1130,6 +1191,9 @@ class feet_ground_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
         last_contact_time = self.contact_manager.last_contact_time
+        assert (
+            last_contact_time is not None
+        ), "feet_ground_time needs a contact_manager with track_air_time=True"
         short_contact = (self.time_threshold - last_contact_time).clamp(
             min=0.0
         ) * just_lifted
@@ -1157,11 +1221,13 @@ class feet_slide(MdpFn):
     """
 
     contact_manager: ContactManager
-    entity: RigidEntity = None
+    entity: RigidEntity | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get links in contact
-        contacts = torch.norm(self.contact_manager.contacts[:, :, :], dim=-1) > 1.0
+        contact_forces = self.contact_manager.contacts
+        assert contact_forces is not None, "contact_manager has not been built"
+        contacts = torch.norm(contact_forces, dim=-1) > 1.0
 
         # Get link velocities.
         # If the links aren't moving, then they're being used to move the robot and not sliding.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import genesis as gs
 import torch
@@ -105,7 +105,7 @@ class position(ResetMdpFn):
             zero_velocity=self.zero_velocity,
         )
 
-        if self.reset_quat is not None:
+        if self.reset_quat is not None and self._quat_buffer is not None:
             self._quat_buffer[envs_idx] = self.reset_quat.reshape(1, -1)
             entity.set_quat(
                 self._quat_buffer[envs_idx],
@@ -172,7 +172,9 @@ class randomize_terrain_position(ResetMdpFn):
             ).uniform_(*z)
 
         # Set angle as quat
-        self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
+        self._quat_buffer[envs_idx] = cast(
+            torch.Tensor, xyz_to_quat(self._rotation_buffer[envs_idx])
+        )
 
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         # Get the subterrain
@@ -272,7 +274,9 @@ class randomize_annulus_position(ResetMdpFn):
                 self._rotation_buffer[envs_idx, 2] = torch.empty(
                     n_envs, device=gs.device
                 ).uniform_(*z)
-            self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
+            self._quat_buffer[envs_idx] = cast(
+                torch.Tensor, xyz_to_quat(self._rotation_buffer[envs_idx])
+            )
             entity.set_quat(
                 self._quat_buffer[envs_idx],
                 envs_idx=envs_idx,

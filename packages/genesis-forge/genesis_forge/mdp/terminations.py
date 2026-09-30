@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import genesis as gs
 import torch
@@ -61,8 +61,8 @@ class bad_orientation(MdpFn):
     """
 
     limit_angle: float = 40.0
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
     grace_steps: int = 0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -95,15 +95,15 @@ class is_upsidedown(MdpFn):
     belly-up is approximately [0, 0, +1]. Side-lying poses keep z below threshold.
 
     Args:
-        threshold: Terminate when projected_gravity[:, 2] exceeds this value
+        threshold: Terminate when projected_gravity[:, 2] exceeds this value.
         entity_manager: The entity manager for the robot
         entity: The entity to check. Defaults to `env.robot`. Not necessary if entity_manager is provided
         grace_steps: Steps at episode start to ignore this check
     """
 
     threshold: float = 0.5
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
     grace_steps: int = 0
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
@@ -134,15 +134,15 @@ class base_height_below_minimum(MdpFn):
     """
 
     minimum_height: float = 0.05
-    entity: RigidEntity = None
-    entity_manager: EntityManager = None
+    entity: RigidEntity | None = None
+    entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
             base_pos = self.entity_manager.base_pos
         else:
             entity = self.entity if self.entity is not None else env.robot
-            base_pos = entity.get_pos()
+            base_pos = cast(torch.Tensor, entity.get_pos())
         return base_pos[:, 2] < self.minimum_height
 
 
@@ -162,15 +162,15 @@ class out_of_bounds(MdpFn):
     terrain_manager: TerrainManager
     subterrain: str | None = None
     border_margin: float = 0.5
-    entity: RigidEntity = None
+    entity: RigidEntity | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the entity's base position
         entity = self.entity if self.entity is not None else env.robot
-        position = entity.get_pos()
+        position = cast(torch.Tensor, entity.get_pos())
 
         # Get terrain bounds
-        (x_min, x_max, y_min, y_max) = self.terrain_manager.get_bounds(self.subterrain)
+        x_min, x_max, y_min, y_max = self.terrain_manager.get_bounds(self.subterrain)
         x_min_bound, x_max_bound = (
             x_min + self.border_margin,
             x_max - self.border_margin,
@@ -209,7 +209,9 @@ class has_contact(MdpFn):
     min_contacts: int = 1
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        in_contact = self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
+        contacts = self.contact_manager.contacts
+        assert contacts is not None, "contact_manager has not been built"
+        in_contact = contacts.norm(dim=-1) > self.threshold
         return in_contact.sum(dim=1) >= self.min_contacts
 
 

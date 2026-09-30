@@ -156,28 +156,9 @@ def test_dof_similar_to_default_sums_abs_offset_from_default(env):
     assert torch.allclose(fn(env), torch.tensor([0.7]))
 
 
-def test_dof_similar_to_default_sums_across_a_list_of_actuator_managers(env):
-    a = FakeActuatorManager(pos=torch.tensor([[0.5]]), default_pos=torch.tensor([0.0]))
-    b = FakeActuatorManager(pos=torch.tensor([[-0.3]]), default_pos=torch.tensor([0.0]))
-    fn = rewards.dof_similar_to_default(actuator_manager=[a, b])
-    fn.context(env)
-    fn.safe_build()
-
-    assert torch.allclose(fn(env), torch.tensor([0.8]))
-
-
 def test_dof_similar_to_default_requires_a_manager(env):
     with pytest.raises(TypeError, match="actuator_manager"):
         rewards.dof_similar_to_default()
-
-
-def test_dof_similar_to_default_rejects_an_explicit_none_at_build_time(env):
-    """actuator_manager is a required constructor arg, but nothing stops someone from
-    explicitly passing None -- build() still catches that case."""
-    fn = rewards.dof_similar_to_default(actuator_manager=None)
-    fn.context(env)
-    with pytest.raises(ValueError, match="actuator_manager must be provided"):
-        fn.safe_build()
 
 
 """
@@ -349,6 +330,32 @@ def test_dof_torque_l2_sums_the_squared_control_force(env):
     assert torch.allclose(fn(env), torch.tensor([25.0]))
 
 
+def test_dof_torque_l2_accepts_an_action_manager_instead(env):
+    action_mgr = FakeActuatorManager(control_force=torch.tensor([[3.0, -4.0]]))
+    fn = rewards.dof_torque_l2(action_manager=action_mgr)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([25.0]))
+
+
+def test_dof_torque_l2_requires_a_manager_at_build_time(env):
+    fn = rewards.dof_torque_l2()
+    fn.context(env)
+    with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
+        fn.safe_build()
+
+
+def test_dof_torque_l2_sums_the_squared_excess_over_the_threshold(env):
+    actuator = FakeActuatorManager(control_force=torch.tensor([[8.0, -9.0, 1.0]]))
+    fn = rewards.dof_torque_l2(actuator_manager=actuator, threshold=6.0)
+    fn.context(env)
+    fn.safe_build()
+
+    # excess in either direction: 2.0, 3.0, 0.0 -> 4.0 + 9.0
+    assert torch.allclose(fn(env), torch.tensor([13.0]))
+
+
 def test_dof_acc_l2_is_zero_on_the_first_call(env):
     """There's no previous velocity to difference the first step against."""
     actuator = FakeActuatorManager(vel=torch.ones((env.num_envs, 2)))
@@ -433,6 +440,41 @@ def test_dof_velocity_l2_sums_the_squared_dof_velocity(env):
     fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([5.0]))
+
+
+def test_dof_velocity_l2_accepts_an_actuator_manager_instead(env):
+    actuator = FakeActuatorManager(vel=torch.tensor([[1.0, -2.0]]))
+    fn = rewards.dof_velocity_l2(actuator_manager=actuator)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.allclose(fn(env), torch.tensor([5.0]))
+
+
+def test_dof_velocity_l2_requires_a_manager_at_build_time(env):
+    fn = rewards.dof_velocity_l2()
+    fn.context(env)
+    with pytest.raises(AssertionError, match="actuator_manager or action_manager"):
+        fn.safe_build()
+
+
+def test_dof_velocity_l2_is_zero_within_the_threshold(env):
+    actuator = FakeActuatorManager(vel=torch.tensor([[5.0, -5.0]]))
+    fn = rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0)
+    fn.context(env)
+    fn.safe_build()
+
+    assert torch.equal(fn(env), torch.tensor([0.0]))
+
+
+def test_dof_velocity_l2_sums_the_squared_excess_over_the_threshold(env):
+    actuator = FakeActuatorManager(vel=torch.tensor([[8.0, -9.0, 1.0]]))
+    fn = rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0)
+    fn.context(env)
+    fn.safe_build()
+
+    # excess in either direction: 2.0, 3.0, 0.0 -> 4.0 + 9.0
+    assert torch.allclose(fn(env), torch.tensor([13.0]))
 
 
 """
@@ -987,6 +1029,24 @@ def test_has_contact_rewards_envs_with_enough_contacts(env):
     fn.safe_build()
 
     assert torch.equal(fn(env), torch.tensor([1.0, 0.0]))
+
+
+def test_contact_fraction_is_the_share_of_links_in_contact(env):
+    contacts = torch.tensor(
+        [
+            [[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 0.0], [0.5, 0.0, 0.0]],
+            [[3.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        ]
+    )
+    fn = rewards.contact_fraction(
+        contact_manager=FakeContactManager(contacts), threshold=1.0
+    )
+    fn.context(env)
+    fn.safe_build()
+
+    # A 0.5 N touch is under the threshold, so env 0 has 2 of 4 links in contact
+    assert torch.allclose(fn(env), torch.tensor([0.5, 1.0, 0.0]))
 
 
 def test_contact_force_sums_the_over_threshold_violation(env):

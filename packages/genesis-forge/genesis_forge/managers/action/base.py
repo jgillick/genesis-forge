@@ -257,6 +257,22 @@ class BaseActionManager(BaseManager):
             clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
         )
 
+    def get_dofs_control_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
+        """
+        A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+        Args:
+            clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                               defined in the actuator manager.
+
+        Returns:
+            force: torch.Tensor, shape (n_envs, n_dofs)
+            The force output by the enabled DOFs.
+        """
+        return self.actuator_manager.get_dofs_control_force(
+            clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
+        )
+
     def get_actions(self) -> torch.Tensor:
         """
         Get the current target actions for the environments.

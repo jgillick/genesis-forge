@@ -5,14 +5,15 @@ from "Sim-to-Real Learning of All Common Bipedal Gaits via Periodic Reward Compo
 
 from __future__ import annotations
 
-import torch
-import genesis as gs
-from typing import TYPE_CHECKING, TypedDict, Literal
-from genesis_forge.managers.command.command_manager import CommandManager
+from typing import TYPE_CHECKING, Literal, TypedDict
 
-from genesis_forge.managers import ContactManager
-from genesis_forge.genesis_env import GenesisEnv
+import genesis as gs
+import torch
+
 from genesis_forge.gamepads import Gamepad
+from genesis_forge.genesis_env import GenesisEnv
+from genesis_forge.managers import ContactManager
+from genesis_forge.managers.command.command_manager import CommandManager
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -89,11 +90,11 @@ class GaitCommandManager(CommandManager):
         env: GenesisEnv,
         foot_names: FootNames,
         resample_time_sec: float = 5.0,
-        robot_entity_attr: str = "robot",
+        robot_entity: RigidEntity = None,
     ):
         super().__init__(env, range={}, resample_time_sec=resample_time_sec)
 
-        self._robot_entity_attr = robot_entity_attr
+        self._robot_entity = robot_entity if robot_entity is not None else env.robot
         self._foot_names = foot_names
         self.foot_links = []
         self._gamepad: Gamepad | None = None
@@ -221,7 +222,7 @@ class GaitCommandManager(CommandManager):
         Get foot link indices
         """
         super().build()
-        robot: RigidEntity = getattr(self.env, self._robot_entity_attr)
+        robot: RigidEntity = self._robot_entity
         for i, key in enumerate(("FL", "FR", "RL", "RR")):
             foot_link_name = self._foot_names[key]
             self.foot_links.insert(i, robot.get_link(foot_link_name))
@@ -274,7 +275,7 @@ class GaitCommandManager(CommandManager):
         self._gamepad = gamepad
         self._num_gaits = len(GAIT_OFFSETS)
         self._gamepad_gait_idx = 0
-        self._gamepad_select_gait(list(GAIT_OFFSETS.keys())[0])
+        self._gamepad_select_gait(next(iter(GAIT_OFFSETS.keys())))
 
     """
     Rewards

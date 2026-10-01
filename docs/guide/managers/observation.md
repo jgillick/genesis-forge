@@ -1,6 +1,6 @@
 # Observation Manager
 
-The Observation Manager defines what your RL agent observes from the environment. It handles observation space creation, data collection, scaling, and noise injection for training robustness.
+The Observation Manager defines what your RL agent observes from the environment. It handles observation space creation, data collection, clipping, scaling, and noise injection for training robustness.
 
 You can see a full example using the observation manager in [examples/basic](https://github.com/jgillick/genesis-forge/tree/main/examples/basic).
 
@@ -15,20 +15,18 @@ class MyEnv(ManagedEnvironment):
             self,
             cfg={
                 "projected_gravity": {
-                    "fn": observations.entity_projected_gravity,
+                    "fn": observations.entity_projected_gravity(),
                     "noise": 0.1,  # Add noise for robustness
                 },
                 "joint_positions": {
-                    "fn": observations.entity_dofs_position,
-                    "params": {
-                        "action_manager": self.action_manager
-                    }
+                    "fn": observations.entity_dofs_position(
+                        actuator_manager=self.actuator_manager
+                    ),
                 },
                 "joint_velocities": {
-                    "fn": observations.entity_dofs_velocity,
-                    "params": {
-                        "action_manager": self.action_manager
-                    },
+                    "fn": observations.entity_dofs_velocity(
+                        action_manager=self.action_manager
+                    ),
                     "scale": 0.05,  # Scale down velocities
                 },
             },
@@ -40,28 +38,29 @@ class MyEnv(ManagedEnvironment):
 Each observation configuration dict can have:
 
 - **fn**: Function that returns observation values
-- **params**: Additional parameters to be passed to that function
-- **scale**: Multiplier to normalize values
-- **noise**: Random noise scale for training robustness
+- **noise**: Random noise scale for training robustness, in the raw units `fn` returns
+- **clip**: `(min, max)` bounds applied after noise
+- **scale**: Multiplier to normalize values, applied last
+
+The processing order is: noise -> clip -> scale.
 
 ```python
 ObservationManager(
     self,
     cfg={
         "robot_velocity": {
-            "fn": observations.entity_linear_velocity,
-            "scale": 2.0,    # Scale up small values
-            "noise": 0.05,   # Add 5% noise
+            "fn": observations.entity_linear_velocity(),
+            "noise": 0.025,  # ±0.025 m/s of raw sensor noise
+            "scale": 2.0,    # then scale up small values for the policy
         },
         "contact_forces": {
-            "fn": observations.entity_dofs_force,
-            "params": {   # Pass parameters to entity_dofs_force
-                "action_manager": self.action_manager,
-                "clip_to_max_force": True
-            },
+            "fn": observations.entity_dofs_force(
+                actuator_manager=self.actuator_manager,
+                clip_to_max_force=True,
+            ),
         },
         "actions": { # Use lambda for simple data returns
-            "fn": lambda env: self.action_manager.get_actions(),
+            "fn": lambda env: self.action_manager.get_dofs_position(),
         },
     },
 )
@@ -95,6 +94,21 @@ Neural networks work best with inputs roughly in [-1, 1] range:
 - distances: `1.0` - Usually in meters
 - angles: `1.0` - Already in radians
 
+## Clipping
+
+`clip` is a safety bound, not a normalizer. Set it several times wider than any value a healthy simulation produces, so it never shapes what the policy learns and only catches a simulation that has come apart
+and sent absurd/infinite values.
+
+```python
+"joint_velocities": {
+    "fn": lambda env: self.action_manager.get_dofs_velocity(),
+    "clip": (-100.0, 100.0),  # rad/s; a healthy robot stays well inside this
+    "scale": 0.05,
+},
+```
+
+Why it matters: when one of thousands of parallel environments explodes numerically, its velocities come back as huge or infinite numbers, which corrupts your policy's observations. A step later, every environment's actions are NaN and training dies with an error that points nowhere near the cause.
+
 ## Adding Noise
 
 Add noise to observations for better Sim2Real robustness.
@@ -107,20 +121,18 @@ ObservationManager(
     noise=0.1 # set this value for all observations
     cfg={
         "projected_gravity": {
-            "fn": observations.entity_projected_gravity,
+            "fn": observations.entity_projected_gravity(),
         },
         "joint_positions": {
-            "fn": observations.entity_dofs_position,
-            "params": {
-                "action_manager": self.action_manager
-            },
+            "fn": observations.entity_dofs_position(
+                actuator_manager=self.actuator_manager
+            ),
             "noise": 0.1,  # supersedes the default setting
         },
         "joint_velocities": {
-            "fn": observations.entity_dofs_velocity,
-            "params": {
-                "action_manager": self.action_manager
-            }
+            "fn": observations.entity_dofs_velocity(
+                action_manager=self.action_manager
+            ),
         },
     },
 )
@@ -154,23 +166,30 @@ cfg={
 
 ## Custom Observation Functions
 
-A custom observation function takes in the environment as the first parameter, as well as any other parameter defined in the `params` dict at the ObservationManager. The returned value should be a tensor with a float value for each environment.
+A custom observation function is defined as a simple dataclass with a `__call__` method which executes the observation.
 
 ```python
-def feet_in_contact(env, contact_manager: ContactManager, threshold=1.0):
-    """Return the number of feet in contact with the ground with at least `threshold` force."""
-    has_contact = contact_manager.contacts[:, :].norm(dim=-1) > threshold
-    return has_contact.sum(dim=1)
+@dataclass(kw_only=True, eq=False)
+class feet_in_contact(MdpFn):
+    """
+    Return the number of feet in contact with the ground with at least `threshold` force.
+    """
+    threshold: float = 1.0
+    contact_manager: ContactManager = None
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        has_contact = self.contact_manager.contacts[:, :].norm(dim=-1) > self.threshold
+        return has_contact.sum(dim=1)
+
+...
 
 ObservationManager(
     self,
     cfg={
         "foot_contact": {
-            "fn": feet_in_contact,
-            "params": {
-                "contact_manager": self.contact_manager,
-                "threshold": 5.0,
-            },
+            "fn": feet_in_contact(
+                contact_manager=self.contact_manager,
+                threshold=5.0,
+            ),
         },
     },
 )
@@ -185,7 +204,7 @@ By giving the critic privileged information (like ground truth contact forces or
 To do this, just define the component name on the observation manager.
 
 !!! tip "Important"
-    You must at least define a nameless, or "policy", observation set. This represents the observations that will be available to your policy during deployment (e.g., real sensor data).
+You must at least define a nameless, or "policy", observation set. This represents the observations that will be available to your policy during deployment (e.g., real sensor data).
 
 ```python
 # Policy observations - what the robot can actually sense during deployment
@@ -215,10 +234,9 @@ ObservationManager(
     cfg={
         # Privileged observations (not available to policy at runtime)
         "foot_contact_force": {
-            "fn": observations.contact_force,
-            "params": {
-                "contact_manager": self.foot_contact_manager,
-            },
+            "fn": observations.contact_force(
+                contact_manager=self.foot_contact_manager,
+            ),
         },
         "dof_force": {
             "fn": lambda env: self.action_manager.get_dofs_force(),

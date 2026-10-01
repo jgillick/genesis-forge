@@ -1,13 +1,15 @@
-import os
-import glob
-import torch
-import pickle
 import argparse
-import genesis as gs
+import glob
+import os
+import pickle
+import sys
 
-from genesis_forge.wrappers import RslRlWrapper
+import genesis as gs
+import torch
 from environment import Go2StandUpEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import RslRlWrapper
 
 EXPERIMENT_NAME = "go2-stand-up"
 
@@ -21,7 +23,7 @@ def get_latest_model(log_dir: str) -> str:
     model_checkpoints = glob.glob(os.path.join(log_dir, "model_*.pt"))
     if len(model_checkpoints) == 0:
         print(f"Warning: No model files found at '{log_dir}'.")
-        exit(1)
+        sys.exit(1)
     sorted_models = sorted(
         model_checkpoints,
         key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
@@ -37,7 +39,8 @@ def main():
     gs.init(logging_level="warning", backend=backend)
 
     log_path = f"./logs/{args.exp_name}"
-    [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
+    with open(f"{log_path}/cfgs.pkl", "rb") as f:
+        [cfg] = pickle.load(f)
     model = get_latest_model(log_path)
 
     env = Go2StandUpEnv(num_envs=1, headless=False)
@@ -59,7 +62,7 @@ def main():
         pass
     except gs.GenesisException as e:
         if str(e) != "Viewer closed.":
-            raise e
+            raise e # noqa
 
 
 if __name__ == "__main__":

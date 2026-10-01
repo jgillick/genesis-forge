@@ -1,22 +1,22 @@
 import os
+
 import genesis as gs
 import numpy as np
 from PIL import Image
 
-from genesis_forge import ManagedEnvironment, EnvMode
+from genesis_forge import EnvMode, ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
-    VelocityCommandManager,
+    RewardManager,
+    TerminationManager,
     TerrainManager,
-    ContactManager,
+    VelocityCommandManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
-
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4  # How high above the terrain the robot should be placed
 INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
@@ -50,14 +50,12 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(-2.5, -1.5, 1.0),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -83,7 +81,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.5, -1.5, 1.6),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -95,28 +93,27 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         """
         Configure the environment managers
         """
-        self.terrain_manager = TerrainManager(self)
+        self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
         ##
         # Robot manager
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Randomize the robot's position on the terrain after reset
                 "position": {
-                    "fn": reset.randomize_terrain_position,
-                    "params": {
-                        "height_offset": HEIGHT_OFFSET,
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": reset.randomize_terrain_position(
+                        height_offset=HEIGHT_OFFSET,
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
             },
         )
-            
+
         ##
-        # Joint Actions
+        # Joint Actuators/Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -149,11 +146,11 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-0.5, 0.5],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-0.5, 0.5),
             },
-            standing_probability=0.05,
+            stopped_probability=0.05,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -180,62 +177,62 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.5,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.75,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -2.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "ang_vel_xy": {
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
                     "weight": -0.05,
-                    "fn": rewards.ang_vel_xy_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
+                # Penalize non-foot body parts from contacting the terrain
                 "undesired_contacts": {
                     "weight": -1.0,
-                    "fn": rewards.has_contact,
-                    "params": {
-                        "contact_manager": self.undesired_contacts,
-                        "threshold": 5.0,
-                    },
+                    "fn": rewards.has_contact(
+                        contact_manager=self.undesired_contacts,
+                        threshold=5.0,
+                    ),
                 },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
                     "weight": -0.01,
-                    "fn": rewards.action_rate_l2,
+                    "fn": rewards.action_rate_l2(),
                 },
+                # Encourage the robot to maintain a pose similar to it's default stable pose
                 "similar_to_default": {
                     "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "fn": rewards.dof_similar_to_default(
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
+                # Discourage the robot from tilting too much
                 "flat_orientation": {
                     "weight": -1.5,
-                    "fn": rewards.flat_orientation_l2,
+                    "fn": rewards.flat_orientation_l2(),
                 },
+                # Penalize early termination
                 "terminated": {
                     "weight": -100.0,
-                    "fn": rewards.terminated,
+                    "fn": rewards.terminated(),
                 },
             },
         )
@@ -248,23 +245,21 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 "out_of_bounds": {
-                    "fn": terminations.out_of_bounds,
-                    "params": {
-                        "terrain_manager": self.terrain_manager,
-                    },
+                    "fn": terminations.out_of_bounds(
+                        terrain_manager=self.terrain_manager,
+                    ),
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "bad_orientation": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 30.0,
-                        "entity_manager": self.robot_manager,
-                        "grace_steps": 20,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=30.0,
+                        entity_manager=self.robot_manager,
+                        grace_steps=20,
+                    ),
                 },
             },
         )
@@ -289,10 +284,10 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 },
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
-                    "scale": 0.05,
+                    "scale": 0.02,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

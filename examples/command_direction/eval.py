@@ -1,13 +1,14 @@
-import os
-import glob
-import torch
-import pickle
 import argparse
-import genesis as gs
+import pickle
+import sys
+from pathlib import Path
 
-from genesis_forge.wrappers import RslRlWrapper
+import genesis as gs
+import torch
 from environment import Go2CommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import RslRlWrapper
 
 EXPERIMENT_NAME = "go2-command"
 
@@ -17,22 +18,17 @@ parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def get_latest_model(log_dir: str) -> str:
+def get_latest_model(log_dir: Path) -> str:
     """
     Get the last model from the log directory
     """
-    model_checkpoints = glob.glob(os.path.join(log_dir, "model_*.pt"))
-    if len(model_checkpoints) == 0:
-        print(
-            f"Warning: No model files found at '{log_dir}' (you might need to train more)."
-        )
-        exit(1)
+    checkpoints = list(log_dir.glob("model_*.pt"))
+    if not checkpoints:
+        print(f"Error: No model files found at '{log_dir}'.")
+        sys.exit(1)
     # Sort by the file with the highest number
-    sorted_models = sorted(
-        model_checkpoints,
-        key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
-    )
-    return sorted_models[-1]
+    latest = max(checkpoints, key=lambda p: int(p.stem.split("_")[1]))
+    return str(latest)
 
 
 def main():
@@ -44,8 +40,9 @@ def main():
     gs.init(logging_level="warning", backend=backend)
 
     # Load training configuration
-    log_path = f"./logs/{args.exp_name}"
-    [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
+    log_path = Path("./logs") / args.exp_name
+    with open(log_path / "cfgs.pkl", "rb") as f:
+        [cfg] = pickle.load(f)
     model = get_latest_model(log_path)
 
     # Setup environment
@@ -69,9 +66,9 @@ def main():
         pass
     except gs.GenesisException as e:
         if str(e) != "Viewer closed.":
-            raise e
-    except Exception as e:
-        raise e
+            raise
+    except Exception:
+        raise
 
 
 if __name__ == "__main__":

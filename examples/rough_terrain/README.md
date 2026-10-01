@@ -1,7 +1,5 @@
 # Go2 - Rough Terrain
 
-**NOTE:** This example requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+, in order to get this [bug fix](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727), which affects rough terrain contacts.
-
 Teaches the Go2 robot to walk on rough terrain. This environment uses a combination of the TerrainManager and EntityManager to place each robot randomly at a different place of terrain at each reset.
 
 ```python
@@ -17,20 +15,19 @@ def __init__(self):
 
 def config(self):
     # Terrain manager helps the EntityManager safetly place the robot above the terrain on reset
-    self.terrain_manager = TerrainManager(self, terrain_attr="terrain")
+    self.terrain_manager = TerrainManager(self, terrain=self.terrain)
 
     # Robot manager
     # Randomize the robot's position on the terrain after reset
     self.robot_manager = EntityManager(
         self,
-        entity_attr="robot",
+        entity=self.robot,
         on_reset={
             "position": {
-                "fn": reset.randomize_terrain_position,
-                "params": {
-                    "terrain_manager": self.terrain_manager,
-                    "height_offset": HEIGHT_OFFSET,
-                },
+                "fn": reset.randomize_terrain_position(
+                    terrain_manager=self.terrain_manager,
+                    height_offset=HEIGHT_OFFSET,
+                ),
             },
         },
     )
@@ -42,11 +39,10 @@ def config(self):
         cfg={
             "base_height_target": {
                 "weight": -50.0,
-                "fn": rewards.base_height,
-                "params": {
-                    "target_height": 0.3,
-                    "terrain_manager": self.terrain_manager, # <- this line
-                },
+                "fn": rewards.base_height(
+                    target_height=0.3,
+                    terrain_manager=self.terrain_manager, # <- this line
+                ),
             },
             # ... other rewards ...
         },
@@ -55,7 +51,6 @@ def config(self):
     # ... other managers ...
 
 ```
-
 
 ## Training
 

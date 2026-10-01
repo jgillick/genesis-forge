@@ -1,28 +1,27 @@
-import torch
 import genesis as gs
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
-    RewardManager,
-    TerminationManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
     VelocityCommandManager,
 )
 from genesis_forge.managers.actuator import NoisyValue
-from genesis_forge.mdp import reset, rewards, terminations
-
+from genesis_forge.managers.contact.contact_manager import ContactManager
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
-INITIAL_BODY_POSITION = [0.0, 0.0, HEIGHT_OFFSET]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 
 
-class Go2CommandDirectionEnv(ManagedEnvironment):
+class Go2DomainRandomizationEnv(ManagedEnvironment):
     """
-    Example training environment for the Go2 robot.
+    Example training environment for the Go2 robot with domain randomization.
     """
 
     def __init__(
@@ -44,28 +43,21 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
-                #
-                # Batching must be enabled to enable domain randomization of the DOF armature settings.
-                # Enabling these settings will SIGNIFICANTLY slow down the simulation,
-                # but will also increase the randomization across all envs.
-                # Uncomment the following 3 lines to enable this:
-                # batch_dofs_info=True,
-                # batch_joints_info=True,
-                # batch_links_info=True,
+                ##
+                # Batch settings required for some domain randomization
+                # and can slow down the simulation and training.
+                batch_links_info=True,  # Required for randomize_link_mass_shift
+                batch_dofs_info=True,  # Required for armature randomization
             ),
         )
 
@@ -83,7 +75,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
 
         # Camera, for headless video recording
         self.camera = self.scene.add_camera(
-            pos=(-2.5, -1.5, 1.0),
+            pos=(-2.5, -1.5, 1.5),
             lookat=(0.0, 0.0, 0.0),
             res=(1280, 720),
             fov=40,
@@ -96,29 +88,28 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         """
         Configure the environment managers
         """
+
         ##
         # Robot manager
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
                 # Add/subtract a random amount of mass to the robot's body
-                "mass": {
-                    "fn": reset.randomize_link_mass_shift,
-                    "params": {
-                        "link_name": "base",
-                        "mass_range": [-0.5, 1.0],  # kg
-                    },
+                "mass_randomization": {
+                    "fn": reset.randomize_link_mass_shift(
+                        link_name="base",
+                        mass_range=(-0.5, 1.0),  # kg
+                    ),
                 },
             },
         )
@@ -129,7 +120,7 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             joint_names=[".*"],
             default_pos={
-                # Randomize the default positions by +/- 0.05 radians
+                # Randomize the default positions by +/- 0.02 radians
                 ".*_hip_joint": NoisyValue(0.0, 0.02),
                 "FL_thigh_joint": NoisyValue(0.8, 0.02),
                 "FR_thigh_joint": NoisyValue(0.8, 0.02),
@@ -137,16 +128,20 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "RR_thigh_joint": NoisyValue(1.0, 0.02),
                 ".*_calf_joint": NoisyValue(-1.5, 0.02),
             },
-            kp=NoisyValue(25, 2.0),  # +/- 2.0
+            kp=NoisyValue(25, 1.0),  # +/- 1.0
             kv=NoisyValue(0.5, 0.05),  # +/- 0.05
-            damping=NoisyValue(2.0, 0.05),  # +/- 0.05
-            frictionloss=NoisyValue(0.2, 0.05),  # +/- 0.05
+            damping=NoisyValue(0.1, 0.025),  # +/- 0.025
+            frictionloss=NoisyValue(0.1, 0.01),  # +/- 0.01
+            armature=NoisyValue(0.01, 0.001),  # +/- 0.001
         )
         self.action_manager = PositionActionManager(
             self,
             scale=0.25,
             use_default_offset=True,
             actuator_manager=self.actuator_manager,
+            # Each env's actions reach the actuators 0-2 steps late,
+            # to emulate the variable latency of the real control loop
+            delay_step=(0, 2),
         )
 
         ##
@@ -154,11 +149,11 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         self.velocity_command = VelocityCommandManager(
             self,
             range={
-                "lin_vel_x": [-1.0, 1.0],
-                "lin_vel_y": [-1.0, 1.0],
-                "ang_vel_z": [-1.0, 1.0],
+                "lin_vel_x": (-1.0, 1.0),
+                "lin_vel_y": (-1.0, 1.0),
+                "ang_vel_z": (-1.0, 1.0),
             },
-            standing_probability=0.02,
+            stopped_probability=0.02,
             resample_time_sec=5.0,
             debug_visualizer=True,
             debug_visualizer_cfg={
@@ -172,47 +167,51 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the commanded linear velocity
+                "command_linear_velocity": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "tracking_ang_vel": {
+                # Encourage the robot to follow the commanded angular velocity
+                "commanded_angular_velocity": {
                     "weight": 0.5,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "vel_cmd_manager": self.velocity_command,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_ang_vel(
+                        vel_cmd_manager=self.velocity_command,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "lin_vel_z": {
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
                     "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
+                },
+                # Penalizes actions that change back-and-forth a lot
+                # which discourages the robot from making jittery actuator movements
                 "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
+                    "weight": -0.01,
+                    "fn": rewards.action_rate_l2(),
                 },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                # Discourage abrupt joint velocity changes (e.g. jerky joint movements)
+                "dof_acceleration": {
+                    "weight": -5.0e-7,
+                    "fn": rewards.dof_acc_l2(
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
             },
         )
@@ -225,16 +224,15 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 15.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=30.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
             },
         )
@@ -243,21 +241,22 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
         # Observations
         ObservationManager(
             self,
+            history_len=3,  # History gives the policy additional context about the robot's state and velocity
             cfg={
                 "velocity_cmd": {
                     "fn": self.velocity_command.observation,
                 },
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.1,
                 },
                 "linear_velocity": {
                     "fn": lambda env: self.robot_manager.get_linear_velocity(),
-                    "noise": 0.01,
+                    "noise": 0.1,
                 },
                 "projected_gravity": {
                     "fn": lambda env: self.robot_manager.get_projected_gravity(),
-                    "noise": 0.01,
+                    "noise": 0.05,
                 },
                 "dof_position": {
                     "fn": lambda env: self.action_manager.get_dofs_position(),
@@ -266,10 +265,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                 "dof_velocity": {
                     "fn": lambda env: self.action_manager.get_dofs_velocity(),
                     "scale": 0.02,
-                    "noise": 0.01,
+                    "noise": 1.5,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

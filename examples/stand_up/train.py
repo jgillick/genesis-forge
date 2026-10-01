@@ -1,20 +1,21 @@
-import os
-import copy
-import torch
-import shutil
-import pickle
 import argparse
-import genesis as gs
+import copy
+import os
+import pickle
+import shutil
 
-from genesis_forge.wrappers import VideoWrapper, RslRlWrapper
+import genesis as gs
+import torch
 from environment import Go2StandUpEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import RslRlWrapper, VideoWrapper, VideoFilename
 
 EXPERIMENT_NAME = "go2-stand-up"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=600)
+parser.add_argument("-i", "--max_iterations", type=int, default=400)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -27,9 +28,9 @@ def training_cfg():
             "clip_param": 0.2,
             "desired_kl": 0.01,
             "entropy_coef": 0.01,
-            "gamma": 0.99,
+            "gamma": 0.995,
             "lam": 0.95,
-            "learning_rate": 0.001,
+            "learning_rate": 5e-4,
             "max_grad_norm": 1.0,
             "num_learning_epochs": 5,
             "num_mini_batches": 4,
@@ -43,20 +44,20 @@ def training_cfg():
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
             "distribution_cfg": {
                 "class_name": "GaussianDistribution",
-                "init_std": 1.0,
+                "init_std": 0.7,
             },
         },
         "critic": {
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
         },
         "seed": 1,
-        "num_steps_per_env": 24,
+        "num_steps_per_env": 32,
         "save_interval": 100,
         "obs_groups": {"actor": ["policy"], "critic": ["policy"]},
     }
@@ -76,14 +77,17 @@ def main():
     print(f"Logging to: {log_path}")
 
     cfg = training_cfg()
-    pickle.dump([cfg], open(os.path.join(log_path, "cfgs.pkl"), "wb"))
+    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
+        pickle.dump([cfg], f)
 
     env = Go2StandUpEnv(num_envs=args.num_envs, headless=True)
     env = VideoWrapper(
         env,
-        video_length_sec=12,
+        video_length_sec=9,
         out_dir=os.path.join(log_path, "videos"),
         episode_trigger=lambda episode_id: episode_id % 2 == 0,
+        filename=VideoFilename.ITERATION,
+        steps_per_iteration=cfg["num_steps_per_env"],
     )
     env = RslRlWrapper(env)
     env.build()
@@ -92,7 +96,9 @@ def main():
     print("Training stand-up policy...")
     runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_path, device=gs.device)
     runner.add_git_repo_to_log(".")
-    runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=False)
+    runner.learn(
+        num_learning_iterations=args.max_iterations, init_at_random_ep_len=False
+    )
     env.close()
 
 

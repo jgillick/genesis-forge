@@ -5,20 +5,20 @@ Go2 stand-up environment: learn to rise from random collapsed ground poses.
 from __future__ import annotations
 
 import genesis as gs
+from reset import random_ground_pose
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
+    ContactManager,
 )
-from genesis_forge.mdp import rewards, terminations
+from genesis_forge.mdp import observations, rewards, terminations
 
-from reset import random_ground_pose
-from rewards import stand_and_balance_reward
 
 class Go2StandUpEnv(ManagedEnvironment):
     """Train the Go2 to stand up from random ground poses."""
@@ -27,7 +27,7 @@ class Go2StandUpEnv(ManagedEnvironment):
         self,
         num_envs: int = 1,
         dt: float = 1 / 50,
-        max_episode_length_s: int | None = 3,
+        max_episode_length_s: int | None = 5,
         headless: bool = True,
     ):
         super().__init__(
@@ -41,14 +41,14 @@ class Go2StandUpEnv(ManagedEnvironment):
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
-            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(min(num_envs, 1)))),
+            vis_options=gs.options.VisOptions(
+                rendered_envs_idx=list(range(min(num_envs, 1)))
+            ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -63,6 +63,14 @@ class Go2StandUpEnv(ManagedEnvironment):
                 file="urdf/go2/urdf/go2.urdf",
                 pos=[0.0, 0.0, 0.4],
                 quat=[1.0, 0.0, 0.0, 0.0],
+                links_to_keep=[
+                    "Head_upper",
+                    "Head_lower",
+                    "FL_foot",
+                    "FR_foot",
+                    "RL_foot",
+                    "RR_foot",
+                ],
             ),
         )
 
@@ -77,6 +85,21 @@ class Go2StandUpEnv(ManagedEnvironment):
         self.camera.follow_entity(self.robot)
 
     def config(self):
+        ##
+        # Robot manager
+        # i.e. what to do with the robot when it is reset
+        self.robot_manager = EntityManager(
+            self,
+            entity=self.robot,
+            on_reset={
+                "random_ground_pose": {
+                    "fn": random_ground_pose(),
+                },
+            },
+        )
+
+        ##
+        # Joint Actuators/Actions
         self.actuator_manager = ActuatorManager(
             self,
             joint_names=[
@@ -95,117 +118,129 @@ class Go2StandUpEnv(ManagedEnvironment):
             },
             kp=20,
             kv=0.5,
-            max_force=20.0,
+            max_force=23.5,
         )
         self.action_manager = PositionActionManager(
             self,
-            scale=0.1,
+            scale=0.25,
             use_default_offset=True,
             actuator_manager=self.actuator_manager,
         )
 
-        self.robot_manager = EntityManager(
-            self,
-            entity_attr="robot",
-            on_reset={
-                "random_ground_pose": {
-                    "fn": random_ground_pose,
-                },
-            },
+        ##
+        # Contact managers
+        #
+
+        # Track feet on the ground
+        self.foot_contact_manager = ContactManager(
+            self, link_names=[".*_foot"], with_entity=self.terrain
         )
 
+        # Track body parts on the ground
+        self.body_contact_manager = ContactManager(
+            self,
+            link_names=["base", "Head_.*", ".*_thigh", ".*_calf"],
+        )
+
+        ##
+        # Rewards
         RewardManager(
             self,
             logging_enabled=True,
             cfg={
-                "base_height": {
-                    "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.25,
-                        "entity_manager": self.robot_manager,
-                    },
+                # Make sure the robot stays standing at a reasonable height
+                "height_target": {
+                    "weight": -10.0,
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "stand_and_balance": {
-                    "weight": 2.0,
-                    "fn": stand_and_balance_reward,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                        "target_height": 0.28,
-                        "max_tilt_deg": 20.0,
-                    },
-                },
+                # Encourage the robot to stay level
                 "flat_orientation": {
-                    "weight": -0.5,
-                    "fn": rewards.flat_orientation_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                    "weight": -0.15,
+                    "fn": rewards.flat_orientation_l2(
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "lin_vel_xy": {
-                    "weight": -0.2,
-                    "fn": rewards.lin_vel_xy_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
-                "lin_vel_z": {
-                    "weight": -3.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {"entity_manager": self.robot_manager},
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
+                    "weight": -8.0,
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "dof_vel": {
-                    "weight": -0.02,
-                    "fn": rewards.dof_velocity_l2,
-                    "params": {"action_manager": self.action_manager},
-                },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
-                    "weight": -0.1,
-                    "fn": rewards.action_rate_l2,
+                    "weight": -0.025,
+                    "fn": rewards.action_rate_l2(),
                 },
-                "action_accel": {
+                # Discourage abrupt joint velocity changes (e.g. jerky joint movements)
+                "joint_acceleration": {
+                    "weight": -2.0e-5,
+                    "fn": rewards.dof_acc_l2(
+                        actuator_manager=self.actuator_manager,
+                    ),
+                },
+                # Discourage joints from exceeding a velocity limits
+                "joint_velocity_limit": {
                     "weight": -0.02,
-                    "fn": rewards.action_acceleration_l2,
-                    "params": {"action_manager": self.action_manager},
+                    "fn": rewards.dof_velocity_l2(
+                        threshold=3.0,
+                        actuator_manager=self.actuator_manager,
+                    ),
                 },
-                "torque_l2": {
-                    "weight": -0.0003,
-                    "fn": rewards.dof_torque_l2,
-                    "params": {
-                        "actuator_manager": self.actuator_manager,
-                    },
+                # Discourage any body part (beside feet) being in contact with the ground
+                "on_ground": {
+                    "weight": -0.5,
+                    "fn": rewards.has_contact(
+                        contact_manager=self.body_contact_manager,
+                    ),
                 },
-                "body_acceleration": {
-                    "weight": -0.2,
-                    "fn": rewards.body_acceleration_exp,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                # Encourage the feet being in contact with the ground
+                "feet_on_ground": {
+                    "weight": 0.2,
+                    "fn": rewards.contact_fraction(
+                        contact_manager=self.foot_contact_manager,
+                    ),
                 },
-                "is_alive": {
-                    "weight": 0.05,
-                    "fn": rewards.is_alive,
+                # Penalizing terminations adds a real cost to falling over
+                "terminated": {
+                    "weight": -150.0,
+                    "fn": rewards.terminated(),
                 },
             },
         )
 
-        self.termination_manager = TerminationManager(
+        ##
+        # Termination conditions
+        TerminationManager(
             self,
             logging_enabled=True,
             term_cfg={
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
-                "is_upsidedown": {
-                    "fn": terminations.is_upsidedown,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                        "threshold": 0.5,
-                    },
+                # Terminate early if the robot falls over
+                "fall_over": {
+                    "fn": terminations.is_upsidedown(
+                        entity_manager=self.robot_manager,
+                        threshold=-0.26,  # 75 degrees
+                    ),
                 },
             },
         )
 
+        ##
+        # Observations
         ObservationManager(
             self,
-            history_len=4,
+            history_len=5,
             cfg={
                 "angle_velocity": {
                     "fn": lambda env: self.robot_manager.get_angular_velocity(),
@@ -230,8 +265,7 @@ class Go2StandUpEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )
-

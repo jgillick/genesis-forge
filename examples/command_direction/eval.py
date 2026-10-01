@@ -1,8 +1,7 @@
 import argparse
-import glob
-import os
 import pickle
 import sys
+from pathlib import Path
 
 import genesis as gs
 import torch
@@ -19,22 +18,17 @@ parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
 
 
-def get_latest_model(log_dir: str) -> str:
+def get_latest_model(log_dir: Path) -> str:
     """
     Get the last model from the log directory
     """
-    model_checkpoints = glob.glob(os.path.join(log_dir, "model_*.pt"))
-    if len(model_checkpoints) == 0:
-        print(
-            f"Warning: No model files found at '{log_dir}' (you might need to train more)."
-        )
+    checkpoints = list(log_dir.glob("model_*.pt"))
+    if not checkpoints:
+        print(f"Error: No model files found at '{log_dir}'.")
         sys.exit(1)
     # Sort by the file with the highest number
-    sorted_models = sorted(
-        model_checkpoints,
-        key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
-    )
-    return sorted_models[-1]
+    latest = max(checkpoints, key=lambda p: int(p.stem.split("_")[1]))
+    return str(latest)
 
 
 def main():
@@ -46,8 +40,8 @@ def main():
     gs.init(logging_level="warning", backend=backend)
 
     # Load training configuration
-    log_path = f"./logs/{args.exp_name}"
-    with open(f"{log_path}/cfgs.pkl", "rb") as f:
+    log_path = Path("./logs") / args.exp_name
+    with open(log_path / "cfgs.pkl", "rb") as f:
         [cfg] = pickle.load(f)
     model = get_latest_model(log_path)
 

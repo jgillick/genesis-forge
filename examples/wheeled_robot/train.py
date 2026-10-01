@@ -9,14 +9,11 @@ from environment import WheeledRobotCommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
 from utils import save_config_pickle
 
-from genesis_forge.wrappers import (
-    RslRlWrapper,
-    VideoWrapper,
-)
+from genesis_forge.wrappers import RslRlWrapper, VideoWrapper, VideoFilename
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("-i", "--max_iterations", type=int, default=500)
+parser.add_argument("-i", "--max_iterations", type=int, default=415)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default="wheeled-robot-command")
 args = parser.parse_args()
@@ -92,9 +89,11 @@ def main():
     # Record videos in regular intervals
     env = VideoWrapper(
         env,
-        video_length_sec=12,
+        video_length_sec=9,
         out_dir=log_path / "videos",
         episode_trigger=lambda episode_id: episode_id % 2 == 0,
+        filename=VideoFilename.ITERATION,
+        steps_per_iteration=cfg["num_steps_per_env"],
     )
 
     # Build the environment

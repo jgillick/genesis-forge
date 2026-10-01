@@ -93,9 +93,9 @@ def main():
     # Record videos in regular intervals
     env = VideoWrapper(
         env,
-        video_length_sec=12,
+        video_length_sec=10,
         out_dir=os.path.join(log_path, "videos"),
-        iteration_trigger=lambda i: i > 0 and i % 2 == 0,
+        iteration_trigger=lambda i: i % 25 == 0,
         steps_per_iteration=cfg["num_steps_per_env"],
     )
 

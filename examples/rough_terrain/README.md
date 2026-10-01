@@ -1,7 +1,5 @@
 # Go2 - Rough Terrain
 
-**NOTE:** This example requires [Genesis Simulator](https://github.com/Genesis-Embodied-AI/Genesis) version 0.3.4+, in order to get this [bug fix](https://github.com/Genesis-Embodied-AI/Genesis/issues/1727), which affects rough terrain contacts.
-
 Teaches the Go2 robot to walk on rough terrain. This environment uses a combination of the TerrainManager and EntityManager to place each robot randomly at a different place of terrain at each reset.
 
 ```python
@@ -53,7 +51,6 @@ def config(self):
     # ... other managers ...
 
 ```
-
 
 ## Training
 

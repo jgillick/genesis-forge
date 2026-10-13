@@ -2,6 +2,7 @@ import argparse
 import pickle
 import sys
 from pathlib import Path
+
 import genesis as gs
 import torch
 from environment import Go2CommandDirectionEnv

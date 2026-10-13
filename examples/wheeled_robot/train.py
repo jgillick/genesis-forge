@@ -9,7 +9,7 @@ from environment import WheeledRobotCommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
 from utils import save_config_pickle
 
-from genesis_forge.wrappers import RslRlWrapper, VideoWrapper, VideoFilename
+from genesis_forge.wrappers import RslRlWrapper, VideoFilename, VideoWrapper
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)

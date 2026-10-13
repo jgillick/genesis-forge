@@ -10,12 +10,12 @@ from reset import random_ground_pose
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
+    ContactManager,
     EntityManager,
     ObservationManager,
     PositionActionManager,
     RewardManager,
     TerminationManager,
-    ContactManager,
 )
 from genesis_forge.mdp import observations, rewards, terminations
 

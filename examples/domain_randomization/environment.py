@@ -11,7 +11,6 @@ from genesis_forge.managers import (
     VelocityCommandManager,
 )
 from genesis_forge.managers.actuator import NoisyValue
-from genesis_forge.managers.contact.contact_manager import ContactManager
 from genesis_forge.mdp import observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4

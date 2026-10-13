@@ -9,7 +9,7 @@ import torch
 from environment import Go2StandUpEnv
 from rsl_rl.runners import OnPolicyRunner
 
-from genesis_forge.wrappers import RslRlWrapper, VideoWrapper, VideoFilename
+from genesis_forge.wrappers import RslRlWrapper, VideoFilename, VideoWrapper
 
 EXPERIMENT_NAME = "go2-stand-up"
 

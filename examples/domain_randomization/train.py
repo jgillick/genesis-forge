@@ -106,7 +106,7 @@ def main():
 
     # Train
     print("💪 Training model...")
-    runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_path, device="cpu")
+    runner = OnPolicyRunner(env, copy.deepcopy(cfg), log_path, device=gs.device)
     runner.add_git_repo_to_log(".")
     runner.learn(
         num_learning_iterations=args.max_iterations, init_at_random_ep_len=False

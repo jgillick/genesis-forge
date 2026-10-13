@@ -11,11 +11,11 @@ The robot has four wheels, in a ["differential steering"](https://en.wikipedia.o
 Asking the model to provide four actions for a car that only truly needs two, would be a waste. So we can group the actuators together using action_groups.
 
 ```python
-self.wheel_action_manager = VelocityActionManager(
+self.action_manager = VelocityActionManager(
     self,
     action_groups=[
-        ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
         ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
+        ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
     ],
     ...
 )
@@ -28,17 +28,19 @@ The other peculiarity is that the front motors are mounted in reverse orientatio
 To solve this, we can use negative action scaling to reverse the target actuator actions on the front motors.
 
 ```python
-self.wheel_action_manager = VelocityActionManager(
+MAX_WHEEL_VELOCITY = 20.0  # ~200RPM
+
+self.action_manager = VelocityActionManager(
     self,
     action_groups=[
         ["TT_Motor-3_axel", "TT_Motor-4_axel"],  # left side
         ["TT_Motor-1_axel", "TT_Motor-2_axel"],  # right side
     ],
     scale={
-        "TT_Motor-1_axel": -1,  # right front (reverse action sign)
-        "TT_Motor-2_axel": +1,  # right rear
-        "TT_Motor-3_axel": -1,  # left front (reverse action sign)
-        "TT_Motor-4_axel": +1,  # left rear
+        "TT_Motor-1_axel": -MAX_WHEEL_VELOCITY,  # front right  (reverse action sign)
+        "TT_Motor-2_axel": +MAX_WHEEL_VELOCITY,  # rear right
+        "TT_Motor-3_axel": -MAX_WHEEL_VELOCITY,  # front left  (reverse action sign)
+        "TT_Motor-4_axel": +MAX_WHEEL_VELOCITY,  # rear left
     },
     ...
 )

@@ -184,10 +184,9 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
                 # Discourage the robot from making jittery actuator movements
-                # by penalizing actions that change direction a lot
+                # by penalizing actions that change back-and-forth a lot
                 "action_rate": {
-                    # "weight": -0.01,
-                    "weight": 0.0,
+                    "weight": -0.01,
                     "fn": rewards.action_rate_l2(),
                 },
             },

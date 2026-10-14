@@ -1,8 +1,8 @@
 # Go2 Stand-Up Example
 
-Train the Unitree Go2 to stand up from random collapsed poses on flat ground. The rewards have been shaped to prevent explosively getting up, and instead, moving the joints deliberately for a controlled ascent. 
+Train the Unitree Go2 to stand up from random collapsed poses on flat ground. The rewards have been shaped to encourage moving the joints deliberately for a controlled ascent. 
 
-There are 100 random ground positions, sotred in [`ground_positions.py`](ground_positions.py), and each time the robot resets, one of them is chosen as a starting point. To generate new random positions, run the [`generate_random_ground_pos.py`](./generate_random_ground_pos.py) script
+There are 100 random ground positions, stored in [`ground_positions.py`](ground_positions.py), and each time the robot resets, one of them is chosen as a starting point. To generate new random positions, run the [`generate_random_ground_pos.py`](./generate_random_ground_pos.py) script
 
 
 ## Training

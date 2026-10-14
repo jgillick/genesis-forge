@@ -1,14 +1,15 @@
-import os
-import glob
-import torch
-import pickle
 import argparse
-from importlib import metadata
-import genesis as gs
+import glob
+import os
+import pickle
+import sys
 
-from genesis_forge.wrappers import RslRlWrapper
+import genesis as gs
+import torch
 from environment import BerkeleyHumanoidEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import RslRlWrapper
 
 EXPERIMENT_NAME = "berkeley-humanoid"
 
@@ -27,7 +28,7 @@ def get_latest_model(log_dir: str) -> str:
         print(
             f"Warning: No model files found at '{log_dir}' (you might need to train more)."
         )
-        exit(1)
+        sys.exit(1)
     # Sort by the file with the highest number
     sorted_models = sorted(
         model_checkpoints,
@@ -46,7 +47,8 @@ def main():
 
     # Load training configuration
     log_path = f"./logs/{args.exp_name}"
-    [cfg] = pickle.load(open(f"{log_path}/cfgs.pkl", "rb"))
+    with open(f"{log_path}/cfgs.pkl", "rb") as f:
+        [cfg] = pickle.load(f)
     model = get_latest_model(log_path)
 
     # Setup environment
@@ -70,9 +72,9 @@ def main():
         pass
     except gs.GenesisException as e:
         if str(e) != "Viewer closed.":
-            raise e
-    except Exception as e:
-        raise e
+            raise
+    except Exception:
+        raise
 
 
 if __name__ == "__main__":

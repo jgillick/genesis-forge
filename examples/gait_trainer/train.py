@@ -1,23 +1,24 @@
-import os
-import copy
-import torch
-import shutil
-import pickle
 import argparse
-import genesis as gs
+import copy
+import os
+import pickle
+import shutil
 
-from genesis_forge.wrappers import (
-    VideoWrapper,
-    RslRlWrapper,
-)
+import genesis as gs
+import torch
 from environment import Go2GaitTrainingEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import (
+    RslRlWrapper,
+    VideoWrapper,
+)
 
 EXPERIMENT_NAME = "go2-gait"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=2000)
+parser.add_argument("-i", "--max_iterations", type=int, default=2000)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -46,7 +47,7 @@ def training_cfg(num_envs: int):
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
             "distribution_cfg": {
                 "class_name": "GaussianDistribution",
                 "init_std": 1.0,
@@ -56,7 +57,7 @@ def training_cfg(num_envs: int):
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
         },
         "seed": 1,
         "num_steps_per_env": round(
@@ -87,10 +88,8 @@ def main():
 
     # Load training configuration and save snapshot of training configs
     cfg = training_cfg(args.num_envs)
-    pickle.dump(
-        [cfg],
-        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
-    )
+    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
+        pickle.dump([cfg], f)
 
     # Create environment
     env = Go2GaitTrainingEnv(num_envs=args.num_envs, headless=True)
@@ -100,7 +99,8 @@ def main():
         env,
         video_length_sec=12,
         out_dir=os.path.join(log_path, "videos"),
-        episode_trigger=lambda episode_id: episode_id % 2 == 0,
+        iteration_trigger=lambda i: i > 0 and i % 2 == 0,
+        steps_per_iteration=cfg["num_steps_per_env"],
     )
 
     # Build the environment

@@ -6,12 +6,12 @@ based on the paper "Sim-to-Real Learning of All Common Bipedal Gaits
 via Periodic Reward Composition" (Siekmann et al., 2020).
 """
 
+from . import periodic_rewards
 from .environment import Go2GaitEnv
 from .gait_command_manager import GaitCommandManager
-from . import periodic_rewards
 
 __all__ = [
-    "Go2GaitEnv",
     "GaitCommandManager",
+    "Go2GaitEnv",
     "periodic_rewards",
 ]

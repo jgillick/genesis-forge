@@ -9,18 +9,20 @@ tensors from ``extras["observations"]``.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import torch
+from environment import OBS_SHARED_KEY, Go2MasqLocomotionEnv
 from gymnasium import spaces
-from genesis_forge.managed_env import ManagedEnvironment
 from skrl.envs.wrappers.torch.base import MultiAgentEnvWrapper
 from skrl.utils.spaces.torch import (
     flatten_tensorized_space,
     tensorize_space,
 )
 
-from environment import OBS_SHARED_KEY, Go2MasqLocomotionEnv
+from genesis_forge.managed_env import ManagedEnvironment
+
 
 class SkrlMasqWrapper(MultiAgentEnvWrapper):
     """SKRL MAPPO wrapper for :class:`~environment.Go2MasqLocomotionEnv`."""

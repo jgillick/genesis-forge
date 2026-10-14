@@ -25,7 +25,7 @@ class MyEnv(ManagedEnvironment):
                 },
                 "joint_velocities": {
                     "fn": observations.entity_dofs_velocity(
-                        action_manager=self.action_manager
+                        actuator_manager=self.actuator_manager
                     ),
                     "scale": 0.05,  # Scale down velocities
                 },
@@ -131,7 +131,7 @@ ObservationManager(
         },
         "joint_velocities": {
             "fn": observations.entity_dofs_velocity(
-                action_manager=self.action_manager
+                actuator_manager=self.actuator_manager
             ),
         },
     },

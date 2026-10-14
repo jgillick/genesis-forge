@@ -13,7 +13,6 @@ from genesis_forge.managers import (
     ContactManager,
     EntityManager,
     MdpFn,
-    PositionActionManager,
 )
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.utils import (
@@ -358,22 +357,22 @@ class entity_dofs_velocity(MdpFn):
     The velocity of the entity's DOFs.
 
     Args:
-        action_manager: The action manager for the robot/entity.
-                        This is slightly more performant than using the `entity` parameter.
-        entity: The entity to read DOFs from. Defaults to `env.robot`. This isn't necessary if `action_manager` is provided.
-        dofs_idx: The indices of the DOFs to get the velocity of. This isn't necessary if `action_manager` is provided.
+        actuator_manager: The actuator manager for the robot/entity.
+                          This bypasses the need for dofs_idx and entity parameters.
+        entity: The entity to read DOFs from. Defaults to `env.robot`. This isn't necessary if `actuator_manager` is provided.
+        dofs_idx: The indices of the DOFs to get the velocity of. This isn't necessary if `actuator_manager` is provided.
 
     Returns:
         torch.Tensor: The velocity of the entity's DOFs.
     """
 
-    action_manager: PositionActionManager | None = None
+    actuator_manager: ActuatorManager | None = None
     entity: RigidEntity | None = None
     dofs_idx: list[int] | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
-        if self.action_manager is not None:
-            return self.action_manager.get_dofs_velocity()
+        if self.actuator_manager is not None:
+            return self.actuator_manager.get_dofs_velocity()
         entity: RigidEntity = self.entity if self.entity is not None else env.robot
         return entity.get_dofs_velocity(self.dofs_idx)
 

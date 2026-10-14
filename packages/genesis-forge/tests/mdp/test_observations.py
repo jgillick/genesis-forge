@@ -105,12 +105,9 @@ def test_dofs_force_clip_to_max_force_is_passed_through(env):
     assert torch.equal(fn(env), torch.tensor([[5.0, 5.0]]))
 
 
-def test_dofs_velocity_prefers_action_manager_over_entity(env):
-    class FakeActionManager:
-        def get_dofs_velocity(self):
-            return torch.tensor([[1.0, 2.0]])
-
-    fn = observations.entity_dofs_velocity(action_manager=FakeActionManager())
+def test_dofs_velocity_prefers_actuator_manager_over_entity(env):
+    actuator = FakeActuatorManager(vel=torch.tensor([[1.0, 2.0]]))
+    fn = observations.entity_dofs_velocity(actuator_manager=actuator)
     fn.context(env)
     fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[1.0, 2.0]]))

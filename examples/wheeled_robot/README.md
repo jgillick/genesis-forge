@@ -145,4 +145,4 @@ policy and the metadata `genesis_forge_runtime` needs to run it on your robot. T
 Check out the [on_robot/README.md](./on_robot/README.md) for instructions on how to run this
 on your own [Freenove 4WD car](https://store.freenove.com/products/fnk0043).
 
-For more information, check out the full [deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html).
+For more information, check out the full [deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html).

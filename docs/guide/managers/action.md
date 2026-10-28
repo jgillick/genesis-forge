@@ -177,7 +177,7 @@ self.action_manager = PositionActionManager(
 )
 ```
 
-This delay never formally enters the [deployment bundle](../deployment), since the real robot supplies its own latency.
+This delay never formally enters the [deployment bundle](../deployment.md), since the real robot supplies its own latency.
 
 ## Get Action Information
 

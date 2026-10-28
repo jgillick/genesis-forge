@@ -289,10 +289,13 @@ A policy that behaved in simulation can still do something violent on a real flo
 Put the robot on a stand or a harness, keep a hand on the power, and leave the
 processor's `check_finite` on so a `NaN` stops the loop instead of reaching a motor.
 
-Before any of that, `golden.npz` is a free bench check: it holds the observations and
-joint targets the parity gate ran on, so you can feed the recorded observations
-through your policy and processor with the motors disconnected and confirm you get the
-recorded targets back.
+Before any of that, `golden.npz` is a free bench check of the runtime itself: it holds
+the raw actions the parity gate sampled and the joint targets training produced from
+them. With the motors disconnected, reset the processor, feed it
+`bundle.golden["raw_actions"]` one tick at a time, and confirm you get
+`bundle.golden["joint_targets"]` back. The recorded actions are random samples, not
+your policy's outputs, so this checks the robot's install, not the policy; for that,
+see [Verifying the exported policy](#verifying-the-exported-policy).
 
 ### Troubleshooting
 

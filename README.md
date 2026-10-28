@@ -8,7 +8,7 @@ A powerful and easy to use robotics reinforcement learning framework built on th
 
 Genesis Forge is the fastest path from simulation to robot!
 
-👋 **[Quick Start](https://docs.genesisforge.io/en/latest/guide/quick_start.html)** &nbsp;·&nbsp; 📖 **[Documentation](https://genesis-forge.readthedocs.io/en/latest/guide/index.html)** &nbsp;·&nbsp; 🤖 **[Examples](https://github.com/jgillick/genesis-forge/tree/main/examples)** &nbsp;·&nbsp; 🚀 **[Deployment guide](https://genesis-forge.readthedocs.io/en/latest/guide/deployment.html)**
+👋 **[Quick Start](https://docs.genesisforge.io/en/latest/guide/quick_start.html)** &nbsp;·&nbsp; 📖 **[Documentation](https://docs.genesisforge.io/en/latest/guide/index.html)** &nbsp;·&nbsp; 🤖 **[Examples](https://github.com/jgillick/genesis-forge/tree/main/examples)** &nbsp;·&nbsp; 🚀 **[Deployment guide](https://docs.genesisforge.io/en/latest/guide/deployment.html)**
 
 <center>
 <div>

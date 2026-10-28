@@ -18,7 +18,7 @@ Genesis Forge is a powerful robotics reinforcement learning framework using the 
 
 ## RL Robotics, What?
 
-Today, modern robots learn to balance, walk, manipulate objects, and more, using AI/[Reinforcement Learning](https://huggingface.co/learn/deep-rl-course/en/unit1/what-is-rl) algorithms. You simply create a program that defines a task and provides feedback on the robot's performance — much like training a dog with treats and commands. Genesis Forge is a framework that makes this very easy to, with [documentation](https://genesis-forge.readthedocs.io/en/latest/guide/index.html) and [examples](https://github.com/jgillick/genesis-forge/tree/main/examples) to get you started.
+Today, modern robots learn to balance, walk, manipulate objects, and more, using AI/[Reinforcement Learning](https://huggingface.co/learn/deep-rl-course/en/unit1/what-is-rl) algorithms. You simply create a program that defines a task and provides feedback on the robot's performance — much like training a dog with treats and commands. Genesis Forge is a framework that makes this very easy to, with [documentation](https://docs.genesisforge.io/en/latest/guide/index.html) and [examples](https://github.com/jgillick/genesis-forge/tree/main/examples) to get you started.
 
 ## Key Features
 
@@ -2821,8 +2821,6 @@ def get_deployment_layout(self) -> dict[str, Any]:
             "scale": _deployable_scale(name, cfg.scale),
         }
         if cfg.clip is not None:
-            # The robot must clamp exactly as training did, or a spike the
-            # policy never saw in simulation reaches it on hardware.
             entry["clip"] = [float(cfg.clip[0]), float(cfg.clip[1])]
         if cfg.description:
             entry["description"] = cfg.description
@@ -2856,9 +2854,9 @@ Returns:
 
 Raises:
 
-| Type         | Description                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ValueError` | An observation holds a non-finite value (inf or NaN), naming the entry and the environments. A physics blow-up is the usual cause. Raised here because passed on, a single inf silently corrupts the RL library's observation normalizer and every environment's actions become NaN a step later, far from the cause. Bound entries that can explode with clip and reset such environments with a termination such as dof_velocity_limit. |
+| Type         | Description                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ValueError` | An observation holds a non-finite value (inf or NaN), naming the entry and how many environments. A physics blow-up is the usual cause. |
 
 Source code in `packages/genesis-forge/genesis_forge/managers/observation_manager.py`
 
@@ -2884,12 +2882,8 @@ def get_observations(
 
     Raises:
         ValueError: An observation holds a non-finite value (``inf`` or NaN),
-            naming the entry and the environments. A physics blow-up is the
-            usual cause. Raised here because passed on, a single ``inf`` silently
-            corrupts the RL library's observation normalizer and every
-            environment's actions become NaN a step later, far from the cause.
-            Bound entries that can explode with ``clip`` and reset such
-            environments with a termination such as ``dof_velocity_limit``.
+            naming the entry and how many environments. A physics blow-up is the
+            usual cause.
     """
     if not self.enabled:
         return torch.zeros(
@@ -2900,8 +2894,7 @@ def get_observations(
     self._perform_observation(buffer, values)
     self._history.insert(0, buffer)
 
-    # One check over the whole tick: a single device sync per call, and the
-    # slow path only runs to name the culprits.
+    # Throw if any observation contains non-finite values.
     if not torch.isfinite(buffer).all():
         raise self._non_finite_error(buffer)
 
@@ -3827,6 +3820,143 @@ def step(self):
 
 These managers take in actions and convert them to DOF actuator values.
 
+# ActionDelayBuffer
+
+Delays actions by a whole number of steps, to emulate the latency between the policy emitting an action and the actuator acting on it.
+
+Each step, :meth:`push` records the incoming actions and returns the ones each environment should act on now: the actions it received `delay` steps ago, or zeros while its first real actions are still queued. The delay can be one fixed value for every environment, or a `(min, max)` range that each environment draws from on build and again whenever it resets, so a policy trains against a band of latencies rather than one exact timing.
+
+The buffer is simulation-only. It never enters the deployment bundle, since the real robot supplies its own latency.
+
+Parameters:
+
+| Name         | Type  | Description       | Default                                                                                                                                                     |
+| ------------ | ----- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `delay_step` | \`int | tuple[int, int]\` | Steps to delay actions by. An int delays every environment by the same amount; a (min, max) tuple draws each environment's delay from that inclusive range. |
+
+Example::
+
+```
+delay = ActionDelayBuffer((0, 2))
+delay.build(num_envs=1024, num_actions=12)
+
+# Each step
+actions = delay.push(actions)
+
+# On reset
+delay.reset(envs_idx)
+```
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/action_delay_buffer.py`
+
+```
+def __init__(self, delay_step: int | tuple[int, int] = 0):
+    self._range = self._normalize_range(delay_step)
+    self._delay_steps: torch.Tensor | None = None
+    self._history: torch.Tensor | None = None
+    # Slot in `_history` holding the most recent step's actions
+    self._current_slot = 0
+    self._env_idx: torch.Tensor | None = None
+```
+
+## `delay_steps`
+
+How many steps each environment's actions are currently delayed by, shape `(num_envs,)`. Redrawn from `range` whenever an environment resets. Useful as a privileged observation for an asymmetric critic.
+
+## `enabled`
+
+Whether any delay is applied at all. False when the maximum delay is zero, in which case :meth:`push` returns its input untouched.
+
+## `range`
+
+The inclusive `(min, max)` range of steps an environment's actions can be delayed by. Both ends are equal when `delay_step` was given as a single int.
+
+## `build(num_envs, num_actions)`
+
+Allocate the action history and draw every environment's delay.
+
+The history holds the current step's actions plus the `max` before it, all zero to begin with, so an environment's first `delay` steps send no-op actions while its real ones are still queued.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/action_delay_buffer.py`
+
+```
+def build(self, num_envs: int, num_actions: int):
+    """
+    Allocate the action history and draw every environment's delay.
+
+    The history holds the current step's actions plus the ``max`` before it, all
+    zero to begin with, so an environment's first ``delay`` steps send no-op
+    actions while its real ones are still queued.
+    """
+    self._delay_steps = torch.zeros(num_envs, dtype=torch.long, device=gs.device)
+    self._env_idx = torch.arange(num_envs, dtype=torch.long, device=gs.device)
+    self._current_slot = 0
+    if not self.enabled:
+        self._history = None
+        return
+    self._history = torch.zeros(
+        (self._range[1] + 1, num_envs, num_actions), device=gs.device
+    )
+    self._sample(self._env_idx)
+```
+
+## `push(actions)`
+
+Record this step's actions and return the ones to act on now.
+
+Parameters:
+
+| Name      | Type     | Description                                         | Default    |
+| --------- | -------- | --------------------------------------------------- | ---------- |
+| `actions` | `Tensor` | This step's actions, shape (num_envs, num_actions). | *required* |
+
+Returns:
+
+| Type     | Description                                                             |
+| -------- | ----------------------------------------------------------------------- |
+| `Tensor` | For each environment, the actions received delay_steps steps ago, shape |
+| `Tensor` | (num_envs, num_actions). With no delay, actions itself.                 |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/action_delay_buffer.py`
+
+```
+def push(self, actions: torch.Tensor) -> torch.Tensor:
+    """
+    Record this step's actions and return the ones to act on now.
+
+    Args:
+        actions: This step's actions, shape ``(num_envs, num_actions)``.
+
+    Returns:
+        For each environment, the actions received `delay_steps` steps ago, shape
+        ``(num_envs, num_actions)``. With no delay, `actions` itself.
+    """
+    if self._history is None:
+        return actions
+    self._current_slot = (self._current_slot + 1) % self._history.shape[0]
+    self._history[self._current_slot] = actions
+    delayed_slot = (self._current_slot - self._delay_steps) % self._history.shape[0]
+    return self._history[delayed_slot, self._env_idx]
+```
+
+## `reset(envs_idx)`
+
+Clear the queued actions of the reset environments, so the previous episode's actions are not delivered, and draw them a new delay from `range`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/action_delay_buffer.py`
+
+```
+def reset(self, envs_idx: torch.Tensor):
+    """
+    Clear the queued actions of the reset environments, so the previous episode's
+    actions are not delivered, and draw them a new delay from `range`.
+    """
+    if self._history is None:
+        return
+    self._history[:, envs_idx] = 0.0
+    self._sample(envs_idx)
+```
+
 # PositionActionManager
 
 Bases: `AffineDofActionManager`
@@ -3841,17 +3971,17 @@ If `use_default_offset` is `True`, the `offset` will be set to the `default_pos`
 
 Parameters:
 
-| Name                      | Type                  | Description                                                                                                                                                    | Default                                                                                                                     |
-| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                                                                               | *required*                                                                                                                  |
-| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                     |
-| `actuator_joints`         | \`list[str]           | str\`                                                                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
-| `scale`                   | \`float               | dict[str, float]\`                                                                                                                                             | How much to scale the action.                                                                                               |
-| `offset`                  | \`float               | dict[str, float]\`                                                                                                                                             | Offset factor for the action.                                                                                               |
-| `use_default_offset`      | `bool`                | Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.                                                       | `True`                                                                                                                      |
-| `clip`                    | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                                                                               | None\`                                                                                                                      |
-| `soft_limit_scale_factor` | `float`               | Scales the clip range of all limits by this factor around the midpoint of each joint's limits to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
-| `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.                                                        | `0`                                                                                                                         |
+| Name                      | Type                  | Description                                                                                                                                                    | Default                                                                                                                                                               |
+| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                                                                               | *required*                                                                                                                                                            |
+| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                                                               |
+| `actuator_joints`         | \`list[str]           | str\`                                                                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions.                                           |
+| `scale`                   | \`float               | dict[str, float]\`                                                                                                                                             | How much to scale the action.                                                                                                                                         |
+| `offset`                  | \`float               | dict[str, float]\`                                                                                                                                             | Offset factor for the action.                                                                                                                                         |
+| `use_default_offset`      | `bool`                | Whether to use default joint positions configured in the articulation asset as offset. Defaults to True.                                                       | `True`                                                                                                                                                                |
+| `clip`                    | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                                                                               | None\`                                                                                                                                                                |
+| `soft_limit_scale_factor` | `float`               | Scales the clip range of all limits by this factor around the midpoint of each joint's limits to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                                                                 |
+| `delay_step`              | \`int                 | tuple[int, int]\`                                                                                                                                              | Steps to delay actions by, to emulate actuator/bus latency. This is either a fixed step value or a min/max range to create random delays from. See ActionDelayBuffer. |
 
 Example::
 
@@ -3934,7 +4064,7 @@ def __init__(
     clip: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
     use_default_offset: bool = True,
-    delay_step: int = 0,
+    delay_step: int | tuple[int, int] = 0,
 ):
     super().__init__(
         env,
@@ -3975,6 +4105,10 @@ Get the actuator manager.
 
 Return the default DOF positions.
 
+## `delay`
+
+The action delay buffer, which holds each environment's current delay in `delay.delay_steps`.
+
 ## `deploy_type = 'position'`
 
 ## `dofs`
@@ -4009,9 +4143,7 @@ The number of DOFs this manager drives. The same as `num_actions` unless `action
 
 ## `raw_actions`
 
-The actions received from the policy, before being processed.
-
-Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
+The raw actions the policy emitted for this manager this step, before any processing or delay.
 
 ## `type = type`
 
@@ -4143,23 +4275,13 @@ def get_deployment_config(self) -> DeploymentActionConfig:
     else:  # (num_envs, 2, num_joints) -- per-environment bounds
         clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
 
-    # Per joint, which is not the policy's width once joints share an action.
-    def nominal(tensor, name):
-        return to_nominal_array(
-            tensor,
-            name=name,
-            num_joints=len(self.dofs),
-            num_envs=self.env.num_envs,
-            manager_name=type(self).__name__,
-        )
-
     config: dict[str, Any] = {
-        "scale": nominal(self._scale_values, "scale"),
-        "offset": nominal(self._offset_values, "offset"),
+        "scale": self.per_joint_deployment_values(self._scale_values, "scale"),
+        "offset": self.per_joint_deployment_values(self._offset_values, "offset"),
     }
 
-    low = nominal(clip_low, "clip lower bound")
-    high = nominal(clip_high, "clip upper bound")
+    low = self.per_joint_deployment_values(clip_low, "clip lower bound")
+    high = self.per_joint_deployment_values(clip_high, "clip upper bound")
 
     # JSON has no portable infinity, so an unbounded joint is written as null and
     # the runtime reads that back as no clip for that joint. A side no joint bounds
@@ -4180,6 +4302,43 @@ def get_deployment_config(self) -> DeploymentActionConfig:
         deploy_type=self.deploy_type,
         config=config,
         joint_action_index=self.joint_action_index,
+    )
+```
+
+## `get_dofs_control_force(clip_to_max_force=False)`
+
+A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+Parameters:
+
+| Name                | Type   | Description                                                                                                      | Default |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `clip_to_max_force` | `bool` | Clip the force returned to the maximum force defined by the max_force parameter defined in the actuator manager. | `False` |
+
+Returns:
+
+| Name    | Type     | Description                           |
+| ------- | -------- | ------------------------------------- |
+| `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)  |
+|         | `Tensor` | The force output by the enabled DOFs. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_control_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+    Args:
+        clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                           defined in the actuator manager.
+
+    Returns:
+        force: torch.Tensor, shape (n_envs, n_dofs)
+        The force output by the enabled DOFs.
+    """
+    return self.actuator_manager.get_dofs_control_force(
+        clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
     )
 ```
 
@@ -4309,6 +4468,92 @@ def get_dofs_velocity(
     )
 ```
 
+## `per_joint_deployment_values(tensor, name)`
+
+Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+`tensor` holds one value per controlled joint, either flat as `(num_dofs,)` or with a row per environment as `(num_envs, num_dofs)`.
+
+A flat tensor is returned as-is. A per-environment tensor is returned as its shared row, and only if every environment holds the same values.
+
+A bundle describes one robot, so when the environments differ this raises rather than guess which one is right. That only happens when something randomizes this particular parameter per environment.
+
+Parameters:
+
+| Name     | Type     | Description                                      | Default    |
+| -------- | -------- | ------------------------------------------------ | ---------- |
+| `tensor` | `Tensor` | The parameter, such as a scale or offset.        | *required* |
+| `name`   | `str`    | How to refer to the parameter in error messages. | *required* |
+
+Returns:
+
+| Type          | Description                         |
+| ------------- | ----------------------------------- |
+| `list[float]` | One float per joint, in dofs order. |
+
+Raises:
+
+| Type         | Description                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `ValueError` | The environments hold different values, or the tensor does not hold one value per joint. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def per_joint_deployment_values(
+    self, tensor: torch.Tensor, name: str
+) -> list[float]:
+    """Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+    ``tensor`` holds one value per controlled joint, either flat as
+    ``(num_dofs,)`` or with a row per environment as ``(num_envs, num_dofs)``.
+
+    A flat tensor is returned as-is. A per-environment tensor is returned as
+    its shared row, and only if every environment holds the same values.
+
+    A bundle describes one robot, so when the environments differ this raises
+    rather than guess which one is right. That only happens when something
+    randomizes this particular parameter per environment.
+
+    Args:
+        tensor: The parameter, such as a scale or offset.
+        name: How to refer to the parameter in error messages.
+
+    Returns:
+        One float per joint, in ``dofs`` order.
+
+    Raises:
+        ValueError: The environments hold different values, or the tensor does
+            not hold one value per joint.
+    """
+    values = tensor.detach()
+    num_dofs = self.num_dofs
+    manager = type(self).__name__
+
+    if values.ndim == 2 and values.shape[1] == num_dofs:
+        if values.shape[0] > 1 and not bool((values == values[0]).all()):
+            spread = float(
+                (values.max(dim=0).values - values.min(dim=0).values).max()
+            )
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager}': it is "
+                f"not the same in every parallel environment (largest spread "
+                f"{spread:g}), so there is no single value to put in the bundle. "
+                f"Something is randomizing '{name}' per environment. Keep it "
+                f"uniform across environments for the export run; randomizing "
+                f"other things, such as friction or gains, does not affect it."
+            )
+        values = values[0]
+
+    if values.ndim != 1 or values.shape[0] != num_dofs:
+        raise ValueError(
+            f"Cannot export '{name}' from action manager '{manager}': expected "
+            f"one value per joint ({num_dofs}), found shape {tuple(tensor.shape)}."
+        )
+
+    return [float(item) for item in values.cpu().tolist()]
+```
+
 ## `process_actions(actions)`
 
 Apply the affine scale/offset transform and clip to `self._scale_values` / `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
@@ -4377,8 +4622,7 @@ def reset(self, envs_idx: torch.Tensor | None = None):
     """
     if envs_idx is None:
         envs_idx = self.env.all_envs_idx
-    for delayed_actions in self._action_delay_buffer:
-        delayed_actions[envs_idx] = 0.0
+    self._delay.reset(envs_idx)
     if self._actions is not None:
         self._raw_actions[envs_idx] = 0.0
         self._actions[envs_idx] = 0.0
@@ -4411,13 +4655,8 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer: queue a copy of this step's actions and send the oldest
-    if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions.clone())
-        actions = self._action_delay_buffer.pop()
-
-    # Copy the actions into the manager buffer
-    self._raw_actions = actions
+    self._raw_actions = actions  # store raw actions before the delay buffer
+    actions = self._delay.push(actions)
 
     if self._actions is None:
         shape = (actions.shape[0], self.num_dofs)
@@ -4440,14 +4679,14 @@ This is similar to `PositionActionManager` but converts actions from the range -
 
 Parameters:
 
-| Name                      | Type                  | Description                                                                                                    | Default                                                                                                                     |
-| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                               | *required*                                                                                                                  |
-| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                     |
-| `actuator_joints`         | \`list[str]           | str\`                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
-| `limit`                   | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                               | None\`                                                                                                                      |
-| `soft_limit_scale_factor` | `float`               | Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                       |
-| `delay_step`              | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system.        | `0`                                                                                                                         |
+| Name                      | Type                  | Description                                                                                                    | Default                                                                                                                                                      |
+| ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env`                     | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                               | *required*                                                                                                                                                   |
+| `actuator_manager`        | \`ActuatorManager     | None\`                                                                                                         | The actuator manager which is used to setup and control the DOF joints.                                                                                      |
+| `actuator_joints`         | \`list[str]           | str\`                                                                                                          | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions.                                  |
+| `limit`                   | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                               | None\`                                                                                                                                                       |
+| `soft_limit_scale_factor` | `float`               | Scales the range of all limits by this factor to establish a safety region within the limits. Defaults to 1.0. | `1.0`                                                                                                                                                        |
+| `delay_step`              | \`int                 | tuple[int, int]\`                                                                                              | Steps to delay actions by, to emulate bus latency. This is either a fixed step value or a min/max range to create random delays from. See ActionDelayBuffer. |
 
 Simple example using the limits defined in the model::
 
@@ -4506,7 +4745,7 @@ def __init__(
     actuator_joints: list[str] | str = ".*",
     limit: tuple[float, float] | dict[str, tuple[float, float]] | None = None,
     soft_limit_scale_factor: float = 1.0,
-    delay_step: int = 0,
+    delay_step: int | tuple[int, int] = 0,
 ):
     super().__init__(
         env,
@@ -4537,6 +4776,10 @@ Get the actuator manager.
 ## `default_dofs_pos`
 
 Return the default DOF positions.
+
+## `delay`
+
+The action delay buffer, which holds each environment's current delay in `delay.delay_steps`.
 
 ## `deploy_type = 'position_within_limits'`
 
@@ -4572,9 +4815,7 @@ The number of DOFs this manager drives. The same as `num_actions` unless `action
 
 ## `raw_actions`
 
-The actions received from the policy, before being processed.
-
-Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
+The raw actions the policy emitted for this manager this step, before any processing or delay.
 
 ## `type = type`
 
@@ -4669,23 +4910,51 @@ def get_deployment_config(self) -> DeploymentActionConfig:
     in favour of ``_scale``/``_offset`` and applies no post-clip. Exporting the
     parent's parameters would describe processing this manager never performs.
     """
-
-    def nominal(tensor, name):
-        return to_nominal_array(
-            tensor,
-            name=name,
-            num_joints=self.num_actions,
-            num_envs=self.env.num_envs,
-            manager_name=type(self).__name__,
-        )
-
     return DeploymentActionConfig(
         deploy_type=self.deploy_type,
         config={
             "raw_action_clip": [-1.0, 1.0],
-            "scale": nominal(self._scale, "scale"),
-            "offset": nominal(self._offset, "offset"),
+            "scale": self.per_joint_deployment_values(self._scale, "scale"),
+            "offset": self.per_joint_deployment_values(self._offset, "offset"),
         },
+        joint_action_index=self.joint_action_index,
+    )
+```
+
+## `get_dofs_control_force(clip_to_max_force=False)`
+
+A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+Parameters:
+
+| Name                | Type   | Description                                                                                                      | Default |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `clip_to_max_force` | `bool` | Clip the force returned to the maximum force defined by the max_force parameter defined in the actuator manager. | `False` |
+
+Returns:
+
+| Name    | Type     | Description                           |
+| ------- | -------- | ------------------------------------- |
+| `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)  |
+|         | `Tensor` | The force output by the enabled DOFs. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_control_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+    Args:
+        clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                           defined in the actuator manager.
+
+    Returns:
+        force: torch.Tensor, shape (n_envs, n_dofs)
+        The force output by the enabled DOFs.
+    """
+    return self.actuator_manager.get_dofs_control_force(
+        clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
     )
 ```
 
@@ -4815,6 +5084,92 @@ def get_dofs_velocity(
     )
 ```
 
+## `per_joint_deployment_values(tensor, name)`
+
+Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+`tensor` holds one value per controlled joint, either flat as `(num_dofs,)` or with a row per environment as `(num_envs, num_dofs)`.
+
+A flat tensor is returned as-is. A per-environment tensor is returned as its shared row, and only if every environment holds the same values.
+
+A bundle describes one robot, so when the environments differ this raises rather than guess which one is right. That only happens when something randomizes this particular parameter per environment.
+
+Parameters:
+
+| Name     | Type     | Description                                      | Default    |
+| -------- | -------- | ------------------------------------------------ | ---------- |
+| `tensor` | `Tensor` | The parameter, such as a scale or offset.        | *required* |
+| `name`   | `str`    | How to refer to the parameter in error messages. | *required* |
+
+Returns:
+
+| Type          | Description                         |
+| ------------- | ----------------------------------- |
+| `list[float]` | One float per joint, in dofs order. |
+
+Raises:
+
+| Type         | Description                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `ValueError` | The environments hold different values, or the tensor does not hold one value per joint. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def per_joint_deployment_values(
+    self, tensor: torch.Tensor, name: str
+) -> list[float]:
+    """Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+    ``tensor`` holds one value per controlled joint, either flat as
+    ``(num_dofs,)`` or with a row per environment as ``(num_envs, num_dofs)``.
+
+    A flat tensor is returned as-is. A per-environment tensor is returned as
+    its shared row, and only if every environment holds the same values.
+
+    A bundle describes one robot, so when the environments differ this raises
+    rather than guess which one is right. That only happens when something
+    randomizes this particular parameter per environment.
+
+    Args:
+        tensor: The parameter, such as a scale or offset.
+        name: How to refer to the parameter in error messages.
+
+    Returns:
+        One float per joint, in ``dofs`` order.
+
+    Raises:
+        ValueError: The environments hold different values, or the tensor does
+            not hold one value per joint.
+    """
+    values = tensor.detach()
+    num_dofs = self.num_dofs
+    manager = type(self).__name__
+
+    if values.ndim == 2 and values.shape[1] == num_dofs:
+        if values.shape[0] > 1 and not bool((values == values[0]).all()):
+            spread = float(
+                (values.max(dim=0).values - values.min(dim=0).values).max()
+            )
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager}': it is "
+                f"not the same in every parallel environment (largest spread "
+                f"{spread:g}), so there is no single value to put in the bundle. "
+                f"Something is randomizing '{name}' per environment. Keep it "
+                f"uniform across environments for the export run; randomizing "
+                f"other things, such as friction or gains, does not affect it."
+            )
+        values = values[0]
+
+    if values.ndim != 1 or values.shape[0] != num_dofs:
+        raise ValueError(
+            f"Cannot export '{name}' from action manager '{manager}': expected "
+            f"one value per joint ({num_dofs}), found shape {tuple(tensor.shape)}."
+        )
+
+    return [float(item) for item in values.cpu().tolist()]
+```
+
 ## `process_actions(actions)`
 
 Convert the actions to position commands within the limits.
@@ -4864,8 +5219,7 @@ def reset(self, envs_idx: torch.Tensor | None = None):
     """
     if envs_idx is None:
         envs_idx = self.env.all_envs_idx
-    for delayed_actions in self._action_delay_buffer:
-        delayed_actions[envs_idx] = 0.0
+    self._delay.reset(envs_idx)
     if self._actions is not None:
         self._raw_actions[envs_idx] = 0.0
         self._actions[envs_idx] = 0.0
@@ -4898,13 +5252,8 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer: queue a copy of this step's actions and send the oldest
-    if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions.clone())
-        actions = self._action_delay_buffer.pop()
-
-    # Copy the actions into the manager buffer
-    self._raw_actions = actions
+    self._raw_actions = actions  # store raw actions before the delay buffer
+    actions = self._delay.push(actions)
 
     if self._actions is None:
         shape = (actions.shape[0], self.num_dofs)
@@ -4931,16 +5280,16 @@ velocity = offset + scaling * action
 
 Parameters:
 
-| Name               | Type                  | Description                                                                                             | Default                                                                                                                     |
-| ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `env`              | `GenesisEnv`          | The environment to manage the DOF actuators for.                                                        | *required*                                                                                                                  |
-| `clip`             | \`tuple[float, float] | dict\[str, tuple[float, float]\]                                                                        | None\`                                                                                                                      |
-| `actuator_manager` | \`ActuatorManager     | None\`                                                                                                  | The actuator manager which is used to setup and control the DOF joints.                                                     |
-| `actuator_joints`  | \`list[str]           | str\`                                                                                                   | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions. |
-| `action_groups`    | \`list\[list[str]     | str\]                                                                                                   | None\`                                                                                                                      |
-| `scale`            | \`float               | dict[str, float]\`                                                                                      | How much to scale the action.                                                                                               |
-| `offset`           | \`float               | dict[str, float]\`                                                                                      | Offset factor for the action.                                                                                               |
-| `delay_step`       | `int`                 | The number of steps to delay the actions for. This is an easy way to emulate the latency in the system. | `0`                                                                                                                         |
+| Name               | Type                  | Description                                      | Default                                                                                                                                                               |
+| ------------------ | --------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`              | `GenesisEnv`          | The environment to manage the DOF actuators for. | *required*                                                                                                                                                            |
+| `clip`             | \`tuple[float, float] | dict\[str, tuple[float, float]\]                 | None\`                                                                                                                                                                |
+| `actuator_manager` | \`ActuatorManager     | None\`                                           | The actuator manager which is used to setup and control the DOF joints.                                                                                               |
+| `actuator_joints`  | \`list[str]           | str\`                                            | Which joints of the actuator manager that this action manager will control. These can be full names or regular expressions.                                           |
+| `action_groups`    | \`list\[list[str]     | str\]                                            | None\`                                                                                                                                                                |
+| `scale`            | \`float               | dict[str, float]\`                               | How much to scale the action.                                                                                                                                         |
+| `offset`           | \`float               | dict[str, float]\`                               | Offset factor for the action.                                                                                                                                         |
+| `delay_step`       | \`int                 | tuple[int, int]\`                                | Steps to delay actions by, to emulate actuator/bus latency. This is either a fixed step value or a min/max range to create random delays from. See ActionDelayBuffer. |
 
 Example::
 
@@ -4975,7 +5324,7 @@ def __init__(
     action_groups: list[list[str] | str] | None = None,
     scale: float | dict[str, float] = 1.0,
     offset: float | dict[str, float] = 0.0,
-    delay_step: int = 0,
+    delay_step: int | tuple[int, int] = 0,
 ):
     super().__init__(
         env,
@@ -5004,6 +5353,10 @@ An index filter for the actuator DOF buffer values.
 ## `actuator_manager`
 
 Get the actuator manager.
+
+## `delay`
+
+The action delay buffer, which holds each environment's current delay in `delay.delay_steps`.
 
 ## `deploy_type = 'velocity'`
 
@@ -5039,9 +5392,7 @@ The number of DOFs this manager drives. The same as `num_actions` unless `action
 
 ## `raw_actions`
 
-The actions received from the policy, before being processed.
-
-Note this is what the manager *consumed* this step: with a `delay_step`, it is the action taken off the delay buffer, not the one just received.
+The raw actions the policy emitted for this manager this step, before any processing or delay.
 
 ## `type = type`
 
@@ -5170,23 +5521,13 @@ def get_deployment_config(self) -> DeploymentActionConfig:
     else:  # (num_envs, 2, num_joints) -- per-environment bounds
         clip_low, clip_high = clip[:, 0, :], clip[:, 1, :]
 
-    # Per joint, which is not the policy's width once joints share an action.
-    def nominal(tensor, name):
-        return to_nominal_array(
-            tensor,
-            name=name,
-            num_joints=len(self.dofs),
-            num_envs=self.env.num_envs,
-            manager_name=type(self).__name__,
-        )
-
     config: dict[str, Any] = {
-        "scale": nominal(self._scale_values, "scale"),
-        "offset": nominal(self._offset_values, "offset"),
+        "scale": self.per_joint_deployment_values(self._scale_values, "scale"),
+        "offset": self.per_joint_deployment_values(self._offset_values, "offset"),
     }
 
-    low = nominal(clip_low, "clip lower bound")
-    high = nominal(clip_high, "clip upper bound")
+    low = self.per_joint_deployment_values(clip_low, "clip lower bound")
+    high = self.per_joint_deployment_values(clip_high, "clip upper bound")
 
     # JSON has no portable infinity, so an unbounded joint is written as null and
     # the runtime reads that back as no clip for that joint. A side no joint bounds
@@ -5207,6 +5548,43 @@ def get_deployment_config(self) -> DeploymentActionConfig:
         deploy_type=self.deploy_type,
         config=config,
         joint_action_index=self.joint_action_index,
+    )
+```
+
+## `get_dofs_control_force(clip_to_max_force=False)`
+
+A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+Parameters:
+
+| Name                | Type   | Description                                                                                                      | Default |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `clip_to_max_force` | `bool` | Clip the force returned to the maximum force defined by the max_force parameter defined in the actuator manager. | `False` |
+
+Returns:
+
+| Name    | Type     | Description                           |
+| ------- | -------- | ------------------------------------- |
+| `force` | `Tensor` | torch.Tensor, shape (n_envs, n_dofs)  |
+|         | `Tensor` | The force output by the enabled DOFs. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def get_dofs_control_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
+    """
+    A wrapper for `RigidEntity.get_dofs_control_force` that returns the force output by the controlled DOFs.
+
+    Args:
+        clip_to_max_force: Clip the force returned to the maximum force defined by the `max_force` parameter
+                           defined in the actuator manager.
+
+    Returns:
+        force: torch.Tensor, shape (n_envs, n_dofs)
+        The force output by the enabled DOFs.
+    """
+    return self.actuator_manager.get_dofs_control_force(
+        clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
     )
 ```
 
@@ -5336,6 +5714,92 @@ def get_dofs_velocity(
     )
 ```
 
+## `per_joint_deployment_values(tensor, name)`
+
+Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+`tensor` holds one value per controlled joint, either flat as `(num_dofs,)` or with a row per environment as `(num_envs, num_dofs)`.
+
+A flat tensor is returned as-is. A per-environment tensor is returned as its shared row, and only if every environment holds the same values.
+
+A bundle describes one robot, so when the environments differ this raises rather than guess which one is right. That only happens when something randomizes this particular parameter per environment.
+
+Parameters:
+
+| Name     | Type     | Description                                      | Default    |
+| -------- | -------- | ------------------------------------------------ | ---------- |
+| `tensor` | `Tensor` | The parameter, such as a scale or offset.        | *required* |
+| `name`   | `str`    | How to refer to the parameter in error messages. | *required* |
+
+Returns:
+
+| Type          | Description                         |
+| ------------- | ----------------------------------- |
+| `list[float]` | One float per joint, in dofs order. |
+
+Raises:
+
+| Type         | Description                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `ValueError` | The environments hold different values, or the tensor does not hold one value per joint. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
+
+```
+def per_joint_deployment_values(
+    self, tensor: torch.Tensor, name: str
+) -> list[float]:
+    """Turn a per-joint parameter into a list of floats for the deployment bundle.
+
+    ``tensor`` holds one value per controlled joint, either flat as
+    ``(num_dofs,)`` or with a row per environment as ``(num_envs, num_dofs)``.
+
+    A flat tensor is returned as-is. A per-environment tensor is returned as
+    its shared row, and only if every environment holds the same values.
+
+    A bundle describes one robot, so when the environments differ this raises
+    rather than guess which one is right. That only happens when something
+    randomizes this particular parameter per environment.
+
+    Args:
+        tensor: The parameter, such as a scale or offset.
+        name: How to refer to the parameter in error messages.
+
+    Returns:
+        One float per joint, in ``dofs`` order.
+
+    Raises:
+        ValueError: The environments hold different values, or the tensor does
+            not hold one value per joint.
+    """
+    values = tensor.detach()
+    num_dofs = self.num_dofs
+    manager = type(self).__name__
+
+    if values.ndim == 2 and values.shape[1] == num_dofs:
+        if values.shape[0] > 1 and not bool((values == values[0]).all()):
+            spread = float(
+                (values.max(dim=0).values - values.min(dim=0).values).max()
+            )
+            raise ValueError(
+                f"Cannot export '{name}' from action manager '{manager}': it is "
+                f"not the same in every parallel environment (largest spread "
+                f"{spread:g}), so there is no single value to put in the bundle. "
+                f"Something is randomizing '{name}' per environment. Keep it "
+                f"uniform across environments for the export run; randomizing "
+                f"other things, such as friction or gains, does not affect it."
+            )
+        values = values[0]
+
+    if values.ndim != 1 or values.shape[0] != num_dofs:
+        raise ValueError(
+            f"Cannot export '{name}' from action manager '{manager}': expected "
+            f"one value per joint ({num_dofs}), found shape {tuple(tensor.shape)}."
+        )
+
+    return [float(item) for item in values.cpu().tolist()]
+```
+
 ## `process_actions(actions)`
 
 Apply the affine scale/offset transform and clip to `self._scale_values` / `self._offset_values` / `self._clip_values` (populated by a subclass's `build()`).
@@ -5404,8 +5868,7 @@ def reset(self, envs_idx: torch.Tensor | None = None):
     """
     if envs_idx is None:
         envs_idx = self.env.all_envs_idx
-    for delayed_actions in self._action_delay_buffer:
-        delayed_actions[envs_idx] = 0.0
+    self._delay.reset(envs_idx)
     if self._actions is not None:
         self._raw_actions[envs_idx] = 0.0
         self._actions[envs_idx] = 0.0
@@ -5437,13 +5900,8 @@ def step(self, actions: torch.Tensor) -> None:
     """
     Handle actions received in this step.
     """
-    # Action delay buffer: queue a copy of this step's actions and send the oldest
-    if self._delay_step > 0:
-        self._action_delay_buffer.insert(0, actions.clone())
-        actions = self._action_delay_buffer.pop()
-
-    # Copy the actions into the manager buffer
-    self._raw_actions = actions
+    self._raw_actions = actions  # store raw actions before the delay buffer
+    actions = self._delay.push(actions)
 
     if self._actions is None:
         shape = (actions.shape[0], self.num_dofs)
@@ -7541,7 +7999,7 @@ def update(self, **params: Any) -> None:
 
 Bases: `MdpFn`
 
-The most current step's raw actions. This should be the actions before they've been processed and converted into their target values.
+The most current step's raw actions. This is the raw actions from the current step, without the action delay_step, and before they've been processed and converted into their target values.
 
 Parameters:
 
@@ -7698,10 +8156,10 @@ The angular velocity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                          |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -7860,12 +8318,12 @@ The DOF's force being experienced.
 
 Parameters:
 
-| Name                | Type              | Description                                                                                                | Default |
-| ------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
-| `actuator_manager`  | `ActuatorManager` | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      | `None`  |
-| `entity`            | `RigidEntity`     | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. | `None`  |
-| `dofs_idx`          | `list[int]`       | The indices of the DOFs to get the force of. This isn't necessary if actuator_manager is provided.         | `None`  |
-| `clip_to_max_force` | `bool`            | Clip the force to the maximum force defined in the actuator_manager.                                       | `False` |
+| Name                | Type              | Description                                                          | Default                                                                                                    |
+| ------------------- | ----------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `actuator_manager`  | \`ActuatorManager | None\`                                                               | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      |
+| `entity`            | \`RigidEntity     | None\`                                                               | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. |
+| `dofs_idx`          | \`list[int]       | None\`                                                               | The indices of the DOFs to get the force of. This isn't necessary if actuator_manager is provided.         |
+| `clip_to_max_force` | `bool`            | Clip the force to the maximum force defined in the actuator_manager. | `False`                                                                                                    |
 
 Returns:
 
@@ -8028,11 +8486,11 @@ The position of the entity's DOFs.
 
 Parameters:
 
-| Name               | Type              | Description                                                                                                | Default |
-| ------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
-| `actuator_manager` | `ActuatorManager` | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      | `None`  |
-| `entity`           | `RigidEntity`     | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. | `None`  |
-| `dofs_idx`         | `list[int]`       | The indices of the DOFs to get the position of. This isn't necessary if actuator_manager is provided.      | `None`  |
+| Name               | Type              | Description | Default                                                                                                    |
+| ------------------ | ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `actuator_manager` | \`ActuatorManager | None\`      | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      |
+| `entity`           | \`RigidEntity     | None\`      | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. |
+| `dofs_idx`         | \`list[int]       | None\`      | The indices of the DOFs to get the position of. This isn't necessary if actuator_manager is provided.      |
 
 Returns:
 
@@ -8185,7 +8643,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `entity_dofs_velocity(*, action_manager=None, entity=None, dofs_idx=None)`
+## `entity_dofs_velocity(*, actuator_manager=None, entity=None, dofs_idx=None)`
 
 Bases: `MdpFn`
 
@@ -8193,11 +8651,11 @@ The velocity of the entity's DOFs.
 
 Parameters:
 
-| Name             | Type                    | Description                                                                                                | Default |
-| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
-| `action_manager` | `PositionActionManager` | The action manager for the robot/entity. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`           | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if action_manager is provided.   | `None`  |
-| `dofs_idx`       | `list[int]`             | The indices of the DOFs to get the velocity of. This isn't necessary if action_manager is provided.        | `None`  |
+| Name               | Type              | Description | Default                                                                                                    |
+| ------------------ | ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `actuator_manager` | \`ActuatorManager | None\`      | The actuator manager for the robot/entity. This bypasses the need for dofs_idx and entity parameters.      |
+| `entity`           | \`RigidEntity     | None\`      | The entity to read DOFs from. Defaults to env.robot. This isn't necessary if actuator_manager is provided. |
+| `dofs_idx`         | \`list[int]       | None\`      | The indices of the DOFs to get the velocity of. This isn't necessary if actuator_manager is provided.      |
 
 Returns:
 
@@ -8205,7 +8663,7 @@ Returns:
 | ---- | ------------------------------------------------ |
 |      | torch.Tensor: The velocity of the entity's DOFs. |
 
-### `action_manager = None`
+### `actuator_manager = None`
 
 ### `dofs_idx = None`
 
@@ -8358,10 +8816,10 @@ The linear velocity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                          |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -8520,10 +8978,10 @@ The projected gravity of the entity's base link, in the entity's local frame.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                      | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                          |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the observation is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the observation for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -10006,7 +10464,9 @@ def define_quat(self, envs_idx: torch.Tensor, rotation: XYZRotation):
         ).uniform_(*z)
 
     # Set angle as quat
-    self._quat_buffer[envs_idx] = xyz_to_quat(self._rotation_buffer[envs_idx])
+    self._quat_buffer[envs_idx] = cast(
+        torch.Tensor, xyz_to_quat(self._rotation_buffer[envs_idx])
+    )
 ```
 
 ### `reset(envs_idx)`
@@ -10446,9 +10906,9 @@ and the penalty is :math:`\sum \text{acc}_t^2` across all action dimensions.
 
 Parameters:
 
-| Name             | Type                    | Description                                                                                         | Default |
-| ---------------- | ----------------------- | --------------------------------------------------------------------------------------------------- | ------- |
-| `action_manager` | `PositionActionManager` | Optional action manager to source actions from. If not provided, actions are read from env.actions. | `None`  |
+| Name             | Type                    | Description | Default                                                                                             |
+| ---------------- | ----------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| `action_manager` | \`PositionActionManager | None\`      | Optional action manager to source actions from. If not provided, actions are read from env.actions. |
 
 ### `action_manager = None`
 
@@ -10466,7 +10926,9 @@ def build(self):
     # step supplies an action tensor -- so they stay lazily allocated in __call__.
     self._prev_action: torch.Tensor | None = None
     self._prev_prev_action: torch.Tensor | None = None
-    self._action_log_count: torch.Tensor | None = None
+    self._action_log_count = torch.zeros(
+        (self.env.num_envs,), dtype=torch.long, device=gs.device
+    )
 ```
 
 ### `context(env)`
@@ -10503,7 +10965,7 @@ def reset(self, envs_idx: torch.Tensor):
     """
     Clear the action history for the specified environments.
     """
-    if self._prev_action is None:
+    if self._prev_action is None or self._prev_prev_action is None:
         return
     self._prev_action[envs_idx] = 0.0
     self._prev_prev_action[envs_idx] = 0.0
@@ -10591,9 +11053,9 @@ This penalizes the *change* between consecutive actions, `(action_t - action_{t-
 
 Parameters:
 
-| Name             | Type                | Description                                                                                                                                                                                                                                                                                                                                      | Default |
-| ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| `action_manager` | `BaseActionManager` | Only count the actions belonging to this action manager, instead of every action the policy produces. Use this when part of the robot is meant to keep moving -- a sensor being swept around to look for obstacles, say -- where penalizing its changes works against the behavior you are trying to get. Defaults to None: every action counts. | `None`  |
+| Name             | Type                | Description | Default                                                                                                                                                                                                                                                                                                                                          |
+| ---------------- | ------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `action_manager` | \`BaseActionManager | None\`      | Only count the actions belonging to this action manager, instead of every action the policy produces. Use this when part of the robot is meant to keep moving -- a sensor being swept around to look for obstacles, say -- where penalizing its changes works against the behavior you are trying to get. Defaults to None: every action counts. |
 
 Returns:
 
@@ -10742,10 +11204,10 @@ Penalize xy-axis base angular velocity using L2 squared kernel.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                 | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                     |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -10904,13 +11366,13 @@ Penalize base height away from target, using the L2 squared kernel.
 
 Parameters:
 
-| Name              | Type             | Description                                                                                                 | Default                                                 |
-| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `target_height`   | \`float          | Tensor\`                                                                                                    | The target height to penalize the base height away from |
-| `height_command`  | `CommandManager` | Get the target height from a height command manager. This expects the command to have a single range value. | `None`                                                  |
-| `terrain_manager` | `TerrainManager` | The terrain manager will adjust the height based on the terrain height.                                     | `None`                                                  |
-| `entity`          | `RigidEntity`    | The entity to compute the reward for. Defaults to env.robot. Not necessary if entity_manager is provided.   | `None`                                                  |
-| `entity_manager`  | `EntityManager`  | The entity manager for the entity.                                                                          | `None`                                                  |
+| Name              | Type             | Description | Default                                                                                                     |
+| ----------------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `target_height`   | \`float          | Tensor      | None\`                                                                                                      |
+| `height_command`  | \`CommandManager | None\`      | Get the target height from a height command manager. This expects the command to have a single range value. |
+| `terrain_manager` | \`TerrainManager | None\`      | The terrain manager will adjust the height based on the terrain height.                                     |
+| `entity`          | \`RigidEntity    | None\`      | The entity to compute the reward for. Defaults to env.robot. Not necessary if entity_manager is provided.   |
+| `entity_manager`  | \`EntityManager  | None\`      | The entity manager for the entity.                                                                          |
 
 Returns:
 
@@ -11071,15 +11533,17 @@ def update(self, **params: Any) -> None:
 
 Bases: `MdpFn`
 
-Penalize jerky body acceleration to encourage smooth locomotion.
+Penalize body acceleration to encourage smooth motion.
+
+The penalty is `1 - exp(-sensitivity * a)`, where `a` is the sum of the base's linear (m/s²) and angular (rad/s²) acceleration magnitudes. It rises from 0 toward 1 and levels off once `a` exceeds about `3 / sensitivity`, so accelerations beyond that are all penalized about equally.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                 | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
-| `sensitivity`    | `float`         | The sensitivity of the exponential decay. A lower value means the reward is more sensitive to the error.                                    | `0.1`   |
+| Name             | Type            | Description                                                                                                                   | Default                                                                                                                                     |
+| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_manager` | \`EntityManager | None\`                                                                                                                        | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`                                                                                                                        | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
+| `sensitivity`    | `float`         | Higher values penalize small accelerations more but level off sooner. Lower it if large accelerations need to be discouraged. | `0.1`                                                                                                                                       |
 
 ### `entity = None`
 
@@ -11215,13 +11679,13 @@ Reward for tracking commanded angular velocity (yaw)
 
 Parameters:
 
-| Name                | Type                     | Description                                                                                                                                 | Default                                                                                                                                                                                                                                                                               |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `commanded_ang_vel` | `Tensor`                 | The commanded angular velocity in the shape (num_envs, 1)                                                                                   | `None`                                                                                                                                                                                                                                                                                |
-| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`                                                                                                                                                                                                                                                                                |
-| `sensitivity`       | \`float                  | None\`                                                                                                                                      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest absolute value of the command range. |
-| `entity_manager`    | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`                                                                                                                                                                                                                                                                                |
-| `entity`            | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`                                                                                                                                                                                                                                                                                |
+| Name                | Type                     | Description | Default                                                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commanded_ang_vel` | \`Tensor                 | None\`      | The commanded angular velocity in the shape (num_envs, 1)                                                                                                                                                                                                                             |
+| `vel_cmd_manager`   | \`VelocityCommandManager | None\`      | The velocity command manager                                                                                                                                                                                                                                                          |
+| `sensitivity`       | \`float                  | None\`      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest absolute value of the command range. |
+| `entity_manager`    | \`EntityManager          | None\`      | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter.                                                                                                                                           |
+| `entity`            | \`RigidEntity            | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                                                                                                                                                                      |
 
 Returns:
 
@@ -11378,13 +11842,13 @@ Reward for tracking commanded linear velocity (xy axes)
 
 Parameters:
 
-| Name              | Type                     | Description                                                                                                                                 | Default                                                                                                                                                                                                                                                                                                                                              |
-| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `command`         | `Tensor`                 | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                 | `None`                                                                                                                                                                                                                                                                                                                                               |
-| `vel_cmd_manager` | `VelocityCommandManager` | The velocity command manager                                                                                                                | `None`                                                                                                                                                                                                                                                                                                                                               |
-| `sensitivity`     | \`float                  | None\`                                                                                                                                      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest commanded speed the range allows (the norm of the largest absolute lin_vel_x and lin_vel_y values). |
-| `entity_manager`  | `EntityManager`          | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`                                                                                                                                                                                                                                                                                                                                               |
-| `entity`          | `RigidEntity`            | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`                                                                                                                                                                                                                                                                                                                                               |
+| Name              | Type                     | Description | Default                                                                                                                                                                                                                                                                                                                                              |
+| ----------------- | ------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command`         | \`Tensor                 | None\`      | The commanded XY linear velocity in the shape (num_envs, 2)                                                                                                                                                                                                                                                                                          |
+| `vel_cmd_manager` | \`VelocityCommandManager | None\`      | The velocity command manager                                                                                                                                                                                                                                                                                                                         |
+| `sensitivity`     | \`float                  | None\`      | A lower value means the reward is more sensitive to the error If not defined, the sensitivity will be derived from the command manager's range on every step using the formulation: (0.5 * max_command) \*\* 2, where max_command is the largest commanded speed the range allows (the norm of the largest absolute lin_vel_x and lin_vel_y values). |
+| `entity_manager`  | \`EntityManager          | None\`      | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter.                                                                                                                                                                                                          |
+| `entity`          | \`RigidEntity            | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                                                                                                                                                                                                                                     |
 
 Returns:
 
@@ -11695,6 +12159,170 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
+## `contact_fraction(*, contact_manager, threshold=1.0)`
+
+Bases: `MdpFn`
+
+Fraction of the links in the contact manager that are in contact with something.
+
+Unlike `has_contact`, this pays partial credit, so the reward grows with each additional link that makes contact.
+
+Parameters:
+
+| Name              | Type             | Description                                                | Default    |
+| ----------------- | ---------------- | ---------------------------------------------------------- | ---------- |
+| `contact_manager` | `ContactManager` | The contact manager to check for contact                   | *required* |
+| `threshold`       | `float`          | The force threshold for contact detection (default: 1.0 N) | `1.0`      |
+
+Returns:
+
+| Type | Description                                      |
+| ---- | ------------------------------------------------ |
+|      | A value between 0.0 and 1.0 for each environment |
+
+### `contact_manager`
+
+### `env`
+
+The environment this function is bound to.
+
+### `threshold = 1.0`
+
+### `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
 ## `dof_acc_l2(*, actuator_manager=None, action_manager=None)`
 
 Bases: `MdpFn`
@@ -11715,10 +12343,10 @@ Steps without a previous velocity to compare against -- the first step of an epi
 
 Parameters:
 
-| Name               | Type                    | Description                                                                                                          | Default |
-| ------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------- | ------- |
-| `actuator_manager` | `ActuatorManager`       | The actuator manager to read joint velocities from. Only the DOFs handled by this manager contribute to the penalty. | `None`  |
-| `action_manager`   | `PositionActionManager` | The action manager to read joint velocities from, as an alternative to actuator_manager.                             | `None`  |
+| Name               | Type                    | Description | Default                                                                                                              |
+| ------------------ | ----------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| `actuator_manager` | \`ActuatorManager       | None\`      | The actuator manager to read joint velocities from. Only the DOFs handled by this manager contribute to the penalty. |
+| `action_manager`   | \`PositionActionManager | None\`      | The action manager to read joint velocities from, as an alternative to actuator_manager.                             |
 
 Returns:
 
@@ -11740,14 +12368,7 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert (
-        self.actuator_manager is not None or self.action_manager is not None
-    ), "Either actuator_manager or action_manager must be provided to dof_acc_l2"
-    self._manager = (
-        self.actuator_manager
-        if self.actuator_manager is not None
-        else self.action_manager
-    )
+    self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
     self._prev_dof_vel = torch.zeros(
         (self.env.num_envs, self._manager.num_dofs), device=gs.device
     )
@@ -11867,21 +12488,19 @@ def update(self, **params: Any) -> None:
 
 Bases: `MdpFn`
 
-Penalize joint poses far away from default pose(s).
-
-Pass `actuator_manager` as one manager or a non-empty list/tuple (e.g. per-limb stacks); penalties are summed per environment across all included DOFs.
+Penalize joint poses far away from the default pose.
 
 Parameters:
 
-| Name               | Type              | Description             | Default                        |
-| ------------------ | ----------------- | ----------------------- | ------------------------------ |
-| `actuator_manager` | \`ActuatorManager | list[ActuatorManager]\` | One or more actuator managers. |
+| Name               | Type              | Description                                                             | Default    |
+| ------------------ | ----------------- | ----------------------------------------------------------------------- | ---------- |
+| `actuator_manager` | `ActuatorManager` | The actuator manager to read joint positions and the default pose from. | *required* |
 
 Returns:
 
-| Type | Description                                                         |
-| ---- | ------------------------------------------------------------------- |
-|      | torch.Tensor: Penalty summed over included DOFs, shape (num_envs,). |
+| Type | Description                                                                       |
+| ---- | --------------------------------------------------------------------------------- |
+|      | torch.Tensor: Penalty summed over the actuator manager's DOFs, shape (num_envs,). |
 
 ### `actuator_manager`
 
@@ -11891,14 +12510,21 @@ The environment this function is bound to.
 
 ### `build()`
 
-Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
 
 ```
-def build(self):
-    if self.actuator_manager is None:
-        raise ValueError(
-            "dof_similar_to_default: actuator_manager must be provided"
-        )
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
 ```
 
 ### `context(env)`
@@ -12017,7 +12643,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_torque_l2(*, actuator_manager)`
+## `dof_torque_l2(*, actuator_manager=None, action_manager=None, threshold=0.0)`
 
 Bases: `MdpFn`
 
@@ -12025,11 +12651,15 @@ Penalize joint torque effort using the L2 squared kernel.
 
 Discourages the policy from applying unnecessary force, particularly when the robot is near equilibrium. This helps reduce actuator oscillation when the robot is stationary or moving slowly.
 
+Set `threshold` to penalize only the torque over that limit, which acts as a soft torque limit instead: joints applying less contribute nothing.
+
 Parameters:
 
-| Name               | Type              | Description                                       | Default    |
-| ------------------ | ----------------- | ------------------------------------------------- | ---------- |
-| `actuator_manager` | `ActuatorManager` | The actuator manager to retrieve DOF forces from. | *required* |
+| Name               | Type                    | Description                                                                                           | Default                                                                               |
+| ------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `actuator_manager` | \`ActuatorManager       | None\`                                                                                                | The actuator manager to read joint torques from.                                      |
+| `action_manager`   | \`PositionActionManager | None\`                                                                                                | The action manager to read joint torques from, as an alternative to actuator_manager. |
+| `threshold`        | `float`                 | The joint torque (N·m), in either direction, that is allowed before the penalty starts (default: 0.0) | `0.0`                                                                                 |
 
 Returns:
 
@@ -12037,29 +12667,23 @@ Returns:
 | ---- | ---------------------------------------------------------------- |
 |      | torch.Tensor: Penalty for joint torque effort, shape (num_envs,) |
 
-### `actuator_manager`
+### `action_manager = None`
+
+### `actuator_manager = None`
 
 ### `env`
 
 The environment this function is bound to.
 
+### `threshold = 0.0`
+
 ### `build()`
 
-Build/rebuild any state or buffers necessary for the function call.
-
-Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
-
-Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
-def build(self) -> None:
-    """
-    Build/rebuild any state or buffers necessary for the function call.
-
-    Called once by the manager during the environment build phase, and again after
-    any param is changed. Must be idempotent -- it is safe to call any number of
-    times, and re-deriving from scratch is the expected implementation.
-    """
+def build(self):
+    self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 ```
 
 ### `context(env)`
@@ -12178,17 +12802,21 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `dof_velocity_l2(*, action_manager)`
+## `dof_velocity_l2(*, actuator_manager=None, action_manager=None, threshold=0.0)`
 
 Bases: `MdpFn`
 
-Penalize joint angular velocities to encourage slow, deliberate motion.
+Penalize joint angular velocities using the L2 squared kernel.
+
+With the default `threshold` of 0, every joint's full velocity is penalized, to encourage slow, deliberate motion. Set `threshold` to penalize only the speed over that limit, which acts as a soft velocity limit: joints moving slower contribute nothing, so velocity spikes are discouraged without penalizing ordinary motion.
 
 Parameters:
 
-| Name             | Type                    | Description                                         | Default    |
-| ---------------- | ----------------------- | --------------------------------------------------- | ---------- |
-| `action_manager` | `PositionActionManager` | The action manager to retrieve DOF velocities from. | *required* |
+| Name               | Type                    | Description                                                                                            | Default                                                                                  |
+| ------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `actuator_manager` | \`ActuatorManager       | None\`                                                                                                 | The actuator manager to read joint velocities from.                                      |
+| `action_manager`   | \`PositionActionManager | None\`                                                                                                 | The action manager to read joint velocities from, as an alternative to actuator_manager. |
+| `threshold`        | `float`                 | The joint speed (rad/s), in either direction, that is allowed before the penalty starts (default: 0.0) | `0.0`                                                                                    |
 
 Returns:
 
@@ -12196,29 +12824,23 @@ Returns:
 | ---- | ------------------------------------------------------------------- |
 |      | torch.Tensor: Penalty for joint angular velocity, shape (num_envs,) |
 
-### `action_manager`
+### `action_manager = None`
+
+### `actuator_manager = None`
 
 ### `env`
 
 The environment this function is bound to.
 
+### `threshold = 0.0`
+
 ### `build()`
 
-Build/rebuild any state or buffers necessary for the function call.
-
-Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
-
-Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
-def build(self) -> None:
-    """
-    Build/rebuild any state or buffers necessary for the function call.
-
-    Called once by the manager during the environment build phase, and again after
-    any param is changed. Must be idempotent -- it is safe to call any number of
-    times, and re-deriving from scratch is the expected implementation.
-    """
+def build(self):
+    self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 ```
 
 ### `context(env)`
@@ -12687,10 +13309,10 @@ This penalty is less effective at longer foot-contact links (for example, long l
 
 Parameters:
 
-| Name              | Type             | Description                                                            | Default    |
-| ----------------- | ---------------- | ---------------------------------------------------------------------- | ---------- |
-| `contact_manager` | `ContactManager` | The contact manager for the feet                                       | *required* |
-| `entity`          | `RigidEntity`    | The robot entity that the feet are attached to. Defaults to env.robot. | `None`     |
+| Name              | Type             | Description                      | Default                                                                |
+| ----------------- | ---------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| `contact_manager` | `ContactManager` | The contact manager for the feet | *required*                                                             |
+| `entity`          | \`RigidEntity    | None\`                           | The robot entity that the feet are attached to. Defaults to env.robot. |
 
 Returns:
 
@@ -12849,10 +13471,10 @@ Penalize non-flat base orientation using L2 squared kernel. This is computed by 
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                 | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                     |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -13477,12 +14099,12 @@ The penalty uses the actual positions from the simulation, which a real robot co
 
 Parameters:
 
-| Name             | Type                | Description                                                                                                                                                      | Default    |
-| ---------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `entities`       | `list[RigidEntity]` | The entities to keep clear of.                                                                                                                                   | *required* |
-| `clearance`      | `float`             | The distance (in meters, centre to centre) at which the penalty starts.                                                                                          | `0.5`      |
-| `entity`         | `RigidEntity`       | The entity being kept clear of them. Defaults to env.robot.                                                                                                      | `None`     |
-| `entity_manager` | `EntityManager`     | The entity manager for the above, which is slightly faster than passing entity since it reads a position cached once per step instead of querying the simulator. | `None`     |
+| Name             | Type                | Description                                                             | Default                                                                                                                                                          |
+| ---------------- | ------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entities`       | `list[RigidEntity]` | The entities to keep clear of.                                          | *required*                                                                                                                                                       |
+| `clearance`      | `float`             | The distance (in meters, centre to centre) at which the penalty starts. | `0.5`                                                                                                                                                            |
+| `entity`         | \`RigidEntity       | None\`                                                                  | The entity being kept clear of them. Defaults to env.robot.                                                                                                      |
+| `entity_manager` | \`EntityManager     | None\`                                                                  | The entity manager for the above, which is slightly faster than passing entity since it reads a position cached once per step instead of querying the simulator. |
 
 Returns:
 
@@ -13643,10 +14265,10 @@ Penalize horizontal base linear velocity.
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                      | Default |
-| ---------------- | --------------- | ---------------------------------------------------------------------------------------------------------------- | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for.                                        | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided. | `None`  |
+| Name             | Type            | Description | Default                                                                                                          |
+| ---------------- | --------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the reward is being computed for.                                        |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided. |
 
 Returns:
 
@@ -13805,10 +14427,10 @@ Penalize z axis base linear velocity
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                 | Default |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `entity_manager` | `EntityManager` | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. | `None`  |
-| `entity`         | `RigidEntity`   | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            | `None`  |
+| Name             | Type            | Description | Default                                                                                                                                     |
+| ---------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_manager` | \`EntityManager | None\`      | The entity manager for the robot/entity the reward is being computed for. This is slightly more performant than using the entity parameter. |
+| `entity`         | \`RigidEntity   | None\`      | The entity to compute the reward for. Defaults to env.robot. This isn't necessary if entity_manager is provided.                            |
 
 Returns:
 
@@ -14288,9 +14910,7 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert (
-        self.actuator_manager is not None or self.action_manager is not None
-    ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
+    self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 ```
 
 ### `context(env)`
@@ -14582,12 +15202,12 @@ Penalize offsets from the default joint positions when the command is very small
 
 Parameters:
 
-| Name                | Type                     | Description                                                              | Default    |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------ | ---------- |
-| `command_threshold` | `float`                  | The threshold for the command to be considered small                     | `0.06`     |
-| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                                             | *required* |
-| `actuator_manager`  | `ActuatorManager`        | The actuator manager to get the joint positions and recent actions from. | `None`     |
-| `action_manager`    | `PositionActionManager`  | The action manager to get the joint positions and recent actions from.   | `None`     |
+| Name                | Type                     | Description                                          | Default                                                                  |
+| ------------------- | ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| `command_threshold` | `float`                  | The threshold for the command to be considered small | `0.06`                                                                   |
+| `vel_cmd_manager`   | `VelocityCommandManager` | The velocity command manager                         | *required*                                                               |
+| `actuator_manager`  | \`ActuatorManager        | None\`                                               | The actuator manager to get the joint positions and recent actions from. |
+| `action_manager`    | \`PositionActionManager  | None\`                                               | The action manager to get the joint positions and recent actions from.   |
 
 Returns:
 
@@ -14613,9 +15233,7 @@ Source code in `packages/genesis-forge/genesis_forge/mdp/rewards.py`
 
 ```
 def build(self):
-    assert (
-        self.actuator_manager is not None or self.action_manager is not None
-    ), "Either actuator_manager or action_manager must be provided to stopped_joint_deviation_l1"
+    self._manager = _dof_manager(self, self.actuator_manager, self.action_manager)
 ```
 
 ### `context(env)`
@@ -14893,12 +15511,12 @@ This function uses projected gravity to detect when the robot has tilted beyond 
 
 Parameters:
 
-| Name             | Type            | Description                                                                                                                                        | Default |
-| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `limit_angle`    | `float`         | Maximum allowed tilt angle in degrees (default: 40 degrees)                                                                                        | `40.0`  |
-| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                                                                                 | `None`  |
-| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided.                                                    | `None`  |
-| `grace_steps`    | `int`           | Number of steps at episode start to ignore tilt detection (default: 0) This gives the robot a chance to stabilize before tilt detection is active. | `0`     |
+| Name             | Type            | Description                                                                                                                                        | Default                                                                                         |
+| ---------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `limit_angle`    | `float`         | Maximum allowed tilt angle in degrees (default: 40 degrees)                                                                                        | `40.0`                                                                                          |
+| `entity_manager` | \`EntityManager | None\`                                                                                                                                             | The entity manager for the entity.                                                              |
+| `entity`         | \`RigidEntity   | None\`                                                                                                                                             | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided. |
+| `grace_steps`    | `int`           | Number of steps at episode start to ignore tilt detection (default: 0) This gives the robot a chance to stabilize before tilt detection is active. | `0`                                                                                             |
 
 Returns:
 
@@ -15061,11 +15679,11 @@ Terminate the environment if the robot's base height falls below a minimum thres
 
 Parameters:
 
-| Name             | Type            | Description                                                                                     | Default |
-| ---------------- | --------------- | ----------------------------------------------------------------------------------------------- | ------- |
-| `minimum_height` | `float`         | Minimum allowed base height in meters                                                           | `0.05`  |
-| `entity_manager` | `EntityManager` | The entity manager for the entity.                                                              | `None`  |
-| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided. | `None`  |
+| Name             | Type            | Description                           | Default                                                                                         |
+| ---------------- | --------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `minimum_height` | `float`         | Minimum allowed base height in meters | `0.05`                                                                                          |
+| `entity_manager` | \`EntityManager | None\`                                | The entity manager for the entity.                                                              |
+| `entity`         | \`RigidEntity   | None\`                                | The entity to check. Defaults to env.robot. This isn't necessary if entity_manager is provided. |
 
 Returns:
 
@@ -16044,12 +16662,12 @@ Uses projected gravity in the body frame: upright is approximately [0, 0, -1], b
 
 Parameters:
 
-| Name             | Type            | Description                                                                             | Default |
-| ---------------- | --------------- | --------------------------------------------------------------------------------------- | ------- |
-| `threshold`      | `float`         | Terminate when projected_gravity[:, 2] exceeds this value                               | `0.5`   |
-| `entity_manager` | `EntityManager` | The entity manager for the robot                                                        | `None`  |
-| `entity`         | `RigidEntity`   | The entity to check. Defaults to env.robot. Not necessary if entity_manager is provided | `None`  |
-| `grace_steps`    | `int`           | Steps at episode start to ignore this check                                             | `0`     |
+| Name             | Type            | Description                                                | Default                                                                                 |
+| ---------------- | --------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `threshold`      | `float`         | Terminate when projected_gravity[:, 2] exceeds this value. | `0.5`                                                                                   |
+| `entity_manager` | \`EntityManager | None\`                                                     | The entity manager for the robot                                                        |
+| `entity`         | \`RigidEntity   | None\`                                                     | The entity to check. Defaults to env.robot. Not necessary if entity_manager is provided |
+| `grace_steps`    | `int`           | Steps at episode start to ignore this check                | `0`                                                                                     |
 
 ### `entity = None`
 
@@ -16206,12 +16824,12 @@ Terminate if the entity's base position is outside of the terrain.
 
 Parameters:
 
-| Name              | Type             | Description                                                                                                             | Default                                    |
-| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `terrain_manager` | `TerrainManager` | The terrain manager to check for out of bounds                                                                          | *required*                                 |
-| `subterrain`      | \`str            | None\`                                                                                                                  | The subterrain to keep the robot inside of |
-| `border_margin`   | `float`          | The margin (in meters) to add to the terrain bounds This terminates the episode before the robot falls off the terrain. | `0.5`                                      |
-| `entity`          | `RigidEntity`    | The entity to check. Defaults to env.robot.                                                                             | `None`                                     |
+| Name              | Type             | Description                                                                                                             | Default                                     |
+| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `terrain_manager` | `TerrainManager` | The terrain manager to check for out of bounds                                                                          | *required*                                  |
+| `subterrain`      | \`str            | None\`                                                                                                                  | The subterrain to keep the robot inside of  |
+| `border_margin`   | `float`          | The margin (in meters) to add to the terrain bounds This terminates the episode before the robot falls off the terrain. | `0.5`                                       |
+| `entity`          | \`RigidEntity    | None\`                                                                                                                  | The entity to check. Defaults to env.robot. |
 
 ### `border_margin = 0.5`
 
@@ -16955,26 +17573,29 @@ Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/ma
 
 Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
 
-To control how frequently recordings are made specify **one** of `episode_trigger`, `step_trigger`, or `iteration_trigger`. They should be functions returning a boolean that indicates whether a recording should be started at the current episode, step, or training iteration, respectively. If no trigger is passed, a default `episode_trigger` will be used, which records at the episode indices 0, 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
+To control how frequently recordings are made specify **one** of `episode_trigger`, `step_trigger`, or `iteration_trigger`. They should be functions returning a boolean that indicates whether a recording should be started at the current episode, step, or training iteration, respectively. Step and episode counts start at 1, so the first environment step is step 1 of episode 1. If no trigger is passed, a default `episode_trigger` will be used, which records at the episode indices 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
 
 The training iteration is derived from the step count: each learning iteration steps the environment a fixed number of times (`num_steps_per_env` in RSL-RL). Pass that value as `steps_per_iteration` and `iteration_trigger` will be called once at the start of every iteration. The iteration count starts at `iteration_offset` (default 0). When resuming from a checkpoint, set `iteration_offset` to the checkpoint's iteration so the count, and the video filenames, line up with the framework's (see the example below).
 
+Set `wait_for_episode_start` to have every video begin at the start of an episode. A trigger then no longer starts the recording immediately; it waits for the next episode of the watched environment to begin. The video is named for the step or iteration it actually started on, which can be later than the one that triggered it. For example,if iteration 10 triggers a recording and the next episode begins in iteration 11, the video is named `11.mp4`.
+
 Parameters:
 
-| Name                  | Type                      | Description                                                                                                                                                                                                                                                | Default                                                                                                                                                                                                           |
-| --------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`                 | \`GenesisEnv              | Wrapper\`                                                                                                                                                                                                                                                  | GenesisEnv                                                                                                                                                                                                        |
-| `camera_attr`         | `str`                     | The attribute of the base environment that contains the camera to use for recording.                                                                                                                                                                       | `'camera'`                                                                                                                                                                                                        |
-| `episode_trigger`     | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts an episode count integer and returns True if a recording should be started at this episode                                                                                                  |
-| `step_trigger`        | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts a step count integer and returns True if a recording should be started at this step                                                                                                         |
-| `iteration_trigger`   | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                     | Function that accepts a training iteration integer and returns True if a recording should be started at this iteration. Requires steps_per_iteration.                                                             |
-| `steps_per_iteration` | \`int                     | None\`                                                                                                                                                                                                                                                     | The number of environment steps per training iteration (RSL-RL's num_steps_per_env). Only used with iteration_trigger.                                                                                            |
-| `iteration_offset`    | `int`                     | The training iteration the first step belongs to. Set this when resuming from a checkpoint. Only used with iteration_trigger. Can also be assigned after construction via the :attr:iteration_offset property, as long as it is set before the first step. | `0`                                                                                                                                                                                                               |
-| `video_length_sec`    | `int`                     | Length of each video, in seconds.                                                                                                                                                                                                                          | `8`                                                                                                                                                                                                               |
-| `out_dir`             | `str`                     | Directory to save the videos to.                                                                                                                                                                                                                           | `'./videos'`                                                                                                                                                                                                      |
-| `fps`                 | `int`                     | Frames per second for the video.                                                                                                                                                                                                                           | `60`                                                                                                                                                                                                              |
-| `env_idx`             | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for.                                                                                                                                                                | `0`                                                                                                                                                                                                               |
-| `filename`            | \`str                     | None\`                                                                                                                                                                                                                                                     | The filename for the video. If None, the video will automatically be named for the episode, step, or iteration the recording started on. If defined, each video will overwrite the previous video with this name. |
+| Name                     | Type                      | Description                                                                                                                                                                                                                                                         | Default                                                                                                                                                                                                            |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env`                    | \`GenesisEnv              | Wrapper\`                                                                                                                                                                                                                                                           | GenesisEnv                                                                                                                                                                                                         |
+| `camera_attr`            | `str`                     | The attribute of the base environment that contains the camera to use for recording.                                                                                                                                                                                | `'camera'`                                                                                                                                                                                                         |
+| `episode_trigger`        | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                              | Function that accepts an episode count integer (starting at 1) and returns True if a recording should be started at this episode. Only called on the first step of an episode.                                     |
+| `step_trigger`           | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                              | Function that accepts a step count integer (starting at 1) and returns True if a recording should be started at this step                                                                                          |
+| `iteration_trigger`      | \`Callable\[[int], bool\] | None\`                                                                                                                                                                                                                                                              | Function that accepts a training iteration integer and returns True if a recording should be started at this iteration. Requires steps_per_iteration.                                                              |
+| `steps_per_iteration`    | \`int                     | None\`                                                                                                                                                                                                                                                              | The number of environment steps per training iteration (RSL-RL's num_steps_per_env). Required by iteration_trigger and VideoFilename.ITERATION, and when set, the iteration is also passed to a filename function. |
+| `iteration_offset`       | `int`                     | The training iteration the first step belongs to. Set this when resuming from a checkpoint. Only used when steps_per_iteration is set. Can also be assigned after construction via the :attr:iteration_offset property, as long as it is set before the first step. | `0`                                                                                                                                                                                                                |
+| `wait_for_episode_start` | `bool`                    | Delay each triggered recording until the next episode of the watched environment begins. Has no effect with episode_trigger, which always starts on the first step of an episode.                                                                                   | `False`                                                                                                                                                                                                            |
+| `video_length_sec`       | `int`                     | Length of each video, in seconds.                                                                                                                                                                                                                                   | `8`                                                                                                                                                                                                                |
+| `out_dir`                | `str`                     | Directory to save the videos to.                                                                                                                                                                                                                                    | `'./videos'`                                                                                                                                                                                                       |
+| `fps`                    | `int`                     | Frames per second for the video.                                                                                                                                                                                                                                    | `60`                                                                                                                                                                                                               |
+| `env_idx`                | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for.                                                                                                                                                                         | `0`                                                                                                                                                                                                                |
+| `filename`               | \`str                     | VideoFilename                                                                                                                                                                                                                                                       | Callable\[\[int, int, int                                                                                                                                                                                          |
 
 Example::
 
@@ -17010,6 +17631,18 @@ env = VideoWrapper(
     camera_attr="camera",
     out_dir="./videos",
     step_trigger=lambda step: step % 1500 == 0
+)
+```
+
+Create a custom video filename::
+
+```
+env = VideoWrapper(
+    env,
+    camera_attr="camera",
+    out_dir="./videos",
+    iteration_trigger=lambda it: it % 50 == 0,
+    filename=lambda step, episode, iteration: f"ep{episode}_step{step}.mp4",
 )
 ```
 
@@ -17059,25 +17692,30 @@ def __init__(
     iteration_trigger: Callable[[int], bool] | None = None,
     steps_per_iteration: int | None = None,
     iteration_offset: int = 0,
+    wait_for_episode_start: bool = False,
     out_dir: str = "./videos",
     fps: int = 60,
     env_idx: int = 0,
-    filename: str | None = None,
+    filename: (
+        str | VideoFilename | Callable[[int, int, int | None], str] | None
+    ) = None,
     logging: bool = True,
 ):
     super().__init__(env)
     self._is_recording: bool = False
     self._logging: bool = logging
-    self._current_step: int = 0
-    self._current_episode: int = 0
+    self._current_step: int = 1
+    self._current_episode: int = 1
+    self._episode_step: int = 1
     self._recording_start_step: int = 0
     self._recording_stop_step: int = 0
     self._recording_name: str = "recording"
+    self._wait_for_episode_start = wait_for_episode_start
+    self._recording_pending: bool = False
 
     self._cam: Camera | None = None
     self._camera_attr = camera_attr
     self._out_dir = out_dir
-    self._filename = filename
     self._video_length_steps = math.ceil(video_length_sec / self.dt)
     self._steps_per_frame = max(
         1, round(1.0 / fps / self.dt)
@@ -17100,6 +17738,20 @@ def __init__(
         assert (
             steps_per_iteration is not None and steps_per_iteration > 0
         ), "steps_per_iteration is required with iteration_trigger"
+
+    # Determine how to name the file
+    if filename is None:
+        if iteration_trigger is not None:
+            filename = VideoFilename.ITERATION
+        elif step_trigger is not None:
+            filename = VideoFilename.STEP
+        else:
+            filename = VideoFilename.EPISODE
+    if filename == VideoFilename.ITERATION:
+        assert (
+            steps_per_iteration is not None and steps_per_iteration > 0
+        ), "steps_per_iteration is required with VideoFilename.ITERATION"
+    self._filename = filename
 
     self.episode_trigger = episode_trigger
     self.step_trigger = step_trigger
@@ -17258,21 +17910,21 @@ def reset(
     return self.env.reset(env_ids)
 ```
 
-## `start_recording(index)`
+## `start_recording()`
 
 Start recording a video.
 
 Source code in `packages/genesis-forge/genesis_forge/wrappers/video.py`
 
 ```
-def start_recording(self, index: int):
+def start_recording(self):
     """Start recording a video."""
     if self._cam is None:
         return
 
     self._is_recording = True
     self._recording_start_step = self._current_step
-    self._recording_name = self._filename or f"{index}.mp4"
+    self._recording_name = self._video_filename()
     self._recording_stop_step = self._current_step + self._video_length_steps
 
     filepath = os.path.join(self._tmp_dir, self._recording_name)
@@ -17313,6 +17965,9 @@ def step(
     # Increment episode count if the watched environment has terminated or truncated
     if self._is_done(terminateds) or self._is_done(truncateds):
         self._current_episode += 1
+        self._episode_step = 1
+    else:
+        self._episode_step += 1
     self._current_step += 1
 
     return (
@@ -17323,6 +17978,22 @@ def step(
         extras,
     )
 ```
+
+Bases: `Enum`
+
+How the videos files are named
+
+## `EPISODE = 'episode'`
+
+Name the video for the episode number of the watched environment.
+
+## `ITERATION = 'iteration'`
+
+Name the video for the training iteration. Requires `steps_per_iteration`.
+
+## `STEP = 'step'`
+
+Name the video for the step number.
 # Deployment
 
 # Deployment Overview
@@ -17355,95 +18026,6 @@ Parameters:
 ## `joint_action_index = None`
 
 ## `processor_import_path = None`
-
-Reduce a possibly per-environment tensor to one nominal value per joint.
-
-Process parameters are stored per-environment, and domain randomization may perturb them differently in each one. A bundle describes a single robot, so export refuses to guess which environment is authoritative: if the values diverge across environments, this raises instead of silently baking in whatever environment 0 happened to hold.
-
-Parameters:
-
-| Name           | Type     | Description                                                              | Default    |
-| -------------- | -------- | ------------------------------------------------------------------------ | ---------- |
-| `tensor`       | `Tensor` | The parameter to reduce, shaped (num_joints,) or (num_envs, num_joints). | *required* |
-| `name`         | `str`    | Parameter name, used in error messages.                                  | *required* |
-| `num_joints`   | `int`    | How many joints this manager controls.                                   | *required* |
-| `num_envs`     | `int`    | The environment's parallel environment count.                            | *required* |
-| `manager_name` | `str`    | Manager name, used in error messages.                                    | *required* |
-
-Returns:
-
-| Type          | Description                |
-| ------------- | -------------------------- |
-| `list[float]` | One plain float per joint. |
-
-Raises:
-
-| Type         | Description                                                                                         |
-| ------------ | --------------------------------------------------------------------------------------------------- |
-| `ValueError` | The values differ across parallel environments, or the shape is not one this reduction understands. |
-
-Source code in `packages/genesis-forge/genesis_forge/managers/action/base.py`
-
-```
-def to_nominal_array(
-    tensor: torch.Tensor,
-    *,
-    name: str,
-    num_joints: int,
-    num_envs: int,
-    manager_name: str,
-) -> list[float]:
-    """Reduce a possibly per-environment tensor to one nominal value per joint.
-
-    Process parameters are stored per-environment, and domain randomization may
-    perturb them differently in each one. A bundle describes a single robot, so
-    export refuses to guess which environment is authoritative: if the values
-    diverge across environments, this raises instead of silently baking in
-    whatever environment 0 happened to hold.
-
-    Args:
-        tensor: The parameter to reduce, shaped ``(num_joints,)`` or
-            ``(num_envs, num_joints)``.
-        name: Parameter name, used in error messages.
-        num_joints: How many joints this manager controls.
-        num_envs: The environment's parallel environment count.
-        manager_name: Manager name, used in error messages.
-
-    Returns:
-        One plain float per joint.
-
-    Raises:
-        ValueError: The values differ across parallel environments, or the shape
-            is not one this reduction understands.
-    """
-    values = tensor.detach()
-
-    if values.ndim == 1:
-        if values.shape[0] != num_joints:
-            raise ValueError(
-                f"Cannot export '{name}' from action manager '{manager_name}': "
-                f"expected {num_joints} value(s), found {values.shape[0]}."
-            )
-        return [float(item) for item in values.cpu().tolist()]
-
-    if values.ndim == 2 and values.shape[1] == num_joints:
-        if values.shape[0] > 1 and not bool((values == values[0]).all()):
-            spread = float((values.max(dim=0).values - values.min(dim=0).values).max())
-            raise ValueError(
-                f"Cannot export '{name}' from action manager '{manager_name}': the "
-                f"value differs across parallel environments (largest spread "
-                f"{spread:g}). This usually means domain randomization is active. "
-                f"Export from a build with randomization disabled so the bundle "
-                f"records the nominal values the policy was trained against."
-            )
-        return [float(item) for item in values[0].cpu().tolist()]
-
-    raise ValueError(
-        f"Cannot export '{name}' from action manager '{manager_name}': unexpected "
-        f"shape {tuple(values.shape)} for {num_joints} joint(s) across {num_envs} "
-        f"environment(s)."
-    )
-```
 
 # Export
 
@@ -17854,7 +18436,7 @@ Zeros before the first process, matching how training starts an episode. Pass th
 
 ## `last_raw_actions_by_manager`
 
-What each manager last consumed, before it was processed.
+What the policy last emitted for each manager, before it was processed.
 
 This is what `current_actions(action_manager=...)` feeds back during training, and it is the whole policy vector only when a single manager is registered.
 
@@ -18559,11 +19141,12 @@ Source code in `packages/genesis-forge-runtime/genesis_forge_runtime/observation
 @classmethod
 def from_dict(cls, data: dict[str, Any], *, where: str) -> ObservationEntry:
     name = require(data, "name", where=where)
+    clip = data.get("clip")
     entry = cls(
         name=name,
         size=int(require(data, "size", where=f"{where}.{name}")),
         scale=float(data.get("scale", 1.0)),
-        clip=_parse_clip(data.get("clip"), where=f"{where}.{name}"),
+        clip=None if clip is None else (float(clip[0]), float(clip[1])),
         description=data.get("description"),
         units=data.get("units"),
     )

@@ -32,6 +32,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [TerminationManager](https://docs.genesisforge.io/en/latest/api/managers/termination.md)
 - [TerrainManager](https://docs.genesisforge.io/en/latest/api/managers/terrain.md)
 - [Action](https://docs.genesisforge.io/en/latest/api/managers/action/index.md)
+- [ActionDelayBuffer](https://docs.genesisforge.io/en/latest/api/managers/action/delay_buffer.md)
 - [PositionActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position.md)
 - [PositionWithinLimitsActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position_w_limits.md)
 - [VelocityActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/velocity.md)

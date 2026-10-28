@@ -25,7 +25,9 @@ Pi has no business downloading a physics engine.
 
 ## The whole flow
 
-On the training machine, once your environment is built:
+Once your environment has an environment with a trained policy, we can create a simple script to load and export it to a portable bundle.
+
+The export script:
 
 ```python
 from genesis_forge.deployment import export
@@ -42,13 +44,13 @@ bundle = export(env, "./go2_walk.gfb", policy_path="policy.onnx")
 print(bundle.describe())   # bundle summary
 ```
 
-Copy the single file it wrote to your robot:
+After running the python script, copy the single file it wrote to your robot:
 
 ```bash
 scp go2_walk.gfb robot:~/
 ```
 
-Then, on the robot:
+Then, on the robot, write another simple script that loads the bundle and wires sensor values to observations, and actions values to actuators.
 
 ```python
 from genesis_forge_runtime import load_bundle

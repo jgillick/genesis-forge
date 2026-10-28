@@ -1,0 +1,54 @@
+name: Deploy to PyPI
+
+# Started by hand from the Actions tab. It publishes main's HEAD through the
+# same make targets as a local release, so HEAD must already carry the release
+# tag from `make version` (pushed with `git push origin vX.Y.Z`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to release
+        type: choice
+        default: both
+        options:
+          - both
+          - forge
+          - runtime
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      contents: read
+      id-token: write # PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # check-tag needs the release tags
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.12"
+
+      - name: Build and upload
+        env:
+          PACKAGE: ${{ inputs.package }}
+          # No password: twine exchanges the OIDC token for a PyPI upload token.
+          TWINE_USERNAME: __token__
+          TWINE_NON_INTERACTIVE: "1"
+        run: |
+          case "$PACKAGE" in
+            both)    make deploy ;;
+            forge)   make deploy-forge ;;
+            runtime) make deploy-runtime ;;
+            *)       echo "Unknown package: $PACKAGE" >&2; exit 1 ;;
+          esac

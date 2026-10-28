@@ -8,6 +8,7 @@ own. Both released together are tagged ``vX.Y.Z``; one released alone is tagged
     versions.py check                   the packages share a minor, and the pin matches it
     versions.py pin                     the runtime requirement genesis-forge should declare
     versions.py bump <target> <V>       V is a valid next release of <target>
+    versions.py find-tag <target>       the existing tag that releases <target>
     versions.py check-tag <target>      HEAD is tagged as a release of <target>
 
 <target> is ``all``, ``genesis-forge``, or ``genesis-forge-runtime``.
@@ -176,10 +177,9 @@ def bump(target: str, value: str) -> None:
             )
 
 
-def check_tag(target: str) -> None:
+def accepted_tags(target: str) -> set[str]:
     """
-    Check that HEAD is tagged as a release of ``target`` at its current version,
-    so only tagged commits get published.
+    The tags that would release ``target`` at its current version.
 
     A package is released by its own ``<package>-vX.Y.Z`` tag, or by a
     ``vX.Y.Z`` tag when both packages are at X.Y.Z. Both packages together
@@ -189,8 +189,8 @@ def check_tag(target: str) -> None:
         target: ``"all"`` for both packages, or one package's name.
 
     Raises:
-        ReleaseError: HEAD doesn't carry an accepted tag, or ``target`` is
-            ``"all"`` and the packages are at different versions.
+        ReleaseError: ``target`` is ``"all"`` and the packages are at
+            different versions.
     """
     forge = current_version(FORGE)
     runtime = current_version(RUNTIME)
@@ -203,7 +203,47 @@ def check_tag(target: str) -> None:
             f"Releasing both needs them at one version, but {FORGE} is {forge} "
             f"and {RUNTIME} is {runtime}."
         )
+    return accepted
 
+
+def find_tag(target: str) -> None:
+    """
+    Print the existing tag that releases ``target`` at its current version, so
+    CI can deploy from it when HEAD has moved past the release commit. A
+    package's own tag wins over a together tag.
+
+    Args:
+        target: ``"all"`` for both packages, or one package's name.
+
+    Raises:
+        ReleaseError: No accepted tag exists yet.
+    """
+    accepted = accepted_tags(target)
+    existing = accepted & set(git("tag", "--list").split())
+    if not existing:
+        raise ReleaseError(
+            f"No {' or '.join(sorted(accepted))} tag exists. Run 'make version' "
+            f"and push the tag first."
+        )
+    if target != "all" and release_tag(target, current_version(target)) in existing:
+        print(release_tag(target, current_version(target)))
+    else:
+        print(release_tag("all", current_version(FORGE)))
+
+
+def check_tag(target: str) -> None:
+    """
+    Check that HEAD is tagged as a release of ``target`` at its current version,
+    so only tagged commits get published.
+
+    Args:
+        target: ``"all"`` for both packages, or one package's name.
+
+    Raises:
+        ReleaseError: HEAD doesn't carry an accepted tag, or ``target`` is
+            ``"all"`` and the packages are at different versions.
+    """
+    accepted = accepted_tags(target)
     tags = set(git("tag", "--points-at", "HEAD").split())
     if not accepted & tags:
         raise ReleaseError(
@@ -212,7 +252,13 @@ def check_tag(target: str) -> None:
         )
 
 
-COMMANDS = {"check": check, "pin": pin, "bump": bump, "check-tag": check_tag}
+COMMANDS = {
+    "check": check,
+    "pin": pin,
+    "bump": bump,
+    "find-tag": find_tag,
+    "check-tag": check_tag,
+}
 
 
 def main(argv: list[str]) -> None:

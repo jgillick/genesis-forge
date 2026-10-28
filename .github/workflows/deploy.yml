@@ -1,8 +1,7 @@
 name: Deploy to PyPI
 
-# Started by hand from the Actions tab. It publishes main's HEAD through the
-# same make targets as a local release, so HEAD must already carry the release
-# tag from `make version` (pushed with `git push origin vX.Y.Z`).
+# Public the latest main branch version to pypi.
+# This is run manually from the Actions tab.
 
 on:
   workflow_dispatch:
@@ -39,6 +38,23 @@ jobs:
         with:
           version: "0.12.12"
 
+      - name: Check out the release tag
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          case "$PACKAGE" in
+            both)    target=all ;;
+            forge)   target=genesis-forge ;;
+            runtime) target=genesis-forge-runtime ;;
+            *)       echo "Unknown package: $PACKAGE" >&2; exit 1 ;;
+          esac
+          tag=$(uv run --frozen python scripts/versions.py find-tag "$target")
+          if ! git merge-base --is-ancestor "$tag" HEAD; then
+            echo "$tag is not on main." >&2
+            exit 1
+          fi
+          git checkout "$tag"
+
       - name: Build and upload
         env:
           PACKAGE: ${{ inputs.package }}
@@ -50,5 +66,4 @@ jobs:
             both)    make deploy ;;
             forge)   make deploy-forge ;;
             runtime) make deploy-runtime ;;
-            *)       echo "Unknown package: $PACKAGE" >&2; exit 1 ;;
           esac

@@ -3,7 +3,7 @@
 A modular robotics RL training framework built on the Genesis physics simulator.
 Provides a manager-based architecture for building Gymnasium-compatible parallel environments.
 
-A uv workspace publishing two packages, released in lockstep:
+A uv workspace publishing two packages, released together by default:
 
 | Path | Package | Runs on |
 |------|---------|---------|
@@ -45,15 +45,27 @@ make docs        # builds docs + copies llms files to repo root
 make serve       # live-reloading docs preview
 ```
 
-Cut a release. Both packages ship at the same version, so the number is set in
-one place: `make version` rewrites both pyprojects, the exact runtime pin, and
-`uv.lock`, then commits and tags `vX.Y.Z`. `make build` refuses if those
-disagree, and `make deploy` refuses unless HEAD carries the matching tag.
+Cut a release. By default both packages ship together at the same version:
+`make version` rewrites both pyprojects, the runtime pin, and `uv.lock`, then
+commits and tags `vX.Y.Z`. `make build` refuses if those disagree, and
+`make deploy` refuses unless HEAD carries the matching tag.
 
 ```bash
-make version V=1.1.0   # bump everywhere, commit, tag v1.1.0
+make version V=1.1.0   # bump both, commit, tag v1.1.0
 make build             # lint + test + uv build into dist/
-make deploy            # uploads to PyPI via twine
+make deploy            # uploads both to PyPI via twine
+```
+
+The packages always share a major.minor version, and genesis-forge pins the
+runtime to that minor (`>=X.Y.Z,<X.(Y+1)`), so a patch to one package can ship
+on its own. Each of `version`, `build`, and `deploy` has `-forge` and `-runtime`
+variants; the tag is then `genesis-forge-vX.Y.Z` or `genesis-forge-runtime-vX.Y.Z`.
+A new major or minor always goes through `make version`. The rules live in
+`scripts/versions.py`.
+
+```bash
+make version-runtime V=1.1.1   # runtime patch alone, tag genesis-forge-runtime-v1.1.1
+make deploy-runtime            # uploads only genesis-forge-runtime
 ```
 
 ## Architecture

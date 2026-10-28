@@ -4,8 +4,9 @@
 #   packages/genesis-forge/          the training framework
 #   packages/genesis-forge-runtime/  the simulation-free robot runtime
 #
-# They are released in lockstep at the same version; see the dependency pin in
-# packages/genesis-forge/pyproject.toml for why.
+# They are released together at the same version by default, and always share a
+# major.minor version; either can ship a patch release on its own. See the
+# dependency pin in packages/genesis-forge/pyproject.toml and scripts/versions.py.
 
 [tool.uv.workspace]
 members = ["packages/*"]

@@ -68,8 +68,10 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
+# Documentation
 docs/_build/
+docs/brainstorms/
+docs/plans/
 
 # PyBuilder
 .pybuilder/
@@ -205,6 +207,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Deployed bundles
+trained_bundle
+.trained_bundle
+*.gfb
 
 # Other
 .DS_Store

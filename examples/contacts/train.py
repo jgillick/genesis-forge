@@ -1,23 +1,24 @@
-import os
-import copy
-import torch
-import shutil
-import pickle
 import argparse
-import genesis as gs
+import copy
+import os
+import pickle
+import shutil
 
-from genesis_forge.wrappers import (
-    VideoWrapper,
-    RslRlWrapper,
-)
+import genesis as gs
+import torch
 from environment import Go2CommandDirectionEnv
 from rsl_rl.runners import OnPolicyRunner
+
+from genesis_forge.wrappers import (
+    RslRlWrapper,
+    VideoWrapper,
+)
 
 EXPERIMENT_NAME = "go2-foot-step"
 
 parser = argparse.ArgumentParser(add_help=True)
 parser.add_argument("-n", "--num_envs", type=int, default=4096)
-parser.add_argument("--max_iterations", type=int, default=300)
+parser.add_argument("-i", "--max_iterations", type=int, default=300)
 parser.add_argument("-d", "--device", type=str, default="gpu")
 parser.add_argument("-e", "--exp_name", type=str, default=EXPERIMENT_NAME)
 args = parser.parse_args()
@@ -46,7 +47,7 @@ def training_cfg():
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
             "distribution_cfg": {
                 "class_name": "GaussianDistribution",
                 "init_std": 1.0,
@@ -56,7 +57,7 @@ def training_cfg():
             "class_name": "MLPModel",
             "hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "obs_normalization": False,
+            "obs_normalization": True,
         },
         "seed": 1,
         "num_steps_per_env": 24,
@@ -115,10 +116,8 @@ def main():
     cfg = training_cfg()
 
     # Save config snapshot
-    pickle.dump(
-        [cfg],
-        open(os.path.join(log_path, "cfgs.pkl"), "wb"),
-    )
+    with open(os.path.join(log_path, "cfgs.pkl"), "wb") as f:
+        pickle.dump([cfg], f)
 
     # Train agent
     train(cfg, args.num_envs, log_path, args.max_iterations)

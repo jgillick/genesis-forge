@@ -2,23 +2,22 @@
 Simplified Go2 Locomotion Environment using managers to handle everything.
 """
 
-import torch
 import genesis as gs
+import torch
 
 from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
-    RewardManager,
-    TerminationManager,
+    ActuatorManager,
     EntityManager,
     ObservationManager,
-    ActuatorManager,
     PositionActionManager,
+    RewardManager,
+    TerminationManager,
 )
-from genesis_forge.mdp import reset, rewards, terminations
+from genesis_forge.mdp import observations, reset, rewards, terminations
 
-
-INITIAL_BODY_POSITION = [0.0, 0.0, 0.4]
-INITIAL_QUAT = [1.0, 0.0, 0.0, 0.0]
+INITIAL_BODY_POSITION = (0.0, 0.0, 0.4)
+INITIAL_QUAT = (1.0, 0.0, 0.0, 0.0)
 TARGET_X_VELOCITY = 0.5
 
 
@@ -42,31 +41,24 @@ class Go2BasicEnv(ManagedEnvironment):
         )
 
         # Set the target robot direction, along the X axis
-        self.target_command = torch.zeros(
-            (self.num_envs, 3), device=gs.device, dtype=gs.tc_float
-        )
-        self.target_command[:, 0] = (
-            TARGET_X_VELOCITY  # Linear velocity along the X axis
-        )
+        self.target_linear_velocity = torch.tensor(
+            [TARGET_X_VELOCITY, 0.0], device=gs.device, dtype=gs.tc_float
+        ).repeat(self.num_envs, 1)
 
         # Construct the scene
         self.scene = gs.Scene(
             show_viewer=not headless,
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(1))),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                # for this locomotion policy there are usually no more than 30 collision pairs
-                # set a low value can save memory
                 max_collision_pairs=30,
             ),
         )
@@ -102,16 +94,15 @@ class Go2BasicEnv(ManagedEnvironment):
         # i.e. what to do with the robot when it is reset
         self.robot_manager = EntityManager(
             self,
-            entity_attr="robot",
+            entity=self.robot,
             on_reset={
                 # Reset the robot's initial position
                 "position": {
-                    "fn": reset.position,
-                    "params": {
-                        "position": INITIAL_BODY_POSITION,
-                        "quat": INITIAL_QUAT,
-                        "zero_velocity": True,
-                    },
+                    "fn": reset.position(
+                        position=INITIAL_BODY_POSITION,
+                        quat=INITIAL_QUAT,
+                        zero_velocity=True,
+                    ),
                 },
             },
         )
@@ -151,47 +142,36 @@ class Go2BasicEnv(ManagedEnvironment):
             self,
             logging_enabled=True,
             cfg={
-                "base_height_target": {
+                # Make sure the robot stays standing at a reasonable height (0.3 meters)
+                "height_target": {
                     "weight": -50.0,
-                    "fn": rewards.base_height,
-                    "params": {
-                        "target_height": 0.3,
-                        "entity_attr": "robot",
-                    },
+                    "fn": rewards.base_height(
+                        target_height=0.3,
+                    ),
                 },
-                "tracking_lin_vel": {
+                # Encourage the robot to follow the target linear velocity
+                "target_linear_velocity": {
                     "weight": 1.0,
-                    "fn": rewards.command_tracking_lin_vel,
-                    "params": {
-                        "command": self.target_command[:, :2],
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": rewards.command_tracking_lin_vel(
+                        command=self.target_linear_velocity,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
-                "tracking_ang_vel": {
-                    "weight": 0.2,
-                    "fn": rewards.command_tracking_ang_vel,
-                    "params": {
-                        "commanded_ang_vel": self.target_command[:, 2],
-                        "entity_manager": self.robot_manager,
-                    },
+                # Discourage the robot from bounding up and down (z-axis linear velocity)
+                "linear_velocity_penalty": {
+                    "weight": -2.0,
+                    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager),
                 },
-                "lin_vel_z": {
-                    "weight": -1.0,
-                    "fn": rewards.lin_vel_z_l2,
-                    "params": {
-                        "entity_manager": self.robot_manager,
-                    },
+                # Penalize excessive angular velocity in the x and y axes (roll and pitch)
+                "angular_velocity_penalty": {
+                    "weight": -0.05,
+                    "fn": rewards.ang_vel_xy_l2(entity_manager=self.robot_manager),
                 },
+                # Discourage the robot from making jittery actuator movements
+                # Penalizes actions that change back-and-forth a lot
                 "action_rate": {
-                    "weight": -0.005,
-                    "fn": rewards.action_rate_l2,
-                },
-                "similar_to_default": {
-                    "weight": -0.1,
-                    "fn": rewards.dof_similar_to_default,
-                    "params": {
-                        "action_manager": self.action_manager,
-                    },
+                    "weight": -0.01,
+                    "fn": rewards.action_rate_l2(),
                 },
             },
         )
@@ -204,16 +184,15 @@ class Go2BasicEnv(ManagedEnvironment):
             term_cfg={
                 # The episode ended
                 "timeout": {
-                    "fn": terminations.timeout,
+                    "fn": terminations.timeout(),
                     "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "fall_over": {
-                    "fn": terminations.bad_orientation,
-                    "params": {
-                        "limit_angle": 10.0,
-                        "entity_manager": self.robot_manager,
-                    },
+                    "fn": terminations.bad_orientation(
+                        limit_angle=20.0,
+                        entity_manager=self.robot_manager,
+                    ),
                 },
             },
         )
@@ -242,7 +221,7 @@ class Go2BasicEnv(ManagedEnvironment):
                     "scale": 0.05,
                 },
                 "actions": {
-                    "fn": lambda env: self.action_manager.get_actions(),
+                    "fn": observations.current_actions(),
                 },
             },
         )

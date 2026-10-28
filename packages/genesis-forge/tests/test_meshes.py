@@ -129,11 +129,9 @@ def test_flat_arc_band_and_head_widths():
     assert r.min() == pytest.approx(ARC_RADIUS - WIDTH * 2.5 / 2, abs=TOL)
     assert r.max() == pytest.approx(ARC_RADIUS + WIDTH * 2.5 / 2, abs=TOL)
     # The band itself is `WIDTH` wide: its vertices at the start of the arc
-    start = mesh.vertices[np.isclose(angles(mesh), 0.0)]
-    assert radial(mesh)[np.isclose(angles(mesh), 0.0)].min() == pytest.approx(
-        ARC_RADIUS - WIDTH / 2, abs=TOL
-    )
-    assert len(start) > 0
+    at_start = np.isclose(angles(mesh), 0.0)
+    assert at_start.any()
+    assert r[at_start].min() == pytest.approx(ARC_RADIUS - WIDTH / 2, abs=TOL)
 
 
 @pytest.mark.parametrize("sweep", [math.radians(45), -math.radians(45)])

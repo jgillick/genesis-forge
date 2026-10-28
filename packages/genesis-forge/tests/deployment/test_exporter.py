@@ -5,11 +5,13 @@ runtime, and that a failed export leaves nothing behind.
 """
 
 import json
+import zipfile
 from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
+from conftest import FakeActuatorManager, FakeManagedEnv
 
 from genesis_forge.deployment import ExportError, ParityError, export
 from genesis_forge.managers import (
@@ -167,7 +169,7 @@ def test_golden_samples_replay_through_the_loaded_runtime(deployable_env, tmp_pa
 
 
 """
-Failed exports write nothing (AE1)
+Failed exports write nothing
 """
 
 
@@ -229,8 +231,6 @@ def test_a_plain_object_is_refused(tmp_path):
 
 
 def test_an_unbuilt_environment_is_refused(tmp_path):
-    from conftest import FakeActuatorManager, FakeManagedEnv
-
     env = FakeManagedEnv()
     env.actuator_manager = FakeActuatorManager()
     env.action_manager = PositionActionManager(
@@ -338,9 +338,7 @@ Multiple action managers
 """
 
 
-def test_two_action_managers_are_captured_with_their_slices(make_env, tmp_path):
-    from conftest import FakeActuatorManager, FakeManagedEnv
-
+def test_two_action_managers_are_captured_with_their_slices(tmp_path):
     env = FakeManagedEnv()
     env.actuator_manager = FakeActuatorManager(num_envs=env.num_envs)
     env.managers["actuator"].append(env.actuator_manager)
@@ -529,8 +527,6 @@ def test_an_archive_round_trips_through_the_runtime(deployable_env, tmp_path):
 
 
 def test_an_archive_holds_exactly_what_the_directory_would(deployable_env, tmp_path):
-    import zipfile
-
     directory = export(
         deployable_env, tmp_path / "as_dir", archive=False, verbose=False
     ).path

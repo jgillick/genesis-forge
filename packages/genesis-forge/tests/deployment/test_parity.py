@@ -9,8 +9,15 @@ import numpy as np
 import pytest
 import torch
 
-from genesis_forge.deployment import ParityError, capture_environment, check_parity
+from genesis_forge.deployment import (
+    ParityError,
+    capture_environment,
+    check_parity,
+    parity,
+)
 from genesis_forge.managers import ObservationManager
+from genesis_forge.mdp.observations import current_actions
+from genesis_forge_runtime import ObservationAssembler
 
 """
 Agreement on a correct pipeline
@@ -107,8 +114,8 @@ Catching real divergence
 """
 
 
-def test_a_wrong_process_parameter_is_caught_and_named(deployable_env, monkeypatch):
-    """Covers AE1: the gate names the component that diverged."""
+def test_a_wrong_process_parameter_is_caught_and_named(deployable_env):
+    """The gate names the component that diverged."""
     capture = capture_environment(deployable_env)
     # Simulate a hand-written counterpart drifting from process_actions.
     capture.manifest.actions[0].config["scale"] = np.array(
@@ -138,8 +145,6 @@ def test_a_wrong_observation_scale_is_caught(deployable_env):
 
 def test_a_reversed_history_order_is_caught(make_env, monkeypatch):
     """Multi-tick comparison is what catches ordering bugs a single tick cannot."""
-    from genesis_forge.deployment import parity
-    from genesis_forge_runtime import ObservationAssembler
 
     class ReversedHistoryAssembler(ObservationAssembler):
         def assemble(self, values=None):
@@ -188,8 +193,9 @@ def test_the_error_reports_the_worst_index_and_both_values(deployable_env):
         check_parity(capture)
 
     message = str(error.value)
-    assert "index" in message
-    assert "tolerance" in message
+    assert "at index" in message
+    assert "deployment produced" in message
+    assert "training produced" in message
 
 
 """
@@ -221,8 +227,6 @@ Auto-filled entries
 
 
 def test_parity_handles_auto_filled_observations(make_env):
-    from genesis_forge.mdp.observations import current_actions
-
     env = make_env()
     manager = ObservationManager(
         env,

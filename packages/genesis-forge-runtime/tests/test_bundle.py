@@ -358,18 +358,6 @@ def test_golden_samples_can_be_skipped(tmp_path):
 """Listings"""
 
 
-def test_the_layout_lists_its_entries_in_vector_order():
-    layout = ObservationLayout(
-        entries=(
-            ObservationEntry(name="gyro", size=3),
-            ObservationEntry(name="actions", size=2),
-        )
-    )
-
-    assert [entry.name for entry in layout.entries] == ["gyro", "actions"]
-    assert layout.single_size == 5
-
-
 def test_describe_lists_what_to_wire(tmp_path):
     summary = load_bundle(write_bundle(tmp_path)).describe()
 
@@ -379,7 +367,7 @@ def test_describe_lists_what_to_wire(tmp_path):
     assert "hip, knee" in summary
 
 
-"""Dependency isolation (AE5)"""
+"""Dependency isolation"""
 
 
 def test_importing_the_runtime_does_not_pull_in_torch_or_genesis():
@@ -441,12 +429,13 @@ def test_the_mapping_round_trips_as_integers(tmp_path):
 
 
 def test_a_mapping_that_does_not_cover_every_joint_is_refused(tmp_path):
+    path = write_bundle(
+        tmp_path,
+        make_manifest(actions=(grouped_manager(joint_action_index=(0, 0, 1)),)),
+    )
+
     with pytest.raises(MalformedBundleError) as error:
-        write_bundle(
-            tmp_path,
-            make_manifest(actions=(grouped_manager(joint_action_index=(0, 0, 1)),)),
-        )
-        load_bundle(tmp_path / "bundle")
+        load_bundle(path)
 
     assert "maps" in str(error.value)
 

@@ -39,9 +39,8 @@ class ConfigurableEnv(ManagedEnvironment):
 
 
 class RecordingManager(BaseManager):
-    """A generic manager double for the types build()/step()/reset() just loop over
-    without reading any extra properties (terrain, actuator, contact, termination-
-    adjacent bookkeeping aside, command, entity)."""
+    """A double for the manager types ManagedEnvironment only calls build(), step()
+    and reset() on: terrain, actuator, contact, command and entity."""
 
     def __init__(self, env, type, log):
         super().__init__(env, type=type)
@@ -479,8 +478,8 @@ def test_reset_calls_every_manager_type_with_the_given_env_ids():
 
 
 def test_reset_with_specific_env_ids_does_not_return_real_observations():
-    """Only a full reset (env_ids=None) recomputes observations -- a partial reset's
-    returned obs is ignored by callers, per ManagedEnvironment.reset's own comment."""
+    """Only a full reset (env_ids=None) recomputes observations; callers ignore the
+    obs a partial reset returns."""
     log = []
 
     def configure(env):

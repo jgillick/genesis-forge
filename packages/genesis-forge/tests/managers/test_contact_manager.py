@@ -2,11 +2,8 @@
 tracking, and the buffer lifecycle.
 
 Uses a FakeEntity/FakeScene -- no Genesis scene is built. `_calculate_contact_forces`
-(the actual per-step contact-force kernel call) needs a real rigid_solver/collider
-and GPU kernel, so it isn't covered here -- see CLAUDE.md's convention of verifying
-anything that touches the simulator by running an example (e.g. examples/contacts)
-instead. `_calculate_air_time`, the pure-tensor state machine built on top of
-`.contacts`, is covered directly since it needs nothing but a contacts tensor.
+needs a real rigid solver, so it is exercised by running an example instead.
+`_calculate_air_time` only reads `.contacts`, so it is covered here directly.
 """
 
 import pytest
@@ -310,8 +307,14 @@ def test_reset_zeros_air_time_buffers_for_the_given_envs(env):
 
     mgr.reset(torch.tensor([0]))
 
-    assert torch.all(mgr.current_air_time[0] == 0.0)
-    assert torch.all(mgr.current_air_time[1:] == 1.0)
+    for buffer in (
+        mgr.current_air_time,
+        mgr.current_contact_time,
+        mgr.last_air_time,
+        mgr.last_contact_time,
+    ):
+        assert torch.all(buffer[0] == 0.0)
+        assert torch.all(buffer[1:] == 1.0)
 
 
 def test_reset_without_track_air_time_is_a_noop(env):

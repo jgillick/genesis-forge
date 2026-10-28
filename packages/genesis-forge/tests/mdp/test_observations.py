@@ -1,6 +1,8 @@
 """Numerical behavior of the observation functions in genesis_forge.mdp.observations."""
 
+import pytest
 import torch
+from helpers import built
 
 from genesis_forge.mdp import observations
 
@@ -46,10 +48,9 @@ entity_projected_gravity
 
 
 def test_entity_projected_gravity_prefers_entity_manager(env):
+    env.robot = FakeEntity()  # upright: its own gravity would be (0, 0, -1)
     mgr = FakeEntityManager(projected_gravity=torch.tensor([[0.1, 0.2, -0.9]]))
-    fn = observations.entity_projected_gravity(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_projected_gravity(entity_manager=mgr), env)
 
     assert torch.equal(fn(env), torch.tensor([[0.1, 0.2, -0.9]]))
 
@@ -61,17 +62,13 @@ entity_linear_velocity / entity_angular_velocity
 
 def test_entity_linear_velocity_uses_entity_manager(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[1.0, 0.0, 0.0]]))
-    fn = observations.entity_linear_velocity(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_linear_velocity(entity_manager=mgr), env)
     assert torch.equal(fn(env), torch.tensor([[1.0, 0.0, 0.0]]))
 
 
 def test_entity_angular_velocity_uses_entity_manager(env):
     mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.5]]))
-    fn = observations.entity_angular_velocity(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_angular_velocity(entity_manager=mgr), env)
     assert torch.equal(fn(env), torch.tensor([[0.0, 0.0, 0.5]]))
 
 
@@ -89,27 +86,30 @@ def test_dofs_position_prefers_actuator_manager_over_entity(env):
             return torch.tensor([[9.0, 9.0]])
 
     env.robot = FakeEntityWithDofs()
-    fn = observations.entity_dofs_position(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_dofs_position(actuator_manager=actuator), env)
     assert torch.equal(fn(env), torch.tensor([[1.0, 2.0]]))
 
 
 def test_dofs_force_clip_to_max_force_is_passed_through(env):
     actuator = FakeActuatorManager(force=torch.tensor([[10.0, 10.0]]))
-    fn = observations.entity_dofs_force(
-        actuator_manager=actuator, clip_to_max_force=True
+    fn = built(
+        observations.entity_dofs_force(
+            actuator_manager=actuator, clip_to_max_force=True
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[5.0, 5.0]]))
 
 
 def test_dofs_velocity_prefers_actuator_manager_over_entity(env):
     actuator = FakeActuatorManager(vel=torch.tensor([[1.0, 2.0]]))
-    fn = observations.entity_dofs_velocity(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+
+    class FakeEntityWithDofs:
+        def get_dofs_velocity(self, dofs_idx):
+            return torch.tensor([[9.0, 9.0]])
+
+    env.robot = FakeEntityWithDofs()
+    fn = built(observations.entity_dofs_velocity(actuator_manager=actuator), env)
     assert torch.equal(fn(env), torch.tensor([[1.0, 2.0]]))
 
 
@@ -120,9 +120,7 @@ def test_dofs_velocity_falls_back_to_entity(env):
             return torch.tensor([[3.0, 4.0]])
 
     env.robot = FakeEntityWithDofs()
-    fn = observations.entity_dofs_velocity(dofs_idx=[0, 1])
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_dofs_velocity(dofs_idx=[0, 1]), env)
     assert torch.equal(fn(env), torch.tensor([[3.0, 4.0]]))
 
 
@@ -136,9 +134,7 @@ def test_dofs_velocity_prefers_explicit_entity_over_env_robot(env):
 
     env.robot = FakeEntityWithDofs(torch.tensor([[9.0, 9.0]]))
     other_entity = FakeEntityWithDofs(torch.tensor([[3.0, 4.0]]))
-    fn = observations.entity_dofs_velocity(entity=other_entity)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.entity_dofs_velocity(entity=other_entity), env)
     assert torch.equal(fn(env), torch.tensor([[3.0, 4.0]]))
 
 
@@ -156,9 +152,7 @@ def test_read_imu_concatenates_lin_acc_and_ang_vel(env):
         def read(self):
             return Reading()
 
-    fn = observations.read_imu(imu=FakeImu())
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.read_imu(imu=FakeImu()), env)
     assert torch.equal(fn(env), torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]))
 
 
@@ -179,11 +173,12 @@ class FakeRaycasterSensor:
 
 def test_raycaster_distance_min_reduces_to_nearest_reading(env):
     distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]], [[1.0, 1.5], [2.5, 3.5]]])
-    fn = observations.raycaster_distance(
-        sensor=FakeRaycasterSensor(distances), reduce="min"
+    fn = built(
+        observations.raycaster_distance(
+            sensor=FakeRaycasterSensor(distances), reduce="min"
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[0.5], [1.0]]))
 
 
@@ -191,49 +186,39 @@ def test_raycaster_distance_defaults_to_keeping_every_ray(env):
     """The lossy reduction is opt-in: a default that quietly discards which direction a
     reading came from is very hard to notice from the outside."""
     distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]]])
-    fn = observations.raycaster_distance(sensor=FakeRaycasterSensor(distances))
-    fn.context(env)
-    fn.safe_build()
-    assert torch.equal(fn(env), torch.tensor([[2.0, 3.0, 0.5, 4.0]]))
-
-
-def test_raycaster_distance_flatten_returns_all_rays(env):
-    distances = torch.tensor([[[2.0, 3.0], [0.5, 4.0]]])
-    fn = observations.raycaster_distance(
-        sensor=FakeRaycasterSensor(distances), reduce="flatten"
+    fn = built(
+        observations.raycaster_distance(sensor=FakeRaycasterSensor(distances)), env
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[2.0, 3.0, 0.5, 4.0]]))
 
 
 def test_raycaster_distance_normalizes_by_sensor_max_range(env):
     distances = torch.tensor([[[2.0, 4.0]]])
-    fn = observations.raycaster_distance(
-        sensor=FakeRaycasterSensor(distances, max_range=4.0),
-        reduce="min",
-        normalize=True,
+    fn = built(
+        observations.raycaster_distance(
+            sensor=FakeRaycasterSensor(distances, max_range=4.0),
+            reduce="min",
+            normalize=True,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[0.5]]))
 
 
 def test_raycaster_distance_explicit_max_range_overrides_sensor(env):
     distances = torch.tensor([[[1.0]]])
-    fn = observations.raycaster_distance(
-        sensor=FakeRaycasterSensor(distances, max_range=4.0),
-        normalize=True,
-        max_range=2.0,
+    fn = built(
+        observations.raycaster_distance(
+            sensor=FakeRaycasterSensor(distances, max_range=4.0),
+            normalize=True,
+            max_range=2.0,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[0.5]]))
 
 
 def test_raycaster_distance_normalize_without_max_range_raises(env):
-    import pytest
-
     fn = observations.raycaster_distance(
         sensor=FakeRaycasterSensor(torch.zeros((1, 1))), normalize=True
     )
@@ -249,9 +234,7 @@ current_actions
 
 def test_current_actions_falls_back_to_env_actions(env):
     env.actions = torch.tensor([[0.1, 0.2]])
-    fn = observations.current_actions()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.current_actions(), env)
     assert torch.equal(fn(env), torch.tensor([[0.1, 0.2]]))
 
 
@@ -259,9 +242,7 @@ def test_current_actions_falls_back_to_zeros_before_first_step(env):
     env.num_envs = 4
     env.num_actions = 3
     env.actions = None
-    fn = observations.current_actions()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.current_actions(), env)
     assert torch.equal(fn(env), torch.zeros((4, 3)))
 
 
@@ -270,9 +251,7 @@ def test_current_actions_prefers_action_manager(env):
         raw_actions = torch.tensor([[9.0]])
 
     env.actions = torch.tensor([[0.1]])
-    fn = observations.current_actions(action_manager=FakeActionManager())
-    fn.context(env)
-    fn.safe_build()
+    fn = built(observations.current_actions(action_manager=FakeActionManager()), env)
     assert torch.equal(fn(env), torch.tensor([[9.0]]))
 
 
@@ -288,17 +267,18 @@ class FakeContactManager:
 
 def test_contact_force_is_the_norm_of_contacts(env):
     contacts = torch.tensor([[[3.0, 4.0, 0.0]]])  # norm = 5
-    fn = observations.contact_force(contact_manager=FakeContactManager(contacts))
-    fn.context(env)
-    fn.safe_build()
+    fn = built(
+        observations.contact_force(contact_manager=FakeContactManager(contacts)), env
+    )
     assert torch.allclose(fn(env), torch.tensor([[5.0]]))
 
 
 def test_has_contact_thresholds_per_link(env):
     contacts = torch.tensor([[[3.0, 4.0, 0.0], [0.1, 0.0, 0.0]]])  # norms: 5.0, 0.1
-    fn = observations.has_contact(
-        contact_manager=FakeContactManager(contacts), threshold=1.0
+    fn = built(
+        observations.has_contact(
+            contact_manager=FakeContactManager(contacts), threshold=1.0
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
     assert torch.equal(fn(env), torch.tensor([[1.0, 0.0]]))

@@ -124,7 +124,8 @@ get_observations() -- history ring buffer ordering: newest observation first
 
 
 def test_get_observations_orders_newest_first(env):
-    values = iter([0.0, 1.0, 2.0, 3.0])  # 0.0 is consumed by build()'s sizing probe
+    # -1.0 is consumed by build()'s sizing probe, and must not reach the history
+    values = iter([-1.0, 1.0, 2.0, 3.0])
 
     def sequential(env):
         return torch.full((env.num_envs, 1), next(values))
@@ -193,6 +194,7 @@ def test_manager_level_noise_applies_when_item_has_none(env):
     mgr.build()
     result = mgr.get_observations()
     assert torch.all(result.abs() <= 2.0)
+    assert torch.any(result != 0.0)
 
 
 def test_zero_noise_is_a_noop(env):
@@ -296,20 +298,6 @@ def test_clip_removes_inf_but_not_nan(env):
     mgr.build()
     with pytest.raises(ValueError, match="non-finite"):
         mgr.get_observations()
-
-
-def test_clip_does_not_mutate_the_buffer_a_function_returned(env):
-    buffer = torch.full((env.num_envs, 1), 50.0)
-    mgr = ObservationManager(
-        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "clip": (-10.0, 10.0)}}
-    )
-    mgr.build()
-
-    mgr.get_observations()
-
-    assert torch.equal(buffer, torch.full((env.num_envs, 1), 50.0)), (
-        "clipping reached back into the function's own buffer"
-    )
 
 
 def test_clip_applies_to_override_values(env):
@@ -455,12 +443,12 @@ def test_finite_observations_pass_the_guard_untouched(env):
 
 
 """
-Scaling and noise must not reach back into the values they were given
+Scaling, noise and clipping must not reach back into the values they were given
 
-Both are applied to a value the manager did not create. An observation function may
+Each is applied to a value the manager did not create. An observation function may
 hand back a buffer it keeps rather than a fresh tensor -- ``current_actions`` returns
 ``env.actions`` itself -- and the override path is handed the caller's own tensor. In
-place, either would corrupt its source: silently, every step, compounding.
+place, any of them would corrupt its source: silently, every step, compounding.
 """
 
 
@@ -499,6 +487,20 @@ def test_noise_does_not_mutate_the_buffer_a_function_returned(env):
 
     assert torch.equal(buffer, torch.zeros((env.num_envs, 1))), (
         "noise reached back into the function's own buffer"
+    )
+
+
+def test_clip_does_not_mutate_the_buffer_a_function_returned(env):
+    buffer = torch.full((env.num_envs, 1), 50.0)
+    mgr = ObservationManager(
+        env, cfg={"a": {"fn": returns_a_kept_buffer(buffer), "clip": (-10.0, 10.0)}}
+    )
+    mgr.build()
+
+    mgr.get_observations()
+
+    assert torch.equal(buffer, torch.full((env.num_envs, 1), 50.0)), (
+        "clipping reached back into the function's own buffer"
     )
 
 

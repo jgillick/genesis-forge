@@ -1,10 +1,9 @@
 """Behavior of EntityManager: cached base-frame values (position, quaternion,
 local-frame projected gravity/velocities) and dispatching its on_reset config items.
 
-Uses a FakeEntity -- no Genesis scene is built. transform_by_quat/inv_quat are the
-real genesis.utils.geom functions (pure quaternion math, no gs.init() needed) --
-used directly in assertions to compute the expected value independently of the
-manager, rather than re-deriving the trig by hand.
+Uses a FakeEntity -- no Genesis scene is built. Expected values come from the real
+genesis.utils.geom transform_by_quat/inv_quat, rather than re-deriving the trig by
+hand.
 """
 
 from dataclasses import dataclass
@@ -101,7 +100,7 @@ def test_get_linear_velocity_returns_the_same_cached_tensor_across_calls_within_
     env,
 ):
     """Velocity/gravity are cached once per step() -- repeated calls within a step
-    must not re-query the entity or return a fresh (differently-identitied) tensor."""
+    return the same tensor rather than re-querying the entity."""
     vel = torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
     entity = make_entity(env.num_envs, vel=vel)
     mgr = EntityManager(env, entity=entity)
@@ -122,10 +121,19 @@ def test_step_recomputes_linear_and_angular_velocity_and_projected_gravity(env):
 
     entity._vel = torch.full((env.num_envs, 3), 5.0)
     entity._ang = torch.full((env.num_envs, 3), 6.0)
+    entity._quat = torch.tensor([[0.0, 1.0, 0.0, 0.0]] * env.num_envs)  # flipped over
     mgr.step()
 
-    assert torch.allclose(mgr.get_linear_velocity(), entity._vel)
-    assert torch.allclose(mgr.get_angular_velocity(), entity._ang)
+    expected_gravity = torch.tensor([[0.0, 0.0, 1.0]] * env.num_envs)
+    assert torch.allclose(mgr.get_projected_gravity(), expected_gravity, atol=1e-6)
+    assert torch.allclose(
+        mgr.get_linear_velocity(),
+        transform_by_quat(entity._vel, inv_quat(entity._quat)),
+    )
+    assert torch.allclose(
+        mgr.get_angular_velocity(),
+        transform_by_quat(entity._ang, inv_quat(entity._quat)),
+    )
 
 
 """

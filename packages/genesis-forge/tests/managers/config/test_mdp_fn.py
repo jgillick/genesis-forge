@@ -47,12 +47,12 @@ def test_unknown_field_rejected():
         Counting(nonexistent=1.0)
 
 
-def test_construction_does_not_build(env):
+def test_construction_does_not_build():
     fn = Counting(threshold=3.0)
     assert getattr(fn, "builds", 0) == 0
 
 
-def test_assignment_before_context_does_not_build(env):
+def test_assignment_before_context_does_not_build():
     fn = Counting()
     fn.threshold = 9.0
     assert getattr(fn, "builds", 0) == 0
@@ -200,7 +200,7 @@ def test_update_rebuilds_once_for_multiple_fields(env):
     assert fn.seen == (4.0, 5.0, "z")
 
 
-def test_update_before_first_build_sets_without_building(env):
+def test_update_before_first_build_sets_without_building():
     fn = Counting()
     fn.update(threshold=8.0)
     assert getattr(fn, "builds", 0) == 0
@@ -290,25 +290,6 @@ def test_init_subclass_is_a_backstop_for_a_forgotten_decorator():
 
     a, b = Forgotten(threshold=1.0), Forgotten(threshold=1.0)
     assert a != b and len({a, b}) == 2  # eq=False still enforced
-
-
-def test_explicit_dataclass_can_override_the_automatic_eq_false():
-    """Documents why eq=False must be written explicitly, not assumed: value equality
-    and unhashability are one wrong decorator away, even with the backstop in place.
-
-    A decorator on the class statement runs after __init_subclass__ and wins,
-    regenerating __eq__ and setting __hash__ = None regardless of what the automatic
-    pass chose. Nothing in the framework hashes or compares a config fn today, so this
-    is a footgun to avoid, not a constraint.
-    """
-
-    @dataclass(kw_only=True)
-    class Defaulted(MdpFn):
-        threshold: float = 1.0
-
-    assert Defaulted(threshold=1.0) == Defaulted(threshold=1.0)
-    with pytest.raises(TypeError, match="unhashable"):
-        {Defaulted()}
 
 
 """

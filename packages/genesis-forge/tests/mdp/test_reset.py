@@ -4,6 +4,7 @@ import math
 
 import pytest
 import torch
+from helpers import built
 
 from genesis_forge.mdp import reset
 
@@ -25,6 +26,11 @@ class FakeEntity:
         self.mass_shift_calls.append(
             (mass.clone(), list(links_idx_local), list(envs_idx))
         )
+
+
+class FakeLink:
+    def __init__(self, idx_local):
+        self.idx_local = idx_local
 
 
 class FakeTerrainManager:
@@ -50,9 +56,7 @@ def test_zero_all_dofs_velocity_calls_the_entity_method(env):
             self.calls.append(list(envs_idx))
 
     entity = FakeEntityWithVelocity()
-    fn = reset.zero_all_dofs_velocity()
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(reset.zero_all_dofs_velocity(), env, entity=entity)
 
     fn(env, entity, [0, 2])
 
@@ -64,29 +68,29 @@ set_rotation
 """
 
 
-def test_set_rotation_only_randomizes_tuple_axes(env, monkeypatch):
-    fn = reset.set_rotation(x=0, y=(0.0, 0.0), z=0)
-    fn.context(env, entity=FakeEntity())
-    fn.safe_build()
-    entity = fn.entity
-
-    fn(env, entity, [0, 1])
-
-    quat, envs_idx, _ = entity.quat_calls[0]
-    assert envs_idx == [0, 1]
-    assert quat.shape == (2, 4)
-
-
-def test_set_rotation_fixed_angles_produce_identity_quat(env):
+def test_set_rotation_only_randomizes_tuple_axes(env):
+    env.num_envs = 64
     entity = FakeEntity()
-    fn = reset.set_rotation(x=0, y=0, z=0)
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(reset.set_rotation(x=0, y=(-1.0, 1.0), z=0), env, entity=entity)
+
+    fn(env, entity, list(range(64)))
+
+    # A pure pitch is (cos(y/2), 0, sin(y/2), 0): the x and z parts never move
+    quat, envs_idx, _ = entity.quat_calls[0]
+    assert envs_idx == list(range(64))
+    assert torch.allclose(quat[:, [1, 3]], torch.zeros((64, 2)), atol=1e-6)
+    assert len(torch.unique(quat[:, 2])) > 1
+
+
+def test_set_rotation_applies_fixed_angles(env):
+    entity = FakeEntity()
+    fn = built(reset.set_rotation(z=math.pi / 2), env, entity=entity)
 
     fn(env, entity, [0])
 
     quat, _, _ = entity.quat_calls[0]
-    assert torch.allclose(quat, torch.tensor([[1.0, 0.0, 0.0, 0.0]]), atol=1e-5)
+    half = math.sqrt(0.5)
+    assert torch.allclose(quat, torch.tensor([[half, 0.0, 0.0, half]]), atol=1e-5)
 
 
 """
@@ -96,9 +100,11 @@ position
 
 def test_position_sets_pos_and_quat_for_the_given_envs(env):
     entity = FakeEntity()
-    fn = reset.position(position=(1.0, 2.0, 3.0), quat=(1.0, 0.0, 0.0, 0.0))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.position(position=(1.0, 2.0, 3.0), quat=(1.0, 0.0, 0.0, 0.0)),
+        env,
+        entity=entity,
+    )
 
     fn(env, entity, [1, 3])
 
@@ -116,9 +122,7 @@ def test_position_sets_pos_and_quat_for_the_given_envs(env):
 
 def test_position_skips_quat_when_not_provided(env):
     entity = FakeEntity()
-    fn = reset.position(position=(0.0, 0.0, 0.4))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(reset.position(position=(0.0, 0.0, 0.4)), env, entity=entity)
 
     fn(env, entity, [0])
 
@@ -128,9 +132,7 @@ def test_position_skips_quat_when_not_provided(env):
 
 def test_position_param_change_rebuilds_the_target(env):
     entity = FakeEntity()
-    fn = reset.position(position=(0.0, 0.0, 0.4))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(reset.position(position=(0.0, 0.0, 0.4)), env, entity=entity)
 
     fn.position = (0.0, 0.0, 0.6)
     fn(env, entity, [0])
@@ -145,13 +147,11 @@ randomize_terrain_position
 
 
 def test_randomize_terrain_position_default_rotation_is_z_only(env):
-    """Each instance gets its own rotation dict -- a shared mutable default across
-    instances would be a real bug (the field(default_factory=...) fix for it)."""
     entity = FakeEntity()
     terrain = FakeTerrainManager(torch.tensor([[1.0, 2.0, 3.0]]))
-    fn = reset.randomize_terrain_position(terrain_manager=terrain)
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_terrain_position(terrain_manager=terrain), env, entity=entity
+    )
 
     assert fn.rotation == {"z": (0, 2 * math.pi)}
 
@@ -162,13 +162,18 @@ def test_randomize_terrain_position_default_rotation_is_z_only(env):
 
 
 def test_randomize_terrain_position_instances_do_not_share_the_default_dict(env):
+    """The default rotation is a mutable dict, so each instance needs its own."""
     terrain = FakeTerrainManager(torch.zeros((1, 3)))
-    a = reset.randomize_terrain_position(terrain_manager=terrain)
-    b = reset.randomize_terrain_position(terrain_manager=terrain)
-    a.context(env, entity=FakeEntity())
-    a.safe_build()
-    b.context(env, entity=FakeEntity())
-    b.safe_build()
+    a = built(
+        reset.randomize_terrain_position(terrain_manager=terrain),
+        env,
+        entity=FakeEntity(),
+    )
+    b = built(
+        reset.randomize_terrain_position(terrain_manager=terrain),
+        env,
+        entity=FakeEntity(),
+    )
 
     a.rotation["z"] = (1.0, 1.0)
 
@@ -178,9 +183,11 @@ def test_randomize_terrain_position_instances_do_not_share_the_default_dict(env)
 def test_randomize_terrain_position_none_rotation_skips_quat(env):
     entity = FakeEntity()
     terrain = FakeTerrainManager(torch.zeros((1, 3)))
-    fn = reset.randomize_terrain_position(terrain_manager=terrain, rotation=None)
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_terrain_position(terrain_manager=terrain, rotation=None),
+        env,
+        entity=entity,
+    )
 
     fn(env, entity, [0])
 
@@ -190,11 +197,13 @@ def test_randomize_terrain_position_none_rotation_skips_quat(env):
 def test_randomize_terrain_position_calls_subterrain_when_callable(env):
     entity = FakeEntity()
     terrain = FakeTerrainManager(torch.zeros((1, 3)))
-    fn = reset.randomize_terrain_position(
-        terrain_manager=terrain, subterrain=lambda: "rocky"
+    fn = built(
+        reset.randomize_terrain_position(
+            terrain_manager=terrain, subterrain=lambda: "rocky"
+        ),
+        env,
+        entity=entity,
     )
-    fn.context(env, entity=entity)
-    fn.safe_build()
 
     fn(env, entity, [0])
 
@@ -209,11 +218,13 @@ randomize_annulus_position
 def test_randomize_annulus_position_respects_radius_range(env):
     env.num_envs = 64
     entity = FakeEntity()
-    fn = reset.randomize_annulus_position(
-        radius_range=(0.5, 2.0), center=(1.0, -1.0), z=0.1
+    fn = built(
+        reset.randomize_annulus_position(
+            radius_range=(0.5, 2.0), center=(1.0, -1.0), z=0.1
+        ),
+        env,
+        entity=entity,
     )
-    fn.context(env, entity=entity)
-    fn.safe_build()
 
     fn(env, entity, list(range(64)))
 
@@ -228,9 +239,9 @@ def test_randomize_annulus_position_respects_radius_range(env):
 
 def test_randomize_annulus_position_default_rotation_is_z_only(env):
     entity = FakeEntity()
-    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_annulus_position(radius_range=(0.5, 2.0)), env, entity=entity
+    )
 
     assert fn.rotation == {"z": (0, 2 * math.pi)}
 
@@ -241,9 +252,11 @@ def test_randomize_annulus_position_default_rotation_is_z_only(env):
 
 def test_randomize_annulus_position_none_rotation_skips_quat(env):
     entity = FakeEntity()
-    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0), rotation=None)
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_annulus_position(radius_range=(0.5, 2.0), rotation=None),
+        env,
+        entity=entity,
+    )
 
     fn(env, entity, [0])
 
@@ -252,9 +265,9 @@ def test_randomize_annulus_position_none_rotation_skips_quat(env):
 
 def test_randomize_annulus_position_draws_fresh_positions_each_call(env):
     entity = FakeEntity()
-    fn = reset.randomize_annulus_position(radius_range=(0.5, 2.0))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_annulus_position(radius_range=(0.5, 2.0)), env, entity=entity
+    )
 
     fn(env, entity, [0, 1, 2, 3])
     fn(env, entity, [0, 1, 2, 3])
@@ -280,19 +293,17 @@ def test_randomize_link_mass_shift_raises_when_no_links_found(env):
 
 
 def test_randomize_link_mass_shift_applies_to_matched_links(env, monkeypatch):
-    class FakeLink:
-        def __init__(self, idx_local):
-            self.idx_local = idx_local
-
     monkeypatch.setattr(
         "genesis_forge.mdp.reset.links_by_name_pattern",
         lambda entity, pattern: [FakeLink(2), FakeLink(5)],
     )
 
     entity = FakeEntity()
-    fn = reset.randomize_link_mass_shift(link_name="base", mass_range=(-1.0, 1.0))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_link_mass_shift(link_name="base", mass_range=(-1.0, 1.0)),
+        env,
+        entity=entity,
+    )
 
     fn(env, entity, [0, 1])
 
@@ -304,10 +315,6 @@ def test_randomize_link_mass_shift_applies_to_matched_links(env, monkeypatch):
 
 
 def test_randomize_link_mass_shift_accepts_a_list_of_patterns(env, monkeypatch):
-    class FakeLink:
-        def __init__(self, idx_local):
-            self.idx_local = idx_local
-
     def fake_links_by_name_pattern(entity, pattern):
         return {
             "front": [FakeLink(2), FakeLink(3)],
@@ -319,11 +326,13 @@ def test_randomize_link_mass_shift_accepts_a_list_of_patterns(env, monkeypatch):
     )
 
     entity = FakeEntity()
-    fn = reset.randomize_link_mass_shift(
-        link_name=["front", "back"], mass_range=(-1.0, 1.0)
+    fn = built(
+        reset.randomize_link_mass_shift(
+            link_name=["front", "back"], mass_range=(-1.0, 1.0)
+        ),
+        env,
+        entity=entity,
     )
-    fn.context(env, entity=entity)
-    fn.safe_build()
 
     fn(env, entity, [0, 1])
 
@@ -334,10 +343,6 @@ def test_randomize_link_mass_shift_accepts_a_list_of_patterns(env, monkeypatch):
 def test_randomize_link_mass_shift_raises_when_one_of_several_patterns_matches_nothing(
     env, monkeypatch
 ):
-    class FakeLink:
-        def __init__(self, idx_local):
-            self.idx_local = idx_local
-
     def fake_links_by_name_pattern(entity, pattern):
         return [FakeLink(2)] if pattern == "front" else []
 
@@ -360,20 +365,17 @@ def test_randomize_link_mass_shift_draws_fresh_values_on_each_call(env, monkeypa
     """Regression guard: mass_shift used to be sliced out of a persistent buffer via
     advanced indexing, which writes to a copy and silently no-ops the randomization.
     It's now a freshly allocated tensor per call -- confirm two calls actually vary."""
-
-    class FakeLink:
-        def __init__(self, idx_local):
-            self.idx_local = idx_local
-
     monkeypatch.setattr(
         "genesis_forge.mdp.reset.links_by_name_pattern",
         lambda entity, pattern: [FakeLink(2)],
     )
 
     entity = FakeEntity()
-    fn = reset.randomize_link_mass_shift(link_name="base", mass_range=(-1.0, 1.0))
-    fn.context(env, entity=entity)
-    fn.safe_build()
+    fn = built(
+        reset.randomize_link_mass_shift(link_name="base", mass_range=(-1.0, 1.0)),
+        env,
+        entity=entity,
+    )
 
     fn(env, entity, [0, 1, 2, 3])
     fn(env, entity, [0, 1, 2, 3])

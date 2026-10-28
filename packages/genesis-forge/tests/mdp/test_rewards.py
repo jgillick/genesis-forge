@@ -9,12 +9,13 @@ import math
 
 import pytest
 import torch
+from helpers import built
 
 from genesis_forge.managers.config import ConfigItem
 from genesis_forge.mdp import rewards
 
 
-class FakeRobot:
+class FakeBody:
     def __init__(self, pos):
         self._pos = pos
 
@@ -63,18 +64,14 @@ Aliveness
 
 def test_is_alive_rewards_envs_that_did_not_terminate(env):
     env.extras["terminations"] = torch.tensor([False, True, False])
-    fn = rewards.is_alive()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.is_alive(), env)
 
     assert torch.equal(fn(env), torch.tensor([1.0, 0.0, 1.0]))
 
 
 def test_terminated_penalizes_envs_that_did_terminate(env):
     env.extras["terminations"] = torch.tensor([False, True, False])
-    fn = rewards.terminated()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.terminated(), env)
 
     assert torch.equal(fn(env), torch.tensor([0.0, 1.0, 0.0]))
 
@@ -85,19 +82,15 @@ base_height
 
 
 def test_base_height_squares_the_offset(env):
-    env.robot = FakeRobot(torch.tensor([[0.0, 0.0, 0.35], [0.0, 0.0, 0.25]]))
-    fn = rewards.base_height(target_height=0.3)
-    fn.context(env)
-    fn.safe_build()
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.35], [0.0, 0.0, 0.25]]))
+    fn = built(rewards.base_height(target_height=0.3), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.0025, 0.0025]), atol=1e-6)
 
 
 def test_base_height_responds_to_a_param_change(env):
-    env.robot = FakeRobot(torch.tensor([[0.0, 0.0, 0.35], [0.0, 0.0, 0.25]]))
-    fn = rewards.base_height(target_height=0.3)
-    fn.context(env)
-    fn.safe_build()
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.35], [0.0, 0.0, 0.25]]))
+    fn = built(rewards.base_height(target_height=0.3), env)
 
     fn.target_height = 0.25
 
@@ -106,11 +99,9 @@ def test_base_height_responds_to_a_param_change(env):
 
 def test_base_height_uses_entity_manager_when_given(env):
     class Mgr:
-        entity = FakeRobot(torch.tensor([[0.0, 0.0, 0.5]]))
+        entity = FakeBody(torch.tensor([[0.0, 0.0, 0.5]]))
 
-    fn = rewards.base_height(target_height=0.3, entity_manager=Mgr())
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.base_height(target_height=0.3, entity_manager=Mgr()), env)
     assert torch.allclose(fn(env), torch.tensor([0.04]), atol=1e-6)
 
 
@@ -149,9 +140,7 @@ def test_dof_similar_to_default_sums_abs_offset_from_default(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2]]), default_pos=torch.tensor([0.0, 0.0])
     )
-    fn = rewards.dof_similar_to_default(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_similar_to_default(actuator_manager=actuator), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.7]))
 
@@ -168,36 +157,28 @@ lin_vel_z_l2 / lin_vel_xy_l2 / ang_vel_xy_l2 / flat_orientation_l2
 
 def test_lin_vel_z_l2_squares_the_z_component(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.0, 0.0, 0.4]]))
-    fn = rewards.lin_vel_z_l2(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.lin_vel_z_l2(entity_manager=mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.16]))
 
 
 def test_lin_vel_xy_l2_sums_the_squared_xy_components(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.3, 0.4, 9.0]]))
-    fn = rewards.lin_vel_xy_l2(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.lin_vel_xy_l2(entity_manager=mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.25]))
 
 
 def test_ang_vel_xy_l2_sums_the_squared_xy_components(env):
     mgr = FakeEntityManager(ang_vel=torch.tensor([[0.3, 0.4, 9.0]]))
-    fn = rewards.ang_vel_xy_l2(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.ang_vel_xy_l2(entity_manager=mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.25]))
 
 
 def test_flat_orientation_l2_sums_the_squared_xy_tilt(env):
     mgr = FakeEntityManager(projected_gravity=torch.tensor([[0.3, 0.4, -0.9]]))
-    fn = rewards.flat_orientation_l2(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.flat_orientation_l2(entity_manager=mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.25]))
 
@@ -211,9 +192,7 @@ def test_body_acceleration_exp_is_zero_penalty_on_the_first_call(env):
     mgr = FakeEntityManager(
         lin_vel=torch.tensor([[1.0, 0.0, 0.0]]), ang_vel=torch.tensor([[0.0, 0.0, 0.0]])
     )
-    fn = rewards.body_acceleration_exp(entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.body_acceleration_exp(entity_manager=mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
@@ -222,9 +201,7 @@ def test_body_acceleration_exp_penalizes_the_change_since_the_last_call(env):
     mgr = FakeEntityManager(
         lin_vel=torch.tensor([[0.0, 0.0, 0.0]]), ang_vel=torch.tensor([[0.0, 0.0, 0.0]])
     )
-    fn = rewards.body_acceleration_exp(entity_manager=mgr, sensitivity=0.1)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.body_acceleration_exp(entity_manager=mgr, sensitivity=0.1), env)
     fn(env)  # first call establishes the zero-velocity baseline
 
     mgr._lin = torch.tensor([[env.dt, 0.0, 0.0]])  # 1 m/s^2 over one step
@@ -239,9 +216,7 @@ def test_body_acceleration_exp_reset_clears_history(env):
     mgr = FakeEntityManager(
         lin_vel=torch.zeros((env.num_envs, 3)), ang_vel=torch.zeros((env.num_envs, 3))
     )
-    fn = rewards.body_acceleration_exp(entity_manager=mgr, sensitivity=0.1)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.body_acceleration_exp(entity_manager=mgr, sensitivity=0.1), env)
     fn(env)
 
     fn.reset(torch.tensor([0]))
@@ -258,13 +233,10 @@ Action penalties
 
 
 def test_action_rate_l2_is_zero_with_no_last_actions(env):
-    """One value per environment, like every other reward -- not one per action."""
     env.num_envs = 1
     env.actions = torch.tensor([[0.1, 0.2]])
     env.last_actions = None
-    fn = rewards.action_rate_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_rate_l2(), env)
 
     assert torch.equal(fn(env), torch.zeros(1))
 
@@ -272,18 +244,14 @@ def test_action_rate_l2_is_zero_with_no_last_actions(env):
 def test_action_rate_l2_sums_the_squared_change_from_the_last_step(env):
     env.actions = torch.tensor([[0.5, 0.2]])
     env.last_actions = torch.tensor([[0.3, 0.2]])
-    fn = rewards.action_rate_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_rate_l2(), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.04]))
 
 
 def test_action_acceleration_masks_until_two_steps_of_history(env):
     env.actions = torch.zeros((env.num_envs, 3))
-    fn = rewards.action_acceleration_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_acceleration_l2(), env)
 
     # A smooth ramp: zero acceleration, but the first two steps are masked anyway.
     assert torch.equal(fn(env), torch.zeros(env.num_envs))
@@ -292,9 +260,7 @@ def test_action_acceleration_masks_until_two_steps_of_history(env):
 
 
 def test_action_acceleration_penalises_direction_reversal(env):
-    fn = rewards.action_acceleration_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_acceleration_l2(), env)
 
     for actions in ([0.5] * 3, [0.8] * 3, [0.5] * 3):
         env.actions = torch.tensor([actions] * env.num_envs)
@@ -305,9 +271,7 @@ def test_action_acceleration_penalises_direction_reversal(env):
 
 
 def test_action_acceleration_reset_clears_history(env):
-    fn = rewards.action_acceleration_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_acceleration_l2(), env)
 
     for actions in ([0.5] * 3, [0.8] * 3):
         env.actions = torch.tensor([actions] * env.num_envs)
@@ -323,18 +287,14 @@ def test_action_acceleration_reset_clears_history(env):
 
 def test_dof_torque_l2_sums_the_squared_control_force(env):
     actuator = FakeActuatorManager(control_force=torch.tensor([[3.0, 4.0]]))
-    fn = rewards.dof_torque_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_torque_l2(actuator_manager=actuator), env)
 
     assert torch.allclose(fn(env), torch.tensor([25.0]))
 
 
 def test_dof_torque_l2_accepts_an_action_manager_instead(env):
     action_mgr = FakeActuatorManager(control_force=torch.tensor([[3.0, -4.0]]))
-    fn = rewards.dof_torque_l2(action_manager=action_mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_torque_l2(action_manager=action_mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([25.0]))
 
@@ -348,9 +308,7 @@ def test_dof_torque_l2_requires_a_manager_at_build_time(env):
 
 def test_dof_torque_l2_sums_the_squared_excess_over_the_threshold(env):
     actuator = FakeActuatorManager(control_force=torch.tensor([[8.0, -9.0, 1.0]]))
-    fn = rewards.dof_torque_l2(actuator_manager=actuator, threshold=6.0)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_torque_l2(actuator_manager=actuator, threshold=6.0), env)
 
     # excess in either direction: 2.0, 3.0, 0.0 -> 4.0 + 9.0
     assert torch.allclose(fn(env), torch.tensor([13.0]))
@@ -359,18 +317,14 @@ def test_dof_torque_l2_sums_the_squared_excess_over_the_threshold(env):
 def test_dof_acc_l2_is_zero_on_the_first_call(env):
     """There's no previous velocity to difference the first step against."""
     actuator = FakeActuatorManager(vel=torch.ones((env.num_envs, 2)))
-    fn = rewards.dof_acc_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(actuator_manager=actuator), env)
 
     assert torch.equal(fn(env), torch.zeros(env.num_envs))
 
 
 def test_dof_acc_l2_sums_the_squared_finite_difference_acceleration(env):
     actuator = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
-    fn = rewards.dof_acc_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(actuator_manager=actuator), env)
     fn(env)  # first call establishes the zero-velocity baseline
 
     # 1 rad/s^2 on each of two joints over one step
@@ -381,9 +335,7 @@ def test_dof_acc_l2_sums_the_squared_finite_difference_acceleration(env):
 
 def test_dof_acc_l2_is_zero_for_a_constant_velocity(env):
     actuator = FakeActuatorManager(vel=torch.full((env.num_envs, 2), 3.0))
-    fn = rewards.dof_acc_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(actuator_manager=actuator), env)
 
     fn(env)
     assert torch.allclose(fn(env), torch.zeros(env.num_envs))
@@ -391,9 +343,7 @@ def test_dof_acc_l2_is_zero_for_a_constant_velocity(env):
 
 def test_dof_acc_l2_reset_clears_history(env):
     actuator = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
-    fn = rewards.dof_acc_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(actuator_manager=actuator), env)
     fn(env)
 
     fn.reset(torch.tensor([0]))
@@ -407,18 +357,14 @@ def test_dof_acc_l2_reset_clears_history(env):
 def test_dof_acc_l2_masks_an_inf_velocity_to_zero_not_nan(env):
     """A solver blowup on a masked step must not leak NaN into the reward buffer."""
     actuator = FakeActuatorManager(vel=torch.full((env.num_envs, 2), math.inf))
-    fn = rewards.dof_acc_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(actuator_manager=actuator), env)
 
     assert torch.equal(fn(env), torch.zeros(env.num_envs))
 
 
 def test_dof_acc_l2_accepts_an_action_manager_instead(env):
     action_mgr = FakeActuatorManager(vel=torch.zeros((env.num_envs, 2)))
-    fn = rewards.dof_acc_l2(action_manager=action_mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_acc_l2(action_manager=action_mgr), env)
     fn(env)
 
     action_mgr.vel = torch.full((env.num_envs, 2), env.dt)
@@ -435,18 +381,14 @@ def test_dof_acc_l2_requires_a_manager_at_build_time(env):
 
 def test_dof_velocity_l2_sums_the_squared_dof_velocity(env):
     action_mgr = FakeActuatorManager(vel=torch.tensor([[1.0, 2.0]]))
-    fn = rewards.dof_velocity_l2(action_manager=action_mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_velocity_l2(action_manager=action_mgr), env)
 
     assert torch.allclose(fn(env), torch.tensor([5.0]))
 
 
 def test_dof_velocity_l2_accepts_an_actuator_manager_instead(env):
     actuator = FakeActuatorManager(vel=torch.tensor([[1.0, -2.0]]))
-    fn = rewards.dof_velocity_l2(actuator_manager=actuator)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_velocity_l2(actuator_manager=actuator), env)
 
     assert torch.allclose(fn(env), torch.tensor([5.0]))
 
@@ -460,18 +402,14 @@ def test_dof_velocity_l2_requires_a_manager_at_build_time(env):
 
 def test_dof_velocity_l2_is_zero_within_the_threshold(env):
     actuator = FakeActuatorManager(vel=torch.tensor([[5.0, -5.0]]))
-    fn = rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0), env)
 
     assert torch.equal(fn(env), torch.tensor([0.0]))
 
 
 def test_dof_velocity_l2_sums_the_squared_excess_over_the_threshold(env):
     actuator = FakeActuatorManager(vel=torch.tensor([[8.0, -9.0, 1.0]]))
-    fn = rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.dof_velocity_l2(actuator_manager=actuator, threshold=6.0), env)
 
     # excess in either direction: 2.0, 3.0, 0.0 -> 4.0 + 9.0
     assert torch.allclose(fn(env), torch.tensor([13.0]))
@@ -484,25 +422,27 @@ Velocity Command Rewards
 
 def test_lin_vel_tracking_is_one_when_command_is_met(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[1.0, 0.0, 0.0]]))
-    fn = rewards.command_tracking_lin_vel(
-        vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
-        entity_manager=mgr,
+    fn = built(
+        rewards.command_tracking_lin_vel(
+            vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
+            entity_manager=mgr,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([1.0]), atol=1e-6)
 
 
 def test_lin_vel_tracking_decays_with_error(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.5, 0.0, 0.0]]))
-    fn = rewards.command_tracking_lin_vel(
-        vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
-        entity_manager=mgr,
-        sensitivity=0.25,
+    fn = built(
+        rewards.command_tracking_lin_vel(
+            vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
+            entity_manager=mgr,
+            sensitivity=0.25,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # error = 0.25, exp(-0.25 / 0.25) = exp(-1)
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -510,13 +450,14 @@ def test_lin_vel_tracking_decays_with_error(env):
 
 def test_lin_vel_sensitivity_is_param_adjustable(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.5, 0.0, 0.0]]))
-    fn = rewards.command_tracking_lin_vel(
-        vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
-        entity_manager=mgr,
-        sensitivity=0.25,
+    fn = built(
+        rewards.command_tracking_lin_vel(
+            vel_cmd_manager=FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0]])),
+            entity_manager=mgr,
+            sensitivity=0.25,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     fn.sensitivity = 0.5  # error 0.25 -> exp(-0.5)
 
@@ -525,13 +466,14 @@ def test_lin_vel_sensitivity_is_param_adjustable(env):
 
 def test_ang_vel_tracking_decays_with_error(env):
     mgr = FakeEntityManager(ang_vel=torch.tensor([[0.0, 0.0, 0.5]]))
-    fn = rewards.command_tracking_ang_vel(
-        vel_cmd_manager=FakeVelCmd(torch.tensor([[0.0, 0.0, 1.0]])),
-        entity_manager=mgr,
-        sensitivity=0.25,
+    fn = built(
+        rewards.command_tracking_ang_vel(
+            vel_cmd_manager=FakeVelCmd(torch.tensor([[0.0, 0.0, 1.0]])),
+            entity_manager=mgr,
+            sensitivity=0.25,
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # error = 0.25, exp(-0.25 / 0.25) = exp(-1)
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -548,9 +490,10 @@ def test_lin_vel_sensitivity_is_derived_from_the_command_range(env):
             "ang_vel_z": (-0.5, 0.5),
         },
     )
-    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(
+        rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr),
+        env,
+    )
 
     # sensitivity = (0.5 * 0.1)^2 = 0.0025; error = 0.05^2 = 0.0025 -> exp(-1)
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -567,9 +510,10 @@ def test_lin_vel_derived_sensitivity_uses_the_diagonal_max_speed(env):
             "ang_vel_z": (0.0, 0.0),
         },
     )
-    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(
+        rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr),
+        env,
+    )
 
     # max speed = hypot(0.3, 0.4) = 0.5 -> sensitivity = (0.5 * 0.5)^2 = 0.0625
     # error = 0.15^2 + 0.2^2 = 0.0625 -> exp(-1)
@@ -587,17 +531,15 @@ def test_derived_sensitivity_follows_a_range_change(env):
             "ang_vel_z": (-0.5, 0.5),
         },
     )
-    fn = rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
-    before = fn(env)
+    fn = built(
+        rewards.command_tracking_lin_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr),
+        env,
+    )
+    assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
 
-    vel_cmd.range["lin_vel_x"] = (
-        -0.2,
-        0.2,
-    )  # sensitivity -> 0.01, same error -> exp(-0.25)
+    # sensitivity -> 0.01, same error -> exp(-0.25)
+    vel_cmd.range["lin_vel_x"] = (-0.2, 0.2)
     assert torch.allclose(fn(env), torch.tensor([0.77880078]), atol=1e-6)
-    assert fn(env) > before
 
 
 def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
@@ -610,9 +552,10 @@ def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
             "ang_vel_z": (-0.5, 0.5),
         },
     )
-    fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(
+        rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr),
+        env,
+    )
 
     # sensitivity = (0.5 * 0.5)^2 = 0.0625; error = 0.25^2 = 0.0625 -> exp(-1)
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -620,11 +563,12 @@ def test_ang_vel_sensitivity_is_derived_from_the_command_range(env):
 
 def test_sensitivity_falls_back_to_default_without_a_command_manager(env):
     mgr = FakeEntityManager(lin_vel=torch.tensor([[0.5, 0.0, 0.0]]))
-    fn = rewards.command_tracking_lin_vel(
-        command=torch.tensor([[1.0, 0.0]]), entity_manager=mgr
+    fn = built(
+        rewards.command_tracking_lin_vel(
+            command=torch.tensor([[1.0, 0.0]]), entity_manager=mgr
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # error = 0.25, default sensitivity 0.25 -> exp(-1)
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -640,9 +584,10 @@ def test_sensitivity_falls_back_to_default_for_a_zero_range(env):
             "ang_vel_z": (0.0, 0.0),
         },
     )
-    fn = rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(
+        rewards.command_tracking_ang_vel(vel_cmd_manager=vel_cmd, entity_manager=mgr),
+        env,
+    )
 
     # error = 0.25, default sensitivity 0.25 -> exp(-1), no division by zero
     assert torch.allclose(fn(env), torch.tensor([0.36787944]), atol=1e-6)
@@ -666,11 +611,12 @@ def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
         default_pos=torch.tensor([0.0, 0.0]),
     )
     vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0], [1.0, 0.0, 0.0]]))
-    fn = rewards.stopped_joint_deviation_l1(
-        actuator_manager=actuator, vel_cmd_manager=vel_cmd, command_threshold=0.06
+    fn = built(
+        rewards.stopped_joint_deviation_l1(
+            actuator_manager=actuator, vel_cmd_manager=vel_cmd, command_threshold=0.06
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # env 0's command is below threshold (penalized); env 1's is above (masked to zero)
     assert torch.allclose(fn(env), torch.tensor([0.7, 0.0]))
@@ -696,8 +642,7 @@ def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
             actuator_manager=actuator, vel_cmd_manager=vel_cmd
         )
     assert isinstance(fn, rewards.stopped_joint_deviation_l1)
-    fn.context(env)
-    fn.safe_build()
+    built(fn, env)
     assert torch.allclose(fn(env), torch.tensor([0.7]))
 
 
@@ -710,11 +655,12 @@ def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     vel_cmd = FakeVelCmd(
         torch.tensor([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.0, 0.2]])
     )
-    fn = rewards.stopped_dof_velocity_l2(
-        vel_cmd_manager=vel_cmd, actuator_manager=actuator
+    fn = built(
+        rewards.stopped_dof_velocity_l2(
+            vel_cmd_manager=vel_cmd, actuator_manager=actuator
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([5.0, 0.0, 0.0]))
 
@@ -760,18 +706,14 @@ class FakePoseCmd:
 
 def test_reached_goal_uses_the_managers_threshold(env):
     cmd = FakePoseCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
-    fn = rewards.reached_goal(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.reached_goal(pose_cmd_manager=cmd), env)
 
     assert torch.allclose(fn(env), torch.tensor([1.0, 0.0]))
 
 
 def test_reached_goal_threshold_can_be_overridden(env):
     cmd = FakePoseCmd(torch.tensor([0.1, 0.2]), goal_reached_threshold=0.15)
-    fn = rewards.reached_goal(pose_cmd_manager=cmd, threshold=0.25)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.reached_goal(pose_cmd_manager=cmd, threshold=0.25), env)
 
     assert torch.allclose(fn(env), torch.tensor([1.0, 1.0]))
 
@@ -780,9 +722,7 @@ def test_heading_progress_is_zero_on_the_first_step(env):
     """There's no previous heading error to compare the first step against."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
@@ -790,9 +730,7 @@ def test_heading_progress_is_zero_on_the_first_step(env):
 def test_heading_progress_rewards_turning_toward_the_goal_heading(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)  # first step establishes the previous heading error
     cmd.heading_error = torch.tensor([0.98])  # 0.02 rad closer over a 0.02s step
@@ -803,9 +741,7 @@ def test_heading_progress_rewards_turning_toward_the_goal_heading(env):
 def test_heading_progress_penalizes_turning_away(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([1.02])
@@ -817,9 +753,7 @@ def test_heading_progress_measures_the_gap_either_side_of_the_goal_heading(env):
     """Turning from 1 rad to the left to 0.98 rad to the right is not progress."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([1.0]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([-0.98])
@@ -832,9 +766,7 @@ def test_heading_progress_pays_nothing_for_standing_still(env):
     """The whole point of a progress reward: holding a pose earns nothing."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([0.0]), heading_error=torch.tensor([0.0]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     for _ in range(5):
@@ -849,9 +781,7 @@ def test_heading_progress_tracks_the_bearing_when_far_from_the_goal(env):
         heading_error=torch.tensor([0.0]),
         bearing_error=torch.tensor([1.0]),
     )
-    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5), env)
 
     fn(env)
     cmd.bearing_error = torch.tensor([0.98])  # turned toward the goal
@@ -867,9 +797,7 @@ def test_heading_progress_ignores_the_goal_heading_when_far_away(env):
         heading_error=torch.tensor([1.0]),
         bearing_error=torch.tensor([0.0]),
     )
-    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([0.5])  # lined up with the goal heading
@@ -884,9 +812,7 @@ def test_heading_progress_tracks_the_goal_heading_once_at_the_goal(env):
         heading_error=torch.tensor([1.0]),
         bearing_error=torch.tensor([0.0]),
     )
-    fn = rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd, lines_up_within=0.5), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([0.98])
@@ -901,9 +827,7 @@ def test_heading_progress_without_lines_up_within_always_tracks_the_goal_heading
         heading_error=torch.tensor([1.0]),
         bearing_error=torch.tensor([0.0]),
     )
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([0.98])
@@ -915,9 +839,7 @@ def test_heading_progress_skips_the_step_the_goal_was_resampled(env):
     """A new goal means a new heading, so the jump in error isn't the robot's doing."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]), heading_error=torch.tensor([0.1]))
-    fn = rewards.heading_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.heading_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.heading_error = torch.tensor([3.0])
@@ -930,9 +852,7 @@ def test_position_progress_is_zero_on_the_first_step(env):
     """There's no previous distance to compare the first step against."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
@@ -940,9 +860,7 @@ def test_position_progress_is_zero_on_the_first_step(env):
 def test_position_progress_rewards_closing_the_distance(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     fn(env)  # first step establishes the previous distance
     cmd.distance_to_goal = torch.tensor([1.98])  # 0.02m closer over a 0.02s step
@@ -953,9 +871,7 @@ def test_position_progress_rewards_closing_the_distance(env):
 def test_position_progress_penalizes_moving_away(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.distance_to_goal = torch.tensor([2.02])
@@ -967,9 +883,7 @@ def test_position_progress_skips_the_step_the_goal_was_resampled(env):
     """The distance jumps when the goal moves -- that isn't progress the robot made."""
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([0.1]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     fn(env)  # robot is at its goal
     cmd.distance_to_goal = torch.tensor([3.0])  # a new, far goal was sampled
@@ -981,9 +895,7 @@ def test_position_progress_skips_the_step_the_goal_was_resampled(env):
 def test_position_progress_resumes_after_a_resampled_step(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([0.1]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     cmd.distance_to_goal = torch.tensor([3.0])
@@ -999,9 +911,7 @@ def test_position_progress_resumes_after_a_resampled_step(env):
 def test_position_progress_is_zero_on_the_step_after_a_reset(env):
     env.num_envs = 1
     cmd = FakePoseCmd(torch.tensor([2.0]))
-    fn = rewards.position_progress(pose_cmd_manager=cmd)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.position_progress(pose_cmd_manager=cmd), env)
 
     fn(env)
     fn.reset(torch.tensor([0]))
@@ -1022,11 +932,12 @@ def test_has_contact_rewards_envs_with_enough_contacts(env):
             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
         ]
     )
-    fn = rewards.has_contact(
-        contact_manager=FakeContactManager(contacts), threshold=1.0, min_contacts=2
+    fn = built(
+        rewards.has_contact(
+            contact_manager=FakeContactManager(contacts), threshold=1.0, min_contacts=2
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.equal(fn(env), torch.tensor([1.0, 0.0]))
 
@@ -1039,11 +950,12 @@ def test_contact_fraction_is_the_share_of_links_in_contact(env):
             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
         ]
     )
-    fn = rewards.contact_fraction(
-        contact_manager=FakeContactManager(contacts), threshold=1.0
+    fn = built(
+        rewards.contact_fraction(
+            contact_manager=FakeContactManager(contacts), threshold=1.0
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # A 0.5 N touch is under the threshold, so env 0 has 2 of 4 links in contact
     assert torch.allclose(fn(env), torch.tensor([0.5, 1.0, 0.0]))
@@ -1051,11 +963,12 @@ def test_contact_fraction_is_the_share_of_links_in_contact(env):
 
 def test_contact_force_sums_the_over_threshold_violation(env):
     contacts = torch.tensor([[[3.0, 0.0, 0.0], [0.1, 0.0, 0.0]]])
-    fn = rewards.contact_force(
-        contact_manager=FakeContactManager(contacts), threshold=1.0
+    fn = built(
+        rewards.contact_force(
+            contact_manager=FakeContactManager(contacts), threshold=1.0
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # norms: 3.0, 0.1 -> violations (clipped at 0): 2.0, 0.0 -> sum 2.0
     assert torch.allclose(fn(env), torch.tensor([2.0]))
@@ -1090,9 +1003,7 @@ def test_feet_air_time_rewards_long_swings_above_threshold(env):
         made_contact=torch.tensor([[True, False]]),
         last_air_time=torch.tensor([[0.5, 0.5]]),
     )
-    fn = rewards.feet_air_time(contact_manager=mgr, time_threshold=0.2)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.feet_air_time(contact_manager=mgr, time_threshold=0.2), env)
 
     # only the foot that just made contact counts: 0.5 - 0.2 = 0.3
     assert torch.allclose(fn(env), torch.tensor([0.3]))
@@ -1103,11 +1014,12 @@ def test_feet_air_time_clamps_to_the_max_threshold(env):
         made_contact=torch.tensor([[True]]),
         last_air_time=torch.tensor([[2.0]]),
     )
-    fn = rewards.feet_air_time(
-        contact_manager=mgr, time_threshold=0.2, time_threshold_max=0.5
+    fn = built(
+        rewards.feet_air_time(
+            contact_manager=mgr, time_threshold=0.2, time_threshold_max=0.5
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     # (2.0 - 0.2) clamped to (0.5 - 0.2) = 0.3
     assert torch.allclose(fn(env), torch.tensor([0.3]))
@@ -1119,11 +1031,12 @@ def test_feet_air_time_is_zeroed_when_command_is_near_zero(env):
         last_air_time=torch.tensor([[0.5]]),
     )
     vel_cmd = FakeVelCmd(torch.tensor([[0.01, 0.0, 0.0]]))
-    fn = rewards.feet_air_time(
-        contact_manager=mgr, time_threshold=0.2, vel_cmd_manager=vel_cmd
+    fn = built(
+        rewards.feet_air_time(
+            contact_manager=mgr, time_threshold=0.2, vel_cmd_manager=vel_cmd
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
@@ -1133,9 +1046,7 @@ def test_feet_ground_time_penalizes_stances_shorter_than_threshold(env):
         broke_contact=torch.tensor([[True, True]]),
         last_contact_time=torch.tensor([[0.1, 0.5]]),
     )
-    fn = rewards.feet_ground_time(contact_manager=mgr, time_threshold=0.3)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.feet_ground_time(contact_manager=mgr, time_threshold=0.3), env)
 
     # foot 1: (0.3 - 0.1) = 0.2 penalty; foot 2's stance was long enough -> 0
     assert torch.allclose(fn(env), torch.tensor([0.2]))
@@ -1146,9 +1057,7 @@ def test_feet_ground_time_ignores_feet_that_have_not_lifted(env):
         broke_contact=torch.tensor([[False]]),
         last_contact_time=torch.tensor([[0.05]]),
     )
-    fn = rewards.feet_ground_time(contact_manager=mgr, time_threshold=0.3)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.feet_ground_time(contact_manager=mgr, time_threshold=0.3), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
@@ -1165,9 +1074,7 @@ def test_feet_slide_penalizes_moving_feet_that_are_in_contact(env):
             return torch.tensor([[[0.3, 0.4, 0.0], [9.0, 9.0, 0.0]]])
 
     env.robot = FakeRobotLinks()
-    fn = rewards.feet_slide(contact_manager=mgr)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.feet_slide(contact_manager=mgr), env)
 
     # only foot0 is in contact: norm([0.3, 0.4, 0.0]) = 0.5
     assert torch.allclose(fn(env), torch.tensor([0.5]))
@@ -1190,33 +1097,24 @@ keep_clear
 """
 
 
-class FakeObstacle:
-    def __init__(self, pos):
-        self._pos = pos
-
-    def get_pos(self):
-        return self._pos
-
-
 def test_keep_clear_is_zero_beyond_the_clearance(env):
     env.num_envs = 1
-    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
-    fn = rewards.keep_clear(
-        entities=[FakeObstacle(torch.tensor([[5.0, 0.0, 0.0]]))], clearance=0.5
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.0]]))
+    fn = built(
+        rewards.keep_clear(
+            entities=[FakeBody(torch.tensor([[5.0, 0.0, 0.0]]))], clearance=0.5
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([0.0]))
 
 
 def test_keep_clear_grows_as_the_obstacle_is_approached(env):
     env.num_envs = 1
-    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
-    obstacle = FakeObstacle(torch.tensor([[0.25, 0.0, 0.0]]))
-    fn = rewards.keep_clear(entities=[obstacle], clearance=0.5)
-    fn.context(env)
-    fn.safe_build()
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.0]]))
+    obstacle = FakeBody(torch.tensor([[0.25, 0.0, 0.0]]))
+    fn = built(rewards.keep_clear(entities=[obstacle], clearance=0.5), env)
 
     # Half way in from the clearance distance
     assert torch.allclose(fn(env), torch.tensor([0.5]), atol=1e-6)
@@ -1228,18 +1126,17 @@ def test_keep_clear_grows_as_the_obstacle_is_approached(env):
 def test_keep_clear_only_counts_the_nearest_obstacle(env):
     """Threading a gap is no worse than passing one obstacle at the same distance."""
     env.num_envs = 1
-    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
-    near = FakeObstacle(torch.tensor([[0.25, 0.0, 0.0]]))
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.0]]))
+    near = FakeBody(torch.tensor([[0.25, 0.0, 0.0]]))
 
-    alone = rewards.keep_clear(entities=[near], clearance=0.5)
-    alone.context(env)
-    alone.safe_build()
+    alone = built(rewards.keep_clear(entities=[near], clearance=0.5), env)
 
-    crowded = rewards.keep_clear(
-        entities=[near, FakeObstacle(torch.tensor([[-0.3, 0.0, 0.0]]))], clearance=0.5
+    crowded = built(
+        rewards.keep_clear(
+            entities=[near, FakeBody(torch.tensor([[-0.3, 0.0, 0.0]]))], clearance=0.5
+        ),
+        env,
     )
-    crowded.context(env)
-    crowded.safe_build()
 
     assert torch.allclose(alone(env), crowded(env))
 
@@ -1247,12 +1144,13 @@ def test_keep_clear_only_counts_the_nearest_obstacle(env):
 def test_keep_clear_ignores_height(env):
     """An obstacle is in the way or not; how tall it is doesn't change the clearance."""
     env.num_envs = 1
-    env.robot = FakeObstacle(torch.tensor([[0.0, 0.0, 0.0]]))
-    fn = rewards.keep_clear(
-        entities=[FakeObstacle(torch.tensor([[0.25, 0.0, 9.0]]))], clearance=0.5
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.0]]))
+    fn = built(
+        rewards.keep_clear(
+            entities=[FakeBody(torch.tensor([[0.25, 0.0, 9.0]]))], clearance=0.5
+        ),
+        env,
     )
-    fn.context(env)
-    fn.safe_build()
 
     assert torch.allclose(fn(env), torch.tensor([0.5]), atol=1e-6)
 
@@ -1271,9 +1169,7 @@ def test_action_rate_l2_counts_every_action_by_default(env):
     env.num_envs = 1
     env.actions = torch.tensor([[0.5, 0.5, 0.5]])
     env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
-    fn = rewards.action_rate_l2()
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_rate_l2(), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.75]))  # three changes of 0.5
 
@@ -1288,9 +1184,7 @@ def test_action_rate_l2_can_be_scoped_to_one_action_manager(env):
     env.actions = torch.tensor([[0.5, 0.5, 9.0]])
     env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
 
-    fn = rewards.action_rate_l2(action_manager=wheels)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_rate_l2(action_manager=wheels), env)
 
     # Only the first two columns count, so the head's wild swing is ignored
     assert torch.allclose(fn(env), torch.tensor([0.5]))
@@ -1305,9 +1199,7 @@ def test_action_rate_l2_scopes_to_a_manager_that_is_not_first(env):
     env.actions = torch.tensor([[9.0, 9.0, 0.5]])
     env.last_actions = torch.tensor([[0.0, 0.0, 0.0]])
 
-    fn = rewards.action_rate_l2(action_manager=head)
-    fn.context(env)
-    fn.safe_build()
+    fn = built(rewards.action_rate_l2(action_manager=head), env)
 
     assert torch.allclose(fn(env), torch.tensor([0.25]))
 

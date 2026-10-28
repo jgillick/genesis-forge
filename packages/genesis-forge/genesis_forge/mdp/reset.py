@@ -55,12 +55,11 @@ class set_rotation(ResetMdpFn):
 
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         angle_buffer = torch.zeros((len(envs_idx), 3), device=gs.device)
-        if isinstance(self.x, tuple):
-            angle_buffer[:, 0].uniform_(*self.x)
-        if isinstance(self.y, tuple):
-            angle_buffer[:, 1].uniform_(*self.y)
-        if isinstance(self.z, tuple):
-            angle_buffer[:, 2].uniform_(*self.z)
+        for axis, angle in enumerate((self.x, self.y, self.z)):
+            if isinstance(angle, tuple):
+                angle_buffer[:, axis].uniform_(*angle)
+            else:
+                angle_buffer[:, axis] = angle
 
         # Set angle as quat
         quat = xyz_to_quat(angle_buffer)

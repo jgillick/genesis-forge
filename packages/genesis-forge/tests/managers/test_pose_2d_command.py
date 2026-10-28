@@ -12,8 +12,13 @@ import math
 import genesis as gs
 import pytest
 import torch
+from genesis.utils.geom import transform_by_quat, xyz_to_quat
 
 from genesis_forge.managers import Pose2dCommand
+from genesis_forge.managers.command.pose_2d_command import (
+    heading_from_quat,
+    shortest_turn_to,
+)
 
 
 class FakeEntity:
@@ -121,10 +126,6 @@ def test_heading_from_quat_is_where_the_nose_points():
     euler yaw -- `quat_to_xyz(quat)[:, 2]` -- does not, which is why it isn't used here:
     swap one for the other and a tilted robot's heading error goes wrong.
     """
-    from genesis.utils.geom import transform_by_quat, xyz_to_quat
-
-    from genesis_forge.managers.command.pose_2d_command import heading_from_quat
-
     # Yawed 40 degrees, and pitched 45 degrees nose-up
     quat = xyz_to_quat(torch.tensor([[0.0, 45.0, 40.0]]), degrees=True)
     nose = transform_by_quat(torch.tensor([[1.0, 0.0, 0.0]]), quat)[0]
@@ -138,8 +139,6 @@ def test_heading_from_quat_is_where_the_nose_points():
 
 
 def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
-    from genesis_forge.managers.command.pose_2d_command import heading_from_quat
-
     quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
 
     assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)
@@ -147,8 +146,6 @@ def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
 
 def test_shortest_turn_takes_the_short_way_around():
     """Turning from 179 to -179 degrees is a small right turn, not an almost-full circle."""
-    from genesis_forge.managers.command.pose_2d_command import shortest_turn_to
-
     target = torch.tensor([math.radians(-179)])
     current = torch.tensor([math.radians(179)])
 
@@ -158,8 +155,6 @@ def test_shortest_turn_takes_the_short_way_around():
 
 
 def test_shortest_turn_is_positive_to_the_left():
-    from genesis_forge.managers.command.pose_2d_command import shortest_turn_to
-
     turn = shortest_turn_to(torch.tensor([math.pi / 2]), torch.tensor([0.0]))
 
     assert math.isclose(turn.item(), math.pi / 2, abs_tol=1e-5)
@@ -338,8 +333,6 @@ def test_the_goal_vector_is_in_the_heading_frame_not_the_body_frame(env):
     Tilting the entity must not turn or shorten the goal vector: a pitched robot is
     still the same distance from its goal, and the reward and the reached check say so.
     """
-    from genesis.utils.geom import xyz_to_quat
-
     env.num_envs = 1
     entity = FakeEntity(pos=torch.zeros((1, 3)), num_envs=1)
     # Facing +X, pitched 20 degrees nose-up

@@ -1,8 +1,8 @@
 """Observation assembly: ordering, scaling, history, and auto-filled entries.
 
 The assembler must reproduce ObservationManager's output exactly. These tests pin
-the observable behavior; U5's parity harness proves the equivalence against the
-live torch pipeline.
+the observable behavior; genesis-forge's parity gate proves the equivalence against
+the live torch pipeline.
 """
 
 from __future__ import annotations
@@ -193,7 +193,7 @@ def test_reset_clears_history_back_to_zeros():
     np.testing.assert_allclose(assembler.assemble({"value": 9.0}), [9.0, 0.0])
 
 
-"""Entries that echo the policy's own previous output (R15)
+"""Entries that echo the policy's own previous output
 
 The bundle does not mark these out -- they are ordinary inputs, passed the same
 way as a sensor reading, just read off the processor instead. What matters is that
@@ -232,8 +232,7 @@ def test_forgetting_the_feedback_wire_raises_rather_than_reading_zeros():
 """Error paths"""
 
 
-def test_missing_entry_names_the_entry(tmp_path=None):
-    """Covers AE2."""
+def test_missing_entry_names_the_entry():
     assembler = ObservationAssembler(simple_layout())
 
     with pytest.raises(ObservationError) as error:
@@ -288,7 +287,7 @@ def test_non_numeric_value_is_reported_with_the_entry_name():
     assert "gyro" in str(error.value)
 
 
-"""Listings (R5)"""
+"""Listings"""
 
 
 def test_describe_inputs_lists_every_value_to_supply():

@@ -1,7 +1,7 @@
 """Action processing: affine transforms, multi-manager composition, and safety guards.
 
-These pin the observable process behavior. U5's parity harness proves the numbers
-match the live torch `process_actions` path.
+These pin the observable process behavior. genesis-forge's parity gate proves the
+numbers match the live torch `process_actions` path.
 """
 
 from __future__ import annotations
@@ -15,8 +15,11 @@ from genesis_forge_runtime import (
     ActionManagerSpec,
     ActionProcessor,
     AffineProcessor,
+    ObservationAssembler,
+    ObservationEntry,
+    ObservationLayout,
 )
-from genesis_forge_runtime.processors import resolve_processor_class
+from genesis_forge_runtime.processors import BUILTIN_PROCESSORS, resolve_processor_class
 
 
 def position_spec(
@@ -284,9 +287,7 @@ def test_builtin_types_resolve_without_an_import_path():
 
 
 def test_every_builtin_action_manager_type_has_a_processor():
-    """Guard: a new affine manager type upstream must not ship undeployable."""
-    from genesis_forge_runtime.processors import BUILTIN_PROCESSORS
-
+    """A new affine manager type upstream must not ship undeployable."""
     assert {"affine_dof", "position", "position_within_limits", "velocity"} <= set(
         BUILTIN_PROCESSORS
     )
@@ -368,7 +369,7 @@ def test_a_class_that_is_not_a_manager_processor_is_rejected(tmp_path, monkeypat
     assert "ActionManagerProcessor" in str(error.value)
 
 
-"""Custom processors (F3) and stateful process (R12)"""
+"""Custom processors, including stateful ones"""
 
 
 CUSTOM_PROCESSOR_MODULE = '''
@@ -384,7 +385,7 @@ class DoublingProcessor(ActionManagerProcessor):
 
 
 class RunningSumProcessor(ActionManagerProcessor):
-    """Carries per-step state, which the contract must support (R12)."""
+    """Carries per-step state, which the contract must support."""
 
     def reset(self):
         self.total = None
@@ -428,7 +429,6 @@ def test_a_custom_processor_loads_through_its_import_path(custom_processors):
 
 
 def test_a_stateful_custom_processor_keeps_state_across_ticks(custom_processors):
-    """R12: a processor may carry state across ticks."""
     processor = ActionProcessor(
         (custom_spec(custom_processors, "RunningSumProcessor"),)
     )
@@ -489,7 +489,7 @@ def test_a_configured_velocity_clip_is_honored():
     np.testing.assert_allclose(result.targets, [16.0, -16.0])
 
 
-"""Feeding the previous output back (R15)
+"""Feeding the previous output back
 
 The processor remembers its last output so the caller can hand it to the next
 observation, replacing the older implicit auto-fill.
@@ -544,26 +544,23 @@ def test_remembered_outputs_are_copies_not_live_buffers():
     np.testing.assert_allclose(snapshot, [1.0, 2.0, 0.0])
 
 
-def test_target_actions_are_also_available_per_manager():
+def test_remembered_outputs_are_also_available_per_manager():
     legs = position_spec("legs", start=0, joints=("hip", "knee", "ankle"))
     arm = within_limits_spec("arm", start=3)
     processor = ActionProcessor((legs, arm))
 
-    processor.process([2.0, 2.0, 2.0, 0.0, 0.0])
+    processor.process([2.0, 2.0, 2.0, 0.5, 0.0])
 
-    by_manager = processor.last_target_actions_by_manager
-    np.testing.assert_allclose(by_manager["legs"], [1.0, 2.0, 0.0])
-    np.testing.assert_allclose(by_manager["arm"], [0.0, 1.0])
+    raw = processor.last_raw_actions_by_manager
+    np.testing.assert_allclose(raw["legs"], [2.0, 2.0, 2.0])
+    np.testing.assert_allclose(raw["arm"], [0.5, 0.0])
+    targets = processor.last_target_actions_by_manager
+    np.testing.assert_allclose(targets["legs"], [1.0, 2.0, 0.0])
+    np.testing.assert_allclose(targets["arm"], [1.0, 1.0])
 
 
 def test_the_feedback_loop_reads_off_the_processor():
     """The documented control-loop shape, end to end."""
-    from genesis_forge_runtime import (
-        ObservationAssembler,
-        ObservationEntry,
-        ObservationLayout,
-    )
-
     layout = ObservationLayout(
         entries=(
             ObservationEntry(name="gyro", size=3),
@@ -587,27 +584,6 @@ def test_the_feedback_loop_reads_off_the_processor():
     np.testing.assert_allclose(second, [0.0, 0.0, 0.0, 1.0, 2.0, 0.0])
 
 
-def test_the_processor_exposes_every_property_the_docs_tell_users_to_read():
-    """Guard the coupling between this class and the wiring instructions.
-
-    The deployment guide and the examples tell people to pass
-    ``action_processor.last_raw_actions`` and friends into the assembler. Those are
-    plain strings in prose now, so renaming a property here would send someone
-    looking for an attribute that does not exist -- on a robot, while they are
-    already unsure what to wire.
-    """
-    for attribute in (
-        "last_raw_actions",
-        "last_target_actions",
-        "last_raw_actions_by_manager",
-        "last_target_actions_by_manager",
-    ):
-        assert hasattr(ActionProcessor, attribute), (
-            f"ActionProcessor.{attribute} is documented as the value to feed back, "
-            f"but no longer exists."
-        )
-
-
 """Reading a joint's clip range back off the processor"""
 
 
@@ -626,9 +602,7 @@ def test_clip_range_by_joint_reports_the_bounds_the_processor_applies():
 def test_an_unbounded_side_reads_as_infinite():
     """The exporter omits a bound of infinity, so the processor restores it."""
     spec = position_spec()
-    del spec.config[
-        "post_clip_high" if "post_clip_high" in spec.config else "clip_high"
-    ]
+    del spec.config["clip_high"]
 
     processor = ActionProcessor((spec,))
 

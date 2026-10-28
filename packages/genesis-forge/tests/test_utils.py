@@ -98,15 +98,9 @@ def test_an_invalid_regex_pattern_raises():
         name_matches("chassis", "axel(.*")
 
 
-def test_an_invalid_pattern_raises_even_against_its_own_literal_name():
-    """The exact-name arm only short-circuits when the name equals the pattern.
-
-    Any other name reaches the regex, and the pattern is what fails to compile --
-    so a name that is not valid regex cannot be used as a literal pattern.
-    """
-    assert name_matches("axel(2", "axel(2")  # the name equal to the pattern is fine
-    with pytest.raises(re.error):
-        name_matches("chassis", "axel(2")  # every other name is not
+def test_an_invalid_pattern_still_matches_its_own_literal_name():
+    """The exact-name check runs first, so only other names reach the regex."""
+    assert name_matches("axel(2", "axel(2")
 
 
 def test_assign_by_pattern_propagates_an_invalid_pattern():

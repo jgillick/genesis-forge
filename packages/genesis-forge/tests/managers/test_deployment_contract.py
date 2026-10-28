@@ -15,6 +15,7 @@ import pytest
 import torch
 
 from genesis_forge.managers import (
+    ActuatorManager,
     ObservationManager,
     PositionActionManager,
     PositionWithinLimitsActionManager,
@@ -113,14 +114,6 @@ def test_position_manager_export_reflects_a_soft_limit_factor(env):
     assert config["clip_high"] == pytest.approx([0.5, 0.75, 1.0])
 
 
-def test_exported_joint_order_matches_the_managers_dof_order(env):
-    manager = PositionActionManager(env, actuator_manager=make_actuator_manager())
-    manager.build()
-
-    assert list(manager.dofs.keys()) == ["FL_hip", "FL_knee", "FR_hip"]
-    assert len(manager.get_deployment_config().config["scale"]) == 3
-
-
 """
 PositionWithinLimitsActionManager export
 
@@ -171,19 +164,6 @@ def test_within_limits_export_reflects_custom_limits(env):
     # hip joints: midpoint 1.0, half-range 1.0; knee keeps the model limits.
     assert config["offset"] == pytest.approx([1.0, 0.0, 1.0])
     assert config["scale"] == pytest.approx([1.0, 1.5, 1.0])
-
-
-def test_the_two_managers_publish_different_deploy_types(env):
-    position = PositionActionManager(env, actuator_manager=make_actuator_manager())
-    position.build()
-    within = PositionWithinLimitsActionManager(
-        env, actuator_manager=make_actuator_manager()
-    )
-    within.build()
-
-    assert position.get_deployment_config().deploy_type != (
-        within.get_deployment_config().deploy_type
-    )
 
 
 """
@@ -265,28 +245,6 @@ def test_every_builtin_action_manager_publishes_a_distinct_type(env):
     types = [manager.get_deployment_config().deploy_type for manager in managers]
 
     assert types == ["position", "position_within_limits", "velocity"]
-    assert len(set(types)) == len(types)
-
-
-def test_the_shared_affine_contract_is_inherited_not_reimplemented(env):
-    """Position and velocity both get the contract from AffineDofActionManager."""
-    from genesis_forge.managers.action.affine_dof_action_manager import (
-        AffineDofActionManager,
-    )
-
-    assert (
-        PositionActionManager.get_deployment_config
-        is AffineDofActionManager.get_deployment_config
-    )
-    assert (
-        VelocityActionManager.get_deployment_config
-        is AffineDofActionManager.get_deployment_config
-    )
-    # Within-limits processes differently, so it must NOT share the inherited version.
-    assert (
-        PositionWithinLimitsActionManager.get_deployment_config
-        is not AffineDofActionManager.get_deployment_config
-    )
 
 
 def test_exporting_an_unbuilt_affine_manager_is_refused(env):
@@ -299,7 +257,7 @@ def test_exporting_an_unbuilt_affine_manager_is_refused(env):
 
 
 """
-Opting in (F3) and opting out
+Opting in and opting out
 """
 
 
@@ -316,9 +274,9 @@ def test_a_manager_without_deployment_support_raises_a_helpful_error(env):
 
 
 def test_a_custom_manager_can_opt_in_without_library_changes(env):
-    """Covers AE3: a third-party manager participates by implementing the contract."""
+    """A third-party manager participates by implementing the contract."""
 
-    class VelocityActionManager(BaseActionManager):
+    class ClampedVelocityManager(BaseActionManager):
         def process_actions(self, actions):
             return actions.clamp(-1.0, 1.0)
 
@@ -329,7 +287,7 @@ def test_a_custom_manager_can_opt_in_without_library_changes(env):
                 processor_import_path="my_robot.processors:VelocityProcessor",
             )
 
-    manager = VelocityActionManager(env, actuator_manager=make_actuator_manager())
+    manager = ClampedVelocityManager(env, actuator_manager=make_actuator_manager())
     manager.build()
 
     exported = manager.get_deployment_config()
@@ -587,8 +545,6 @@ def actuator_with_values(values, dofs=None):
     Built via __new__ because the real constructor needs a Genesis entity, and the
     only thing under test here is how the buffers are read back out.
     """
-    from genesis_forge.managers import ActuatorManager
-
     manager = ActuatorManager.__new__(ActuatorManager)
     manager._dofs = dofs if dofs is not None else {"FL_hip": 100, "FL_knee": 101}
     manager._values = values

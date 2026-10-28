@@ -2,9 +2,7 @@
 (or falling back to the AABB for non-terrain morphs), height-field interpolation,
 and random position generation within the usable area.
 
-Uses a FakeTerrain/FakeGeom/FakeMorph -- no Genesis scene is built. F.grid_sample's
-corner semantics (align_corners=True) were verified directly against torch before
-writing the interpolation test, rather than assumed.
+Uses a FakeTerrain/FakeGeom/FakeMorph -- no Genesis scene is built.
 """
 
 import pytest
@@ -129,37 +127,21 @@ def test_get_terrain_height_interpolates_the_height_field(env):
     pos = torch.tensor([0.0, 0.0, 0.0])
     # Stored as (width, height); TerrainManager transposes it to (height, width) =
     # [[0, 10], [20, 30]] -- i.e. corners (x_min,y_min)=0, (x_max,y_min)=10,
-    # (x_min,y_max)=20, (x_max,y_max)=30, center=mean of all four=15.
+    # (x_min,y_max)=20, (x_max,y_max)=30.
     height_field = torch.tensor([[0.0, 20.0], [10.0, 30.0]])
     geom = FakeGeom(aabb=aabb, pos=pos, metadata={"height_field": height_field})
     env.terrain = FakeTerrain(geoms=[geom], morph=FakeMorph(vertical_scale=1.0))
     mgr = TerrainManager(env, terrain=env.terrain)
     mgr.build()
 
-    x = torch.tensor([0.0, 10.0, 0.0, 10.0])
-    y = torch.tensor([0.0, 0.0, 10.0, 10.0])
-    heights = mgr.get_terrain_height(x, y)
-
-    assert torch.allclose(heights, torch.tensor([0.0, 10.0, 20.0, 30.0]), atol=1e-4)
-
-
-def test_get_terrain_height_is_independent_of_num_envs(env):
-    """get_terrain_height's query batch size (x.shape[0]) has no relationship to
-    env.num_envs (4 here) -- it must work for any number of query points."""
-    aabb = torch.tensor([[0.0, 0.0, 0.0], [10.0, 10.0, 0.0]])
-    pos = torch.tensor([0.0, 0.0, 0.0])
-    height_field = torch.tensor([[0.0, 20.0], [10.0, 30.0]])
-    geom = FakeGeom(aabb=aabb, pos=pos, metadata={"height_field": height_field})
-    env.terrain = FakeTerrain(geoms=[geom], morph=FakeMorph(vertical_scale=1.0))
-    mgr = TerrainManager(env, terrain=env.terrain)
-    mgr.build()
-
-    x = torch.tensor([0.0, 10.0, 0.0, 10.0, 0.0, 10.0])
-    y = torch.tensor([0.0, 0.0, 10.0, 10.0, 0.0, 0.0])
+    # The four corners, then two points between them. Six queries against four
+    # envs: the query batch has nothing to do with num_envs.
+    x = torch.tensor([0.0, 10.0, 0.0, 10.0, 5.0, 5.0])
+    y = torch.tensor([0.0, 0.0, 10.0, 10.0, 5.0, 0.0])
     heights = mgr.get_terrain_height(x, y)
 
     assert torch.allclose(
-        heights, torch.tensor([0.0, 10.0, 20.0, 30.0, 0.0, 10.0]), atol=1e-4
+        heights, torch.tensor([0.0, 10.0, 20.0, 30.0, 15.0, 5.0]), atol=1e-4
     )
 
 

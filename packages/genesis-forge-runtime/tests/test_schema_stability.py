@@ -6,9 +6,8 @@ the manifest's shape is a contract with every bundle ever exported, not an inter
 detail of these dataclasses.
 
 Nothing else notices when that shape changes. The round-trip tests move with the
-code: rename a field and they are simply updated alongside it, which is exactly what
-happened repeatedly while this package was being built. This test does not move --
-it fails, and asks whether the change needs a schema version.
+code: rename a field and they are simply updated alongside it. This test does not
+move -- it fails, and asks whether the change needs a schema version.
 """
 
 import pytest

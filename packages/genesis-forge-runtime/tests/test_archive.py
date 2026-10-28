@@ -150,8 +150,7 @@ The fingerprint
 """
 
 
-def test_the_fingerprint_is_read_from_the_central_directory(tmp_path):
-    """Costs the same whatever the bundle weighs -- no payload is read."""
+def test_the_fingerprint_changes_with_the_contents(tmp_path):
     archive = an_archive(tmp_path)
     padded = tmp_path / f"padded{ARCHIVE_SUFFIX}"
     with zipfile.ZipFile(archive) as source, zipfile.ZipFile(padded, "w") as target:
@@ -175,8 +174,6 @@ made, so it would be refused from then on and the bundle would be stuck.
 def test_a_crash_during_extraction_leaves_the_previous_copy_intact(
     tmp_path, monkeypatch
 ):
-    import zipfile as zipfile_module
-
     archive = an_archive(tmp_path)
     good = load_bundle(archive)
     fingerprint_before = (good.path / EXTRACT_MARKER).read_text()
@@ -187,7 +184,7 @@ def test_a_crash_during_extraction_leaves_the_previous_copy_intact(
     def die(self, path):
         raise OSError("power lost")
 
-    monkeypatch.setattr(zipfile_module.ZipFile, "extractall", die)
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", die)
     with pytest.raises(MalformedBundleError):
         load_bundle(archive)
     monkeypatch.undo()
@@ -199,15 +196,13 @@ def test_a_crash_during_extraction_leaves_the_previous_copy_intact(
 
 def test_a_crash_leaves_no_directory_without_a_marker(tmp_path, monkeypatch):
     """The state that used to be unrecoverable is never written at all."""
-    import zipfile as zipfile_module
-
     archive = an_archive(tmp_path)
     destination = extract_dir_for(archive)
 
     def die(self, path):
         raise OSError("power lost")
 
-    monkeypatch.setattr(zipfile_module.ZipFile, "extractall", die)
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", die)
     with pytest.raises(MalformedBundleError):
         load_bundle(archive)
     monkeypatch.undo()

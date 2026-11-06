@@ -82,6 +82,18 @@ with torch.no_grad():
 
 This maps joystick axis 0 and 1 (left joystick) to the robot's Y and X movements, and axis 2 and 3 (right joystick) to rotation and height.
 
+### Waiting for a connection
+
+`Gamepad()` returns immediately, whether or not a controller is plugged in. Use `wait_for_connection()` to block until one is attached, and the `connected` property to check whether one still is:
+
+```python
+gamepad = Gamepad()
+if not gamepad.wait_for_connection(timeout=10.0):
+    raise RuntimeError("No gamepad connected")
+
+print(gamepad.connected)  # True
+```
+
 ## Supported Controllers
 
 SDL2 provides built-in support for a wide variety of game controllers:

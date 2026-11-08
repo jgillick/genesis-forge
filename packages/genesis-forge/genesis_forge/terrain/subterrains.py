@@ -57,6 +57,21 @@ class Subterrain:
     instead.
     """
 
+    horizontal_scale: float | None = None
+    """
+    The distance between two of this subterrain's height field points, in meters.
+    None uses the layout's ``horizontal_scale``.
+
+    The layout's height field uses the finest spacing any subterrain asks for, and joins up
+    a coarser subterrain's points with straight lines. So one subterrain can have fine detail,
+    like crisp block edges, without changing how the others generate. Every spacing in the
+    layout must be a whole multiple of the finest one, and the subterrain size a whole
+    multiple of each.
+
+    :meth:`generate` receives the resolved spacing as its ``horizontal_scale`` argument; use
+    that, since this field may be None.
+    """
+
     def generate(
         self,
         shape: tuple[int, int],
@@ -72,7 +87,8 @@ class Subterrain:
         Args:
             shape: The ``(x, y)`` number of height field points. The first and last points
                    on each axis lie on the subterrain's edges, and are shared with its neighbor.
-            horizontal_scale: The distance between two height field points, in meters.
+            horizontal_scale: The distance between two height field points, in meters: this
+                              subterrain's own :attr:`horizontal_scale`, or the layout's.
             vertical_scale: The height resolution of the terrain, in meters.
 
         Returns:
@@ -84,9 +100,10 @@ class Subterrain:
 
     def ease_edges(self, heights: np.ndarray, horizontal_scale: float) -> np.ndarray:
         """
-        Ease the heights down to 0 over :attr:`border_width` from each edge, to ease the 
-        transition from one subterrain to another. The :class:`~genesis_forge.terrain.TerrainLayout` 
-        calls this on whatever :meth:`generate` returns.
+        Ease the heights down to 0 over :attr:`border_width` from each edge, to ease the
+        transition from one subterrain to another. The :class:`~genesis_forge.terrain.TerrainLayout`
+        calls this on whatever :meth:`generate` returns, once it's filled in to the layout's
+        height field spacing.
 
         Args:
             heights: The heights from :meth:`generate`, in meters.
@@ -166,7 +183,8 @@ class HeightField(Subterrain):
     """
     A height field you provide, in meters.
 
-    Its shape must be ``subterrain_size / horizontal_scale + 1`` on each axis.
+    Its shape must be ``subterrain_size / horizontal_scale + 1`` on each axis, using its own
+    ``horizontal_scale`` if it has one. 
     """
 
     type: ClassVar[str] = "height_field"
@@ -212,7 +230,13 @@ class Fractal(Subterrain):
 
 @dataclass(kw_only=True)
 class RandomUniform(Subterrain):
-    """Bumpy ground with random heights."""
+    """
+    Bumpy ground with random heights.
+
+    Give it a ``horizontal_scale`` equal to ``downsampled_scale`` for straight slopes between
+    the random heights, that stay between ``min_height`` and ``max_height``. At a finer
+    spacing, Genesis curves between them, and the curve might overshoot the max_height by a little.
+    """
 
     type: ClassVar[str] = "random_uniform_terrain"
 
@@ -223,7 +247,7 @@ class RandomUniform(Subterrain):
     step: float = 0.1
     """The smallest height difference between two bumps, in meters."""
     downsampled_scale: float = 0.5
-    """The distance between two random heights, in meters. At least the layout's horizontal scale."""
+    """The distance between two random heights, in meters. At least the subterrain's horizontal scale."""
 
     def generate(self, shape, horizontal_scale, vertical_scale):
         """Check the heights and scale, then generate random bumps with Genesis' generator."""
@@ -234,7 +258,7 @@ class RandomUniform(Subterrain):
         if self.downsampled_scale < horizontal_scale:
             raise ValueError(
                 f"RandomUniform downsampled_scale ({self.downsampled_scale}) must be at least "
-                f"the layout's horizontal_scale ({horizontal_scale})."
+                f"its horizontal_scale ({horizontal_scale})."
             )
         genesis_terrain = self.empty_genesis_terrain(
             shape, horizontal_scale, vertical_scale
@@ -432,8 +456,8 @@ class RandomGrid(Subterrain):
     A grid of square blocks, each raised or lowered by a random height, around a raised
     platform in the center, with a flat border.
     
-    Use a horizontal_scale of a quarter of ``grid_width`` or finer for
-    crisp blocks.
+    Give it a ``horizontal_scale`` of a quarter of ``grid_width`` or finer for crisp blocks.
+    The rest of the layout keeps its own spacing.
 
     Based on mjlab's ``BoxRandomGridTerrainCfg``
     """
@@ -464,7 +488,7 @@ class RandomGrid(Subterrain):
         """Generate the blocks, platform and border, in meters."""
         if self.grid_width < horizontal_scale:
             raise ValueError(
-                f"RandomGrid grid_width ({self.grid_width}) must be at least the layout's "
+                f"RandomGrid grid_width ({self.grid_width}) must be at least its "
                 f"horizontal_scale ({horizontal_scale})."
             )
         if self.grid_height < 0:

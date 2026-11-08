@@ -50,8 +50,12 @@ class TerrainLayout:
               (the same layout as ``gs.morphs.Terrain(subterrain_types=...)``).
               A flat list is a single row, along the y axis.
         subterrain_size: The ``(x, y)`` size of each subterrain, in meters.
-                         Must be a multiple of ``horizontal_scale``.
-        horizontal_scale: The distance between two height field points, in meters.
+                         Must be a multiple of ``horizontal_scale``, and of every
+                         subterrain's own ``horizontal_scale``.
+        horizontal_scale: The default distance between two height field points, in meters, for every
+                          subterrain without its own ``horizontal_scale``. A subterrain can ask
+                          for a finer one; the height field then uses the finest, and joins up
+                          the coarser subterrains' points with straight lines.
         vertical_scale: The height resolution, in meters.
         pos: The position of the terrain's ``(x_min, y_min)`` corner.
         seed: The random seed. Each subterrain gets its own seed derived from it, so the terrain
@@ -105,13 +109,18 @@ class TerrainLayout:
                 "Use terrain.HeightField for your own heights."
             )
 
-        self._horizontal_scale = float(horizontal_scale)
         self._vertical_scale = float(vertical_scale)
         self._pos = tuple(float(v) for v in pos)
         self._seed = seed
         self._subterrains = tuple(
             subterrain for row in self._grid for subterrain in row
         )
+
+        # Each subterrain generates at its own spacing; the height field uses the finest
+        self._spacings = self._check_spacings(
+            self._grid, self._subterrain_size, float(horizontal_scale)
+        )
+        self._horizontal_scale = min(self._spacings)
 
         # Setup the map
         # A subterrain without a name goes by its type
@@ -175,7 +184,10 @@ class TerrainLayout:
 
     @property
     def horizontal_scale(self) -> float:
-        """The distance between two height field points, in meters."""
+        """
+        The distance between two height field points, in meters: the finest spacing of any
+        subterrain. That's the layout's ``horizontal_scale``, unless a subterrain asked for finer.
+        """
         return self._horizontal_scale
 
     @property
@@ -264,22 +276,22 @@ class TerrainLayout:
                 f"Every grid row must have the same, non-zero length. Got row lengths {[len(r) for r in rows]}."
             )
 
-        for i, row in enumerate(rows):
-            for j, subterrain in enumerate(row):
+        for x, row in enumerate(rows):
+            for y, subterrain in enumerate(row):
                 if isinstance(subterrain, type) and issubclass(subterrain, Subterrain):
                     raise TypeError(
-                        f"grid[{i}][{j}] is the class {subterrain.__name__}, not an instance. "
+                        f"grid[{x}][{y}] is the class {subterrain.__name__}, not an instance. "
                         f"Did you mean {subterrain.__name__}()?"
                     )
                 if not isinstance(subterrain, Subterrain):
                     raise TypeError(
-                        f"grid[{i}][{j}] must be a Subterrain, like terrain.Flat(), "
+                        f"grid[{x}][{y}] must be a Subterrain, like terrain.Flat(), "
                         f"got {type(subterrain).__name__}: {subterrain!r}"
                     )
                 name = subterrain.name
                 if name is not None and (not isinstance(name, str) or not name):
                     raise TypeError(
-                        f"grid[{i}][{j}] has the name {name!r}; a name must be a non-empty string."
+                        f"grid[{x}][{y}] has the name {name!r}; a name must be a non-empty string."
                     )
         return tuple(rows)
 
@@ -310,13 +322,70 @@ class TerrainLayout:
                 f"subterrain_size must be two positive sizes, got {subterrain_size!r}."
             )
         for size in subterrain_size:
-            steps = size / horizontal_scale
-            if not math.isclose(steps, round(steps), rel_tol=0, abs_tol=1e-6):
+            if not TerrainLayout._is_whole_number(size / horizontal_scale):
                 raise ValueError(
                     f"subterrain_size {tuple(subterrain_size)} must be a multiple of "
                     f"horizontal_scale ({horizontal_scale})."
                 )
         return (float(subterrain_size[0]), float(subterrain_size[1]))
+
+    @staticmethod
+    def _check_spacings(
+        grid: tuple[tuple[Subterrain, ...], ...],
+        subterrain_size: tuple[float, float],
+        horizontal_scale: float,
+    ) -> tuple[float, ...]:
+        """
+        Find the spacing each subterrain generates at, and check that they all fit together.
+
+        A subterrain without its own ``horizontal_scale`` uses the layout's. Each spacing must
+        be positive, a whole number of steps along each side of a subterrain, and a whole
+        multiple of the finest spacing, so every one of a subterrain's points lands on a
+        point of the height field.
+
+        Returns:
+            Each subterrain's spacing, in grid order.
+
+        Raises:
+            ValueError: If a spacing isn't positive, doesn't fit the subterrain size, or isn't
+                a multiple of the finest spacing.
+        """
+        spacings = {}
+        for x, row in enumerate(grid):
+            for y, subterrain in enumerate(row):
+                spacing = subterrain.horizontal_scale
+                if spacing is None:
+                    spacing = horizontal_scale
+                elif spacing <= 0:
+                    raise ValueError(
+                        f"grid[{x}][{y}] has the horizontal_scale {spacing}; it must be positive."
+                    )
+                for size in subterrain_size:
+                    if not TerrainLayout._is_whole_number(size / spacing):
+                        raise ValueError(
+                            f"subterrain_size {tuple(subterrain_size)} must be a multiple of "
+                            f"grid[{x}][{y}]'s horizontal_scale ({spacing})."
+                        )
+                spacings[(x, y)] = float(spacing)
+
+        (finest_x, finest_y), finest = min(spacings.items(), key=lambda item: item[1])
+        for (x, y), spacing in spacings.items():
+            steps = spacing / finest
+            if not TerrainLayout._is_whole_number(steps):
+                # Suggest the nearest spacings that would fit
+                lower = math.floor(steps) * finest
+                upper = math.ceil(steps) * finest
+                raise ValueError(
+                    f"grid[{x}][{y}]'s horizontal_scale ({spacing}) must be a multiple of the "
+                    f"finest one in the layout, {finest} at grid[{finest_x}][{finest_y}]. "
+                    f"Use {lower:g} or {upper:g}."
+                )
+        return tuple(spacings.values())
+
+    @staticmethod
+    def _is_whole_number(value: float) -> bool:
+        """Whether a number of steps is a whole number, allowing for floating point error."""
+        return math.isclose(value, round(value), rel_tol=0, abs_tol=1e-6)
 
     def _add_to(
         self,
@@ -369,28 +438,29 @@ class TerrainLayout:
             diffuse_texture=gs.textures.ImageTexture(image_array=image)
         )
 
-    def _subterrain_shape(self) -> tuple[int, int]:
-        """The ``(x, y)`` number of height field points in one subterrain, edges included."""
+    def _subterrain_shape(self, horizontal_scale: float) -> tuple[int, int]:
+        """
+        The ``(x, y)`` number of points in one subterrain, edges included, at a spacing in meters.
+        """
         x_size, y_size = self._subterrain_size
         # A side split into N steps has N + 1 points, counting both edges
-        x_points = round(x_size / self._horizontal_scale) + 1
-        y_points = round(y_size / self._horizontal_scale) + 1
+        x_points = round(x_size / horizontal_scale) + 1
+        y_points = round(y_size / horizontal_scale) + 1
         return (x_points, y_points)
 
     def _generate(self) -> np.ndarray:
         """Generate every subterrain, and stitch them into one height field."""
-        shape = self._subterrain_shape()
-        x_points, y_points = shape
+        x_points, y_points = self._subterrain_shape(self._horizontal_scale)
         x_steps, y_steps = x_points - 1, y_points - 1
         n_x, n_y = self.n_subterrains
 
         # Neighbors share their edge points, so the whole terrain has one more point than steps
         height_field = np.full((n_x * x_steps + 1, n_y * y_steps + 1), -np.inf)
 
-        for index, (name, subterrain) in enumerate(
-            zip(self._map.names, self._subterrains, strict=True)
+        for index, (name, subterrain, spacing) in enumerate(
+            zip(self._map.names, self._subterrains, self._spacings, strict=True)
         ):
-            heights = self._generate_subterrain(index, name, subterrain, shape)
+            heights = self._generate_subterrain(index, name, subterrain, spacing)
 
             # The part of the height field this subterrain covers
             grid_x, grid_y = divmod(index, n_y)
@@ -406,12 +476,16 @@ class TerrainLayout:
         return height_field
 
     def _generate_subterrain(
-        self, index: int, name: str, subterrain: Subterrain, shape: tuple[int, int]
+        self, index: int, name: str, subterrain: Subterrain, horizontal_scale: float
     ) -> np.ndarray:
-        """Generate one subterrain's heights, in meters, with its own seed, then ease and check them."""
+        """
+        Generate one subterrain's heights, in meters, at its own spacing and with its own seed,
+        then fill them in to the height field's spacing, ease and check them.
+        """
+        shape = self._subterrain_shape(horizontal_scale)
         with self._seeded(index):
             heights = subterrain.generate(
-                shape, self._horizontal_scale, self._vertical_scale
+                shape, horizontal_scale, self._vertical_scale
             )
 
         heights = np.asarray(heights, dtype=np.float64)
@@ -421,10 +495,36 @@ class TerrainLayout:
                 f"{description} generated a height field of shape {heights.shape}, "
                 f"expected {shape}."
             )
+        steps = round(horizontal_scale / self._horizontal_scale)
+        heights = self._fill_in(heights, steps)
         heights = subterrain.ease_edges(heights, self._horizontal_scale)
         if not np.all(np.isfinite(heights)):
             raise ValueError(f"{description} generated non-finite heights.")
         return heights
+
+    @staticmethod
+    def _fill_in(heights: np.ndarray, steps: int) -> np.ndarray:
+        """
+        Fill in the points between a coarser subterrain's points, with straight lines between
+        them along y, then along x.
+
+        Each of its points lands on every ``steps``-th point of the result, so its heights are
+        kept exactly.
+        """
+        if steps == 1:
+            return heights
+
+        # Positions are counted in the subterrain's own points, so its points land exactly
+        x_points, y_points = heights.shape
+        own_x = np.arange(x_points)
+        own_y = np.arange(y_points)
+        fine_x = np.arange((x_points - 1) * steps + 1) / steps
+        fine_y = np.arange((y_points - 1) * steps + 1) / steps
+
+        along_y = np.stack([np.interp(fine_y, own_y, row) for row in heights])
+        return np.stack(
+            [np.interp(fine_x, own_x, column) for column in along_y.T], axis=1
+        )
 
     @contextmanager
     def _seeded(self, index: int) -> Generator[None, None, None]:

@@ -153,16 +153,31 @@ class out_of_bounds(MdpFn):
 
     Args:
         terrain_manager: The terrain manager to check for out of bounds
-        subterrain: The subterrain to keep the robot inside of
+        subterrain: The subterrain to keep the robot inside of. Any of:
+
+                    - A name: that subterrain.
+                    - ``True``: the subterrain each environment was last placed on
+                      (see :attr:`TerrainManager.env_subterrain`). Use this when a reset
+                      spreads environments across several subterrains.
+                    - ``None`` or ``False``: the whole terrain.
         border_margin: The margin (in meters) to add to the terrain bounds
                        This terminates the episode before the robot falls off the terrain.
         entity: The entity to check. Defaults to `env.robot`.
     """
 
     terrain_manager: TerrainManager
-    subterrain: str | None = None
+    subterrain: str | bool | None = None
     border_margin: float = 0.5
     entity: RigidEntity | None = None
+
+    def build(self):
+        """
+        Look up the bounds once, unless each environment has its own. A name shared by several
+        subterrains, or an unknown name, warns here, before the first step.
+        """
+        if self.subterrain is not True:
+            name = self.subterrain if isinstance(self.subterrain, str) else None
+            self._bounds = self.terrain_manager.get_bounds(name)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the entity's base position
@@ -170,7 +185,13 @@ class out_of_bounds(MdpFn):
         position = cast(torch.Tensor, entity.get_pos())
 
         # Get terrain bounds
-        x_min, x_max, y_min, y_max = self.terrain_manager.get_bounds(self.subterrain)
+        if self.subterrain is True:
+            bounds = self.terrain_manager.get_subterrain_bounds(
+                self.terrain_manager.env_subterrain
+            )
+            x_min, x_max, y_min, y_max = bounds.unbind(dim=-1)
+        else:
+            x_min, x_max, y_min, y_max = self._bounds
         x_min_bound, x_max_bound = (
             x_min + self.border_margin,
             x_max - self.border_margin,

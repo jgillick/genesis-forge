@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genesis-forge"
-version = "1.0.0"
+version = "1.1.0"
 authors = [{ name = "Jeremy Gillick" }]
 description = "A robotics RL training framework for Genesis inspired by Isaac Lab and Gymnasium."
 readme = "README.md"
@@ -13,7 +13,7 @@ dependencies = [
   # Released in lockstep: the two ship together at the same major/minor version, so this is an
   # exact pin -- either package can ship a patch on its own.
   "genesis-forge-runtime>=1.0.0,<1.1",
-  "genesis-world>=1.3.0",
+  "genesis-world>=1.3.3",
   "gymnasium",
   "pysdl2",
   "pysdl2-dll",

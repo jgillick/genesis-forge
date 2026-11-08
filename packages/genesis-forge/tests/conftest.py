@@ -48,5 +48,7 @@ def _fake_genesis_globals(monkeypatch):
     monkeypatch.setattr(gs, "tc_float", torch.float32, raising=False)
     monkeypatch.setattr(gs, "tc_int", torch.int32, raising=False)
     monkeypatch.setattr(gs, "tc_bool", torch.bool, raising=False)
+    # Read by the Genesis terrain generators the TerrainLayout subterrains call
+    monkeypatch.setattr(gs, "np_float", np.float32, raising=False)
     # The float32 epsilon `gs.init()` would set; read by genesis.utils.geom functions
     monkeypatch.setattr(gs, "EPS", float(np.finfo(np.float32).eps), raising=False)

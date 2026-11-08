@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import torch
 import torch.nn.functional as F
@@ -13,11 +14,13 @@ from genesis_forge.managers import (
     ContactManager,
     EntityManager,
     MdpFn,
+    TerrainManager,
 )
 from genesis_forge.managers.action.base import BaseActionManager
 from genesis_forge.utils import (
     entity_ang_vel,
     entity_lin_vel,
+    heading_from_quat,
 )
 from genesis_forge.utils import (
     entity_projected_gravity as get_entity_projected_gravity,
@@ -318,6 +321,125 @@ class raycaster_distance(MdpFn):
             assert self._max_range is not None
             distances = distances / self._max_range
         return distances
+
+
+"""
+Terrain observations
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class height_scan(MdpFn):
+    """
+    Terrain heights in a grid around the entity's base, relative to the base.
+
+    Each value is ``base_z - ground_z - offset``. Ground at ``offset`` below the base
+    reads as 0, higher ground is negative, and lower ground is positive.
+
+    The grid turns with the base's heading, but stays level when the base tilts. The values
+    step along x first: the first row of points runs from the back of the grid to the front,
+    at the grid's rightmost y, then the next row, and so on.
+
+    This is often given to the critic only (an ``ObservationManager`` named ``"critic"``),
+    since a real robot needs its own height map to give it to the policy.
+
+    Args:
+        terrain_manager: The terrain manager to measure ground heights with.
+        offset: Subtracted from every value. This could be set to the robot's standing height, 
+                so flat ground reads close to 0.
+        size: The ``(length, width)`` of the grid, in meters, along the entity's x and y axes.
+        resolution: The spacing between grid points, in meters.
+        entity_manager: The entity manager for the entity.
+        entity: The entity to scan around. Defaults to ``env.robot``.
+                Not necessary if ``entity_manager`` is provided.
+
+    Example::
+
+        ObservationManager(
+            self,
+            name="critic",
+            cfg={
+                "height_scan": {
+                    "fn": observations.height_scan(
+                        terrain_manager=self.terrain_manager,
+                        entity_manager=self.robot_manager,
+                        offset=0.3,  # the robot's standing height
+                    ),
+                    "noise": 0.1,
+                    "clip": (-1.0, 1.0),
+                },
+            },
+        )
+
+    Returns:
+        torch.Tensor: Shape ``(num_envs, n_points)``, where ``n_points`` is
+        ``(floor(length / resolution) + 1) * (floor(width / resolution) + 1)`` -- 187 for the
+        default grid. The grid is always centered on the base.
+    """
+
+    terrain_manager: TerrainManager
+    offset: float = 0.0
+    size: tuple[float, float] = (1.6, 1.0)
+    resolution: float = 0.1
+    entity_manager: EntityManager | None = None
+    entity: RigidEntity | None = None
+
+    def build(self):
+        """
+        Check the params, and build the grid of scan points around the base, in the
+        base's frame.
+        """
+        if self.resolution <= 0:
+            raise ValueError(
+                f"height_scan resolution must be positive, got {self.resolution}."
+            )
+        if len(self.size) != 2 or any(length <= 0 for length in self.size):
+            raise ValueError(
+                f"height_scan size must be two positive lengths, got {self.size!r}."
+            )
+
+        # The points along each axis, centered on the base. A length that isn't a multiple of
+        # the resolution is cut short evenly at both ends.
+        length, width = self.size
+        x = self._centered_points(length)
+        y = self._centered_points(width)
+
+        # Every (x, y) pair, in the base's frame, with x changing fastest
+        grid_y, grid_x = torch.meshgrid(y, x, indexing="ij")
+        self._grid_x = grid_x.flatten()
+        self._grid_y = grid_y.flatten()
+
+    def _centered_points(self, length: float) -> torch.Tensor:
+        """Points ``resolution`` apart, spanning up to ``length``, centered on 0."""
+        n_points = math.floor(length / self.resolution + 1e-6) + 1
+        steps = torch.arange(n_points, device=gs.device, dtype=gs.tc_float)
+        return (steps - (n_points - 1) / 2) * self.resolution
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        """
+        Measure the terrain under every scan point, relative to the base, for every
+        environment.
+        """
+        if self.entity_manager is not None:
+            base_pos = self.entity_manager.base_pos
+            base_quat = self.entity_manager.base_quat
+        else:
+            entity = self.entity if self.entity is not None else env.robot
+            base_pos = cast(torch.Tensor, entity.get_pos())
+            base_quat = cast(torch.Tensor, entity.get_quat())
+
+        # Turn the grid to each entity's heading, and place it around the base
+        heading = heading_from_quat(base_quat)
+        cos = torch.cos(heading)[:, None]
+        sin = torch.sin(heading)[:, None]
+        x = base_pos[:, 0:1] + cos * self._grid_x - sin * self._grid_y
+        y = base_pos[:, 1:2] + sin * self._grid_x + cos * self._grid_y
+
+        # One height query for every point in every environment
+        ground = self.terrain_manager.get_terrain_height(x.flatten(), y.flatten())
+        ground = ground.reshape(x.shape)
+
+        return base_pos[:, 2:3] - ground - self.offset
 
 
 """

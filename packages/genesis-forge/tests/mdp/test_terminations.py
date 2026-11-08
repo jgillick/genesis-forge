@@ -22,11 +22,29 @@ class FakeContactManager:
 
 
 class FakeTerrainManager:
-    def __init__(self, bounds):
+    def __init__(self, bounds, env_subterrain=None, subterrain_bounds=None):
+        """
+        A terrain with whole-terrain bounds, and optional per-env subterrains and their
+        bounds.
+        """
         self._bounds = bounds
+        self.env_subterrain = env_subterrain
+        self._subterrain_bounds = subterrain_bounds
+
+    def indices(self, name):
+        """``known`` is one subterrain and ``group`` is two; anything else is unknown."""
+        if name == "known":
+            return torch.tensor([0])
+        if name == "group":
+            return torch.tensor([0, 1])
+        raise KeyError(name)
 
     def get_bounds(self, subterrain=None):
         return self._bounds
+
+    def get_subterrain_bounds(self, subterrain_idx):
+        """The bounds of each subterrain index."""
+        return self._subterrain_bounds[subterrain_idx]
 
 
 class FakeActuatorManager:
@@ -130,6 +148,86 @@ def test_out_of_bounds_checks_terrain_bounds_with_margin(env):
     )
 
     assert torch.equal(fn(env), torch.tensor([True]))
+
+
+def test_out_of_bounds_looks_up_a_named_subterrain_once_at_build(env):
+    """A name's bounds come from the terrain manager at build, not on every step."""
+
+    class SpyTerrainManager(FakeTerrainManager):
+        def get_bounds(self, subterrain=None):
+            """Record each subterrain whose bounds were asked for."""
+            self.asked_for.append(subterrain)
+            return super().get_bounds(subterrain)
+
+    class FakeRobot:
+        def get_pos(self):
+            """One robot inside the bounds."""
+            return torch.tensor([[5.0, 5.0, 0.0]])
+
+    env.robot = FakeRobot()
+    terrain = SpyTerrainManager((0.0, 10.0, 0.0, 10.0))
+    terrain.asked_for = []
+    fn = built(
+        terminations.out_of_bounds(terrain_manager=terrain, subterrain="known"), env
+    )
+    fn(env)
+    fn(env)
+
+    assert terrain.asked_for == ["known"]
+
+
+def test_out_of_bounds_with_subterrain_false_uses_the_whole_terrain(env):
+    """subterrain=False means the same as None: the whole terrain."""
+
+    class FakeRobot:
+        def get_pos(self):
+            """One robot at x=15, y=5."""
+            return torch.tensor([[15.0, 5.0, 0.0]])
+
+    class SpyTerrainManager(FakeTerrainManager):
+        def get_bounds(self, subterrain=None):
+            """Record which subterrain's bounds were asked for."""
+            self.asked_for = subterrain
+            return super().get_bounds(subterrain)
+
+    env.robot = FakeRobot()
+    terrain = SpyTerrainManager((0.0, 20.0, 0.0, 10.0))
+    fn = built(
+        terminations.out_of_bounds(terrain_manager=terrain, subterrain=False), env
+    )
+
+    assert torch.equal(fn(env), torch.tensor([False]))
+    assert terrain.asked_for is None
+
+
+def test_out_of_bounds_checks_each_env_against_its_assigned_subterrain(env):
+    """
+    Two robots at the same spot: inside the first one's subterrain, outside the second
+    one's.
+    """
+
+    class FakeRobot:
+        def get_pos(self):
+            """Both robots at x=5, y=5."""
+            # Both robots sit at x=5: inside subterrain 0, outside subterrain 1
+            return torch.tensor([[5.0, 5.0, 0.0], [5.0, 5.0, 0.0]])
+
+    env.robot = FakeRobot()
+    terrain = FakeTerrainManager(
+        (0.0, 20.0, 0.0, 10.0),
+        env_subterrain=torch.tensor([0, 1]),
+        subterrain_bounds=torch.tensor(
+            [[0.0, 10.0, 0.0, 10.0], [10.0, 20.0, 0.0, 10.0]]
+        ),
+    )
+    fn = built(
+        terminations.out_of_bounds(
+            terrain_manager=terrain, subterrain=True, border_margin=0.5
+        ),
+        env,
+    )
+
+    assert torch.equal(fn(env), torch.tensor([False, True]))
 
 
 """

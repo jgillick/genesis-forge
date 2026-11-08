@@ -90,14 +90,15 @@ def test_step_accumulates_episode_data_when_logging_enabled(env):
     assert torch.allclose(mgr.episode_data["a"], expected)
 
 
-def test_step_does_not_accumulate_episode_data_when_logging_disabled(env):
+def test_step_accumulates_episode_data_when_logging_disabled(env):
+    """Logging only controls what's written to the extras, so the means stay known."""
     mgr = RewardManager(
         env, cfg={"a": {"fn": echo_reward, "weight": 1.0}}, logging_enabled=False
     )
     mgr.build()
     mgr.step()
 
-    assert torch.equal(mgr.episode_data["a"], torch.zeros(env.num_envs))
+    assert torch.allclose(mgr.episode_data["a"], torch.full((env.num_envs,), env.dt))
 
 
 """
@@ -118,11 +119,88 @@ def test_reset_logs_the_mean_reward_before_and_after_weight(env):
     assert mgr.last_episode_mean_reward("a", before_weight=True) == pytest.approx(2.0)
 
 
+def test_a_reset_before_the_first_step_gives_a_zero_mean_not_nan(env):
+    """The episode clock starts nearly at zero, so an early reset doesn't divide 0 by 0."""
+    mgr = RewardManager(env, cfg={"a": {"fn": echo_reward, "weight": 1.0}})
+    mgr.build()
+
+    mgr.reset()
+
+    assert mgr.last_episode_mean_reward("a") == 0.0
+
+
 def test_last_episode_mean_reward_defaults_to_zero_before_any_reset(env):
     mgr = RewardManager(env, cfg={"a": {"fn": echo_reward, "weight": 2.0}})
     mgr.build()
 
     assert mgr.last_episode_mean_reward("a") == 0.0
+
+
+def test_episode_mean_reward_for_envs_is_per_env_and_per_second(env):
+    """Each env gets its own mean, before and after weight, for the episode so far."""
+
+    def by_env(env):
+        return torch.arange(env.num_envs, dtype=torch.float32)
+
+    mgr = RewardManager(env, cfg={"a": {"fn": by_env, "weight": 2.0}})
+    mgr.build()
+    mgr.step()
+    mgr.step()
+
+    before = mgr.episode_mean_reward_for_envs("a", torch.tensor([1, 3]))
+    after = mgr.episode_mean_reward_for_envs(
+        "a", torch.tensor([1, 3]), before_weight=False
+    )
+    assert torch.allclose(before, torch.tensor([1.0, 3.0]))
+    assert torch.allclose(after, torch.tensor([2.0, 6.0]))
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.arange(env.num_envs).float()
+    )
+
+
+def test_episode_means_are_known_at_zero_weight(env):
+    """A reward parked at weight 0 still has a mean before its weight."""
+    mgr = RewardManager(
+        env, cfg={"a": {"fn": echo_reward, "params": {"value": 2.0}, "weight": 0.0}}
+    )
+    mgr.build()
+    mgr.step()
+
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.full((env.num_envs,), 2.0)
+    )
+    mgr.reset()
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+
+
+def test_a_weight_change_mid_episode_does_not_skew_the_mean(env):
+    """The mean before weight is the same whatever the weight was along the way."""
+    mgr = RewardManager(
+        env, cfg={"a": {"fn": echo_reward, "params": {"value": 2.0}, "weight": 1.0}}
+    )
+    mgr.build()
+    mgr.step()
+    mgr["a"].weight = 5.0
+    mgr.step()
+
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.full((env.num_envs,), 2.0)
+    )
+
+
+def test_reset_records_the_mean_but_does_not_log_when_logging_disabled(env):
+    mgr = RewardManager(
+        env,
+        cfg={"a": {"fn": echo_reward, "params": {"value": 2.0}, "weight": 3.0}},
+        logging_enabled=False,
+    )
+    mgr.build()
+    mgr.step()
+
+    mgr.reset()
+
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+    assert "Rewards / a" not in env.extras[env.extras_logging_key]
 
 
 def test_reset_writes_to_the_env_extras_logging_dict(env):

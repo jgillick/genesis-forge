@@ -1,14 +1,17 @@
-"""Name-pattern matching helpers in genesis_forge.utils.
+"""Helpers in genesis_forge.utils.
 
-These back the joint/link selection used by every manager that accepts name
-patterns, so the exact-vs-regex and first-match-wins rules are pinned here.
+The name-pattern helpers back the joint/link selection used by every manager that
+accepts name patterns, so the exact-vs-regex and first-match-wins rules are pinned here.
 """
 
+import math
 import re
 
 import pytest
+import torch
+from genesis.utils.geom import transform_by_quat, xyz_to_quat
 
-from genesis_forge.utils import assign_by_pattern, name_matches
+from genesis_forge.utils import assign_by_pattern, heading_from_quat, name_matches
 
 """
 name_matches
@@ -106,3 +109,32 @@ def test_an_invalid_pattern_still_matches_its_own_literal_name():
 def test_assign_by_pattern_propagates_an_invalid_pattern():
     with pytest.raises(re.error):
         assign_by_pattern(["chassis", "wheel1"], {"axel(.*": 1.0})
+
+
+"""
+heading_from_quat
+"""
+
+
+def test_heading_from_quat_is_where_the_nose_points():
+    """
+    The heading is the entity's nose flattened onto the ground, so tilt moves it. The
+    euler yaw -- `quat_to_xyz(quat)[:, 2]` -- does not, which is why it isn't used here:
+    swap one for the other and a tilted robot's heading error goes wrong.
+    """
+    # Yawed 40 degrees, and pitched 45 degrees nose-up
+    quat = xyz_to_quat(torch.tensor([[0.0, 45.0, 40.0]]), degrees=True)
+    nose = transform_by_quat(torch.tensor([[1.0, 0.0, 0.0]]), quat)[0]
+
+    heading = heading_from_quat(quat).item()
+
+    assert math.isclose(heading, math.atan2(nose[1], nose[0]), abs_tol=1e-5)
+    # The euler yaw of this orientation is exactly the 40 degrees it was built from; the
+    # nose is further round than that, because pitching it up swings it away
+    assert heading > math.radians(45)
+
+
+def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
+    quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
+
+    assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)

@@ -105,13 +105,15 @@ class RewardManager(BaseManager):
         self._reward_buf = torch.zeros(
             (env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
-        self._episode_seconds = torch.zeros(
-            (self.env.num_envs,), device=gs.device, dtype=gs.tc_float
+        # Nearly zero, like after a reset, so a reset before the first step doesn't divide by zero
+        self._episode_seconds = torch.full(
+            (self.env.num_envs,), 1e-10, device=gs.device, dtype=gs.tc_float
         )
+        # Kept on the device, so a reset doesn't wait on the GPU; read as floats when asked for
         self._episode_mean: dict[str, torch.Tensor] = {}
-        self._episode_data: dict[str, torch.Tensor] = {}
+        self._episode_sums: dict[str, torch.Tensor] = {}
         for name in self.cfg:
-            self._episode_data[name] = torch.zeros(
+            self._episode_sums[name] = torch.zeros(
                 (env.num_envs,), device=gs.device, dtype=gs.tc_float
             )
 
@@ -125,9 +127,13 @@ class RewardManager(BaseManager):
     @property
     def episode_data(self) -> dict[str, torch.Tensor]:
         """
-        Get the accumulated reward data for the current episode of all environments.
+        Get the accumulated reward data for the current episode of all environments,
+        at each reward's current weight.
         """
-        return self._episode_data
+        return {
+            name: sums * self.cfg[name].weight
+            for name, sums in self._episode_sums.items()
+        }
 
     """
     Helpers
@@ -136,7 +142,8 @@ class RewardManager(BaseManager):
     def last_episode_mean_reward(self, name: str, before_weight: bool = True) -> float:
         """
         Get the last mean reward for an episode for a given reward name.
-        The mean reward is only calculated when episodes end/reset.
+        The mean reward is only calculated when episodes end/reset, and is the mean across
+        the environments that reset together.
 
         Args:
             name: The name of the reward to get the mean for.
@@ -145,9 +152,36 @@ class RewardManager(BaseManager):
         Returns:
             The last mean reward for an episode for a given reward name.
         """
-        rew = self._episode_mean.get(name, 0.0)
-        if before_weight:
-            rew /= self.cfg[name].weight
+        rew = float(self._episode_mean.get(name, 0.0))
+        if not before_weight:
+            rew *= self.cfg[name].weight
+        return rew
+
+    def episode_mean_reward_for_envs(
+        self,
+        name: str,
+        envs_idx: torch.Tensor | None = None,
+        before_weight: bool = True,
+    ) -> torch.Tensor:
+        """
+        Get each environment's mean reward, per second, for its current episode so far, for a
+        given reward name. Call it before the environments reset, such as from a curriculum,
+        to grade the episodes that just ended.
+
+        Args:
+            name: The name of the reward to get the mean for.
+            envs_idx: The environments to get the mean for. If None, all environments.
+            before_weight: If True, this will be the base reward value before the weight was applied.
+
+        Returns:
+            The mean reward for each environment. Shape is (len(envs_idx),).
+        """
+        if envs_idx is None:
+            envs_idx = self.env.all_envs_idx
+
+        rew = self._episode_sums[name][envs_idx] / self._episode_seconds[envs_idx]
+        if not before_weight:
+            rew = rew * self.cfg[name].weight
         return rew
 
     """
@@ -175,26 +209,19 @@ class RewardManager(BaseManager):
         self._reward_buf[:] = 0.0
         self._episode_seconds += dt
         for name, cfg in self.cfg.items():
-            # Execute the function even at zero weight, so stateful functions
-            # (velocity histories, previous distances) stay current
-            value = cfg.execute()
-            if cfg.weight == 0:
-                continue
+            value = cfg.execute() * dt
 
-            # Weight the reward value
-            value = value * (cfg.weight * dt)
+            # Add to the episode sums, even at zero weight, so the mean is always known
+            self._episode_sums[name] += value
 
-            # Add to reward buffer
-            self._reward_buf += value
-
-            # Add to episode data for logging (if enabled)
-            if self.logging_enabled:
-                self._episode_data[name] += value
+            # Add the weighted value to the reward buffer
+            if cfg.weight != 0:
+                self._reward_buf += value * cfg.weight
 
         return self._reward_buf
 
     def reset(self, envs_idx: torch.Tensor | None = None):
-        """Log the reward mean values at the end of the episode"""
+        """Record, and log, the reward mean values at the end of the episode"""
         if envs_idx is None:
             envs_idx = self.env.all_envs_idx
 
@@ -202,25 +229,22 @@ class RewardManager(BaseManager):
         for cfg in self.cfg.values():
             cfg.reset(envs_idx)
 
-        # Log the reward data
-        if self.enabled and self.logging_enabled:
-            logging_dict = self.env.extras[self.env.extras_logging_key]
+        for name in self.cfg:
+            if self.enabled and len(envs_idx) > 0:
+                # The mean across the episodes that just ended, per second
+                episode_mean = torch.mean(
+                    self.episode_mean_reward_for_envs(name, envs_idx)
+                )
+                self._episode_mean[name] = episode_mean
 
-            episode_seconds = self._episode_seconds[envs_idx]
-            for name, value in self._episode_data.items():
-                # Don't log items that have zero weight
-                cfg = self.cfg[name]
-                if cfg.weight != 0:
-                    # Calculate average for each environment
-                    value[envs_idx] /= episode_seconds
+                # Log items with a weight, at their weight
+                weight = self.cfg[name].weight
+                if self.logging_enabled and weight != 0:
+                    logging_dict = self.env.extras[self.env.extras_logging_key]
+                    logging_dict[f"{self.logging_tag} / {name}"] = episode_mean * weight
 
-                    # Take the mean across all episodes
-                    episode_mean = torch.mean(value[envs_idx])
-                    self._episode_mean[name] = episode_mean.item()
-                    logging_dict[f"{self.logging_tag} / {name}"] = episode_mean
-
-                # Reset episodic data
-                self._episode_data[name][envs_idx] = 0.0
+            # Reset episodic data
+            self._episode_sums[name][envs_idx] = 0.0
 
         # Reset episode seconds to nearly zero, to prevent divide by zero errors
         self._episode_seconds[envs_idx] = 1e-10

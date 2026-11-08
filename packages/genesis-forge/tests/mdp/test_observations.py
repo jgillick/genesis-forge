@@ -1,5 +1,7 @@
 """Numerical behavior of the observation functions in genesis_forge.mdp.observations."""
 
+import math
+
 import pytest
 import torch
 from helpers import built
@@ -282,3 +284,177 @@ def test_has_contact_thresholds_per_link(env):
         env,
     )
     assert torch.equal(fn(env), torch.tensor([[1.0, 0.0]]))
+
+
+"""
+height_scan
+"""
+
+
+class FakeBaseEntityManager:
+    def __init__(self, base_pos, base_quat):
+        """An entity manager with the given base positions and quaternions."""
+        self.base_pos = base_pos
+        self.base_quat = base_quat
+
+
+class FakeTerrainManager:
+    """Ground height is ``slope * x``, so a point's height shows where it was sampled."""
+
+    def __init__(self, slope=0.0, height=0.0):
+        """Ground at ``height + slope * x``."""
+        self.slope = slope
+        self.height = height
+
+    def get_terrain_height(self, x, y):
+        """The ground height at each point."""
+        return self.height + self.slope * x
+
+
+def yaw_quat(yaw):
+    """A quaternion turned ``yaw`` radians around z, for one environment."""
+    return torch.tensor([[math.cos(yaw / 2), 0.0, 0.0, math.sin(yaw / 2)]])
+
+
+def scan(env, terrain, pos=(0.0, 0.0, 0.0), quat=None, **params):
+    """Build a height_scan for one base at ``pos``, and return it with one scan's values."""
+    manager = FakeBaseEntityManager(
+        torch.tensor([pos]), quat if quat is not None else yaw_quat(0.0)
+    )
+    fn = built(
+        observations.height_scan(
+            terrain_manager=terrain, entity_manager=manager, **params
+        ),
+        env,
+    )
+    return fn, fn(env)
+
+
+def test_height_scan_default_grid_has_187_points(env):
+    """The default 1.6m x 1.0m grid at 0.1m gives 17 x 11 points."""
+    _, values = scan(env, FakeTerrainManager())
+
+    assert values.shape == (1, 187)
+
+
+def test_height_scan_is_base_height_minus_ground_minus_offset(env):
+    """A base at 0.5m over ground at 0.1m, with a 0.3m offset, reads 0.1 everywhere."""
+    _, values = scan(
+        env, FakeTerrainManager(height=0.1), pos=(0.0, 0.0, 0.5), offset=0.3
+    )
+
+    assert torch.allclose(values, torch.full((1, 187), 0.1))
+
+
+def test_height_scan_grid_spans_the_size_around_the_base(env):
+    """A 2m x 1m grid at 0.5m samples 5 x 3 points, from 1m behind the base to 1m ahead."""
+    # Ground height equals x, so the values reveal where each point was sampled
+    _, values = scan(
+        env,
+        FakeTerrainManager(slope=1.0),
+        pos=(10.0, 0.0, 0.0),
+        size=(2.0, 1.0),
+        resolution=0.5,
+    )
+
+    sampled_x = -values[0]
+    assert values.shape == (1, 15)  # 5 x 3
+    assert torch.isclose(sampled_x.min(), torch.tensor(9.0))
+    assert torch.isclose(sampled_x.max(), torch.tensor(11.0))
+
+
+def test_height_scan_grid_stays_centered_when_the_size_is_not_a_multiple(env):
+    """A 1m side at 0.3m fits 4 points, trimmed evenly so the grid stays centered."""
+    _, values = scan(
+        env,
+        FakeTerrainManager(slope=1.0),
+        pos=(10.0, 0.0, 0.0),
+        size=(1.0, 1.0),
+        resolution=0.3,
+    )
+
+    sampled_x = -values[0]
+    assert values.shape == (1, 16)  # 4 x 4
+    assert torch.isclose(sampled_x.min(), torch.tensor(9.55))
+    assert torch.isclose(sampled_x.max(), torch.tensor(10.45))
+
+
+def test_height_scan_steps_along_x_first(env):
+    """The first points step along x, then the next row starts back at the lowest x."""
+    _, values = scan(
+        env, FakeTerrainManager(slope=1.0), size=(1.0, 1.0), resolution=0.5
+    )
+
+    assert torch.allclose(-values[0, :4], torch.tensor([-0.5, 0.0, 0.5, -0.5]))
+
+
+def test_height_scan_offset_defaults_to_zero(env):
+    """Without an offset, the values are the base's height above the ground."""
+    fn = observations.height_scan(terrain_manager=FakeTerrainManager())
+
+    assert fn.offset == 0.0
+
+
+def test_height_scan_turns_with_the_heading(env):
+    """Turned 90 degrees, a grid that is long in x samples along world y instead."""
+    # Turned 90 degrees, the grid's length runs along world y, so x barely varies
+    _, values = scan(
+        env,
+        FakeTerrainManager(slope=1.0),
+        quat=yaw_quat(math.pi / 2),
+        size=(2.0, 0.0001),
+        resolution=0.5,
+    )
+
+    assert torch.allclose(values, torch.zeros_like(values), atol=1e-4)
+
+
+def test_height_scan_ignores_pitch(env):
+    """A pitched base still scans level ground ahead of it."""
+    pitch = math.radians(20)
+    quat = torch.tensor([[math.cos(pitch / 2), 0.0, math.sin(pitch / 2), 0.0]])
+    _, level = scan(env, FakeTerrainManager(slope=1.0))
+    _, pitched = scan(env, FakeTerrainManager(slope=1.0), quat=quat)
+
+    assert torch.allclose(level, pitched, atol=1e-5)
+
+
+def test_height_scan_scans_each_env_around_its_own_base(env):
+    """Each environment's grid is centered on its own base."""
+    manager = FakeBaseEntityManager(
+        torch.tensor([[0.0, 0.0, 0.0], [5.0, 0.0, 0.0]]),
+        torch.cat([yaw_quat(0.0), yaw_quat(0.0)]),
+    )
+    fn = built(
+        observations.height_scan(
+            terrain_manager=FakeTerrainManager(slope=1.0),
+            entity_manager=manager,
+        ),
+        env,
+    )
+
+    values = fn(env)
+
+    assert torch.isclose(-values[1].mean() - -values[0].mean(), torch.tensor(5.0))
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"resolution": 0.0},
+        {"size": (1.0, -1.0)},
+    ],
+)
+def test_height_scan_rejects_bad_params(env, params):
+    """A zero resolution or a negative size fails at build."""
+    with pytest.raises(ValueError):
+        scan(env, FakeTerrainManager(), **params)
+
+
+def test_height_scan_rebuilds_the_grid_when_the_size_changes(env):
+    """Assigning a new size rebuilds the grid, so a curriculum can change it."""
+    fn, _ = scan(env, FakeTerrainManager())
+
+    fn.size = (1.0, 1.0)
+
+    assert fn(env).shape == (1, 121)

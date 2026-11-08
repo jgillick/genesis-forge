@@ -1,10 +1,6 @@
-import os
-
 import genesis as gs
-import numpy as np
-from PIL import Image
 
-from genesis_forge import EnvMode, ManagedEnvironment
+from genesis_forge import EnvMode, ManagedEnvironment, terrain
 from genesis_forge.managers import (
     ActuatorManager,
     ContactManager,
@@ -43,7 +39,6 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             max_episode_random_scaling=0.1,
         )
         self._mode = mode
-        self._curriculum_level = 0
 
         # Construct the scene
         self.scene = gs.Scene(
@@ -64,7 +59,27 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
         )
 
         # Create terrain
-        self.terrain = self.create_terrain(self.scene)
+        self.terrain_layout = terrain.TerrainLayout(
+            self.scene,
+            subterrain_size=(12, 12),
+            vertical_scale=0.001,  # the Go2 robot is small
+            grid=[
+                [
+                    terrain.RandomUniform(
+                        name="rough",
+                        min_height=0.0,
+                        max_height=0.1,
+                        step=0.05,
+                        downsampled_scale=0.25,
+                    ),
+                    terrain.PyramidStairs(name="stairs_up", step_height=0.1),
+                ],
+                [
+                    terrain.PyramidStairs(name="stairs_down", step_height=-0.1),
+                    terrain.RandomGrid(name="rough_grid", grid_height=0.05),
+                ],
+            ],
+        )
 
         # Robot
         self.robot = self.scene.add_entity(
@@ -88,12 +103,13 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             env_idx=0,
             debug=True,
         )
+        self.camera.follow_entity(self.robot)
 
     def config(self):
         """
         Configure the environment managers
         """
-        self.terrain_manager = TerrainManager(self, terrain=self.terrain)
+        self.terrain_manager = TerrainManager(self, layout=self.terrain_layout)
 
         ##
         # Robot manager
@@ -102,7 +118,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             self,
             entity=self.robot,
             on_reset={
-                # Randomize the robot's position on the terrain after reset
+                # Place each robot at a random spot near the middle of the terrain, after reset
                 "position": {
                     "fn": reset.randomize_terrain_position(
                         height_offset=HEIGHT_OFFSET,
@@ -237,7 +253,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             },
         )
 
-        ##
+        ##self.create_terrain(self.scene)
         # Termination conditions
         self.termination_manager = TerminationManager(
             self,
@@ -291,42 +307,3 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
                 },
             },
         )
-
-    def create_terrain(self, scene: gs.Scene):
-        """
-        Create a random terrain map entity
-        """
-
-        # Create a tiled terrain surface texture
-        # Load a checker image, and tile it 24 times in X and Y directions
-        this_dir = os.path.dirname(os.path.abspath(__file__))
-        tile_path = os.path.join(this_dir, "checker.png")
-        checker_image = np.array(Image.open(tile_path))
-        tiled_image = np.tile(checker_image, (24, 24, 1))
-
-        return scene.add_entity(
-            surface=gs.surfaces.Default(
-                diffuse_texture=gs.textures.ImageTexture(
-                    image_array=tiled_image,
-                )
-            ),
-            morph=gs.morphs.Terrain(
-                pos=(-12, -12, 0),
-                n_subterrains=(1, 1),
-                subterrain_size=(24, 24),
-                vertical_scale=0.001,  # the Go2 robot is small
-                subterrain_types=[["random_uniform_terrain"]],
-                subterrain_parameters={
-                    "random_uniform_terrain": {
-                        "min_height": 0.0,
-                        "max_height": 0.1,
-                        "step": 0.05,
-                        "downsampled_scale": 0.25,
-                    },
-                },
-            ),
-        )
-
-    def build(self):
-        super().build()
-        self.camera.follow_entity(self.robot)

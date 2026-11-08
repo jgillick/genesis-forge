@@ -423,11 +423,20 @@ def test_every_built_in_subterrain_generates(subterrain):
     assert np.all(np.isfinite(layout.height_field))
 
 
+def border_layout(subterrain, seed=0):
+    """A layout of one 12m subterrain at a 0.25m scale, for checking its edges."""
+    return make_layout(
+        grid=[[subterrain]],
+        subterrain_size=(12.0, 12.0),
+        horizontal_scale=0.25,
+        seed=seed,
+    )
+
+
 def test_fractal_edges_meet_the_ground():
     """The border eases a fractal's edges to 0, whichever way it drifted."""
     for seed in range(4):
-        np.random.seed(seed)
-        heights = terrain.Fractal().generate((49, 49), 0.25, 0.001)
+        heights = border_layout(terrain.Fractal(), seed=seed).height_field
 
         assert np.allclose(heights[[0, -1], :], 0.0)
         assert np.allclose(heights[:, [0, -1]], 0.0)
@@ -441,6 +450,43 @@ def test_fractal_without_a_border_keeps_its_edges():
     heights = terrain.Fractal(border_width=0.0).generate((49, 49), 0.25, 0.001)
 
     assert not np.allclose(heights[0], 0.0)
+
+
+def test_other_subterrains_have_no_border_by_default():
+    """Only Fractal eases its edges unless asked, so the others generate as before."""
+    eased = border_layout(terrain.Wave()).height_field
+
+    assert terrain.Wave().border_width == 0.0
+    assert not np.allclose(eased[0], 0.0)
+
+
+def test_any_subterrain_can_ease_its_edges():
+    """A border_width on a built-in, or on your own subterrain, eases its edges to 0."""
+
+    @dataclass(kw_only=True)
+    class Raised(terrain.Subterrain):
+        type: ClassVar[str] = "raised"
+
+        def generate(self, shape, horizontal_scale, vertical_scale):
+            return np.full(shape, 0.5)
+
+    for subterrain in (terrain.Wave(border_width=1.0), Raised(border_width=1.0)):
+        heights = border_layout(subterrain).height_field
+
+        assert np.allclose(heights[[0, -1], :], 0.0)
+        assert np.allclose(heights[:, [0, -1]], 0.0)
+        assert np.abs(heights[8:-8, 8:-8]).max() > 0.01
+
+
+def test_easing_is_smooth():
+    """The ease rises from 0 at the edge to 1 at border_width from the edge, with no step along the way."""
+    subterrain = terrain.Flat(border_width=1.0)
+    eased = subterrain.ease_edges(np.ones((49, 49)), horizontal_scale=0.25)
+    center_row = eased[:, 24]
+
+    assert center_row[0] == 0.0
+    assert np.allclose(center_row[4:-4], 1.0)  # <~ 1m in, at a 0.25m scale
+    assert np.all(np.diff(center_row[:5]) > 0)
 
 
 def test_random_uniform_rejects_inverted_heights():

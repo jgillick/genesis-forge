@@ -47,6 +47,16 @@ class Subterrain:
     Every subterrain that shares a name is selected by it.
     """
 
+    border_width: float = 0.0
+    """
+    How far in from the edges, in meters, the heights ease down to 0, so the subterrain
+    meets its neighbors without a step. 0 leaves the edges wherever they land.
+
+    Best for ground that varies around 0, like :class:`Fractal` or :class:`RandomUniform`.
+    A ramp or staircase that ends well above or below 0 gets a steep wall at its edge
+    instead.
+    """
+
     def generate(
         self,
         shape: tuple[int, int],
@@ -71,6 +81,37 @@ class Subterrain:
         raise NotImplementedError(
             f"{type(self).__name__} must implement generate(shape, horizontal_scale, vertical_scale)"
         )
+
+    def ease_edges(self, heights: np.ndarray, horizontal_scale: float) -> np.ndarray:
+        """
+        Ease the heights down to 0 over :attr:`border_width` from each edge, to ease the 
+        transition from one subterrain to another. The :class:`~genesis_forge.terrain.TerrainLayout` 
+        calls this on whatever :meth:`generate` returns.
+
+        Args:
+            heights: The heights from :meth:`generate`, in meters.
+            horizontal_scale: The distance between two height field points, in meters.
+        """
+        if self.border_width <= 0:
+            return heights
+        x_ease = self._edge_ease(heights.shape[0], horizontal_scale)
+        y_ease = self._edge_ease(heights.shape[1], horizontal_scale)
+        # Combine them into one multiplier per point, so all four edges are eased
+        return heights * np.outer(x_ease, y_ease)
+
+    def _edge_ease(self, n_points: int, horizontal_scale: float) -> np.ndarray:
+        """
+        Create a border at each point along the edges of one axis, to ease the transition 
+        from one subterrain to another. 
+        """
+        # Each point's index along the axis
+        points = np.arange(n_points)
+        # Its distance from the nearer of the two edges, in meters
+        from_edge = np.minimum(points, n_points - 1 - points) * horizontal_scale
+        # How far through the border it is: 0 at the edge, 1 at border_width in and beyond
+        ramp = np.clip(from_edge / self.border_width, 0.0, 1.0)
+        # Bend the straight ramp into an S-curve (smoothstep), so there's no crease at either end
+        return ramp * ramp * (3 - 2 * ramp)
 
     @staticmethod
     def empty_genesis_terrain(
@@ -155,32 +196,18 @@ class Fractal(Subterrain):
     """How much the height varies."""
     border_width: float = 1.0
     """
-    How far in from the edges, in meters, the ground eases down to 0, so it meets the
-    subterrains next to it without a step. 0 leaves the edges wherever they land.
+    How far in from the edges, in meters, the ground eases down to 0. Genesis' fractal
+    drifts up or down at random, so without it the edges can sit well above or below its
+    neighbors. 0 leaves the edges wherever they land.
     """
 
     def generate(self, shape, horizontal_scale, vertical_scale):
-        """Generate rolling ground with Genesis' fractal generator, and ease its edges to 0."""
+        """Generate rolling ground with Genesis' fractal generator."""
         genesis_terrain = self.empty_genesis_terrain(
             shape, horizontal_scale, vertical_scale
         )
         fractal_terrain(genesis_terrain, levels=self.levels, scale=self.scale)
-        heights = self.genesis_heights(genesis_terrain)
-        if self.border_width <= 0:
-            return heights
-
-        # Genesis' fractal drifts up or down at random, so its edges can sit well above or
-        # below 0. Scale the heights by 0 at the edges, rising smoothly to 1 a border in.
-        x_ease = self._edge_ease(shape[0], horizontal_scale)
-        y_ease = self._edge_ease(shape[1], horizontal_scale)
-        return heights * np.outer(x_ease, y_ease)
-
-    def _edge_ease(self, n_points: int, horizontal_scale: float) -> np.ndarray:
-        """For each point along one axis: 0 at either edge, rising smoothly to 1 a border in."""
-        points = np.arange(n_points)
-        from_edge = np.minimum(points, n_points - 1 - points) * horizontal_scale
-        ramp = np.clip(from_edge / self.border_width, 0.0, 1.0)
-        return ramp * ramp * (3 - 2 * ramp)  # <~ smoothstep, so there's no crease
+        return self.genesis_heights(genesis_terrain)
 
 
 @dataclass(kw_only=True)
@@ -421,7 +448,10 @@ class RandomGrid(Subterrain):
     platform_width: float = 1.0
     """The side of the square platform in the center, in meters."""
     border_width: float = 0.25
-    """The least width of flat ground at height 0 along each edge, in meters."""
+    """
+    The least width of flat ground at height 0 along each edge, in meters. The grid stops
+    at the border, so there's nothing for the easing to change.
+    """
     holes: bool = False
     """
     Turn most of the grid into pits, leaving a narrow walkway, only as wide as the platform, running from it out to the border. 

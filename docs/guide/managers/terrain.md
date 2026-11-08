@@ -111,6 +111,12 @@ Without a `surface` arg, the terrain gets a blue checkerboard of half-meter squa
 | `RandomGrid` | Square blocks at random heights around a raised platform (from mjlab) | [![RandomGrid](../../media/terrains/RandomGrid.png){ width="240" }](../../media/terrains/RandomGrid.png) |
 | `HeightField` | Your own heights, in meters | |
 
+If a subterrain's edges don't line up with its neighbors, set `border_width` to ease its heights down to 0 near the edges. `Fractal` does this by default, since it drifts up or down at random. It works best on ground that varies around 0. On a `Sloped` or `Stairs` that ends well above or below 0, it just puts a steep wall at the edge.
+
+```python
+terrain.RandomUniform(name="rough", border_width=1.0)  # <~ flat at the edges, bumpy 1m in
+```
+
 
 ### Your own subterrain
 

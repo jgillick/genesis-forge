@@ -408,7 +408,7 @@ class TerrainLayout:
     def _generate_subterrain(
         self, index: int, name: str, subterrain: Subterrain, shape: tuple[int, int]
     ) -> np.ndarray:
-        """Generate one subterrain's heights, in meters, with its own seed, and check them."""
+        """Generate one subterrain's heights, in meters, with its own seed, then ease and check them."""
         with self._seeded(index):
             heights = subterrain.generate(
                 shape, self._horizontal_scale, self._vertical_scale
@@ -421,6 +421,7 @@ class TerrainLayout:
                 f"{description} generated a height field of shape {heights.shape}, "
                 f"expected {shape}."
             )
+        heights = subterrain.ease_edges(heights, self._horizontal_scale)
         if not np.all(np.isfinite(heights)):
             raise ValueError(f"{description} generated non-finite heights.")
         return heights

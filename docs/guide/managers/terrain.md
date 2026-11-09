@@ -117,26 +117,6 @@ If a subterrain's edges don't line up with its neighbors, set `border_width` to 
 terrain.RandomUniform(name="rough", border_width=1.0)  # <~ flat at the edges, bumpy 1m in
 ```
 
-### Point spacing
-
-The layout's `horizontal_scale` is the distance between two height field points, 0.25m by default. A subterrain can set its own, for detail the others don't need. The height field then uses the finest spacing, and joins up the coarser subterrains' points with straight lines, so their heights stay exactly where they were generated.
-
-```python
-self.terrain_layout = terrain.TerrainLayout(
-    self.scene,
-    subterrain_size=(12, 12),
-    grid=[[
-        terrain.RandomGrid(name="blocks", grid_width=0.25, horizontal_scale=0.0625),  # <~ crisp block edges
-        terrain.RandomUniform(name="rough", max_height=0.08, downsampled_scale=0.25),  # <~ still 0.25m
-    ]],
-)
-```
-
-Every spacing must be a whole multiple of the finest one, and the subterrain size a whole multiple of each.
-
-For `RandomUniform`, a `horizontal_scale` equal to its `downsampled_scale` gives straight slopes between its random heights. At a finer spacing, Genesis curves between them and overshoots `min_height` and `max_height`.
-
-
 ### Your own subterrain
 
 Subclass `Subterrain` and return a numpy height field grid, in meters:
@@ -230,7 +210,7 @@ def config(self):
             "position": {
                 "fn": reset.randomize_terrain_position(
                     terrain_manager=self.terrain_manager,
-                    subterrain=self.env_subterrain_idx,
+                    subterrain=self.env_terrain,
                     height_offset=HEIGHT_OFFSET,
                 ),
             },

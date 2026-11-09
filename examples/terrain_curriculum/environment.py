@@ -83,7 +83,6 @@ class Go2TerrainCurriculumEnv(ManagedEnvironment):
 
         # Create terrain
         self.terrain_layout = self.create_terrain(self.scene)
-        self.terrain = self.terrain_layout.entity
 
         # Robot
         self.robot = self.scene.add_entity(

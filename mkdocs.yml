@@ -149,6 +149,21 @@ nav:
           - Reset: api/mdp/reset.md
           - Rewards: api/mdp/rewards.md
           - Terminations: api/mdp/terminations.md
+      - Subterrains:
+          - Overview: api/subterrains/index.md
+          - Subterrain: api/subterrains/subterrain.md
+          - Flat: api/subterrains/flat.md
+          - Fractal: api/subterrains/fractal.md
+          - RandomUniform: api/subterrains/random_uniform.md
+          - Wave: api/subterrains/wave.md
+          - Sloped: api/subterrains/sloped.md
+          - PyramidSloped: api/subterrains/pyramid_sloped.md
+          - Stairs: api/subterrains/stairs.md
+          - PyramidStairs: api/subterrains/pyramid_stairs.md
+          - SteppingStones: api/subterrains/stepping_stones.md
+          - DiscreteObstacles: api/subterrains/discrete_obstacles.md
+          - RandomGrid: api/subterrains/random_grid.md
+          - HeightField: api/subterrains/height_field.md
       - Wrappers:
           - Overview: api/wrappers/index.md
           - RSL-RL: api/wrappers/rsl_rl.md
@@ -171,3 +186,4 @@ nav:
       - Other:
           - Gamepad: api/other/gamepad.md
           - Meshes: api/other/meshes.md
+          - Terrain Layout: api/other/terrain.md

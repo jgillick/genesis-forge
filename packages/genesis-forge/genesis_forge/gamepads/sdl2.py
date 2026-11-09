@@ -90,6 +90,7 @@ class ControllerEventLoop:
         handle_key: Callback function that receives Key objects for each controller event
         alive: Optional threading.Event to control the event loop. When cleared, the loop exits.
         timeout: Milliseconds to wait for events before checking the alive flag (default: 2000ms)
+        handle_disconnect: Optional callback, called each time a controller is removed
 
     Example::
 
@@ -109,12 +110,16 @@ class ControllerEventLoop:
         handle_key: Callable[[Key], None],
         alive: threading.Event | None = None,
         timeout: int = 2000,
+        handle_disconnect: Callable[[], None] | None = None,
     ) -> None:
         self.handle_key = handle_key
+        self.handle_disconnect = handle_disconnect
         self.alive = alive or threading.Event()
         if not self.alive.is_set():
             self.alive.set()
         self.timeout = timeout
+        # Set while at least one controller is attached
+        self.connected = threading.Event()
         self._controllers: dict[int, sdl2.SDL_GameController] = {}
 
     def stop(self) -> None:
@@ -126,11 +131,16 @@ class ControllerEventLoop:
             joy = sdl2.SDL_GameControllerGetJoystick(controller)
             instance_id = sdl2.SDL_JoystickInstanceID(joy)
             self._controllers[int(instance_id)] = controller
+            self.connected.set()
 
     def _close_controller(self, instance_id: int) -> None:
         controller = self._controllers.pop(instance_id, None)
         if controller:
             sdl2.SDL_GameControllerClose(controller)
+        if not self._controllers:
+            self.connected.clear()
+        if controller and self.handle_disconnect:
+            self.handle_disconnect()
 
     def _handle_event(self, event: sdl2.SDL_Event) -> None:
         etype = event.type

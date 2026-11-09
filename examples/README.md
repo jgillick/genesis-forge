@@ -7,7 +7,8 @@ This directory contains a series of examples demonstrating how to use Genesis Fo
 3. [Contact Sensors and foot air time](./contacts/)
 4. [Domain Randomization](./domain_randomization/)
 5. [Rough Terrain](./rough_terrain/)
-6. [Gait Trainer](./gait_trainer/)
+6. [Terrain Curriculum](./terrain_curriculum/) — robots work their way up to rougher ground as they improve
+7. [Gait Trainer](./gait_trainer/)
 
 Wheeled robots:
 

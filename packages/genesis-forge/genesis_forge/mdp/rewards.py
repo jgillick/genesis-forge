@@ -46,9 +46,9 @@ def _dof_manager(
     """
     if actuator_manager is not None:
         return actuator_manager
-    assert (
-        action_manager is not None
-    ), f"Either actuator_manager or action_manager must be provided to {type(fn).__name__}"
+    assert action_manager is not None, (
+        f"Either actuator_manager or action_manager must be provided to {type(fn).__name__}"
+    )
     return action_manager
 
 
@@ -638,9 +638,9 @@ class command_tracking_lin_vel(MdpFn):
     entity_manager: EntityManager | None = None
 
     def build(self):
-        assert (
-            self.command is not None or self.vel_cmd_manager is not None
-        ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        assert self.command is not None or self.vel_cmd_manager is not None, (
+            "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -704,9 +704,9 @@ class command_tracking_ang_vel(MdpFn):
     entity_manager: EntityManager | None = None
 
     def build(self):
-        assert (
-            self.commanded_ang_vel is not None or self.vel_cmd_manager is not None
-        ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
+            "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -1145,9 +1145,9 @@ class feet_air_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         made_contact = self.contact_manager.has_made_contact(env.dt)
         last_air_time = self.contact_manager.last_air_time
-        assert (
-            last_air_time is not None
-        ), "feet_air_time needs a contact_manager with track_air_time=True"
+        assert last_air_time is not None, (
+            "feet_air_time needs a contact_manager with track_air_time=True"
+        )
 
         # Calculate the air time
         air_time = (last_air_time - self.time_threshold) * made_contact
@@ -1191,9 +1191,9 @@ class feet_ground_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
         last_contact_time = self.contact_manager.last_contact_time
-        assert (
-            last_contact_time is not None
-        ), "feet_ground_time needs a contact_manager with track_air_time=True"
+        assert last_contact_time is not None, (
+            "feet_ground_time needs a contact_manager with track_air_time=True"
+        )
         short_contact = (self.time_threshold - last_contact_time).clamp(
             min=0.0
         ) * just_lifted

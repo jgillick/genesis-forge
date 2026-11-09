@@ -86,6 +86,24 @@ def entity_projected_gravity(entity: RigidEntity) -> torch.Tensor:
     return transform_by_quat(gravity, inv_base_quat)
 
 
+def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
+    """
+    The compass direction the entity's nose points, seen from above, in radians.
+
+    This follows the nose, so tilting the entity moves it. It is not the yaw of an euler
+    decomposition (`quat_to_xyz(quat)[:, 2]`), which tilting leaves where it was.
+
+    Args:
+        quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
+
+    Returns:
+        torch.Tensor: Heading in radians, shape (num_envs,)
+    """
+    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+    # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
+    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 def name_matches(name: str, pattern: str) -> bool:
     """
     Whether a name matches a pattern, either exactly or as a fully-anchored regex.

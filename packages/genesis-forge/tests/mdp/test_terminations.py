@@ -22,11 +22,30 @@ class FakeContactManager:
 
 
 class FakeTerrainManager:
-    def __init__(self, bounds):
+    def __init__(self, bounds, env_subterrain=None, subterrain_bounds=None):
+        """
+        A terrain with whole-terrain bounds, and optional per-env subterrains and their
+        bounds.
+        """
         self._bounds = bounds
+        self.env_subterrain = env_subterrain
+        self._subterrain_bounds = subterrain_bounds
+        self.asked_for = []
 
-    def get_bounds(self, subterrain=None):
-        return self._bounds
+    def indices(self, names):
+        """``known`` is one subterrain and ``group`` is two; anything else is unknown."""
+        lookup = {"known": [0], "group": [0, 1]}
+        names = [names] if isinstance(names, str) else names
+        return torch.tensor([i for name in names for i in lookup[name]])
+
+    def get_subterrain_bounds(self, subterrains):
+        """The bounds of each index, of every subterrain a selection names, or the whole terrain."""
+        if isinstance(subterrains, torch.Tensor):
+            return self._subterrain_bounds[subterrains]
+        self.asked_for.append(subterrains)
+        if subterrains is None:
+            return torch.tensor([self._bounds])
+        return self._subterrain_bounds[self.indices(subterrains)]
 
 
 class FakeActuatorManager:
@@ -130,6 +149,110 @@ def test_out_of_bounds_checks_terrain_bounds_with_margin(env):
     )
 
     assert torch.equal(fn(env), torch.tensor([True]))
+
+
+class RobotsAt:
+    """A fake robot for each (x, y) position."""
+
+    def __init__(self, *positions):
+        self._pos = torch.tensor([[x, y, 0.0] for x, y in positions])
+
+    def get_pos(self):
+        return self._pos
+
+
+TWO_SUBTERRAINS = torch.tensor([[0.0, 10.0, 0.0, 10.0], [10.0, 20.0, 0.0, 10.0]])
+
+
+def test_out_of_bounds_looks_up_a_named_subterrain_once_at_build(env):
+    """A name's bounds come from the terrain manager at build, not on every step."""
+    env.robot = RobotsAt((5.0, 5.0))
+    terrain = FakeTerrainManager(
+        (0.0, 20.0, 0.0, 10.0), subterrain_bounds=TWO_SUBTERRAINS
+    )
+    fn = built(
+        terminations.out_of_bounds(terrain_manager=terrain, subterrain="known"), env
+    )
+    fn(env)
+    fn(env)
+
+    assert terrain.asked_for == ["known"]
+
+
+def test_out_of_bounds_with_subterrain_false_uses_the_whole_terrain(env):
+    """subterrain=False means the same as None: the whole terrain."""
+    env.robot = RobotsAt((15.0, 5.0))
+    terrain = FakeTerrainManager((0.0, 20.0, 0.0, 10.0))
+    fn = built(
+        terminations.out_of_bounds(terrain_manager=terrain, subterrain=False), env
+    )
+
+    assert torch.equal(fn(env), torch.tensor([False]))
+    assert terrain.asked_for == [None]
+
+
+@pytest.mark.parametrize("subterrain", ["group", ["known", "group"]])
+def test_out_of_bounds_keeps_robots_inside_any_selected_subterrain(env, subterrain):
+    """
+    A shared name, or a list of names, is satisfied by any of its subterrains: robots on
+    either one stay in, and one past both is out.
+    """
+    env.robot = RobotsAt((5.0, 5.0), (15.0, 5.0), (25.0, 5.0))
+    terrain = FakeTerrainManager(
+        (0.0, 20.0, 0.0, 10.0), subterrain_bounds=TWO_SUBTERRAINS
+    )
+    fn = built(
+        terminations.out_of_bounds(terrain_manager=terrain, subterrain=subterrain),
+        env,
+    )
+
+    assert torch.equal(fn(env), torch.tensor([False, False, True]))
+
+
+def test_out_of_bounds_applies_the_margin_to_each_subterrain(env):
+    """The margin applies inside each subterrain, so near the edge of one is out."""
+    env.robot = RobotsAt((9.8, 5.0))
+    terrain = FakeTerrainManager(
+        (0.0, 20.0, 0.0, 10.0), subterrain_bounds=TWO_SUBTERRAINS
+    )
+    fn = built(
+        terminations.out_of_bounds(
+            terrain_manager=terrain, subterrain="known", border_margin=0.5
+        ),
+        env,
+    )
+
+    assert torch.equal(fn(env), torch.tensor([True]))
+
+
+def test_out_of_bounds_checks_each_env_against_its_assigned_subterrain(env):
+    """
+    Two robots at the same spot: inside the first one's subterrain, outside the second
+    one's.
+    """
+
+    class FakeRobot:
+        def get_pos(self):
+            """Both robots at x=5, y=5."""
+            # Both robots sit at x=5: inside subterrain 0, outside subterrain 1
+            return torch.tensor([[5.0, 5.0, 0.0], [5.0, 5.0, 0.0]])
+
+    env.robot = FakeRobot()
+    terrain = FakeTerrainManager(
+        (0.0, 20.0, 0.0, 10.0),
+        env_subterrain=torch.tensor([0, 1]),
+        subterrain_bounds=torch.tensor(
+            [[0.0, 10.0, 0.0, 10.0], [10.0, 20.0, 0.0, 10.0]]
+        ),
+    )
+    fn = built(
+        terminations.out_of_bounds(
+            terrain_manager=terrain, subterrain=True, border_margin=0.5
+        ),
+        env,
+    )
+
+    assert torch.equal(fn(env), torch.tensor([False, True]))
 
 
 """

@@ -1,56 +1,39 @@
 # Go2 - Rough Terrain
 
-Teaches the Go2 robot to walk on rough terrain. This environment uses a combination of the TerrainManager and EntityManager to place each robot randomly at a different place of terrain at each reset.
+Teaches the Go2 robot to walk on uneven ground. The terrain is a `TerrainLayout` of named subterrains, and every robot starts each episode at a random spot near the middle, where they meet.
 
 ```python
 def __init__(self):
     # ...other scene initialization...
-    self.terrain = self.scene.add_entity(
-        morph=gs.morphs.Terrain(
-            n_subterrains=(1, 1),
-            subterrain_size=(24, 24),
-            subterrain_types="fractal_terrain",
-        ),
-    )
 
-def config(self):
-    # Terrain manager helps the EntityManager safetly place the robot above the terrain on reset
-    self.terrain_manager = TerrainManager(self, terrain=self.terrain)
-
-    # Robot manager
-    # Randomize the robot's position on the terrain after reset
-    self.robot_manager = EntityManager(
-        self,
-        entity=self.robot,
-        on_reset={
-            "position": {
-                "fn": reset.randomize_terrain_position(
-                    terrain_manager=self.terrain_manager,
-                    height_offset=HEIGHT_OFFSET,
+    # Create 4 different kind of terrains
+    self.terrain_layout = terrain.TerrainLayout(
+        self.scene,
+        subterrain_size=(12, 12),
+        vertical_scale=0.001,  # the Go2 robot is small
+        grid=[
+            [
+                terrain.RandomUniform(
+                    name="rough",
+                    min_height=0.0,
+                    max_height=0.1,
+                    step=0.05,
+                    downsampled_scale=0.25,
                 ),
-            },
-        },
+                terrain.PyramidStairs(name="stairs_up", step_height=0.1),
+            ],
+            [
+                terrain.PyramidStairs(name="stairs_down", step_height=-0.1),
+                terrain.RandomGrid(name="rough_grid", grid_height=0.05),
+            ],
+        ],
     )
 
-    # The terrain manager is used to automatically calculate the base height above the terrain
-    RewardManager(
-        self,
-        logging_enabled=True,
-        cfg={
-            "base_height_target": {
-                "weight": -50.0,
-                "fn": rewards.base_height(
-                    target_height=0.3,
-                    terrain_manager=self.terrain_manager, # <- this line
-                ),
-            },
-            # ... other rewards ...
-        },
-    )
 
     # ... other managers ...
-
 ```
+
+Want the robots to work their way up to harder ground as they get better? See the [terrain curriculum example](../terrain_curriculum).
 
 ## Training
 
@@ -73,7 +56,7 @@ uv run ./eval.py
 Install dependencies
 
 ```shell
-pip install -e ../../ "rsl-rl-lib~=5.0" tensorboard
+pip install -e ../../packages/genesis-forge "rsl-rl-lib~=5.0" tensorboard
 ```
 
 Train:

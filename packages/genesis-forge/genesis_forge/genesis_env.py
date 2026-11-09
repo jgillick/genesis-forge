@@ -271,7 +271,8 @@ class GenesisEnv:
                 self._base_max_episode_length * self._max_episode_random_scaling
             )
             randomization = (
-                torch.empty((env_ids.numel(),)).uniform_(-1.0, 1.0) * max_random_scaling
+                torch.empty((env_ids.numel(),), device=gs.device).uniform_(-1.0, 1.0)
+                * max_random_scaling
             )
             self.max_episode_length[env_ids] = torch.round(
                 self._base_max_episode_length + randomization

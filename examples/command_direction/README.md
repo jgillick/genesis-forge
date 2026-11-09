@@ -79,7 +79,7 @@ uv run ./eval.py
 Install dependencies
 
 ```shell
-pip install -e ../../ "rsl-rl-lib~=5.0" tensorboard
+pip install -e ../../packages/genesis-forge "rsl-rl-lib~=5.0" tensorboard
 ```
 
 Train:

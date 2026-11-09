@@ -45,6 +45,13 @@ make docs        # builds docs + copies llms files to repo root
 make serve       # live-reloading docs preview
 ```
 
+When a subterrain type is added or its defaults change, re-render the terrain
+guide's pictures (needs Genesis; `--cpu` without a GPU):
+
+```bash
+uv run python packages/genesis-forge/scripts/render_terrains.py
+```
+
 Cut a release. By default both packages ship together at the same version:
 `make version` rewrites both pyprojects, the runtime pin, and `uv.lock`, then
 commits and tags `vX.Y.Z`. `make build` refuses if those disagree, and
@@ -214,6 +221,7 @@ Paths in this section and the next are relative to
 | Manager classes | `managers/` (flat layout) |
 | MDP functions | `mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py` |
 | Config TypedDicts | Subclass `ConfigItemDict` from `managers/config/` |
+| Terrain layouts and subterrain types | `terrain/` |
 | Wrappers | `wrappers/` |
 | Deployment export | `deployment/` — reads the contract off managers, gates it on parity |
 | Robot-side runtime | `packages/genesis-forge-runtime/genesis_forge_runtime/` (from the repo root) |

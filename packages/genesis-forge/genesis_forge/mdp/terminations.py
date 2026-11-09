@@ -6,6 +6,7 @@ Each of these should return a boolean tensor indicating which environments shoul
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -155,7 +156,9 @@ class out_of_bounds(MdpFn):
         terrain_manager: The terrain manager to check for out of bounds
         subterrain: The subterrain to keep the robot inside of. Any of:
 
-                    - A name: that subterrain.
+                    - A name: that subterrain. A name shared by several subterrains, 
+                      keeps the robot inside any of them.
+                    - A list of names: any of those subterrains.
                     - ``True``: the subterrain each environment was last placed on
                       (see :attr:`TerrainManager.env_subterrain`). Use this when a reset
                       spreads environments across several subterrains.
@@ -166,49 +169,44 @@ class out_of_bounds(MdpFn):
     """
 
     terrain_manager: TerrainManager
-    subterrain: str | bool | None = None
+    subterrain: str | Sequence[str] | bool | None = None
     border_margin: float = 0.5
     entity: RigidEntity | None = None
 
     def build(self):
         """
-        Look up the bounds once, unless each environment has its own. A name shared by several
-        subterrains, or an unknown name, warns here, before the first step.
+        Look up the bounds once, unless each environment has its own. An unknown name warns
+        here, before the first step.
         """
         if self.subterrain is not True:
-            name = self.subterrain if isinstance(self.subterrain, str) else None
-            self._bounds = self.terrain_manager.get_bounds(name)
+            selection = self.subterrain if self.subterrain is not False else None
+            self._bounds = self.terrain_manager.get_subterrain_bounds(selection)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the entity's base position
         entity = self.entity if self.entity is not None else env.robot
         position = cast(torch.Tensor, entity.get_pos())
 
-        # Get terrain bounds
+        # The areas each environment may be in: (num_envs, 1, 4) for its own subterrain,
+        # or (n_areas, 4), shared by every environment
         if self.subterrain is True:
             bounds = self.terrain_manager.get_subterrain_bounds(
                 self.terrain_manager.env_subterrain
-            )
-            x_min, x_max, y_min, y_max = bounds.unbind(dim=-1)
+            )[:, None, :]
         else:
-            x_min, x_max, y_min, y_max = self._bounds
-        x_min_bound, x_max_bound = (
-            x_min + self.border_margin,
-            x_max - self.border_margin,
-        )
-        y_min_bound, y_max_bound = (
-            y_min + self.border_margin,
-            y_max - self.border_margin,
-        )
+            bounds = self._bounds
+        x_min, x_max, y_min, y_max = bounds.unbind(dim=-1)
+        margin = self.border_margin
 
-        # Check bounds
-        x_pos, y_pos = position[:, 0], position[:, 1]
-        return (
-            (x_pos < x_min_bound)
-            | (x_pos > x_max_bound)
-            | (y_pos < y_min_bound)
-            | (y_pos > y_max_bound)
+        # Check each position against every area, and terminate if it's inside none of them
+        x_pos, y_pos = position[:, 0:1], position[:, 1:2]
+        inside = (
+            (x_pos >= x_min + margin)
+            & (x_pos <= x_max - margin)
+            & (y_pos >= y_min + margin)
+            & (y_pos <= y_max - margin)
         )
+        return ~inside.any(dim=1)
 
 
 @dataclass(kw_only=True, eq=False)

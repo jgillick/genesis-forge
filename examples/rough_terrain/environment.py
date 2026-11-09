@@ -253,7 +253,7 @@ class Go2RoughTerrainEnv(ManagedEnvironment):
             },
         )
 
-        ##self.create_terrain(self.scene)
+        ##
         # Termination conditions
         self.termination_manager = TerminationManager(
             self,

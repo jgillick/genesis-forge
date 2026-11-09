@@ -277,10 +277,13 @@ class Go2TerrainCurriculumEnv(ManagedEnvironment):
                     "fn": terminations.timeout(),
                     "time_out": True,
                 },
+                # If the robot wandered out of the subterrain bounds, it's not a failure
                 "out_of_bounds": {
                     "fn": terminations.out_of_bounds(
                         terrain_manager=self.terrain_manager,
+                        subterrain=True,
                     ),
+                    "time_out": True,
                 },
                 # Terminate if the robot's pitch and yaw angles are too large
                 "bad_orientation": {
@@ -382,7 +385,7 @@ class Go2TerrainCurriculumEnv(ManagedEnvironment):
         tracking = self.reward_manager.episode_mean_reward_for_envs(
             "command_linear_velocity", envs_idx
         )
-        # Fell, or walked off the terrain
+        # Fell over. Walking off the level is a time out, so it isn't counted here.
         ended_early = self.termination_manager.terminated[envs_idx]
 
         move_up = (tracking >= MOVE_UP_TRACKING) & ~ended_early
@@ -391,7 +394,7 @@ class Go2TerrainCurriculumEnv(ManagedEnvironment):
 
         # Track the highest level each robot has reached
         self.env_subterrain_max[envs_idx] = torch.maximum(
-            self.env_subterrain_max[envs_idx], level.clamp(max=TERRAIN_LEVELS)
+            self.env_subterrain_max[envs_idx], level.clamp(max=TERRAIN_LEVELS - 1)
         )
 
         # Past the top level, start over at a random level, so the easier ones aren't forgotten

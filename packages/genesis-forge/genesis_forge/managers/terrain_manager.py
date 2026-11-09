@@ -217,13 +217,14 @@ class TerrainManager(BaseManager):
         """
         Check that a subterrain selection refers to real subterrains.
         Useful at build time, to catch a typo before the first reset.
+        A single unknown name only warns, since it stands for the whole terrain, as in 1.0.
 
         Args:
             selection: The selection to check.
             num: The number of entries a tensor selection must have.
 
         Raises:
-            KeyError: If a name is unknown.
+            KeyError: If a name in a list is unknown.
             TypeError, ValueError: If the selection is malformed.
         """
         if selection is None or self._is_unknown_name(selection):
@@ -242,7 +243,10 @@ class TerrainManager(BaseManager):
         self.indices(selection)
 
     def sample_subterrains(
-        self, num: int, selection: SubterrainSelection
+        self,
+        num: int,
+        selection: SubterrainSelection,
+        envs_idx: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Choose a subterrain index for each of ``num`` positions.
@@ -250,17 +254,22 @@ class TerrainManager(BaseManager):
         Args:
             num: How many indices to choose.
             selection: Which subterrains to choose from. See :data:`SubterrainSelection`.
+            envs_idx: For a tensor selection with one index for every environment, the
+                      environments to read it for. Otherwise the tensor has one index per position.
 
         Returns:
             A long tensor of subterrain indices in the shape ``(num,)``.
         """
-        if selection is None:
+        if selection is None or self._is_unknown_name(selection):
             return torch.full((num,), WHOLE_TERRAIN, device=gs.device, dtype=torch.long)
         if isinstance(selection, torch.Tensor):
-            self._check_index_tensor(selection, num)
-            return selection.to(device=gs.device, dtype=torch.long)
-        if self._is_unknown_name(selection):
-            return torch.full((num,), WHOLE_TERRAIN, device=gs.device, dtype=torch.long)
+            self._check_index_tensor(
+                selection, num if envs_idx is None else self.env.num_envs
+            )
+            idx = selection.to(device=gs.device, dtype=torch.long)
+            if envs_idx is not None:
+                idx = idx[envs_idx]
+            return idx
         # Pick one of the selected subterrains at random for each position
         candidates = self.indices(selection)
         picks = torch.randint(len(candidates), (num,), device=gs.device)
@@ -292,24 +301,36 @@ class TerrainManager(BaseManager):
             last_name = self._map.names[last]
             warnings.warn(
                 f"'{subterrain}' names more than one subterrain, so its bounds are those of the "
-                f"last one, '{last_name}'. Use one of the numbered names instead, or, in "
-                "out_of_bounds, subterrain=True to keep each robot inside its own subterrain.",
+                f"last one, '{last_name}'. Use one of the numbered names instead, or "
+                "get_subterrain_bounds() for the bounds of all of them.",
                 stacklevel=2,
             )
             return self._map.subterrain_bounds[last]
         return self._map.get_bounds(subterrain)
 
-    def get_subterrain_bounds(self, subterrain_idx: torch.Tensor) -> torch.Tensor:
+    def get_subterrain_bounds(self, subterrains: SubterrainSelection) -> torch.Tensor:
         """
-        Get the bounds of many subterrains at once, by index.
+        Get the bounds of many subterrains at once.
 
         Args:
-            subterrain_idx: A long tensor of subterrain indices. ``-1`` is the whole terrain.
+            subterrains: Any of:
+
+                - A long tensor of subterrain indices, like :attr:`env_subterrain`. ``-1`` is
+                  the whole terrain.
+                - A name, or a list of names: every subterrain they select, including each
+                  one sharing a name.
+                - ``None``, or a name that matches no subterrain: the whole terrain, the latter
+                  with a warning.
 
         Returns:
-            The bounds in the shape ``(*subterrain_idx.shape, 4)``, as ``(x_min, x_max, y_min, y_max)``.
+            The bounds as ``(x_min, x_max, y_min, y_max)``, in the shape
+            ``(*subterrains.shape, 4)`` for a tensor, or ``(n_subterrains, 4)`` for names.
         """
-        return self._bounds_table[subterrain_idx]
+        if isinstance(subterrains, torch.Tensor):
+            return self._bounds_table[subterrains]
+        if subterrains is None or self._is_unknown_name(subterrains):
+            return self._bounds_table[WHOLE_TERRAIN].unsqueeze(0)
+        return self._bounds_table[self.indices(subterrains)]
 
     def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
@@ -326,7 +347,8 @@ class TerrainManager(BaseManager):
         Returns:
             Heights in the torch.Tensor of shape (n_envs,)
         """
-        if self._has_height_field:
+        # Genesis rejects a query with no positions, as from a reset of no environments
+        if self._has_height_field and x.numel() > 0:
             # Genesis returns NaN past one height field step outside the terrain, so clamp to the edge
             x_min, x_max, y_min, y_max = self._map.bounds
             positions = torch.stack(
@@ -381,7 +403,7 @@ class TerrainManager(BaseManager):
             "Either output or num must be provided"
         )
         if output is None:
-            output = torch.zeros(num, 3, device=gs.device)
+            output = torch.zeros(num, 3, device=gs.device, dtype=gs.tc_float)
         if out_idx is None:
             out_idx = torch.arange(output.shape[0], device=gs.device)
         elif isinstance(out_idx, list):
@@ -438,11 +460,9 @@ class TerrainManager(BaseManager):
             envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 
         # Pick each environment's subterrain here, so it can be recorded
-        if isinstance(subterrain, torch.Tensor):
-            self._check_index_tensor(subterrain, self.env.num_envs)
-            subterrain_idx = subterrain.to(device=gs.device, dtype=torch.long)[envs_idx]
-        else:
-            subterrain_idx = self.sample_subterrains(envs_idx.shape[0], subterrain)
+        subterrain_idx = self.sample_subterrains(
+            envs_idx.shape[0], subterrain, envs_idx
+        )
         self._env_subterrain[envs_idx] = subterrain_idx
 
         self.generate_random_positions(

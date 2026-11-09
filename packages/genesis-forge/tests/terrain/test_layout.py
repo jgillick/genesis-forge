@@ -65,7 +65,7 @@ def rough(**kwargs):
 def heights_of(layout, name):
     """The height field points of one subterrain, edges included."""
     i, j = layout.grid_position(name)
-    rows, cols = layout._subterrain_shape()
+    rows, cols = layout._subterrain_shape(layout.horizontal_scale)
     return layout.height_field[
         i * (rows - 1) : (i + 1) * (rows - 1) + 1,
         j * (cols - 1) : (j + 1) * (cols - 1) + 1,
@@ -595,10 +595,123 @@ def test_a_one_subterrain_layout_seeds_like_a_genesis_terrain():
 
     np.random.seed(0)
     expected = rough().generate(
-        layout._subterrain_shape(), layout.horizontal_scale, layout.vertical_scale
+        layout._subterrain_shape(layout.horizontal_scale),
+        layout.horizontal_scale,
+        layout.vertical_scale,
     )
 
     assert np.allclose(layout.height_field * layout.vertical_scale, expected)
+
+
+"""
+Per-subterrain spacing
+"""
+
+
+def test_a_finer_subterrain_sets_the_height_field_spacing():
+    """
+    One subterrain at 0.25m makes the height field 0.25m, while its neighbor still generates at
+    the layout's 0.5m.
+    """
+    received = []
+
+    @dataclass(kw_only=True)
+    class Recorder(terrain.Subterrain):
+        type: ClassVar[str] = "recorder"
+
+        def generate(self, shape, horizontal_scale, vertical_scale):
+            received.append((shape, horizontal_scale))
+            return np.zeros(shape)
+
+    scene = FakeScene()
+    layout = make_layout(
+        scene=scene,
+        grid=row(a=Recorder(), b=Recorder(horizontal_scale=0.25)),
+    )
+
+    assert layout.horizontal_scale == 0.25
+    assert layout.height_field.shape == (9, 17)
+    assert scene.calls[0][0]["horizontal_scale"] == 0.25
+    assert received == [((5, 5), 0.5), ((9, 9), 0.25)]
+
+
+def test_a_coarser_subterrain_keeps_its_own_points():
+    """
+    A 1m RandomUniform next to a 0.5m neighbor keeps its own heights exactly, and is joined up
+    with straight lines between them.
+    """
+    # 4m, since Genesis' spline needs more than 3 points along a side
+    coarse = rough(horizontal_scale=1.0, downsampled_scale=1.0)
+    layout = make_layout(
+        grid=row(a=coarse, b=terrain.Flat()), subterrain_size=(4.0, 4.0)
+    )
+
+    np.random.seed(0)  # <~ the first subterrain is seeded like a Genesis terrain
+    expected = rough(downsampled_scale=1.0).generate((5, 5), 1.0, layout.vertical_scale)
+    heights = heights_of(layout, "a") * layout.vertical_scale
+
+    assert heights.shape == (9, 9)
+    assert np.allclose(heights[::2, ::2], expected)
+    # Halfway between two of its points, along y and along x
+    assert np.isclose(heights[0, 1], (expected[0, 0] + expected[0, 1]) / 2)
+    assert np.isclose(heights[1, 0], (expected[0, 0] + expected[1, 0]) / 2)
+    assert expected.min() <= heights.min() and heights.max() <= expected.max()
+
+
+def test_a_subterrain_at_the_layout_spacing_generates_as_before():
+    """Setting a subterrain's horizontal_scale to the layout's changes nothing."""
+    default = make_layout(grid=row(a=rough(), b=rough()), seed=3)
+    explicit = make_layout(
+        grid=row(a=rough(horizontal_scale=0.5), b=rough(horizontal_scale=0.5)), seed=3
+    )
+
+    assert np.array_equal(default.height_field, explicit.height_field)
+
+
+def test_a_coarser_subterrain_is_the_same_on_every_run():
+    """The same seed gives the same coarse heights."""
+    grid = row(a=terrain.Flat(), b=rough(horizontal_scale=1.0, downsampled_scale=1.0))
+
+    first = make_layout(grid=grid, subterrain_size=(4.0, 4.0), seed=5)
+    second = make_layout(grid=grid, subterrain_size=(4.0, 4.0), seed=5)
+
+    assert np.array_equal(first.height_field, second.height_field)
+
+
+def test_a_coarser_subterrain_eases_at_the_height_field_spacing():
+    """The border eases along an S-curve at every 0.25m point, not in straight 1m lines."""
+    raised = terrain.Flat(height=0.5, horizontal_scale=1.0, border_width=1.0)
+    layout = make_layout(
+        grid=row(a=terrain.Flat(), b=raised),
+        subterrain_size=(4.0, 4.0),
+        horizontal_scale=0.25,
+    )
+
+    # Across x, through the middle of the subterrain, where the y edges don't ease it
+    center_row = heights_of(layout, "b")[:5, 8] * layout.vertical_scale
+    ramp = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    assert np.allclose(center_row, 0.5 * ramp * ramp * (3 - 2 * ramp))
+
+
+def test_a_subterrain_spacing_must_be_positive():
+    """A zero horizontal_scale on a subterrain is rejected."""
+    with pytest.raises(ValueError, match="positive"):
+        make_layout(grid=row(a=terrain.Flat(), b=terrain.Flat(horizontal_scale=0.0)))
+
+
+def test_the_subterrain_size_must_be_a_multiple_of_each_subterrain_spacing():
+    """A 0.3m spacing doesn't fit a 2m subterrain, and the error names its grid position."""
+    with pytest.raises(ValueError, match=r"grid\[0\]\[1\]'s horizontal_scale \(0.3\)"):
+        make_layout(grid=row(a=terrain.Flat(), b=terrain.Flat(horizontal_scale=0.3)))
+
+
+def test_each_spacing_must_be_a_multiple_of_the_finest():
+    """0.75m isn't a multiple of 0.5m, and the error suggests the nearest that are."""
+    with pytest.raises(ValueError, match="Use 0.5 or 1"):
+        make_layout(
+            grid=row(a=terrain.Flat(), b=terrain.Flat(horizontal_scale=0.75)),
+            subterrain_size=(3.0, 3.0),
+        )
 
 
 """
@@ -638,6 +751,23 @@ def test_random_grid_holes_leave_a_cross():
     assert heights[10, 10] == -5.0  # a corner block
     assert heights[10, 40] > -5.0  # in line with the platform along y
     assert heights[40, 10] > -5.0  # in line with the platform along x
+
+
+@pytest.mark.parametrize("platform_width", [1.0, 0.3])
+def test_random_grid_holes_walkway_is_at_least_as_wide_as_the_platform(platform_width):
+    """
+    The walkway covers the platform's full width, even when the platform is narrower than a
+    block and lies between two block centers.
+    """
+    heights = random_grid_heights(
+        holes=True, hole_depth=-5.0, platform_width=platform_width
+    )
+
+    # The points across the platform's width, at 4m +/- half of it, out by the border
+    half = round(platform_width / 2 / 0.1)
+    across = slice(40 - half, 40 + half + 1)
+    assert (heights[across, 10] > -5.0).all()
+    assert (heights[10, across] > -5.0).all()
 
 
 def test_random_grid_rejects_blocks_smaller_than_the_scale():

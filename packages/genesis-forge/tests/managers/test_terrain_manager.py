@@ -300,6 +300,29 @@ def test_get_subterrain_bounds_gathers_by_index_and_minus_one_is_the_whole_terra
     assert bounds.tolist() == [[10.0, 20.0, 10.0, 20.0], [0.0, 20.0, 0.0, 20.0]]
 
 
+def test_get_subterrain_bounds_by_name_gives_every_subterrain_it_selects(env):
+    """A shared name, or a list of names, gives one row of bounds per subterrain."""
+    mgr = make_manager(env, make_subterrain_setup([["flat", "rough"], ["flat", "x"]]))
+
+    assert mgr.get_subterrain_bounds("flat").tolist() == [
+        [0.0, 10.0, 0.0, 10.0],
+        [10.0, 20.0, 0.0, 10.0],
+    ]
+    assert mgr.get_subterrain_bounds(["rough", "x"]).tolist() == [
+        [0.0, 10.0, 10.0, 20.0],
+        [10.0, 20.0, 10.0, 20.0],
+    ]
+
+
+def test_get_subterrain_bounds_of_none_or_an_unknown_name_is_the_whole_terrain(env):
+    """None gives the whole terrain, and so does an unknown name, with a warning."""
+    mgr = make_manager(env, make_subterrain_setup())
+
+    assert mgr.get_subterrain_bounds(None).tolist() == [[0.0, 20.0, 0.0, 20.0]]
+    with pytest.warns(UserWarning, match="'typo'"):
+        assert mgr.get_subterrain_bounds("typo").tolist() == [[0.0, 20.0, 0.0, 20.0]]
+
+
 """
 validate_selection()
 """
@@ -404,6 +427,17 @@ def test_get_terrain_height_handles_a_non_parallel_scene(env):
 
     assert heights.tolist() == [2.0]
     assert entity.height_calls[0][1] is None
+
+
+def test_get_terrain_height_skips_genesis_for_no_positions(env):
+    """Genesis rejects an empty query, as from a reset of no environments."""
+    entity = make_genesis_terrain()
+    mgr = make_manager(env, entity)
+
+    heights = mgr.get_terrain_height(torch.tensor([]), torch.tensor([]))
+
+    assert heights.shape == (0,)
+    assert entity.height_calls == []
 
 
 """

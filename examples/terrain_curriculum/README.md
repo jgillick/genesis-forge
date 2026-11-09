@@ -4,7 +4,7 @@ Teaches the Go2 robot to walk on rough ground by starting it on flat ground and 
 
 ## The terrain
 
-The terrain has 6 levels, from flat ground (`level_0`) to 10cm bumps (`level_5`). Each level is one 8×24m subterrain, so a robot's level is also the index of the subterrain it's placed on:
+The terrain has 5 levels, from flat ground (`level_0`) to 20cm bumps (`level_4`). Each level is one 12×12m subterrain, so a robot's level is also the index of the subterrain it's placed on:
 
 ```python
 grid = []
@@ -12,13 +12,18 @@ for level in range(TERRAIN_LEVELS):
     rough = terrain.RandomUniform(
         name=f"level_{level}",
         min_height=0.0,
-        max_height=0.02 * level,  # <~ flat at level 0, up to 10cm bumps at level 5
+        max_height=0.05 * level,  # <~ flat at level 0, up to 20cm bumps at level 4
         step=0.01,
         downsampled_scale=0.25,
     )
     grid.append([rough])
 
-self.terrain_layout = terrain.TerrainLayout(self.scene, subterrain_size=(8, 24), grid=grid)
+self.terrain_layout = terrain.TerrainLayout(
+    scene,
+    subterrain_size=(12.0, 12.0),
+    vertical_scale=0.001,  # the Go2 robot is small
+    grid=grid,
+)
 ```
 
 ## Moving between levels
@@ -26,7 +31,7 @@ self.terrain_layout = terrain.TerrainLayout(self.scene, subterrain_size=(8, 24),
 When a robot's episode ends, its level changes based on how well it followed its velocity commands. That's its average `command_linear_velocity` reward for the episode, from 0 to 1:
 
 - **Up a level** if it scored 0.8 or higher and lasted the whole episode.
-- **Down a level** if it scored below 0.5, or fell before the episode ended.
+- **Down a level** if it scored below 0.5, or fell before the episode ended. Walking off the edge of its level also ends the episode, but doesn't count as a fall, since following its commands well can take it there.
 - Otherwise, it stays where it is.
 - Robots that make it past the top level start over at a random level, so the policy doesn't forget the easier ground.
 
@@ -36,7 +41,7 @@ Each robot's level goes into a tensor, which the reset function reads to place i
 "position": {
     "fn": reset.randomize_terrain_position(
         terrain_manager=self.terrain_manager,
-        subterrain=self.env_level,  # <~ one subterrain index for each robot
+        subterrain=self.env_subterrain_idx,  # <~ one subterrain index for each robot
         height_offset=HEIGHT_OFFSET,
     ),
 },
@@ -88,7 +93,7 @@ You can view the training progress with:
 tensorboard --logdir ./logs/
 ```
 
-`Curriculum / terrain_level` shows the average level of all the robots, so you can watch them work their way up.
+`Curriculum / terrain_level_avg` shows the average level of all the robots, so you can watch them work their way up, and `Curriculum / terrain_level_max` the highest level any of them has reached.
 
 ## Training videos
 

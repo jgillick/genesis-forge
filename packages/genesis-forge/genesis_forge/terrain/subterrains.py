@@ -478,7 +478,8 @@ class RandomGrid(Subterrain):
     """
     holes: bool = False
     """
-    Turn most of the grid into pits, leaving a narrow walkway, only as wide as the platform, running from it out to the border. 
+    Turn most of the grid into pits, leaving a narrow walkway, the blocks the platform
+    overlaps, running from it out to the border.
     Everything else drops to ``hole_depth``, so a robot has to stay on the walkway.
     """
     hole_depth: float = -10.0
@@ -522,12 +523,13 @@ class RandomGrid(Subterrain):
             -self.grid_height, self.grid_height, (x_blocks, y_blocks)
         )
         if self.holes:
-            # Only the rows and columns of blocks whose centers line up with the platform remain
-            half_platform = self.platform_width / 2
+            # Only the rows and columns of blocks that overlap the platform remain, so the
+            # walkway is never narrower than the platform, even if it's narrower than a block
+            reach = (self.platform_width + self.grid_width) / 2
             x_centers = x_start + (np.arange(x_blocks) + 0.5) * self.grid_width
             y_centers = y_start + (np.arange(y_blocks) + 0.5) * self.grid_width
-            in_x_strip = np.abs(x_centers - x_size / 2) <= half_platform
-            in_y_strip = np.abs(y_centers - y_size / 2) <= half_platform
+            in_x_strip = np.abs(x_centers - x_size / 2) < reach
+            in_y_strip = np.abs(y_centers - y_size / 2) < reach
             in_cross = in_x_strip[:, None] | in_y_strip[None, :]
             block_heights[~in_cross] = self.hole_depth
 

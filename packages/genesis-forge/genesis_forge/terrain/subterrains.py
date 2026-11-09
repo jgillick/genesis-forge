@@ -470,7 +470,7 @@ class RandomGrid(Subterrain):
     """Each block's height is random, between ``-grid_height`` and ``grid_height``, in meters.
     The center platform sits at ``grid_height``."""
     platform_width: float = 1.0
-    """The side of the square platform in the center, in meters."""
+    """The side of the square platform in the center, in meters. 0 leaves no platform."""
     border_width: float = 0.25
     """
     The least width of flat ground at height 0 along each edge, in meters. The grid stops
@@ -478,9 +478,10 @@ class RandomGrid(Subterrain):
     """
     holes: bool = False
     """
-    Turn most of the grid into pits, leaving a narrow walkway, the blocks the platform
-    overlaps, running from it out to the border.
-    Everything else drops to ``hole_depth``, so a robot has to stay on the walkway.
+    Turn most of the grid into pits, leaving a narrow walkway, the blocks the platform overlaps, 
+    running from it out to the border. Everything else drops to ``hole_depth``, so a robot has to 
+    stay on the walkway.
+    Requires a platform.
     """
     hole_depth: float = -10.0
     """How far down the pits go when ``holes`` is on, in meters."""
@@ -495,6 +496,11 @@ class RandomGrid(Subterrain):
         if self.grid_height < 0:
             raise ValueError(
                 f"RandomGrid grid_height must not be negative, got {self.grid_height}."
+            )
+        if self.holes and self.platform_width <= 0:
+            raise ValueError(
+                "RandomGrid holes needs a platform for its walkway to run from, "
+                f"but platform_width is {self.platform_width}."
             )
 
         # The position of each height field point along x and y, in meters
@@ -538,6 +544,9 @@ class RandomGrid(Subterrain):
         heights[np.ix_(on_x_block, on_y_block)] = block_heights[
             np.ix_(x_block[on_x_block], y_block[on_y_block])
         ]
+
+        if self.platform_width <= 0:
+            return heights
 
         # The platform sits on top of the blocks in the center
         on_x_platform = np.abs(x - x_size / 2) <= self.platform_width / 2

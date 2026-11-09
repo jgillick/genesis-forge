@@ -770,6 +770,26 @@ def test_random_grid_holes_walkway_is_at_least_as_wide_as_the_platform(platform_
     assert (heights[10, across] > -5.0).all()
 
 
+@pytest.mark.parametrize("points", [80, 81])
+def test_random_grid_without_a_platform_is_all_blocks(points):
+    """
+    A platform_width of 0 leaves no platform, even when a point lands exactly on the
+    center.
+    """
+    np.random.seed(0)
+    heights = terrain.RandomGrid(platform_width=0.0, grid_width=0.4).generate(
+        (points, points), 0.1, 0.005
+    )
+
+    assert not np.any(heights == 0.1)  # <~ nothing raised to grid_height
+
+
+def test_random_grid_holes_need_a_platform():
+    """Without a platform, there's no walkway for the holes to leave."""
+    with pytest.raises(ValueError, match="platform"):
+        random_grid_heights(holes=True, platform_width=0.0)
+
+
 def test_random_grid_rejects_blocks_smaller_than_the_scale():
     """A block narrower than the height field spacing couldn't be drawn."""
     with pytest.raises(ValueError, match="horizontal_scale"):

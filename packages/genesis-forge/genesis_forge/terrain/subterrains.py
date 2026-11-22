@@ -2,7 +2,7 @@
 Typed subterrain definitions for a :class:`~genesis_forge.terrain.TerrainLayout`.
 
 Each class generates one subterrain of the terrain grid. Most built-in types wrap the
-generators Genesis uses for ``gs.morphs.Terrain``. Unlike ``gs.morphs.Terrain``, every 
+generators Genesis uses for ``gs.morphs.Terrain``. Unlike ``gs.morphs.Terrain``, every
 subterrain has its own params and its own random seed.
 
 Subclass :class:`Subterrain` to make your own.
@@ -118,8 +118,8 @@ class Subterrain:
 
     def _edge_ease(self, n_points: int, horizontal_scale: float) -> np.ndarray:
         """
-        Create a border at each point along the edges of one axis, to ease the transition 
-        from one subterrain to another. 
+        Create a border at each point along the edges of one axis, to ease the transition
+        from one subterrain to another.
         """
         # Each point's index along the axis
         points = np.arange(n_points)
@@ -184,7 +184,7 @@ class HeightField(Subterrain):
     A height field you provide, in meters.
 
     Its shape must be ``subterrain_size / horizontal_scale + 1`` on each axis, using its own
-    ``horizontal_scale`` if it has one. 
+    ``horizontal_scale`` if it has one.
     """
 
     type: ClassVar[str] = "height_field"
@@ -455,7 +455,7 @@ class RandomGrid(Subterrain):
     """
     A grid of square blocks, each raised or lowered by a random height, around a raised
     platform in the center, with a flat border.
-    
+
     Give it a ``horizontal_scale`` of a quarter of ``grid_width`` or finer for crisp blocks.
     The rest of the layout keeps its own spacing.
 

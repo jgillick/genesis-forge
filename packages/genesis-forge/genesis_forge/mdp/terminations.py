@@ -156,7 +156,7 @@ class out_of_bounds(MdpFn):
         terrain_manager: The terrain manager to check for out of bounds
         subterrain: The subterrain to keep the robot inside of. Any of:
 
-                    - A name: that subterrain. A name shared by several subterrains, 
+                    - A name: that subterrain. A name shared by several subterrains,
                       keeps the robot inside any of them.
                     - A list of names: any of those subterrains.
                     - ``True``: the subterrain each environment was last placed on

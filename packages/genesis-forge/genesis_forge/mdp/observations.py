@@ -345,7 +345,7 @@ class height_scan(MdpFn):
 
     Args:
         terrain_manager: The terrain manager to measure ground heights with.
-        offset: Subtracted from every value. This could be set to the robot's standing height, 
+        offset: Subtracted from every value. This could be set to the robot's standing height,
                 so flat ground reads close to 0.
         size: The ``(length, width)`` of the grid, in meters, along the entity's x and y axes.
         resolution: The spacing between grid points, in meters.

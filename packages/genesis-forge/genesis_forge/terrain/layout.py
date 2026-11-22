@@ -129,7 +129,7 @@ class TerrainLayout:
         self._map = TerrainMap.from_grid(
             self._pos, self._subterrain_size, labels=names, types=types
         )
-        
+
         self._height_field = self._generate()
         self._entity: RigidEntity = self._add_to(scene, surface, morph_kwargs)
 
@@ -484,9 +484,7 @@ class TerrainLayout:
         """
         shape = self._subterrain_shape(horizontal_scale)
         with self._seeded(index):
-            heights = subterrain.generate(
-                shape, horizontal_scale, self._vertical_scale
-            )
+            heights = subterrain.generate(shape, horizontal_scale, self._vertical_scale)
 
         heights = np.asarray(heights, dtype=np.float64)
         description = f"Subterrain '{name}' ({type(subterrain).__name__})"

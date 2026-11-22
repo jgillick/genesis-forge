@@ -30,8 +30,8 @@ SPACING = 40.0  # meters between subterrains, so each picture shows only one
 # The guide's table notes each one.
 PICTURE_PARAMS = {
     "PyramidSloped": {"slope": 0.3},
-    "Stairs": {"step_height": 0.2, "step_width": 0.5 },
-    "RandomGrid": { "grid_width": 0.4, "grid_height": 0.15 },
+    "Stairs": {"step_height": 0.2, "step_width": 0.5},
+    "RandomGrid": {"grid_width": 0.4, "grid_height": 0.15},
 }
 
 
@@ -67,7 +67,7 @@ def main():
             subterrain_size=(SUBTERRAIN_SIZE, SUBTERRAIN_SIZE),
             horizontal_scale=0.1,
             pos=(x_min, 0.0, 0.0),
-            seed=2
+            seed=2,
         )
         centers.append((x_min + SUBTERRAIN_SIZE / 2, SUBTERRAIN_SIZE / 2))
 

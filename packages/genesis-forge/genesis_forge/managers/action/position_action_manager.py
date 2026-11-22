@@ -184,9 +184,8 @@ class PositionActionManager(AffineDofActionManager):
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
         Sends the actions as position commands to the actuators in the simulation.
         """
-        actions = self.get_actions()
         self.actuator_manager.control_dofs_position(actions, self.dofs_idx)

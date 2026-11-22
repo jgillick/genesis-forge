@@ -116,8 +116,8 @@ class VelocityActionManager(AffineDofActionManager):
                 self._offset_cfg, default_value=0.0
             )
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
         Sends the actions as velocity commands to the actuators in the simulation.
         """
-        self.actuator_manager.control_dofs_velocity(self.get_actions(), self.dofs_idx)
+        self.actuator_manager.control_dofs_velocity(actions, self.dofs_idx)

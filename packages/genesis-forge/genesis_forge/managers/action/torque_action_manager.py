@@ -105,8 +105,8 @@ class TorqueActionManager(AffineDofActionManager):
             self._offset_cfg, default_value=0.0
         )
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
         Sends the actions as torque commands to the actuators in the simulation.
         """
-        self.actuator_manager.control_dofs_force(self.get_actions(), self.dofs_idx)
+        self.actuator_manager.control_dofs_force(actions, self.dofs_idx)

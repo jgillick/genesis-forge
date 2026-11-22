@@ -317,13 +317,13 @@ class BaseActionManager(BaseManager):
             "process_actions is not implemented for this action manager."
         )
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
-        Send the latest processed actions to the actuators in the simulation.
+        Send the processed actions to the actuators in the simulation.
         Override this function to define how the actions are sent to the simulation.
         """
         raise NotImplementedError(
-            "handle_actions is not implemented for this action manager."
+            "send_actions_to_simulation is not implemented for this action manager."
         )
 
     """

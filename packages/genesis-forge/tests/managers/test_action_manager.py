@@ -389,14 +389,12 @@ def test_send_actions_to_simulation_controls_the_actuator(env):
         scale=1.0,
     )
     mgr.build()
-    mgr.step(torch.tensor([[0.1, 0.2]] * env.num_envs))
-
-    # The `actions` arg is accepted but ignored -- it re-reads self.actions internally.
-    mgr.send_actions_to_simulation(None)
+    actions = mgr.step(torch.tensor([[0.1, 0.2]] * env.num_envs))
+    mgr.send_actions_to_simulation(actions)
 
     position, dofs_idx = actuator.control_calls[0]
     assert dofs_idx == [100, 101]
-    assert torch.allclose(position, mgr.actions)
+    assert torch.allclose(position, actions)
 
 
 """
@@ -564,14 +562,12 @@ def test_velocity_manager_send_actions_to_simulation_controls_the_actuator(env):
         clip=(-16.0, 16.0),
     )
     mgr.build()
-    mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
-
-    # The `actions` arg is accepted but ignored -- it re-reads self.actions internally.
-    mgr.send_actions_to_simulation(None)
+    actions = mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
+    mgr.send_actions_to_simulation(actions)
 
     velocity, dofs_idx = actuator.control_calls[0]
     assert dofs_idx == [100, 101]
-    assert torch.allclose(velocity, mgr.actions)
+    assert torch.allclose(velocity, actions)
 
 
 """
@@ -682,13 +678,12 @@ def test_torque_manager_send_actions_to_simulation_applies_force(env):
         clip=(-8.0, 8.0),
     )
     mgr.build()
-    mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
-
-    mgr.send_actions_to_simulation(None)
+    actions = mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
+    mgr.send_actions_to_simulation(actions)
 
     force, dofs_idx = actuator.control_calls[0]
     assert dofs_idx == [100, 101]
-    assert torch.allclose(force, mgr.actions)
+    assert torch.allclose(force, actions)
 
 
 def make_delayed_manager(env, delay_step):

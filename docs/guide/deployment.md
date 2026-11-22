@@ -394,7 +394,7 @@ To see an example of verifying an onnx policy, look at the [`verify_onnx_policy`
 
 ## Built-in action managers
 
-All three deploy with no extra work. The bundle records which one produced each target
+All four deploy with no extra work. The bundle records which one produced each target
 as `deploy_type`:
 
 | Manager                             | `deploy_type`            | Targets are                                      |
@@ -402,6 +402,7 @@ as `deploy_type`:
 | `PositionActionManager`             | `position`               | Joint positions                                  |
 | `PositionWithinLimitsActionManager` | `position_within_limits` | Joint positions, mapped into each joint's limits |
 | `VelocityActionManager`             | `velocity`               | Joint/wheel velocities                           |
+| `TorqueActionManager`               | `torque`                 | Joint torques                                    |
 
 ## Custom action managers
 

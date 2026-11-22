@@ -1,6 +1,6 @@
 name: Deploy to PyPI
 
-# Public the latest main branch version to pypi.
+# Deploy the main branch version to pypi.
 # This is run manually from the Actions tab.
 
 on:

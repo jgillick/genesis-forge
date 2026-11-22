@@ -3,6 +3,7 @@ from .affine_dof_action_manager import AffineDofActionManager
 from .base import BaseActionManager
 from .position_action_manager import PositionActionManager
 from .position_within_limits import PositionWithinLimitsActionManager
+from .torque_action_manager import TorqueActionManager
 from .velocity_action_manager import VelocityActionManager
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "BaseActionManager",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",
+    "TorqueActionManager",
     "VelocityActionManager",
 ]

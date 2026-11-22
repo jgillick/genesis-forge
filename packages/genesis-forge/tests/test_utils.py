@@ -11,7 +11,12 @@ import pytest
 import torch
 from genesis.utils.geom import transform_by_quat, xyz_to_quat
 
-from genesis_forge.utils import assign_by_pattern, heading_from_quat, name_matches
+from genesis_forge.utils import (
+    assign_by_pattern,
+    heading_from_quat,
+    inf_to_none,
+    name_matches,
+)
 
 """
 name_matches
@@ -138,3 +143,26 @@ def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
     quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
 
     assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)
+
+
+"""
+inf_to_none -- unbounded values in a deployment bundle
+"""
+
+
+def test_inf_to_none_replaces_either_infinity_with_none():
+    values = torch.tensor([1.5, float("inf"), float("-inf"), -2.0])
+
+    assert inf_to_none(values) == [1.5, None, None, -2.0]
+
+
+def test_inf_to_none_accepts_a_plain_list():
+    assert inf_to_none([0.0, float("-inf")]) == [0.0, None]
+
+
+def test_inf_to_none_returns_plain_floats():
+    """So the result serializes, even from a per-joint integer tensor."""
+    result = inf_to_none(torch.tensor([1, 2]))
+
+    assert result == [1.0, 2.0]
+    assert all(type(value) is float for value in result)

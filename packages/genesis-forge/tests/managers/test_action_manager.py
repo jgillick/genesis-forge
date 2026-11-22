@@ -14,6 +14,7 @@ import torch
 from genesis_forge.managers import (
     PositionActionManager,
     PositionWithinLimitsActionManager,
+    TorqueActionManager,
     VelocityActionManager,
 )
 from genesis_forge.managers.action.base import BaseActionManager
@@ -30,6 +31,7 @@ class FakeActuatorManager:
         velocity=None,
         force=None,
         control_force=None,
+        force_range=None,
     ):
         self.dofs = dofs
         self._idx_to_col = {idx: col for col, idx in enumerate(dofs.values())}
@@ -40,10 +42,17 @@ class FakeActuatorManager:
         self._velocity = velocity
         self._force = force
         self._control_force = control_force
+        self._force_range = force_range
         self.control_calls = []
 
     def _cols(self, dofs_idx):
         return [self._idx_to_col[i] for i in dofs_idx]
+
+    def get_dofs_nominal_force_range(self):
+        if self._force_range is None:
+            n = len(self.dofs)
+            return torch.full((n,), float("-inf")), torch.full((n,), float("inf"))
+        return self._force_range
 
     def get_dofs_limits(self, dofs_idx):
         cols = self._cols(dofs_idx)
@@ -70,16 +79,32 @@ class FakeActuatorManager:
     def control_dofs_velocity(self, velocity, dofs_idx):
         self.control_calls.append((velocity.clone(), list(dofs_idx)))
 
+    def control_dofs_force(self, force, dofs_idx):
+        self.control_calls.append((force.clone(), list(dofs_idx)))
+
 
 def make_actuator_manager(
-    num_envs=4, position=None, velocity=None, force=None, control_force=None
+    num_envs=4,
+    position=None,
+    velocity=None,
+    force=None,
+    control_force=None,
+    force_range=None,
 ):
     dofs = {"FL_hip": 100, "FL_knee": 101, "FR_hip": 102}
     default_pos = torch.tensor([[0.1, 0.2, 0.3]] * num_envs)
     lower = torch.tensor([-1.0, -1.5, -2.0])
     upper = torch.tensor([1.0, 1.5, 2.0])
     return FakeActuatorManager(
-        dofs, default_pos, lower, upper, position, velocity, force, control_force
+        dofs,
+        default_pos,
+        lower,
+        upper,
+        position,
+        velocity,
+        force,
+        control_force,
+        force_range,
     )
 
 
@@ -547,6 +572,123 @@ def test_velocity_manager_send_actions_to_simulation_controls_the_actuator(env):
     velocity, dofs_idx = actuator.control_calls[0]
     assert dofs_idx == [100, 101]
     assert torch.allclose(velocity, mgr.actions)
+
+
+"""
+TorqueActionManager -- process_actions and send_actions_to_simulation
+"""
+
+
+def test_torque_manager_clip_defaults_to_unbounded(env):
+    actuator = make_actuator_manager()
+    mgr = TorqueActionManager(
+        env, actuator_manager=actuator, actuator_joints=["FL_hip"]
+    )
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[1e9]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[1e9]] * env.num_envs))
+
+
+def test_torque_manager_clip_defaults_to_the_actuators_max_force(env):
+    # FL_knee has no max_force, so it stays unbounded
+    actuator = make_actuator_manager(
+        force_range=(
+            torch.tensor([-8.0, float("-inf"), -4.0]),
+            torch.tensor([8.0, float("inf"), 2.0]),
+        )
+    )
+    mgr = TorqueActionManager(env, actuator_manager=actuator)
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0, 1e9, -100.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[8.0, 1e9, -4.0]] * env.num_envs))
+
+
+def test_torque_manager_max_force_fallback_follows_the_controlled_joints(env):
+    """The fallback is read in actuator order, then filtered to this manager's joints."""
+    actuator = make_actuator_manager(
+        force_range=(torch.tensor([-1.0, -2.0, -3.0]), torch.tensor([1.0, 2.0, 3.0]))
+    )
+    mgr = TorqueActionManager(env, actuator_manager=actuator, actuator_joints="FR_hip")
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[3.0]] * env.num_envs))
+
+
+def test_torque_manager_with_action_groups_keeps_clip_and_scale_per_joint(env):
+    actuator = make_actuator_manager(
+        force_range=(torch.tensor([-1.0, -2.0, -3.0]), torch.tensor([1.0, 2.0, 3.0]))
+    )
+    mgr = TorqueActionManager(
+        env,
+        actuator_manager=actuator,
+        action_groups=[["FL_hip", "FR_hip"], ["FL_knee"]],
+        scale={"FL_hip": 2.0, "FR_hip": -2.0, "FL_knee": 1.0},
+    )
+    mgr.build()
+    assert mgr.num_actions == 2
+
+    mgr.step(torch.tensor([[1.0, 5.0]] * env.num_envs))
+
+    # DOF order is FL_hip, FL_knee, FR_hip. The hip action (1.0) drives both hips:
+    # FL_hip 2.0 is clipped to 1.0, FR_hip -2.0 is within 3.0. The knee's 5.0 is
+    # clipped to 2.0.
+    expected = torch.tensor([[1.0, 2.0, -2.0]] * env.num_envs)
+    assert torch.allclose(mgr.actions, expected)
+
+
+def test_torque_manager_explicit_clip_overrides_max_force_per_joint(env):
+    actuator = make_actuator_manager(
+        force_range=(torch.full((3,), -8.0), torch.full((3,), 8.0))
+    )
+    mgr = TorqueActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        clip={"FL_hip": (-2.0, 2.0)},  # FL_knee falls back to max_force
+    )
+    mgr.build()
+
+    processed = mgr.process_actions(torch.tensor([[100.0, 100.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[2.0, 8.0]] * env.num_envs))
+
+
+def test_torque_manager_process_actions_scales_offsets_and_clamps(env):
+    actuator = make_actuator_manager()
+    mgr = TorqueActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        scale={"FL_hip": 2.0, "FL_knee": 4.0},
+        offset={"FL_hip": 1.0, "FL_knee": 0.0},
+        clip=(-8.0, 8.0),
+    )
+    mgr.build()
+
+    # FL_hip: 1*2.0 + 1.0 = 3.0 (within clip)
+    # FL_knee: 5*4.0 + 0.0 = 20.0, clamped to 8.0
+    processed = mgr.process_actions(torch.tensor([[1.0, 5.0]] * env.num_envs))
+    assert torch.allclose(processed, torch.tensor([[3.0, 8.0]] * env.num_envs))
+
+
+def test_torque_manager_send_actions_to_simulation_applies_force(env):
+    actuator = make_actuator_manager()
+    mgr = TorqueActionManager(
+        env,
+        actuator_manager=actuator,
+        actuator_joints=["FL_.*"],
+        clip=(-8.0, 8.0),
+    )
+    mgr.build()
+    mgr.step(torch.tensor([[1.0, 2.0]] * env.num_envs))
+
+    mgr.send_actions_to_simulation(None)
+
+    force, dofs_idx = actuator.control_calls[0]
+    assert dofs_idx == [100, 101]
+    assert torch.allclose(force, mgr.actions)
 
 
 def make_delayed_manager(env, delay_step):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 import genesis as gs
@@ -163,6 +165,22 @@ def assign_by_pattern(names: list[str], config: dict[str, T]) -> list[T | None]:
                 f"'{pattern}' not found among the unassigned names: {unassigned}"
             )
     return assigned
+
+
+def inf_to_none(values: torch.Tensor | Sequence[float]) -> list[float | None]:
+    """
+    Convert values to a list of floats, with each infinite value replaced by None.
+
+    JSON has no infinity, so a deployment bundle writes an unbounded value as null.
+
+    Example::
+
+        inf_to_none(torch.tensor([1.0, float("inf"), float("-inf")]))
+        # -> [1.0, None, None]
+    """
+    if isinstance(values, torch.Tensor):
+        values = values.detach().cpu().tolist()
+    return [None if math.isinf(value) else float(value) for value in values]
 
 
 def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidLink]:

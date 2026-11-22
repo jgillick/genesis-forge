@@ -123,6 +123,22 @@ def test_config_and_actuator_values_load_as_plain_json_data(tmp_path):
     assert manifest.actuators[0].randomized == ("default_pos",)
 
 
+def test_null_actuator_values_round_trip(tmp_path):
+    """An unbounded value is written as JSON null and loads back as None."""
+    actuators = (
+        ActuatorSpec(
+            name="actuator_manager",
+            joint_names=("hip", "knee"),
+            values={"force_max": [8.0, None]},
+        ),
+    )
+    path = write_bundle(tmp_path, make_manifest(actuators=actuators))
+
+    text = (path / "manifest.json").read_text()
+    assert "Infinity" not in text
+    assert load_bundle(path).manifest.actuators[0].values["force_max"] == [8.0, None]
+
+
 def test_manifest_json_is_human_readable(tmp_path):
     path = write_bundle(tmp_path)
     data = json.loads((path / "manifest.json").read_text())

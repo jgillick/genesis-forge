@@ -35,6 +35,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [ActionDelayBuffer](https://docs.genesisforge.io/en/latest/api/managers/action/delay_buffer.md)
 - [PositionActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position.md)
 - [PositionWithinLimitsActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position_w_limits.md)
+- [TorqueActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/torque.md)
 - [VelocityActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/velocity.md)
 - [Command](https://docs.genesisforge.io/en/latest/api/managers/command/index.md)
 - [CommandManager](https://docs.genesisforge.io/en/latest/api/managers/command/command.md)
@@ -78,4 +79,5 @@ Source: https://github.com/jgillick/genesis-forge
 
 - [Gamepad](https://docs.genesisforge.io/en/latest/api/other/gamepad.md)
 - [Meshes](https://docs.genesisforge.io/en/latest/api/other/meshes.md)
+- [Terrain Layout](https://docs.genesisforge.io/en/latest/api/other/terrain.md)
 

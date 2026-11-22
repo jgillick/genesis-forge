@@ -179,6 +179,23 @@ self.actuator_manager = ActuatorManager(
 )
 ```
 
+## Setting a value for only some joints
+
+A per-joint dict doesn't need to cover every joint. The manager only sets a value on the joints the dict matches. The other joints keep the simulator's value, which usually comes from the robot's model file (URDF/MJCF):
+
+```python
+self.actuator_manager = ActuatorManager(
+    self,
+    joint_names=[".*"],
+    kp={".*_hip_joint": 25.0},  # thigh and calf joints keep the model's kp
+    max_force={".*_calf_joint": 6.0},  # hip and thigh joints keep the model's force range
+)
+```
+
+The deployment bundle records the value each joint trained with, including the simulator's value for joints the dict leaves out. A value with no limit at all, such as a force range the model doesn't set, is written as `null`.
+
+`default_pos` is the exception: a joint it doesn't cover resets to 0.
+
 ## Sim2Real - Physical Properties
 
 Set physical properties like damping, stiffness, friction loss, and armature, to match your real actuators.

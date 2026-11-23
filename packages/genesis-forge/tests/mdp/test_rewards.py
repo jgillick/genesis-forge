@@ -1211,3 +1211,50 @@ def test_action_rate_l2_rejects_an_unregistered_action_manager(env):
 
     with pytest.raises(ValueError, match="not registered with this environment"):
         fn.safe_build()
+
+
+"""
+Power and actuator effort
+"""
+
+
+class FakePowerMonitor:
+    def __init__(self, dof_power, dof_groups=None):
+        self.dof_power = dof_power
+        self.dof_groups = dof_groups
+
+
+class FakeActuatorMonitor:
+    def __init__(self, saturated=None):
+        self.dof_saturated = saturated
+
+
+def test_electrical_power_sums_the_motor_power(env):
+    monitor = FakePowerMonitor(torch.tensor([[1.0, 2.0, 3.0]]))
+    fn = built(rewards.electrical_power(power_monitor=monitor), env)
+
+    assert torch.allclose(fn(env), torch.tensor([6.0]))
+
+
+def test_electrical_power_can_count_one_dof_group(env):
+    monitor = FakePowerMonitor(
+        torch.tensor([[1.0, 2.0, 3.0]]), dof_groups={"hip": [0, 2], "knee": [1]}
+    )
+    fn = built(rewards.electrical_power(power_monitor=monitor, dof_group="hip"), env)
+
+    assert torch.allclose(fn(env), torch.tensor([4.0]))
+
+
+def test_electrical_power_rejects_an_unknown_dof_group(env):
+    monitor = FakePowerMonitor(torch.zeros(1, 3), dof_groups={"hip": [0]})
+    with pytest.raises(AssertionError, match="no DOF group 'tail'"):
+        built(rewards.electrical_power(power_monitor=monitor, dof_group="tail"), env)
+
+
+def test_torque_saturation_is_the_fraction_of_saturated_joints(env):
+    monitor = FakeActuatorMonitor(
+        saturated=torch.tensor([[True, False, False, False], [True, True, True, True]])
+    )
+    fn = built(rewards.torque_saturation(actuator_monitor=monitor), env)
+
+    assert torch.allclose(fn(env), torch.tensor([0.25, 1.0]))

@@ -1,6 +1,6 @@
 name: Deploy to PyPI
 
-# Public the latest main branch version to pypi.
+# Deploy the main branch version to pypi.
 # This is run manually from the Actions tab.
 
 on:
@@ -37,6 +37,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           version: "0.12.12"
+          python-version: "3.12"
 
       - name: Check out the release tag
         env:

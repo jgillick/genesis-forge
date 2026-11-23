@@ -40,7 +40,7 @@ class ConfigurableEnv(ManagedEnvironment):
 
 class RecordingManager(BaseManager):
     """A double for the manager types ManagedEnvironment only calls build(), step()
-    and reset() on: terrain, actuator, contact, command and entity."""
+    and reset() on: terrain, actuator, contact, monitor, command and entity."""
 
     def __init__(self, env, type, log):
         super().__init__(env, type=type)
@@ -201,6 +201,7 @@ def test_build_calls_managers_in_the_documented_order():
         RecordingManager(env, "actuator", log)
         RecordingActionManager(env, log)
         RecordingManager(env, "contact", log)
+        RecordingManager(env, "monitor", log)
         RecordingTerminationManager(env, log)
         RecordingRewardManager(env, log)
         RecordingManager(env, "command", log)
@@ -216,11 +217,30 @@ def test_build_calls_managers_in_the_documented_order():
         "actuator",
         "action",
         "contact",
+        "monitor",
         "termination",
         "reward",
         "command",
         "entity",
         "observation",
+    ]
+
+
+def test_build_calculates_monitor_values_before_observation_managers_build():
+    """Observation managers run their functions at build, which can read monitors."""
+    log = []
+
+    def configure(env):
+        RecordingManager(env, "monitor", log)
+        RecordingObservationManager(env, log)
+
+    env = ConfigurableEnv(configure=configure, num_envs=4)
+    env.build()
+
+    assert [entry[:2] for entry in log] == [
+        ("build", "monitor"),
+        ("reset", "monitor"),
+        ("build", "observation"),
     ]
 
 
@@ -365,6 +385,27 @@ def test_step_dispatches_the_right_action_slice_to_each_manager():
     assert torch.equal(second_mgr.received_actions, actions[:, 2:5])
 
 
+def test_step_runs_monitors_after_contacts_and_before_terminations_and_rewards():
+    """Terminations and rewards may read monitor values, which must be from this step."""
+    log = []
+
+    def configure(env):
+        RecordingRewardManager(env, log)
+        RecordingTerminationManager(env, log)
+        RecordingManager(env, "monitor", log)
+        RecordingManager(env, "contact", log)
+
+    env = ConfigurableEnv(configure=configure, num_envs=4)
+    env.build()
+    env.reset()
+    log.clear()
+
+    env.step(torch.zeros((4, 0)))
+
+    order = [entry[1] for entry in log if entry[0] == "step"]
+    assert order == ["contact", "monitor", "termination", "reward"]
+
+
 def test_step_triggers_reset_for_envs_that_terminated_or_truncated():
     log = []
 
@@ -442,6 +483,24 @@ reset()
 """
 
 
+def test_reset_resets_monitors_after_every_other_manager():
+    """Monitors recalculate on reset, from the other managers' reset state."""
+    log = []
+
+    def configure(env):
+        RecordingManager(env, "monitor", log)
+        RecordingManager(env, "command", log)
+        RecordingObservationManager(env, log)
+
+    env = ConfigurableEnv(configure=configure, num_envs=4)
+    env.build()
+    log.clear()
+
+    env.reset([0, 2])
+
+    assert [entry[1] for entry in log] == ["command", "observation", "monitor"]
+
+
 def test_reset_calls_every_manager_type_with_the_given_env_ids():
     log = []
 
@@ -450,6 +509,7 @@ def test_reset_calls_every_manager_type_with_the_given_env_ids():
         RecordingActionManager(env, log)
         RecordingManager(env, "entity", log)
         RecordingManager(env, "contact", log)
+        RecordingManager(env, "monitor", log)
         RecordingTerminationManager(env, log)
         RecordingRewardManager(env, log)
         RecordingManager(env, "command", log)
@@ -467,6 +527,7 @@ def test_reset_calls_every_manager_type_with_the_given_env_ids():
         "action",
         "entity",
         "contact",
+        "monitor",
         "termination",
         "reward",
         "command",

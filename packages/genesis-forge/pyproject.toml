@@ -13,7 +13,7 @@ dependencies = [
   # Released in lockstep: the two ship together at the same major/minor version, so this is an
   # exact pin -- either package can ship a patch on its own.
   "genesis-forge-runtime>=1.0.0,<1.1",
-  "genesis-world>=1.3.0",
+  "genesis-world>=1.3.3",
   "gymnasium",
   "pysdl2",
   "pysdl2-dll",

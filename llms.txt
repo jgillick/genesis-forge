@@ -26,6 +26,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [ActuatorManager](https://docs.genesisforge.io/en/latest/api/managers/actuator.md)
 - [ContactManager](https://docs.genesisforge.io/en/latest/api/managers/contact.md)
 - [EntityManager](https://docs.genesisforge.io/en/latest/api/managers/entity.md)
+- [Monitors](https://docs.genesisforge.io/en/latest/api/managers/monitor.md)
 - [NoisyValue](https://docs.genesisforge.io/en/latest/api/managers/noisy_value.md)
 - [ObservationManager](https://docs.genesisforge.io/en/latest/api/managers/observation.md)
 - [RewardManager](https://docs.genesisforge.io/en/latest/api/managers/reward.md)
@@ -35,6 +36,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [ActionDelayBuffer](https://docs.genesisforge.io/en/latest/api/managers/action/delay_buffer.md)
 - [PositionActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position.md)
 - [PositionWithinLimitsActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/position_w_limits.md)
+- [TorqueActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/torque.md)
 - [VelocityActionManager](https://docs.genesisforge.io/en/latest/api/managers/action/velocity.md)
 - [Command](https://docs.genesisforge.io/en/latest/api/managers/command/index.md)
 - [CommandManager](https://docs.genesisforge.io/en/latest/api/managers/command/command.md)
@@ -78,4 +80,5 @@ Source: https://github.com/jgillick/genesis-forge
 
 - [Gamepad](https://docs.genesisforge.io/en/latest/api/other/gamepad.md)
 - [Meshes](https://docs.genesisforge.io/en/latest/api/other/meshes.md)
+- [Terrain Layout](https://docs.genesisforge.io/en/latest/api/other/terrain.md)
 

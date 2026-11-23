@@ -36,9 +36,18 @@ class FakeLink:
 class FakeTerrainManager:
     def __init__(self, pos):
         self._pos = pos
+        self.validated = []
 
-    def generate_random_env_pos(self, envs_idx, subterrain, height_offset):
+    def validate_selection(self, selection, num=None):
+        """Record the selection checked at build."""
+        self.validated.append((selection, num))
+
+    def generate_random_env_pos(
+        self, envs_idx, subterrain, usable_ratio, height_offset
+    ):
+        """Record the call, and return the stored positions for those envs."""
         self.last_call = (list(envs_idx), subterrain, height_offset)
+        self.last_usable_ratio = usable_ratio
         return self._pos[envs_idx]
 
 
@@ -208,6 +217,62 @@ def test_randomize_terrain_position_calls_subterrain_when_callable(env):
     fn(env, entity, [0])
 
     assert terrain.last_call[1] == "rocky"
+
+
+def test_randomize_terrain_position_validates_the_subterrain_at_build(env):
+    """A list of names is checked when the function is built, not at the first reset."""
+    terrain = FakeTerrainManager(torch.zeros((1, 3)))
+    built(
+        reset.randomize_terrain_position(
+            terrain_manager=terrain, subterrain=["flat", "rough"]
+        ),
+        env,
+        entity=FakeEntity(),
+    )
+
+    assert terrain.validated == [(["flat", "rough"], None)]
+
+
+def test_randomize_terrain_position_validates_a_tensor_against_num_envs(env):
+    """A per-env tensor is checked for one entry per environment."""
+    terrain = FakeTerrainManager(torch.zeros((1, 3)))
+    selection = torch.zeros(env.num_envs, dtype=torch.long)
+    built(
+        reset.randomize_terrain_position(terrain_manager=terrain, subterrain=selection),
+        env,
+        entity=FakeEntity(),
+    )
+
+    assert terrain.validated == [(selection, env.num_envs)]
+
+
+def test_randomize_terrain_position_does_not_validate_a_callable_at_build(env):
+    """A callable decides at each reset, so there's nothing to check at build."""
+    terrain = FakeTerrainManager(torch.zeros((1, 3)))
+    built(
+        reset.randomize_terrain_position(
+            terrain_manager=terrain, subterrain=lambda: "rocky"
+        ),
+        env,
+        entity=FakeEntity(),
+    )
+
+    assert terrain.validated == []
+
+
+def test_randomize_terrain_position_passes_the_usable_ratio(env):
+    """The usable_ratio param reaches the terrain manager."""
+    entity = FakeEntity()
+    terrain = FakeTerrainManager(torch.zeros((1, 3)))
+    fn = built(
+        reset.randomize_terrain_position(terrain_manager=terrain, usable_ratio=0.9),
+        env,
+        entity=entity,
+    )
+
+    fn(env, entity, [0])
+
+    assert terrain.last_usable_ratio == 0.9
 
 
 """

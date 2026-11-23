@@ -88,7 +88,7 @@ uv run ./eval.py
 Install dependencies
 
 ```shell
-pip install -e ../../ skrl[torch] tensorboard torch
+pip install -e ../../packages/genesis-forge skrl[torch] tensorboard torch
 ```
 
 Train:

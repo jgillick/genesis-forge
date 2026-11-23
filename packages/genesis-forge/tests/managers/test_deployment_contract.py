@@ -19,6 +19,7 @@ from genesis_forge.managers import (
     ObservationManager,
     PositionActionManager,
     PositionWithinLimitsActionManager,
+    TorqueActionManager,
     VelocityActionManager,
 )
 from genesis_forge.managers.action.base import (
@@ -28,28 +29,35 @@ from genesis_forge.managers.action.base import (
 
 
 class FakeActuatorManager:
-    def __init__(self, dofs, default_pos, lower, upper):
+    def __init__(self, dofs, default_pos, lower, upper, force_range=None):
         self.dofs = dofs
         self._idx_to_col = {idx: col for col, idx in enumerate(dofs.values())}
         self.default_dofs_pos = default_pos
         self._lower = lower
         self._upper = upper
+        self._force_range = force_range
 
     def _cols(self, dofs_idx):
-        return [self._idx_to_col[i] for i in dofs_idx]
+        return [self._idx_to_col[int(i)] for i in dofs_idx]
 
     def get_dofs_limits(self, dofs_idx):
         cols = self._cols(dofs_idx)
         return self._lower[cols], self._upper[cols]
 
+    def get_dofs_nominal_force_range(self):
+        if self._force_range is None:
+            n = len(self.dofs)
+            return torch.full((n,), float("-inf")), torch.full((n,), float("inf"))
+        return self._force_range
 
-def make_actuator_manager(num_envs=4, default_pos=None):
+
+def make_actuator_manager(num_envs=4, default_pos=None, force_range=None):
     dofs = {"FL_hip": 100, "FL_knee": 101, "FR_hip": 102}
     if default_pos is None:
         default_pos = torch.tensor([[0.1, 0.2, 0.3]] * num_envs)
     lower = torch.tensor([-1.0, -1.5, -2.0])
     upper = torch.tensor([1.0, 1.5, 2.0])
-    return FakeActuatorManager(dofs, default_pos, lower, upper)
+    return FakeActuatorManager(dofs, default_pos, lower, upper, force_range)
 
 
 """
@@ -231,6 +239,23 @@ def test_a_partially_clipped_velocity_manager_keeps_both_sides(env):
     )
 
 
+def test_a_torque_manager_exports_the_actuators_max_force_as_its_clip(env):
+    """Without it, a policy that learned to over-command in simulation -- where the
+    excess is silently capped -- would send the excess to the robot's motors."""
+    manager = TorqueActionManager(
+        env,
+        actuator_manager=make_actuator_manager(
+            force_range=(torch.full((3,), -8.0), torch.full((3,), 8.0))
+        ),
+    )
+    manager.build()
+
+    config = manager.get_deployment_config().config
+
+    assert config["clip_low"] == pytest.approx([-8.0, -8.0, -8.0])
+    assert config["clip_high"] == pytest.approx([8.0, 8.0, 8.0])
+
+
 def test_every_builtin_action_manager_publishes_a_distinct_type(env):
     managers = [
         PositionActionManager(env, actuator_manager=make_actuator_manager()),
@@ -238,13 +263,14 @@ def test_every_builtin_action_manager_publishes_a_distinct_type(env):
             env, actuator_manager=make_actuator_manager()
         ),
         VelocityActionManager(env, actuator_manager=make_actuator_manager()),
+        TorqueActionManager(env, actuator_manager=make_actuator_manager()),
     ]
     for manager in managers:
         manager.build()
 
     types = [manager.get_deployment_config().deploy_type for manager in managers]
 
-    assert types == ["position", "position_within_limits", "velocity"]
+    assert types == ["position", "position_within_limits", "velocity", "torque"]
 
 
 def test_exporting_an_unbuilt_affine_manager_is_refused(env):

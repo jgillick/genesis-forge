@@ -296,6 +296,7 @@ Explore the complete examples in the repository:
 - **[Simple Locomotion](https://github.com/jgillick/genesis-forge/tree/main/examples/basic)**: Basic forward walking
 - **[Commanded direction](https://github.com/jgillick/genesis-forge/tree/main/examples/command_direction)**: Follow velocity commands
 - **[Rough Terrain](https://github.com/jgillick/genesis-forge/tree/main/examples/rough_terrain)**: Navigate challenging terrain
+- **[Terrain Curriculum](https://github.com/jgillick/genesis-forge/tree/main/examples/terrain_curriculum)**: Work up to rougher terrain as the robot improves
 
 ## Troubleshooting
 

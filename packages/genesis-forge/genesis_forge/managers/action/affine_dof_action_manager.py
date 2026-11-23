@@ -11,7 +11,7 @@ from genesis_forge.managers.action.base import (
     DeploymentActionConfig,
 )
 from genesis_forge.managers.actuator import ActuatorManager
-from genesis_forge.utils import assign_by_pattern
+from genesis_forge.utils import assign_by_pattern, inf_to_none
 
 T = TypeVar("T")
 
@@ -25,7 +25,7 @@ class AffineDofActionManager(BaseActionManager):
 
        value = offset + scaling * action
 
-    Shared by `PositionActionManager` and `VelocityActionManager`. A subclass's
+    Shared by `PositionActionManager`, `VelocityActionManager`, and `TorqueActionManager`. A subclass's
     `build()` is responsible for populating `self._scale_values`,
     `self._offset_values`, and `self._clip_values` (each shape `(num_actions,)`,
     except `_clip_values` which is `(num_actions, 2)`).
@@ -140,20 +140,15 @@ class AffineDofActionManager(BaseActionManager):
         low = self.per_joint_deployment_values(clip_low, "clip lower bound")
         high = self.per_joint_deployment_values(clip_high, "clip upper bound")
 
-        # JSON has no portable infinity, so an unbounded joint is written as null and
-        # the runtime reads that back as no clip for that joint. A side no joint bounds
-        # (VelocityActionManager's default) is left out entirely, which is what keeps
-        # those joints out of the runtime's `clip_range_by_joint`.
-        has_lower_bound = any(value != float("-inf") for value in low)
-        has_upper_bound = any(value != float("inf") for value in high)
-        if has_lower_bound:
-            config["clip_low"] = [
-                None if value == float("-inf") else value for value in low
-            ]
-        if has_upper_bound:
-            config["clip_high"] = [
-                None if value == float("inf") else value for value in high
-            ]
+        # An unbounded joint is written as null, and the runtime reads that back as
+        # no clip for that joint. A side no joint bounds (VelocityActionManager's
+        # default) is left out entirely, which is what keeps those joints out of the
+        # runtime's `clip_range_by_joint`.
+        low, high = inf_to_none(low), inf_to_none(high)
+        if any(value is not None for value in low):
+            config["clip_low"] = low
+        if any(value is not None for value in high):
+            config["clip_high"] = high
 
         return DeploymentActionConfig(
             deploy_type=self.deploy_type,

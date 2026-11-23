@@ -16,6 +16,7 @@ from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
+    ActuatorMonitor,
     BaseActionManager,
     CommandManager,
     ContactManager,
@@ -23,6 +24,7 @@ from genesis_forge.managers import (
     MdpFn,
     Pose2dCommand,
     PositionActionManager,
+    PowerMonitor,
     TerrainManager,
     VelocityCommandManager,
 )
@@ -46,9 +48,9 @@ def _dof_manager(
     """
     if actuator_manager is not None:
         return actuator_manager
-    assert (
-        action_manager is not None
-    ), f"Either actuator_manager or action_manager must be provided to {type(fn).__name__}"
+    assert action_manager is not None, (
+        f"Either actuator_manager or action_manager must be provided to {type(fn).__name__}"
+    )
     return action_manager
 
 
@@ -594,6 +596,69 @@ class dof_acc_l2(MdpFn):
 
 
 """
+Power and actuator effort
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class electrical_power(MdpFn):
+    """
+    Penalize the estimated electrical power of the robot's motors, in watts.
+
+    Register with a negative weight. Since moving faster takes more power, a strong
+    weight can work against velocity tracking. Start small and grow it with a
+    curriculum.
+
+    Args:
+        power_monitor: The power monitor estimating the motor power.
+        dof_group: Only count the motors in this DOF group of the power monitor.
+
+    Returns:
+        torch.Tensor: The power, in watts, shape (num_envs,)
+    """
+
+    power_monitor: PowerMonitor
+    dof_group: str | None = None
+
+    def build(self):
+        self._cols = None
+        if self.dof_group is not None:
+            groups = self.power_monitor.dof_groups or {}
+            assert self.dof_group in groups, (
+                f"The power monitor has no DOF group '{self.dof_group}': {list(groups)}"
+            )
+            self._cols = groups[self.dof_group]
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        power = self.power_monitor.dof_power
+        if self._cols is not None:
+            power = power[:, self._cols]
+        return power.sum(dim=-1)
+
+
+@dataclass(kw_only=True, eq=False)
+class torque_saturation(MdpFn):
+    """
+    Penalize joints that are at, or near, their force limit.
+
+    A joint at its force limit can no longer follow its controller, which is where
+    simulation and real hardware tend to part ways. The threshold is the actuator
+    monitor's `saturation_threshold`. Register with a negative weight.
+
+    Args:
+        actuator_monitor: The actuator monitor for the joints.
+
+    Returns:
+        torch.Tensor: The fraction of joints that are saturated, shape (num_envs,)
+    """
+
+    actuator_monitor: ActuatorMonitor
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self.actuator_monitor.dof_saturated.float().mean(dim=-1)
+
+
+"""
 Velocity Command Rewards
 """
 
@@ -638,9 +703,9 @@ class command_tracking_lin_vel(MdpFn):
     entity_manager: EntityManager | None = None
 
     def build(self):
-        assert (
-            self.command is not None or self.vel_cmd_manager is not None
-        ), "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        assert self.command is not None or self.vel_cmd_manager is not None, (
+            "Either command or vel_cmd_manager must be provided to command_tracking_lin_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -704,9 +769,9 @@ class command_tracking_ang_vel(MdpFn):
     entity_manager: EntityManager | None = None
 
     def build(self):
-        assert (
-            self.commanded_ang_vel is not None or self.vel_cmd_manager is not None
-        ), "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
+            "Either commanded_ang_vel or vel_cmd_manager must be provided to command_tracking_ang_vel"
+        )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
@@ -1145,9 +1210,9 @@ class feet_air_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         made_contact = self.contact_manager.has_made_contact(env.dt)
         last_air_time = self.contact_manager.last_air_time
-        assert (
-            last_air_time is not None
-        ), "feet_air_time needs a contact_manager with track_air_time=True"
+        assert last_air_time is not None, (
+            "feet_air_time needs a contact_manager with track_air_time=True"
+        )
 
         # Calculate the air time
         air_time = (last_air_time - self.time_threshold) * made_contact
@@ -1191,9 +1256,9 @@ class feet_ground_time(MdpFn):
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         just_lifted = self.contact_manager.has_broken_contact(env.dt)
         last_contact_time = self.contact_manager.last_contact_time
-        assert (
-            last_contact_time is not None
-        ), "feet_ground_time needs a contact_manager with track_air_time=True"
+        assert last_contact_time is not None, (
+            "feet_ground_time needs a contact_manager with track_air_time=True"
+        )
         short_contact = (self.time_threshold - last_contact_time).clamp(
             min=0.0
         ) * just_lifted

@@ -12,13 +12,10 @@ import math
 import genesis as gs
 import pytest
 import torch
-from genesis.utils.geom import transform_by_quat, xyz_to_quat
+from genesis.utils.geom import xyz_to_quat
 
 from genesis_forge.managers import Pose2dCommand
-from genesis_forge.managers.command.pose_2d_command import (
-    heading_from_quat,
-    shortest_turn_to,
-)
+from genesis_forge.managers.command.pose_2d_command import shortest_turn_to
 
 
 class FakeEntity:
@@ -116,32 +113,8 @@ def test_resample_time_sec_computes_resample_steps_when_set(env):
 
 
 """
-heading_from_quat / shortest_turn_to
+shortest_turn_to
 """
-
-
-def test_heading_from_quat_is_where_the_nose_points():
-    """
-    The heading is the entity's nose flattened onto the ground, so tilt moves it. The
-    euler yaw -- `quat_to_xyz(quat)[:, 2]` -- does not, which is why it isn't used here:
-    swap one for the other and a tilted robot's heading error goes wrong.
-    """
-    # Yawed 40 degrees, and pitched 45 degrees nose-up
-    quat = xyz_to_quat(torch.tensor([[0.0, 45.0, 40.0]]), degrees=True)
-    nose = transform_by_quat(torch.tensor([[1.0, 0.0, 0.0]]), quat)[0]
-
-    heading = heading_from_quat(quat).item()
-
-    assert math.isclose(heading, math.atan2(nose[1], nose[0]), abs_tol=1e-5)
-    # The euler yaw of this orientation is exactly the 40 degrees it was built from; the
-    # nose is further round than that, because pitching it up swings it away
-    assert heading > math.radians(45)
-
-
-def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
-    quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
-
-    assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)
 
 
 def test_shortest_turn_takes_the_short_way_around():

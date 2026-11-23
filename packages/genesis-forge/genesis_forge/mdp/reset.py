@@ -13,7 +13,7 @@ from genesis.utils.geom import (
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import ResetMdpFn
-from genesis_forge.managers.terrain_manager import TerrainManager
+from genesis_forge.managers.terrain_manager import SubterrainSelection, TerrainManager
 from genesis_forge.utils import links_by_name_pattern
 
 if TYPE_CHECKING:
@@ -121,8 +121,21 @@ class randomize_terrain_position(ResetMdpFn):
     Args:
         terrain_manager: The terrain manager to use to generate the random position.
         height_offset: The height offset to add to the random position.
-        subterrain: The subterrain to generate the random position on.
-                    Either a string or a callable that returns a string.
+        subterrain: The subterrain(s) to place the entity on. Any of:
+
+            - ``None``: anywhere on the whole terrain.
+            - ``"flat"``: that subterrain.
+            - ``["flat", "rough"]``: a random choice per environment.
+            - A long tensor in the shape ``(num_envs,)`` holding each environment's
+                subterrain index (see :meth:`TerrainManager.index`).
+            - A callable, with no arguments, that returns any of the above.
+                It is called on every reset.
+
+            Names are checked when the environment is built.
+            The subterrain each environment lands on is recorded in
+            :attr:`TerrainManager.env_subterrain`.
+        usable_ratio: How much of the subterrain area to place the entity in, centered.
+                      For example, 0.5 keeps the entity out of the outer quarter on each side.
         rotation: The X/Y/Z rotation to set the entity to. Defaults to a random rotation around the z-axis.
                   Set to None to not set a rotation.
         zero_velocity: Whether to zero the velocity of all the entity's dofs.
@@ -131,7 +144,8 @@ class randomize_terrain_position(ResetMdpFn):
 
     terrain_manager: TerrainManager
     height_offset: float = 0.1e-3
-    subterrain: str | Callable[[], str | None] | None = None
+    subterrain: SubterrainSelection | Callable[[], SubterrainSelection] = None
+    usable_ratio: float = 0.5
     rotation: XYZRotation | None = field(
         default_factory=lambda: {"z": (0, 2 * math.pi)}
     )
@@ -139,8 +153,14 @@ class randomize_terrain_position(ResetMdpFn):
 
     def build(self):
         """
-        Initialize the buffers
+        Check the subterrain selection, and initialize the buffers
         """
+        if not callable(self.subterrain):
+            num = (
+                self.env.num_envs if isinstance(self.subterrain, torch.Tensor) else None
+            )
+            self.terrain_manager.validate_selection(self.subterrain, num)
+
         self._rotation_buffer = torch.zeros(
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
@@ -178,13 +198,14 @@ class randomize_terrain_position(ResetMdpFn):
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
         # Get the subterrain
         subterrain = self.subterrain
-        if subterrain is not None and callable(subterrain):
+        if callable(subterrain):
             subterrain = subterrain()
 
         # Randomize positions on the terrain
         pos = self.terrain_manager.generate_random_env_pos(
             envs_idx=envs_idx,
             subterrain=subterrain,
+            usable_ratio=self.usable_ratio,
             height_offset=self.height_offset,
         )
         entity.set_pos(pos, envs_idx=envs_idx, zero_velocity=self.zero_velocity)

@@ -6,6 +6,7 @@ Each of these should return a boolean tensor indicating which environments shoul
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -18,6 +19,7 @@ from genesis_forge.managers import (
     ContactManager,
     EntityManager,
     MdpFn,
+    PowerMonitor,
     TerrainManager,
 )
 from genesis_forge.utils import entity_projected_gravity
@@ -153,41 +155,59 @@ class out_of_bounds(MdpFn):
 
     Args:
         terrain_manager: The terrain manager to check for out of bounds
-        subterrain: The subterrain to keep the robot inside of
+        subterrain: The subterrain to keep the robot inside of. Any of:
+
+                    - A name: that subterrain. A name shared by several subterrains,
+                      keeps the robot inside any of them.
+                    - A list of names: any of those subterrains.
+                    - ``True``: the subterrain each environment was last placed on
+                      (see :attr:`TerrainManager.env_subterrain`). Use this when a reset
+                      spreads environments across several subterrains.
+                    - ``None`` or ``False``: the whole terrain.
         border_margin: The margin (in meters) to add to the terrain bounds
                        This terminates the episode before the robot falls off the terrain.
         entity: The entity to check. Defaults to `env.robot`.
     """
 
     terrain_manager: TerrainManager
-    subterrain: str | None = None
+    subterrain: str | Sequence[str] | bool | None = None
     border_margin: float = 0.5
     entity: RigidEntity | None = None
+
+    def build(self):
+        """
+        Look up the bounds once, unless each environment has its own. An unknown name warns
+        here, before the first step.
+        """
+        if self.subterrain is not True:
+            selection = self.subterrain if self.subterrain is not False else None
+            self._bounds = self.terrain_manager.get_subterrain_bounds(selection)
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         # Get the entity's base position
         entity = self.entity if self.entity is not None else env.robot
         position = cast(torch.Tensor, entity.get_pos())
 
-        # Get terrain bounds
-        x_min, x_max, y_min, y_max = self.terrain_manager.get_bounds(self.subterrain)
-        x_min_bound, x_max_bound = (
-            x_min + self.border_margin,
-            x_max - self.border_margin,
-        )
-        y_min_bound, y_max_bound = (
-            y_min + self.border_margin,
-            y_max - self.border_margin,
-        )
+        # The areas each environment may be in: (num_envs, 1, 4) for its own subterrain,
+        # or (n_areas, 4), shared by every environment
+        if self.subterrain is True:
+            bounds = self.terrain_manager.get_subterrain_bounds(
+                self.terrain_manager.env_subterrain
+            )[:, None, :]
+        else:
+            bounds = self._bounds
+        x_min, x_max, y_min, y_max = bounds.unbind(dim=-1)
+        margin = self.border_margin
 
-        # Check bounds
-        x_pos, y_pos = position[:, 0], position[:, 1]
-        return (
-            (x_pos < x_min_bound)
-            | (x_pos > x_max_bound)
-            | (y_pos < y_min_bound)
-            | (y_pos > y_max_bound)
+        # Check each position against every area, and terminate if it's inside none of them
+        x_pos, y_pos = position[:, 0:1], position[:, 1:2]
+        inside = (
+            (x_pos >= x_min + margin)
+            & (x_pos <= x_max - margin)
+            & (y_pos >= y_min + margin)
+            & (y_pos <= y_max - margin)
         )
+        return ~inside.any(dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -331,3 +351,31 @@ class dof_velocity_limit(MdpFn):
             threshold = threshold * (2 * math.pi / 60)
         vel = self.actuator_manager.get_dofs_velocity()
         return torch.any(torch.abs(vel) > threshold, dim=-1)
+
+
+@dataclass(kw_only=True, eq=False)
+class bus_current_limit(MdpFn):
+    """
+    Terminate if the robot's estimated battery current goes over a limit.
+
+    A real robot often hits its battery or power supply limit before any single motor
+    hits its torque limit.
+
+    Args:
+        power_monitor: A power monitor with `supply_voltage` set.
+        max_current: The current limit, in amps.
+
+    Returns:
+        Boolean tensor indicating which environments should terminate
+    """
+
+    power_monitor: PowerMonitor
+    max_current: float
+
+    def build(self):
+        assert self.power_monitor.supply_voltage is not None, (
+            "bus_current_limit needs a PowerMonitor with supply_voltage set"
+        )
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self.power_monitor["bus_current_a"] > self.max_current

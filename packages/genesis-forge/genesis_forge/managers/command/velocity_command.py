@@ -32,7 +32,7 @@ class VelocityDebugVisualizerConfig(TypedDict):
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
     arrow_offset: NotRequired[float]
-    """The vertical offset of the debug visuals from the top of the robot"""
+    """The vertical offset of the linear velocity arrows from the top of the robot"""
 
     arrow_radius: NotRequired[float]
     """The radius of the shaft of the debug arrows"""
@@ -42,6 +42,9 @@ class VelocityDebugVisualizerConfig(TypedDict):
 
     ang_arc_enabled: NotRequired[bool]
     """Show the angular velocity arcs"""
+
+    ang_arc_offset: NotRequired[float]
+    """The vertical offset of the angular velocity arcs from the top of the robot. Defaults to `arrow_offset`"""
 
     ang_arc_width: NotRequired[float]
     """The radial width of the actual angular velocity arc"""
@@ -288,6 +291,7 @@ class VelocityCommandManager(CommandManager):
 
         # Pre-allocate buffers
         self._origin_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
+        self._arc_origin_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
         self._commanded_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
         self._actual_vec_buffer = torch.zeros(self.env.num_envs, 3, device=gs.device)
         self._scene_env_offset = torch.from_numpy(self.env.scene.envs_offset).to(
@@ -330,6 +334,11 @@ class VelocityCommandManager(CommandManager):
             arrow_radius = self._debug_cfg("arrow_radius")
             radius_gap = arrow_radius * 2.5
             self._ang_arc_radius = arrow_max_length + (arc_width / 2) + radius_gap
+
+            # The arcs sit at the arrows' height unless given their own offset
+            self._ang_arc_offset = self.visualizer_cfg.get(
+                "ang_arc_offset", self._debug_cfg("arrow_offset")
+            )
 
     def step(self):
         """Render the debug visualization"""
@@ -441,6 +450,7 @@ class VelocityCommandManager(CommandManager):
         actual_color = self._debug_cfg("actual_color")
 
         if self._ang_arc_enabled:
+            arc_origin = self._arc_origin(origin)
             arc_anchor = self._arc_anchor_angles(robot_quat, commanded_vec, has_lin_cmd)
             commanded_ang_vel = self.command[:, 2].cpu().numpy()
             actual_ang_vel = self.env.robot.get_ang()[:, 2].cpu().numpy()
@@ -459,14 +469,14 @@ class VelocityCommandManager(CommandManager):
                 # Actual angular velocities
                 if self._ang_arc_enabled:
                     self._draw_ang_vel_arc(
-                        origin[i],
+                        arc_origin[i],
                         commanded_ang_vel[i],
                         arc_anchor[i],
                         commanded_color,
                         commanded=True,
                     )
                     self._draw_ang_vel_arc(
-                        origin[i],
+                        arc_origin[i],
                         actual_ang_vel[i],
                         arc_anchor[i],
                         actual_color,
@@ -477,13 +487,27 @@ class VelocityCommandManager(CommandManager):
 
     def _debug_origin(self) -> torch.Tensor:
         """
-        The world position above each robot that the debug visuals are drawn from,
-        shape (num_envs, 3)
+        The world position above each robot that the linear velocity visuals are drawn
+        from, shape (num_envs, 3)
         """
         self._origin_buffer[:] = self.env.robot.get_pos()
         self._origin_buffer[:, 2] += self._debug_cfg("arrow_offset")
         self._origin_buffer += self._scene_env_offset
         return self._origin_buffer
+
+    def _arc_origin(self, origin: torch.Tensor) -> torch.Tensor:
+        """
+        The world position above each robot that the angular velocity arcs are centered
+        on: `origin` moved from the arrow offset to the arc offset, shape (num_envs, 3)
+
+        Args:
+            origin: The linear velocity visuals' origin, from `_debug_origin`
+        """
+        self._arc_origin_buffer[:] = origin
+        self._arc_origin_buffer[:, 2] += self._ang_arc_offset - self._debug_cfg(
+            "arrow_offset"
+        )
+        return self._arc_origin_buffer
 
     def _commanded_velocity_in_world_frame(
         self, robot_quat: torch.Tensor

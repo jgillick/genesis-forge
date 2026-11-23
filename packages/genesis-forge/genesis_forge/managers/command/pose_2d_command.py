@@ -8,7 +8,7 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh
-from genesis_forge.utils import scene_rendered_envs_idx
+from genesis_forge.utils import heading_from_quat, scene_rendered_envs_idx
 
 from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
@@ -90,24 +90,6 @@ def _normalize_range(range: "Pose2dCommandRange | CommandRange") -> CommandRange
     if ranges.get("heading") is None:
         ranges.pop("heading", None)
     return cast(dict[str, CommandRangeValue], ranges)
-
-
-def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
-    """
-    The compass direction the entity's nose points, seen from above, in radians.
-
-    This follows the nose, so tilting the entity moves it. It is not the yaw of an euler
-    decomposition (`quat_to_xyz(quat)[:, 2]`), which tilting leaves where it was.
-
-    Args:
-        quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
-
-    Returns:
-        torch.Tensor: Heading in radians, shape (num_envs,)
-    """
-    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-    # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
-    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
 def shortest_turn_to(

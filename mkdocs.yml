@@ -111,6 +111,7 @@ nav:
           - Command: guide/managers/command.md
           - Contact: guide/managers/contact.md
           - Entity: guide/managers/entity.md
+          - Monitor: guide/managers/monitor.md
           - Observation: guide/managers/observation.md
           - Reward: guide/managers/reward.md
           - Termination: guide/managers/termination.md
@@ -128,6 +129,7 @@ nav:
           - NoisyValue: api/managers/noisy_value.md
           - ContactManager: api/managers/contact.md
           - EntityManager: api/managers/entity.md
+          - Monitors: api/managers/monitor.md
           - ObservationManager: api/managers/observation.md
           - RewardManager: api/managers/reward.md
           - TerrainManager: api/managers/terrain.md
@@ -137,6 +139,7 @@ nav:
               - PositionActionManager: api/managers/action/position.md
               - PositionWithinLimitsActionManager: api/managers/action/position_w_limits.md
               - VelocityActionManager: api/managers/action/velocity.md
+              - TorqueActionManager: api/managers/action/torque.md
               - ActionDelayBuffer: api/managers/action/delay_buffer.md
           - Command Managers:
               - api/managers/command/index.md
@@ -149,6 +152,21 @@ nav:
           - Reset: api/mdp/reset.md
           - Rewards: api/mdp/rewards.md
           - Terminations: api/mdp/terminations.md
+      - Subterrains:
+          - Overview: api/subterrains/index.md
+          - Subterrain: api/subterrains/subterrain.md
+          - Flat: api/subterrains/flat.md
+          - Fractal: api/subterrains/fractal.md
+          - RandomUniform: api/subterrains/random_uniform.md
+          - Wave: api/subterrains/wave.md
+          - Sloped: api/subterrains/sloped.md
+          - PyramidSloped: api/subterrains/pyramid_sloped.md
+          - Stairs: api/subterrains/stairs.md
+          - PyramidStairs: api/subterrains/pyramid_stairs.md
+          - SteppingStones: api/subterrains/stepping_stones.md
+          - DiscreteObstacles: api/subterrains/discrete_obstacles.md
+          - RandomGrid: api/subterrains/random_grid.md
+          - HeightField: api/subterrains/height_field.md
       - Wrappers:
           - Overview: api/wrappers/index.md
           - RSL-RL: api/wrappers/rsl_rl.md
@@ -171,3 +189,4 @@ nav:
       - Other:
           - Gamepad: api/other/gamepad.md
           - Meshes: api/other/meshes.md
+          - Terrain Layout: api/other/terrain.md

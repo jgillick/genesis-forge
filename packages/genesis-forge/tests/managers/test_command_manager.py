@@ -573,7 +573,10 @@ and measuring the angular position of the arc mesh's vertices around the arc's c
 
 
 def make_debug_arc_manager(
-    env, ang_vel_z: float, lin_vel: tuple[float, float] = (0.0, 0.0)
+    env,
+    ang_vel_z: float,
+    lin_vel: tuple[float, float] = (0.0, 0.0),
+    visualizer_cfg: dict | None = None,
 ):
     env.scene = FakeScene(env.num_envs)
     env.robot = FakeRobot(env.num_envs)
@@ -585,7 +588,7 @@ def make_debug_arc_manager(
             "ang_vel_z": (-2.0, 2.0),
         },
         debug_visualizer=True,
-        debug_visualizer_cfg={"envs_idx": [0]},
+        debug_visualizer_cfg={"envs_idx": [0], **(visualizer_cfg or {})},
     )
     mgr.build()
     mgr._command[0, 0] = lin_vel[0]
@@ -643,6 +646,34 @@ def test_arc_is_anchored_at_the_commanded_linear_direction(env):
     anchor = math.pi / 2
     assert angles.min() > anchor - 0.01
     assert angles.max() > anchor + math.radians(45)
+
+
+def rendered_arc_height(env) -> float:
+    """The height of the rendered arc mesh's vertical center"""
+    vertices = env.scene.mesh_calls[-1].vertices
+    return (vertices[:, 2].max() + vertices[:, 2].min()) / 2
+
+
+def test_arc_offset_defaults_to_the_arrow_offset(env):
+    mgr = make_debug_arc_manager(
+        env, ang_vel_z=2.0, visualizer_cfg={"arrow_offset": 0.4}
+    )
+    mgr._render_debug(force=True)
+    assert rendered_arc_height(env) == pytest.approx(0.4)
+
+
+def test_arc_offset_moves_the_arc_independently_of_the_arrows(env):
+    mgr = make_debug_arc_manager(
+        env,
+        ang_vel_z=2.0,
+        lin_vel=(1.0, 0.0),
+        visualizer_cfg={"arrow_offset": 0.4, "ang_arc_offset": 0.1},
+    )
+    mgr._render_debug(force=True)
+
+    commanded_arrow = env.scene.mesh_calls[0]
+    assert commanded_arrow.vertices[:, 2].min() > 0.3  # the arrow stays at 0.4
+    assert rendered_arc_height(env) == pytest.approx(0.1)
 
 
 def test_a_negligible_yaw_rate_draws_no_arc(env):

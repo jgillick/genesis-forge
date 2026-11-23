@@ -50,6 +50,7 @@ class Gamepad:
         self._event_loop = ControllerEventLoop(
             handle_key=self._handle_key,
             alive=threading.Event(),
+            handle_disconnect=self._handle_disconnect,
         )
         self._event_loop.alive.set()
         self._read_thread = threading.Thread(target=self._event_loop.run, daemon=True)
@@ -57,6 +58,25 @@ class Gamepad:
 
         if self._debug:
             print("SDL2 gamepad wrapper initialized")
+
+    @property
+    def connected(self) -> bool:
+        """True while at least one gamepad is attached."""
+        return self._event_loop.connected.is_set()
+
+    def wait_for_connection(self, timeout: float | None = None) -> bool:
+        """
+        Block until a gamepad is connected.
+
+        Returns immediately if one is already attached.
+
+        Args:
+            timeout: Maximum seconds to wait, or None to wait forever
+
+        Returns:
+            True if a gamepad is connected, False if the timeout expired first
+        """
+        return self._event_loop.connected.wait(timeout)
 
     def axis(self, index: int) -> float:
         """
@@ -117,6 +137,21 @@ class Gamepad:
 
         if self._debug:
             print(f"Key event: {key}")
+
+    def _handle_disconnect(self) -> None:
+        """
+        Return to a neutral state when a controller is removed.
+
+        SDL only reports a stick once it moves, so values left over from the removed
+        controller would otherwise persist through a reconnect.
+        """
+        with self._lock:
+            self._axis_values = [0.0] * len(self._axis_values)
+            self._button_set.clear()
+            self._dpad = None
+
+        if self._debug:
+            print("Gamepad disconnected")
 
     def stop(self) -> None:
         """Stop reading gamepad input."""

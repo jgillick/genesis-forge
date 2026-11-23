@@ -90,6 +90,24 @@ def velocity_spec(
     )
 
 
+def torque_spec(name: str = "legs") -> ActionManagerSpec:
+    """A `torque` manager: affine, clipped to the motors' torque limit."""
+    joints = ("hip", "knee")
+    return ActionManagerSpec(
+        name=name,
+        deploy_type="torque",
+        joint_names=joints,
+        slice_start=0,
+        slice_end=len(joints),
+        config={
+            "scale": np.asarray([4.0, 4.0], dtype=np.float32),
+            "offset": np.zeros(len(joints), dtype=np.float32),
+            "clip_low": np.asarray([-8.0, -8.0], dtype=np.float32),
+            "clip_high": np.asarray([8.0, 8.0], dtype=np.float32),
+        },
+    )
+
+
 """Affine processing (position)"""
 
 
@@ -281,16 +299,20 @@ def test_a_leading_batch_dimension_is_accepted():
 
 
 def test_builtin_types_resolve_without_an_import_path():
-    for spec in (position_spec(), within_limits_spec(), velocity_spec()):
+    for spec in (position_spec(), within_limits_spec(), velocity_spec(), torque_spec()):
         assert resolve_processor_class(spec) is AffineProcessor
         assert spec.processor_import_path is None
 
 
 def test_every_builtin_action_manager_type_has_a_processor():
     """A new affine manager type upstream must not ship undeployable."""
-    assert {"affine_dof", "position", "position_within_limits", "velocity"} <= set(
-        BUILTIN_PROCESSORS
-    )
+    assert {
+        "affine_dof",
+        "position",
+        "position_within_limits",
+        "velocity",
+        "torque",
+    } <= set(BUILTIN_PROCESSORS)
 
 
 def test_unknown_type_without_an_import_path_names_the_type_and_the_fix():
@@ -487,6 +509,15 @@ def test_a_configured_velocity_clip_is_honored():
     result = ActionProcessor((spec,)).process([100.0, -100.0])
 
     np.testing.assert_allclose(result.targets, [16.0, -16.0])
+
+
+"""Torque processing"""
+
+
+def test_torque_process_scales_and_clips_to_the_torque_limit():
+    result = ActionProcessor((torque_spec(),)).process([1.0, 5.0])
+
+    assert result.by_joint == {"hip": 4.0, "knee": 8.0}
 
 
 """Feeding the previous output back

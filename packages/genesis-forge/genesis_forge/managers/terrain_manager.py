@@ -1,17 +1,34 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import warnings
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import genesis as gs
 import torch
-import torch.nn.functional as F
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import BaseManager
+from genesis_forge.terrain.map import TerrainMap
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
+
+    from genesis_forge.terrain import TerrainLayout
+
+SubterrainSelection = str | Sequence[str] | torch.Tensor | None
+"""
+Which subterrain(s) to place something on:
+
+- ``None``: anywhere on the whole terrain.
+- ``"name"``: that subterrain.
+- ``["a", "b"]``: a uniformly random choice among them, made per position.
+- A long tensor of subterrain indices (see :meth:`TerrainManager.index`), one per position.
+  The index ``-1`` means the whole terrain.
+"""
+
+WHOLE_TERRAIN = -1
+"""The subterrain index that stands for the whole terrain."""
 
 
 class TerrainManager(BaseManager):
@@ -21,11 +38,22 @@ class TerrainManager(BaseManager):
     This allows your environment to calculate the robot's height above rough terrain.
     You can also generate random positions on the terrain or subterrain to place your robots on reset.
 
+    Every subterrain has a unique name and an integer index. With a
+    :class:`~genesis_forge.terrain.TerrainLayout`, the names are the layout's subterrain names. With a
+    plain ``gs.morphs.Terrain``, a subterrain is named after its type. Either way, a name that
+    appears more than once is numbered in grid order (``flat_terrain_0``, ``flat_terrain_1``, ...),
+    and the name itself selects any one of them at random.
+
     Args:
         env: The environment instance.
-        terrain: The terrain entity to manage. Defaults to `env.terrain`.
+        terrain: The terrain entity to manage, if it isn't from a layout. Defaults to
+                 ``env.terrain``.
+        layout: The layout the terrain was built from, instead of ``terrain``. Recommended --
+                it lets you name your subterrains.
 
     Example::
+
+        from genesis_forge import terrain
 
         class MyEnv(ManagedEnvironment):
             def __init__(self, *args, **kwargs):
@@ -34,28 +62,23 @@ class TerrainManager(BaseManager):
                 self.scene = gs.Scene()
 
                 # Add terrain
-                self.terrain = self.scene.add_entity(
-                    morph=gs.morphs.Terrain(
-                        n_subterrains=(2, 2),
-                        subterrain_size=(25, 25),
-                        subterrain_types=[
-                            ["flat_terrain", "random_uniform_terrain"],
-                            ["discrete_obstacles_terrain", "pyramid_stairs_terrain"],
-                        ],
-                    ),
+                self.terrain_layout = terrain.TerrainLayout(
+                    self.scene,
+                    subterrain_size=(25, 25),
+                    grid=[
+                        terrain.Flat(name="flat"),
+                        terrain.RandomUniform(name="rough", max_height=0.08),
+                    ],
                 )
 
             def config(self):
-                self.terrain_manager = TerrainManager(
-                    self,
-                    terrain=self.terrain,
-                )
+                self.terrain_manager = TerrainManager(self, layout=self.terrain_layout)
 
-             def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
+            def reset(self, envs_idx: torch.Tensor | Sequence[int] | None = None) -> tuple[torch.Tensor, dict[str, Any]]:
                 # Randomize positions on the terrain
                 pos = self.terrain_manager.generate_random_env_pos(
                     envs_idx=envs_idx,
-                    subterrain="flat_terrain",
+                    subterrain="flat",
                     height_offset=0.15,
                 )
                 self.robot.set_pos(pos, envs_idx=envs_idx)
@@ -65,41 +88,257 @@ class TerrainManager(BaseManager):
         self,
         env: GenesisEnv,
         terrain: RigidEntity = None,
+        layout: TerrainLayout | None = None,
     ):
         super().__init__(env, type="terrain")
 
-        self._origin = (0, 0, 0)
-        self._bounds = (0, 0, 0, 0)  # x_min, x_max, y_min, y_max
-        self._size = (0, 0)
-        self._terrain: RigidEntity = terrain if terrain is not None else env.terrain
-        self._subterrain_bounds = {}
-        self._height_field: torch.Tensor | None = None
+        if layout is not None:
+            if terrain is not None:
+                raise ValueError(
+                    "Pass TerrainManager either terrain= or layout=, not both."
+                )
+            terrain = layout.entity
+        elif terrain is None:
+            terrain = env.terrain
+
+        self._terrain: RigidEntity = terrain
+        self._layout = layout
+        self._map = TerrainMap(bounds=(0.0, 0.0, 0.0, 0.0))
+        self._bounds_table = torch.zeros((1, 4), device=gs.device, dtype=gs.tc_float)
+        self._indices_cache: dict[tuple[str, ...], torch.Tensor] = {}
+        self._has_height_field = False
+        self._ground_height = 0.0
         self._env_pos_buffer = torch.zeros(
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
+        self._env_subterrain = torch.full(
+            (self.env.num_envs,), WHOLE_TERRAIN, device=gs.device, dtype=torch.long
+        )
 
     def build(self):
-        """Cache the terrain height field"""
-        self._map_terrain()
+        """Map out the terrain, its subterrains, and where heights come from."""
+        if self._layout is not None:
+            self._map = self._layout.map
+        else:
+            self._map = TerrainMap.from_entity(self._terrain)
+        self._indices_cache = {}
+
+        self._has_height_field = getattr(self._terrain, "terrain_hf", None) is not None
+
+        # Any other ground, like a plane, is taken as flat at its z position, for the first
+        # environment
+        if not self._has_height_field:
+            pos = self._terrain.geoms[0].get_pos()
+            if pos.ndim == 2:
+                pos = pos[0]
+            self._ground_height = float(pos[2])
+
+        rows = [*self._map.subterrain_bounds, self._map.bounds]
+        self._bounds_table = torch.tensor(rows, device=gs.device, dtype=gs.tc_float)
+
+    """
+    Properties
+    """
 
     @property
     def terrain(self) -> RigidEntity:
         """The terrain entity this manager describes."""
         return self._terrain
 
+    @property
+    def layout(self) -> TerrainLayout | None:
+        """The layout the terrain was built from, if one was given."""
+        return self._layout
+
+    @property
+    def terrain_map(self) -> TerrainMap:
+        """The terrain's lookup table of subterrain names, types and areas."""
+        return self._map
+
+    @property
+    def subterrain_names(self) -> list[str]:
+        """The subterrain names, in index order."""
+        return list(self._map.names)
+
+    @property
+    def env_subterrain(self) -> torch.Tensor:
+        """
+        The index of the subterrain each environment was last placed on by
+        :meth:`generate_random_env_pos`, in the shape ``(num_envs,)``.
+        ``-1`` means the whole terrain (or not placed yet).
+        """
+        return self._env_subterrain
+
+    """
+    Subterrain lookup
+    """
+
+    def index(self, name: str) -> int:
+        """
+        Get the index of a subterrain by name.
+
+        Raises:
+            KeyError: If there is no subterrain by that name, or it's shared by several.
+        """
+        return self._map.index(name)
+
+    def indices(self, selection: str | Sequence[str]) -> torch.Tensor:
+        """
+        Get the indices of one or more subterrains, by name.
+        A type name that is shared by several subterrains expands to all of them.
+
+        Returns:
+            A long tensor of subterrain indices.
+        """
+        if isinstance(selection, Mapping):
+            raise TypeError(
+                "Subterrains are selected by a name or a list of names, not a dict."
+            )
+        names = (selection,) if isinstance(selection, str) else tuple(selection)
+        if not names:
+            raise ValueError("The subterrain selection is empty.")
+        cached = self._indices_cache.get(names)
+        if cached is not None:
+            return cached
+        idx: list[int] = []
+        for name in names:
+            if not isinstance(name, str):
+                raise TypeError(
+                    f"Subterrain names must be strings, got {type(name).__name__}: {name!r}"
+                )
+            idx.extend(self._map.indices(name))
+        tensor = torch.tensor(idx, device=gs.device, dtype=torch.long)
+        self._indices_cache[names] = tensor
+        return tensor
+
+    def validate_selection(
+        self, selection: SubterrainSelection, num: int | None = None
+    ) -> None:
+        """
+        Check that a subterrain selection refers to real subterrains.
+        Useful at build time, to catch a typo before the first reset.
+        A single unknown name only warns, since it stands for the whole terrain, as in 1.0.
+
+        Args:
+            selection: The selection to check.
+            num: The number of entries a tensor selection must have.
+
+        Raises:
+            KeyError: If a name in a list is unknown.
+            TypeError, ValueError: If the selection is malformed.
+        """
+        if selection is None or self._is_unknown_name(selection):
+            return
+        if isinstance(selection, torch.Tensor):
+            self._check_index_tensor(selection, num)
+            if selection.numel() > 0:
+                n = len(self._map.names)
+                low, high = int(selection.min()), int(selection.max())
+                if low < WHOLE_TERRAIN or high >= n:
+                    raise ValueError(
+                        f"Subterrain indices must be between -1 and {n - 1}, "
+                        f"got values from {low} to {high}."
+                    )
+            return
+        self.indices(selection)
+
+    def sample_subterrains(
+        self,
+        num: int,
+        selection: SubterrainSelection,
+        envs_idx: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Choose a subterrain index for each of ``num`` positions.
+
+        Args:
+            num: How many indices to choose.
+            selection: Which subterrains to choose from. See :data:`SubterrainSelection`.
+            envs_idx: For a tensor selection with one index for every environment, the
+                      environments to read it for. Otherwise the tensor has one index per position.
+
+        Returns:
+            A long tensor of subterrain indices in the shape ``(num,)``.
+        """
+        if selection is None or self._is_unknown_name(selection):
+            return torch.full((num,), WHOLE_TERRAIN, device=gs.device, dtype=torch.long)
+        if isinstance(selection, torch.Tensor):
+            self._check_index_tensor(
+                selection, num if envs_idx is None else self.env.num_envs
+            )
+            idx = selection.to(device=gs.device, dtype=torch.long)
+            if envs_idx is not None:
+                idx = idx[envs_idx]
+            return idx
+        # Pick one of the selected subterrains at random for each position
+        candidates = self.indices(selection)
+        picks = torch.randint(len(candidates), (num,), device=gs.device)
+        return candidates[picks]
+
+    """
+    Bounds and heights
+    """
+
     def get_bounds(
         self, subterrain: str | None = None
     ) -> tuple[float, float, float, float]:
         """
-        Get the bounds of the terrain, or subterrain
+        Get the bounds of the terrain, or subterrain.
+
+        A name shared by several subterrains gives the last of them, and an unknown name gives
+        the whole terrain, each with a warning.
+
+        Args:
+            subterrain: The subterrain name. If None, the bounds of the whole terrain are returned.
+
+        Returns:
+            The bounds as ``(x_min, x_max, y_min, y_max)``.
         """
-        if subterrain is not None and subterrain in self._subterrain_bounds:
-            return self._subterrain_bounds[subterrain]
-        return self._bounds
+        if subterrain is None or self._is_unknown_name(subterrain):
+            return self._map.bounds
+        if subterrain in self._map.groups:
+            last = self._map.groups[subterrain][-1]
+            last_name = self._map.names[last]
+            warnings.warn(
+                f"'{subterrain}' names more than one subterrain, so its bounds are those of the "
+                f"last one, '{last_name}'. Use one of the numbered names instead, or "
+                "get_subterrain_bounds() for the bounds of all of them.",
+                stacklevel=2,
+            )
+            return self._map.subterrain_bounds[last]
+        return self._map.get_bounds(subterrain)
+
+    def get_subterrain_bounds(self, subterrains: SubterrainSelection) -> torch.Tensor:
+        """
+        Get the bounds of many subterrains at once.
+
+        Args:
+            subterrains: Any of:
+
+                - A long tensor of subterrain indices, like :attr:`env_subterrain`. ``-1`` is
+                  the whole terrain.
+                - A name, or a list of names: every subterrain they select, including each
+                  one sharing a name.
+                - ``None``, or a name that matches no subterrain: the whole terrain, the latter
+                  with a warning.
+
+        Returns:
+            The bounds as ``(x_min, x_max, y_min, y_max)``, in the shape
+            ``(*subterrains.shape, 4)`` for a tensor, or ``(n_subterrains, 4)`` for names.
+        """
+        if isinstance(subterrains, torch.Tensor):
+            return self._bounds_table[subterrains]
+        if subterrains is None or self._is_unknown_name(subterrains):
+            return self._bounds_table[WHOLE_TERRAIN].unsqueeze(0)
+        return self._bounds_table[self.indices(subterrains)]
 
     def get_terrain_height(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
-        Get interpolated terrain height at world coordinates (x, y).
+        Get the terrain height at world coordinates (x, y).
+
+        On a ``gs.morphs.Terrain`` (including a :class:`~genesis_forge.terrain.TerrainLayout`), this is
+        the exact surface rigid bodies rest on, and positions outside the terrain get the height at its
+        nearest edge. On anything else, like a plane, the ground is taken as flat at its z position.
 
         Args:
             x: Tensor of shape (n_envs,)
@@ -108,54 +347,39 @@ class TerrainManager(BaseManager):
         Returns:
             Heights in the torch.Tensor of shape (n_envs,)
         """
-        n_envs = x.shape[0]
-
-        # No height field, so we can assume the height is consistent
-        if self._height_field is None:
-            return torch.full(
-                (n_envs,), self._origin[2], device=gs.device, dtype=gs.tc_float
+        # Genesis rejects a query with no positions, as from a reset of no environments
+        if self._has_height_field and x.numel() > 0:
+            # Genesis returns NaN past one height field step outside the terrain, so clamp to the edge
+            x_min, x_max, y_min, y_max = self._map.bounds
+            positions = torch.stack(
+                [x.clamp(x_min, x_max), y.clamp(y_min, y_max)], dim=-1
             )
+            # Every environment shares the terrain, so only measure the first one. Without
+            # parallel environments, Genesis takes no environment index at all.
+            first_env = 0 if self._terrain.scene.n_envs > 0 else None
+            heights = self._terrain.get_terrain_height(positions, envs_idx=first_env)
+            return heights.reshape(-1).to(dtype=gs.tc_float)
 
-        # Normalize coordinates to [-1, 1] range expected by grid_sample
-        (x_min, x_max, y_min, y_max) = self._bounds
-        norm_x = 2 * (x - x_min) / (x_max - x_min) - 1
-        norm_y = 2 * (y - y_min) / (y_max - y_min) - 1
-
-        grid = torch.stack([norm_x, norm_y], dim=-1).view(n_envs, 1, 1, 2)
-
-        # Border padding mode isn't supported on Mac GPU (mps)
-        # https://github.com/pytorch/pytorch/issues/125098
-        if gs.device.type == "mps":
-            padding_mode = "zeros"
-            grid.clamp_(-1, 1)
-        else:
-            padding_mode = "border"
-
-        # Use the height field directly without expansion to save memory
-        # The height field is already in the correct format (1, height, width)
-        interpolated = F.grid_sample(
-            self._height_field.unsqueeze(0).expand(n_envs, -1, -1, -1),
-            grid,
-            mode="bilinear",
-            padding_mode=padding_mode,
-            align_corners=True,
+        return torch.full(
+            (x.shape[0],), self._ground_height, device=gs.device, dtype=gs.tc_float
         )
 
-        # Extract the height values at the specific coordinates
-        return interpolated[:, 0, 0, 0]
+    """
+    Random positions
+    """
 
     def generate_random_positions(
         self,
         num: int | None = None,
         usable_ratio: float = 0.5,
-        subterrain: str | None = None,
+        subterrain: SubterrainSelection = None,
         height_offset: float = 0.1e-3,
         output: torch.Tensor | None = None,
         out_idx: torch.Tensor | list[int] | None = None,
     ) -> torch.Tensor:
         """
         Distribute X/Y/Z positions across the terrain or subterrain.
-        The X & Y positions will be random points and the Z position will be at the approximate terrain height at that point.
+        The X & Y positions will be random points and the Z position will be at the terrain height at that point.
 
         Args:
             num: The number of positions to generate. Not necessary if output is provided
@@ -164,11 +388,12 @@ class TerrainManager(BaseManager):
                      Can be a list of ints or a torch.Tensor for better performance.
             usable_ratio: How much of the terrain/subterrain area should be used for random positions.
                           For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain.
-                          This helps avoid placing things right on th edge of the terrain/subterrain.
-            subterrain: The subterrain to generate positions for.
+                          This helps avoid placing things right on the edge of the terrain/subterrain.
+            subterrain: The subterrain(s) to generate positions on. See :data:`SubterrainSelection`.
+                        A tensor selection has one index per generated position.
                         If None, positions will be generated for the entire terrain.
             height_offset: The offset to add to the terrain height.
-                           Since the height is approximate, this can prevent items being placed below the terrain.
+                           A small offset keeps items from starting in contact with the ground.
 
         Returns:
             The positions tensor of shape (num, 3)
@@ -178,7 +403,7 @@ class TerrainManager(BaseManager):
             "Either output or num must be provided"
         )
         if output is None:
-            output = torch.zeros(num, 3, device=gs.device)
+            output = torch.zeros(num, 3, device=gs.device, dtype=gs.tc_float)
         if out_idx is None:
             out_idx = torch.arange(output.shape[0], device=gs.device)
         elif isinstance(out_idx, list):
@@ -186,52 +411,32 @@ class TerrainManager(BaseManager):
         if num is None:
             num = out_idx.shape[0]
 
-        # Get total bounds
-        bounds = self._bounds
-        size = self._size
-        if subterrain is not None and subterrain in self._subterrain_bounds:
-            size = self._subterrain_size
-            bounds = self._subterrain_bounds[subterrain]
+        # A random point inside the center of each position's subterrain
+        subterrain_idx = self.sample_subterrains(num, subterrain)
+        x_min, x_max, y_min, y_max = self._bounds_table[subterrain_idx].unbind(dim=-1)
+        x_size = (x_max - x_min) * usable_ratio
+        y_size = (y_max - y_min) * usable_ratio
+        x_start = x_min + (x_max - x_min - x_size) / 2
+        y_start = y_min + (y_max - y_min - y_size) / 2
+        x = x_start + x_size * torch.rand(num, device=gs.device, dtype=gs.tc_float)
+        y = y_start + y_size * torch.rand(num, device=gs.device, dtype=gs.tc_float)
 
-        (x_origin, x_max, y_origin, y_max) = bounds
-        (x_size, y_size) = size
-
-        # Adjust size based on buffer ratio
-        usable_x_size = x_size * usable_ratio
-        usable_y_size = y_size * usable_ratio
-        buffer_x_size = (x_size - usable_x_size) / 2
-        buffer_y_size = (y_size - usable_y_size) / 2
-
-        # Calculate the bounds of the usable area within the section
-        x_min = x_origin + buffer_x_size
-        x_max = x_origin + x_size - buffer_x_size
-        y_min = y_origin + buffer_y_size
-        y_max = y_origin + y_size - buffer_y_size
-
-        # Generate random positions
-        x_rand = torch.empty(num, device=gs.device, dtype=gs.tc_float)
-        y_rand = torch.empty(num, device=gs.device, dtype=gs.tc_float)
-        x_rand.uniform_(x_min, x_max)
-        y_rand.uniform_(y_min, y_max)
-
-        # Get terrain heights at these positions
-        terrain_heights = self.get_terrain_height(x_rand, y_rand)
-        output[out_idx, 0] = x_rand
-        output[out_idx, 1] = y_rand
-        output[out_idx, 2] = terrain_heights + height_offset
-
+        output[out_idx, 0] = x
+        output[out_idx, 1] = y
+        output[out_idx, 2] = self.get_terrain_height(x, y) + height_offset
         return output
 
     def generate_random_env_pos(
         self,
         envs_idx: torch.Tensor | Sequence[int] | None = None,
         usable_ratio: float = 0.5,
-        subterrain: str | None = None,
+        subterrain: SubterrainSelection = None,
         height_offset: float = 0.1e-3,
     ) -> torch.Tensor:
         """
         Generate one X/Y/Z position on the terrain for each environment.
-        The X & Y positions will be random points and the Z position will be at the approximate terrain height at that point.
+        The X & Y positions will be random points and the Z position will be at the terrain height at that point.
+        The chosen subterrain is recorded in :attr:`env_subterrain`.
 
         Args:
             envs_idx: The indices of the environments to generate positions for.
@@ -239,25 +444,32 @@ class TerrainManager(BaseManager):
                       Can be a list of ints or a torch.Tensor for better performance.
             usable_ratio: How much of the terrain/subterrain area should be used for random positions.
                           For example, 0.25 will only generate positions within the center 25% of the area of the terrain/subterrain.
-                          This helps avoid placing things right on th edge of the terrain/subterrain.
-            subterrain: The subterrain to generate positions for.
+                          This helps avoid placing things right on the edge of the terrain/subterrain.
+            subterrain: The subterrain(s) to place the environments on. See :data:`SubterrainSelection`.
+                        A tensor selection has the shape ``(num_envs,)`` -- one index for every
+                        environment, of which only the ``envs_idx`` entries are read.
                         If None, positions will be generated for the entire terrain.
             height_offset: The offset to add to the terrain height.
 
         Returns:
-            The position tensor of shape (1, 3)
+            The position tensor of shape (len(envs_idx), 3)
         """
         if envs_idx is None:
             envs_idx = self.env.all_envs_idx
         elif isinstance(envs_idx, list):
             envs_idx = torch.tensor(envs_idx, device=gs.device, dtype=torch.long)
 
-        # Update the position buffer in-place
+        # Pick each environment's subterrain here, so it can be recorded
+        subterrain_idx = self.sample_subterrains(
+            envs_idx.shape[0], subterrain, envs_idx
+        )
+        self._env_subterrain[envs_idx] = subterrain_idx
+
         self.generate_random_positions(
             output=self._env_pos_buffer,
             out_idx=envs_idx,
+            subterrain=subterrain_idx,
             usable_ratio=usable_ratio,
-            subterrain=subterrain,
             height_offset=height_offset,
         )
         return self._env_pos_buffer[envs_idx]
@@ -266,78 +478,30 @@ class TerrainManager(BaseManager):
     Implementation
     """
 
-    def _map_terrain(self):
-        """Map out terrain and subterrain sizes and bounds."""
-        (terrain_geom,) = self._terrain.geoms
-        morph = self._terrain.morph
-        aabb = terrain_geom.get_AABB()
-        pos = terrain_geom.get_pos()
+    def _is_unknown_name(self, selection: SubterrainSelection) -> bool:
+        """
+        Whether the selection is a single name that matches no subterrain, and warn if so.
+        Such a name stands for the whole terrain.
+        """
+        if not isinstance(selection, str):
+            return False
+        if selection in self._map.names or selection in self._map.groups:
+            return False
+        valid = list(self._map.names) + list(self._map.groups)
+        warnings.warn(
+            f"No subterrain named '{selection}', so the whole terrain is used instead. "
+            f"Valid names: {valid}",
+            stacklevel=3,
+        )
+        return True
 
-        # If there are parallel environments, take values for the first environment
-        if aabb.ndim == 3:
-            aabb = aabb[0]
-        if pos.ndim == 2:
-            pos = pos[0]
-
-        # For terrain morphs, use the morph's position and size information
-        # instead of relying solely on AABB which might be incorrect
-        if (
-            hasattr(morph, "pos")
-            and hasattr(morph, "n_subterrains")
-            and morph.n_subterrains is not None
-        ):
-            # Use morph position as origin
-            self._origin = morph.pos
-
-            # Calculate total terrain size from subterrain configuration
-            subterrain_size = morph.subterrain_size
-            n_subterrains = morph.n_subterrains
-
-            total_x_size = subterrain_size[0] * n_subterrains[0]
-            total_y_size = subterrain_size[1] * n_subterrains[1]
-            self._size = (total_x_size, total_y_size)
-
-            # Calculate bounds from origin and size
-            x_min = self._origin[0]
-            y_min = self._origin[1]
-            x_max = x_min + total_x_size
-            y_max = y_min + total_y_size
-            self._bounds = (x_min, x_max, y_min, y_max)
-        else:
-            # Fallback to AABB method for non-terrain morphs
-            (x_min, y_min, _) = aabb[0]
-            (x_max, y_max, _) = aabb[1]
-            self._origin = pos
-            self._size = (x_max - x_min, y_max - y_min)
-            self._bounds = (x_min, x_max, y_min, y_max)
-
-        # Get subterrain bounds
-        if hasattr(morph, "n_subterrains") and morph.n_subterrains is not None:
-            self._subterrain_size = morph.subterrain_size
-            self._subterrain_bounds = {}
-            i = 0
-            for x in range(morph.n_subterrains[0]):
-                for y in range(morph.n_subterrains[1]):
-                    name = morph.subterrain_types[x][y]
-                    x_min = self._origin[0] + x * self._subterrain_size[0]
-                    y_min = self._origin[1] + y * self._subterrain_size[1]
-                    x_max = x_min + self._subterrain_size[0]
-                    y_max = y_min + self._subterrain_size[1]
-
-                    self._subterrain_bounds[name] = (x_min, x_max, y_min, y_max)
-                    i += 1
-
-        # Height field
-        if "height_field" in terrain_geom.metadata:
-            height_field = terrain_geom.metadata["height_field"]
-            vertical_scale = morph.vertical_scale
-            self._height_field = torch.as_tensor(
-                height_field, device=gs.device, dtype=gs.tc_float
+    def _check_index_tensor(self, selection: torch.Tensor, num: int | None):
+        """Check the dtype and shape of a tensor of subterrain indices."""
+        if selection.dtype.is_floating_point or selection.dtype == torch.bool:
+            raise TypeError(
+                f"A subterrain index tensor must have an integer dtype, got {selection.dtype}."
             )
-
-            # Adjust for the vertical scale
-            self._height_field *= vertical_scale
-
-            # Reshape from (width, height) to (height, width) for grid_sample calculation
-            # We only need one copy since all environments share the same terrain
-            self._height_field = self._height_field.T
+        if num is not None and selection.shape != (num,):
+            raise ValueError(
+                f"A subterrain index tensor must have the shape ({num},), got {tuple(selection.shape)}."
+            )

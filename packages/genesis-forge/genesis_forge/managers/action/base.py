@@ -65,6 +65,9 @@ class BaseActionManager(BaseManager):
                     from. See `ActionDelayBuffer`.
     """
 
+    _dofs_idx_tensor: torch.Tensor
+    """The controlled DOF indices, as a tensor for passing to Genesis dof functions."""
+
     def __init__(
         self,
         env: GenesisEnv,
@@ -210,7 +213,7 @@ class BaseActionManager(BaseManager):
             position: torch.Tensor, shape (n_envs, n_dofs)
                       The position of the DOFs managed by this action manager.
         """
-        return self.actuator_manager.get_dofs_position(dofs_idx=self.dofs_idx)
+        return self.actuator_manager.get_dofs_position(dofs_idx=self._dofs_idx_tensor)
 
     def get_dofs_limits(self) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -222,7 +225,7 @@ class BaseActionManager(BaseManager):
             upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
                          The upper limit of the positional limits for the entity's dofs.
         """
-        return self.actuator_manager.get_dofs_limits(dofs_idx=self.dofs_idx)
+        return self.actuator_manager.get_dofs_limits(dofs_idx=self._dofs_idx_tensor)
 
     def get_dofs_velocity(
         self, clip: tuple[float, float] | None = None
@@ -238,7 +241,7 @@ class BaseActionManager(BaseManager):
             The velocity of the enabled DOFs managed by this action manager.
         """
         return self.actuator_manager.get_dofs_velocity(
-            clip=clip, dofs_idx=self.dofs_idx
+            clip=clip, dofs_idx=self._dofs_idx_tensor
         )
 
     def get_dofs_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
@@ -254,7 +257,7 @@ class BaseActionManager(BaseManager):
             The force experienced by the enabled DOFs.
         """
         return self.actuator_manager.get_dofs_force(
-            clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
+            clip_to_max_force=clip_to_max_force, dofs_idx=self._dofs_idx_tensor
         )
 
     def get_dofs_control_force(self, clip_to_max_force: bool = False) -> torch.Tensor:
@@ -270,7 +273,7 @@ class BaseActionManager(BaseManager):
             The force output by the enabled DOFs.
         """
         return self.actuator_manager.get_dofs_control_force(
-            clip_to_max_force=clip_to_max_force, dofs_idx=self.dofs_idx
+            clip_to_max_force=clip_to_max_force, dofs_idx=self._dofs_idx_tensor
         )
 
     def get_actions(self) -> torch.Tensor:
@@ -317,13 +320,13 @@ class BaseActionManager(BaseManager):
             "process_actions is not implemented for this action manager."
         )
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
-        Send the latest processed actions to the actuators in the simulation.
+        Send the processed actions to the actuators in the simulation.
         Override this function to define how the actions are sent to the simulation.
         """
         raise NotImplementedError(
-            "handle_actions is not implemented for this action manager."
+            "send_actions_to_simulation is not implemented for this action manager."
         )
 
     """
@@ -346,6 +349,9 @@ class BaseActionManager(BaseManager):
                     index_filter.append(index)
         self._actuator_dof_filter = torch.tensor(
             index_filter, device=gs.device, dtype=gs.tc_int
+        )
+        self._dofs_idx_tensor = torch.tensor(
+            self.dofs_idx, device=gs.device, dtype=gs.tc_int
         )
 
         self._build_action_groups()

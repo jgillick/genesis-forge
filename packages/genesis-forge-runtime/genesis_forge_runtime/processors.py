@@ -171,6 +171,7 @@ BUILTIN_PROCESSORS: dict[str, type[ActionManagerProcessor]] = {
     "position": AffineProcessor,
     "position_within_limits": AffineProcessor,
     "velocity": AffineProcessor,
+    "torque": AffineProcessor,
 }
 
 

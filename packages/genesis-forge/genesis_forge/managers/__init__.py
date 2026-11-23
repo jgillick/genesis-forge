@@ -13,10 +13,12 @@ Available managers:
 - :class:`ObservationManager` — observation space definition
 - :class:`PositionActionManager` / :class:`PositionWithinLimitsActionManager` — joint position actions
 - :class:`VelocityActionManager` — joint velocity actions (e.g. continuously-rotating wheels)
+- :class:`TorqueActionManager` — joint torque actions, bypassing the PD controller
 - :class:`ActuatorManager` — PD controller gains and default joint positions
 - :class:`EntityManager` — entity spawning and per-episode resets
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
+- :class:`Monitor` / :class:`DofMonitor` / :class:`PowerMonitor` / :class:`ActuatorMonitor` — values calculated and logged each step
 - :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
 
@@ -24,6 +26,7 @@ from .action.action_delay_buffer import ActionDelayBuffer
 from .action.base import BaseActionManager
 from .action.position_action_manager import PositionActionManager
 from .action.position_within_limits import PositionWithinLimitsActionManager
+from .action.torque_action_manager import TorqueActionManager
 from .action.velocity_action_manager import VelocityActionManager
 from .actuator import ActuatorManager
 from .base import BaseManager
@@ -34,6 +37,16 @@ from .config import (
 )
 from .contact import ContactManager
 from .entity_manager import EntityManager
+from .monitor import (
+    ActuatorMonitor,
+    DofMonitor,
+    Monitor,
+    MonitorConfig,
+    MonitorFn,
+    MonitorReduction,
+    MotorSpec,
+    PowerMonitor,
+)
 from .observation_manager import ObservationManager
 from .reward_manager import RewardManager
 from .termination_manager import TerminationManager
@@ -41,6 +54,7 @@ from .terrain_manager import TerrainManager
 
 __all__ = [
     "ActuatorManager",
+    "ActuatorMonitor",
     "ActionDelayBuffer",
     "BaseActionManager",
     "BaseManager",
@@ -48,14 +62,22 @@ __all__ = [
     "ContactManager",
     "EntityManager",
     "MdpFn",
+    "Monitor",
+    "MonitorReduction",
+    "MonitorFn",
+    "MonitorConfig",
+    "DofMonitor",
+    "MotorSpec",
     "ObservationManager",
     "Pose2dCommand",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",
+    "PowerMonitor",
     "ResetMdpFn",
     "RewardManager",
     "TerminationManager",
     "TerrainManager",
+    "TorqueActionManager",
     "VelocityActionManager",
     "VelocityCommandManager",
 ]

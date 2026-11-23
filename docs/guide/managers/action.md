@@ -147,6 +147,34 @@ self.action_manager = VelocityActionManager(
 )
 ```
 
+## TorqueActionManager
+
+To command the motors' torque directly, use `TorqueActionManager`. The torques skip the PD controller entirely, so the actuator manager's `kp` and `kv` gains are unused for these joints.
+
+```{math}
+torque = offset + scaling * action
+```
+
+Without a `clip`, each joint's torque is clipped to the actuator manager's `max_force`. A joint `max_force` doesn't cover is clipped to the simulator's force range for it, which is the one from the robot's model file (URDF/MJCF) unless something else sets it, or left unbounded if nothing limits it. The clip is exported with the policy, so the robot bounds the commands the same way. Set `clip` explicitly when the policy should command less than the motor can deliver, such as a motor's continuous rating below its peak, or when `max_force` is randomized for domain randomization.
+
+```python
+from genesis_forge.managers import TorqueActionManager, ActuatorManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.actuator_manager = ActuatorManager(
+            self,
+            joint_names=[".*"],
+            max_force=8.0,
+        )
+        self.action_manager = TorqueActionManager(
+            self,
+            clip=(-8.0, 8.0), # The absolute torque limit
+            scale=4.0,
+            actuator_manager=self.actuator_manager,
+        )
+```
+
 ## Sim2Real - Action latency
 
 In most robots, there is some latency between when the action is received, and when it is acted upon by the actuator: sending the command, and waiting for the motor controller all take time. A policy trained with no latency expects an instant response, and on hardware that shows up as overshoot and oscillation. To roughly emulate this, you can set the `delay_step` parameter.

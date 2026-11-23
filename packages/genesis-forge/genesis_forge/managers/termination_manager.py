@@ -25,8 +25,8 @@ class TerminationManager(BaseManager):
     Args:
         env: The environment to manage the termination for.
         term_cfg: A dictionary of termination conditions.
-        logging_enabled: Whether to log the termination signals to tensorboard.
-        logging_tag: The section tag used to log the termination signals to tensorboard.
+        logging_enabled: Whether to add the termination signals to the training logs.
+        logging_tag: The section name the termination signals are logged under.
 
     Example with ManagedEnvironment::
 

@@ -222,9 +222,9 @@ class VideoWrapper(Wrapper):
         )
         assert trigger_count == 1, "Must specify only one trigger"
         if iteration_trigger is not None:
-            assert (
-                steps_per_iteration is not None and steps_per_iteration > 0
-            ), "steps_per_iteration is required with iteration_trigger"
+            assert steps_per_iteration is not None and steps_per_iteration > 0, (
+                "steps_per_iteration is required with iteration_trigger"
+            )
 
         # Determine how to name the file
         if filename is None:
@@ -235,9 +235,9 @@ class VideoWrapper(Wrapper):
             else:
                 filename = VideoFilename.EPISODE
         if filename == VideoFilename.ITERATION:
-            assert (
-                steps_per_iteration is not None and steps_per_iteration > 0
-            ), "steps_per_iteration is required with VideoFilename.ITERATION"
+            assert steps_per_iteration is not None and steps_per_iteration > 0, (
+                "steps_per_iteration is required with VideoFilename.ITERATION"
+            )
         self._filename = filename
 
         self.episode_trigger = episode_trigger
@@ -274,9 +274,9 @@ class VideoWrapper(Wrapper):
         """Load the camera from the environment."""
         super().build()
         self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-        assert (
-            self._cam is not None
-        ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        assert self._cam is not None, (
+            f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        )
 
     def step(
         self, actions: torch.Tensor

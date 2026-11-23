@@ -126,11 +126,15 @@ class ActionManagerSpec:
 
 @dataclass(frozen=True)
 class ActuatorSpec:
-    """Nominal actuator gains and defaults, recorded so the robot can match training."""
+    """Nominal actuator gains and defaults, recorded so the robot can match training.
+
+    A value is ``None`` for a joint where it was unbounded in training, which is most
+    often a force limit (``force_min``/``force_max``) that nothing limited.
+    """
 
     name: str
     joint_names: tuple[str, ...]
-    values: dict[str, list[float]]
+    values: dict[str, list[float | None]]
     randomized: tuple[str, ...] = ()
 
     @classmethod

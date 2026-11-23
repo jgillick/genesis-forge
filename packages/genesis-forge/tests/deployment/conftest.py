@@ -27,7 +27,7 @@ class FakeActuatorManager:
         self._upper = torch.tensor([1.0, 1.5, 2.0])
 
     def _cols(self, dofs_idx):
-        return [self._idx_to_col[i] for i in dofs_idx]
+        return [self._idx_to_col[int(i)] for i in dofs_idx]
 
     def get_dofs_limits(self, dofs_idx):
         cols = self._cols(dofs_idx)

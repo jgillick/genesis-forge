@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 import genesis as gs
@@ -86,6 +88,24 @@ def entity_projected_gravity(entity: RigidEntity) -> torch.Tensor:
     return transform_by_quat(gravity, inv_base_quat)
 
 
+def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
+    """
+    The compass direction the entity's nose points, seen from above, in radians.
+
+    This follows the nose, so tilting the entity moves it. It is not the yaw of an euler
+    decomposition (`quat_to_xyz(quat)[:, 2]`), which tilting leaves where it was.
+
+    Args:
+        quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
+
+    Returns:
+        torch.Tensor: Heading in radians, shape (num_envs,)
+    """
+    w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+    # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
+    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 def name_matches(name: str, pattern: str) -> bool:
     """
     Whether a name matches a pattern, either exactly or as a fully-anchored regex.
@@ -145,6 +165,22 @@ def assign_by_pattern(names: list[str], config: dict[str, T]) -> list[T | None]:
                 f"'{pattern}' not found among the unassigned names: {unassigned}"
             )
     return assigned
+
+
+def inf_to_none(values: torch.Tensor | Sequence[float]) -> list[float | None]:
+    """
+    Convert values to a list of floats, with each infinite value replaced by None.
+
+    JSON has no infinity, so a deployment bundle writes an unbounded value as null.
+
+    Example::
+
+        inf_to_none(torch.tensor([1.0, float("inf"), float("-inf")]))
+        # -> [1.0, None, None]
+    """
+    if isinstance(values, torch.Tensor):
+        values = values.detach().cpu().tolist()
+    return [None if math.isinf(value) else float(value) for value in values]
 
 
 def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidLink]:

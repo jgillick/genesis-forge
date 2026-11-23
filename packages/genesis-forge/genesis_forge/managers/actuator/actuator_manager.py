@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from collections.abc import Mapping
+from itertools import compress
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict
 
 import genesis as gs
 import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.utils import assign_by_pattern, name_matches
+from genesis_forge.utils import assign_by_pattern, inf_to_none, name_matches
 from genesis_forge.values import ensure_dof_pattern
 
 from .noisy_value import NoisyValue
@@ -47,6 +49,16 @@ class BufferItem(TypedDict):
     has_been_set: bool
     """Has this value been set to the actuator at least once?"""
 
+    defined: torch.Tensor
+    """Which DOFs the config defines a value for. The others are never set, so they
+    keep the simulator's value."""
+
+    defined_dofs_idx: list[int]
+    """The DOF indices of the defined DOFs, for setting the value on the robot."""
+
+    all_defined: bool
+    """Does the config define a value for every DOF?"""
+
 
 ValueBuffers = dict[ValueName, BufferItem]
 
@@ -69,6 +81,10 @@ class ActuatorManager(BaseManager):
         frictionloss: The frictionloss values.
         armature: The armature values.
         entity: The robot entity to manage. Defaults to `env.robot`.
+
+    A joint a value does not cover (for example, ``kp={"hip": 50}`` leaves the knee out)
+    is never set by this manager, so it keeps the simulator's value -- likely from the
+    robot model file. ``default_pos`` is the exception: an uncovered joint resets to 0.
 
     Example::
 
@@ -95,6 +111,20 @@ class ActuatorManager(BaseManager):
                 )
 
     """
+
+    _dofs_idx_tensor: torch.Tensor
+    """The configured DOF indices, as a tensor for passing to Genesis."""
+
+    _sim_accessors: ClassVar[dict[str, tuple[str, str]]] = {
+        "kp": ("set_dofs_kp", "get_dofs_kp"),
+        "kv": ("set_dofs_kv", "get_dofs_kv"),
+        "damping": ("set_dofs_damping", "get_dofs_damping"),
+        "stiffness": ("set_dofs_stiffness", "get_dofs_stiffness"),
+        "frictionloss": ("set_dofs_frictionloss", "get_dofs_frictionloss"),
+        "armature": ("set_dofs_armature", "get_dofs_armature"),
+    }
+    """The robot's setter and getter for each per-DOF value. Force limits are a pair,
+    so they are handled on their own."""
 
     def __init__(
         self,
@@ -124,6 +154,9 @@ class ActuatorManager(BaseManager):
         self._frictionloss_cfg = ensure_dof_pattern(frictionloss)
         self._armature_cfg = ensure_dof_pattern(armature)
         self._batch_dofs_enabled = False  # determined at build
+        # The simulator's force range, for DOFs max_force leaves out. Read again after
+        # each reset, rather than on every step.
+        self._sim_force_range: tuple[torch.Tensor, torch.Tensor] | None = None
 
         self._values: ValueBuffers = {
             "default_pos": None,
@@ -182,6 +215,50 @@ class ActuatorManager(BaseManager):
         return self._values.get("default_pos", {}).get("buffer", None)
 
     """
+    DOF groups
+    """
+
+    def resolve_dof_groups(
+        self, dof_groups: Mapping[str, str | list[str]]
+    ) -> dict[str, torch.Tensor]:
+        """
+        Resolve named groups of joint name patterns into robot DOF indices.
+
+        Args:
+            dof_groups: Maps a group name to a joint name pattern, or a list of them.
+
+        Returns:
+            Maps each group name to the DOF indices of its joints.
+
+        Raises:
+            ValueError: A group matched none of this manager's joints.
+
+        Example::
+
+            groups = actuator_manager.resolve_dof_groups({
+                "hip": ".*_Hip",
+                "legs": [".*_Femur", ".*_Tibia"],
+            })
+            hip_torque = actuator_manager.get_dofs_control_force(dofs_idx=groups["hip"])
+        """
+        resolved: dict[str, torch.Tensor] = {}
+        for group, patterns in dof_groups.items():
+            if isinstance(patterns, str):
+                patterns = [patterns]
+            dofs_idx = [
+                idx
+                for name, idx in self._dofs.items()
+                if any(name_matches(name, pattern) for pattern in patterns)
+            ]
+            if not dofs_idx:
+                raise ValueError(
+                    f"DOF group '{group}' ({patterns}) matched none of the "
+                    f"actuator manager's joints: {self.dofs_names}"
+                )
+            resolved[group] = torch.tensor(dofs_idx, dtype=gs.tc_int, device=gs.device)
+        return resolved
+
+    """
     Deployment
     """
 
@@ -197,13 +274,14 @@ class ActuatorManager(BaseManager):
             Plain data: the joint names, one value per joint for each configured
             actuator parameter, and the names of any parameters that were
             randomized during training (recorded so the difference is visible
-            rather than silently flattened).
+            rather than silently flattened). A joint a value does not cover gets
+            the simulator's value for it, and ``None`` when that is unbounded.
 
         Raises:
             ValueError: A configured parameter is not one value per DOF, so the
                 bundle cannot record it.
         """
-        values: dict[str, list[float]] = {}
+        values: dict[str, list[float | None]] = {}
         randomized: list[str] = []
 
         for value_name, item in self._values.items():
@@ -226,7 +304,20 @@ class ActuatorManager(BaseManager):
                     f"per joint, and dropping this one would leave the robot "
                     f"configuring its controllers from a partial set of gains."
                 )
-            values[value_name] = [float(entry) for entry in tensor.cpu().tolist()]
+
+            if value_name in ("force_min", "force_max"):
+                # A pair, so both come from the range getter
+                lower, upper = self.get_dofs_nominal_force_range()
+                tensor = lower if value_name == "force_min" else upper
+            elif value_name in self._sim_accessors and not item.get(
+                "all_defined", True
+            ):
+                # A DOF the config leaves out keeps the simulator's value, so export that
+                _, getter = self._sim_accessors[value_name]
+                sim_value = self._get_sim_value(getter)
+                tensor = torch.where(item["defined"], tensor, sim_value)
+
+            values[value_name] = inf_to_none(tensor)
             if item.get("has_noise", False):
                 randomized.append(value_name)
 
@@ -241,7 +332,7 @@ class ActuatorManager(BaseManager):
     """
 
     def get_dofs_position(
-        self, noise: float = 0.0, dofs_idx: list[int] | None = None
+        self, noise: float = 0.0, dofs_idx: list[int] | torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Return the current position of the configured DOFs.
@@ -255,7 +346,7 @@ class ActuatorManager(BaseManager):
             position: torch.Tensor, shape (n_envs, n_dofs)
             The position of the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         pos = self._robot.get_dofs_position(dofs_idx)
         if noise > 0.0:
             pos = self._add_random_noise(pos, noise)
@@ -265,7 +356,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip: tuple[float, float] | None = None,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the current velocity of the configured DOFs.
@@ -280,7 +371,7 @@ class ActuatorManager(BaseManager):
             velocity:torch.Tensor, shape (n_envs, n_dofs)
             The velocity of the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         vel = self._robot.get_dofs_velocity(dofs_idx)
         if noise > 0.0:
             vel = self._add_random_noise(vel, noise)
@@ -292,7 +383,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip_to_max_force: bool = False,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the force experienced by the configured DOFs.
@@ -307,12 +398,12 @@ class ActuatorManager(BaseManager):
             force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         force = self._robot.get_dofs_force(dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
         if clip_to_max_force:
-            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx)
             force = force.clamp(lower, upper)
         return force
 
@@ -320,7 +411,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip_to_max_force: bool = False,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the force output by the configured DOFs.
@@ -335,18 +426,38 @@ class ActuatorManager(BaseManager):
             force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         force = self._robot.get_dofs_control_force(dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
         if clip_to_max_force:
-            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx)
             force = force.clamp(lower, upper)
         return force
 
+    def get_dofs_force_range(
+        self, dofs_idx: list[int] | torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return the force range the simulator currently holds for the configured DOFs,
+        including any randomized ``max_force`` applied at the last reset.
+
+        Args:
+            dofs_idx: The indices of the DOFs to get the range for. If None, all the DOFs of this actuator manager are used.
+
+        Returns:
+            lower: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+            upper: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+        """
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        return self._robot.get_dofs_force_range(dofs_idx)
+
     def get_dofs_max_force(self) -> torch.Tensor:
         """
-        Get the positive force/torque limit per configured DOF from ``max_force`` config.
+        Get the positive force/torque limit per configured DOF from ``max_force`` config,
+        including any randomized value applied at the last reset. A DOF with a missing
+        ``max_force`` config value reports the limit the simulator currently holds
+        for it -- likely from the robot model file.
 
         Returns:
             limits: torch.Tensor, shape (n_envs, n_dofs) or (n_dofs,)
@@ -360,13 +471,44 @@ class ActuatorManager(BaseManager):
                 "ActuatorManager max_force is not configured. "
                 "Set max_force on the actuator manager or pass an explicit threshold."
             )
-        limits = torch.abs(self._get_value_buffer("force_max"))
+        force_max = self._values["force_max"]
+        limits = torch.abs(force_max["output_buffer"])
         if limits.ndim == 1:
             limits = limits.unsqueeze(0).expand(self.env.num_envs, -1)
+        if not force_max["all_defined"]:
+            if self._sim_force_range is None:
+                self._sim_force_range = self._get_sim_force_range()
+            _, sim_upper = self._sim_force_range
+            limits = torch.where(force_max["defined"], limits, sim_upper.abs())
         return limits
 
+    def get_dofs_nominal_force_range(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Get the force/torque range per configured DOF from the ``max_force`` config,
+        without any randomization noise. A DOF that does not have a ``max_force``
+        defined reports the limit the simulator currently holds for it -- likely
+        from the robot model file.
+
+        Returns:
+            lower: torch.Tensor, shape (n_dofs,)
+                   The lower force limit per DOF.
+            upper: torch.Tensor, shape (n_dofs,)
+                   The upper force limit per DOF.
+        """
+        if self._values["force_max"] is None:
+            return self._get_sim_force_range()
+
+        lower = self._first_env_row(self._values["force_min"]["buffer"])
+        upper = self._first_env_row(self._values["force_max"]["buffer"])
+        force_max = self._values["force_max"]
+        if not force_max["all_defined"]:
+            sim_lower, sim_upper = self._get_sim_force_range()
+            lower = torch.where(force_max["defined"], lower, sim_lower)
+            upper = torch.where(force_max["defined"], upper, sim_upper)
+        return lower.clone(), upper.clone()
+
     def get_dofs_limits(
-        self, dofs_idx: list[int] | None = None
+        self, dofs_idx: list[int] | torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Return the position limits of the configured DOFs.
@@ -381,11 +523,11 @@ class ActuatorManager(BaseManager):
             upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
                          The upper limit of the positional limits for the entity's dofs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         return self._robot.get_dofs_limit(dofs_idx)
 
     def set_dofs_position(
-        self, position: torch.Tensor, dofs_idx: list[int] | None = None
+        self, position: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Set the position of the configured DOFs.
@@ -396,10 +538,12 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.set_dofs_position(position, dofs_idx or self.dofs_idx)
+        self._robot.set_dofs_position(
+            position, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     def control_dofs_position(
-        self, position: torch.Tensor, dofs_idx: list[int] | None = None
+        self, position: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Control the position of the configured DOFs.
@@ -410,10 +554,12 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.control_dofs_position(position, dofs_idx or self.dofs_idx)
+        self._robot.control_dofs_position(
+            position, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     def control_dofs_velocity(
-        self, velocity: torch.Tensor, dofs_idx: list[int] | None = None
+        self, velocity: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Control the velocity of the configured DOFs.
@@ -424,7 +570,25 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+        self._robot.control_dofs_velocity(
+            velocity, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
+
+    def control_dofs_force(
+        self, force: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
+    ):
+        """
+        Apply a torque to the configured DOFs.
+        This is a wrapper for `RigidEntity.control_dofs_force`.
+
+        Args:
+            force: The torque to apply to the DOFs. The indices of this tensor should match the configured DOFs
+                   (see: `dofs_names` and `dofs_idx` properties).
+            dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
+        """
+        self._robot.control_dofs_force(
+            force, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     """
     Lifecycle operations
@@ -454,6 +618,9 @@ class ActuatorManager(BaseManager):
                 if name_matches(name, pattern):
                     self._dofs[name] = joint.dof_start
                     break
+        self._dofs_idx_tensor = torch.tensor(
+            self.dofs_idx, dtype=gs.tc_int, device=gs.device
+        )
 
         # Default DOF positions
         # If no configuration is provided, use zero positions for all DOFs.
@@ -493,7 +660,10 @@ class ActuatorManager(BaseManager):
                     print(
                         "WARNING: Armature randomization settings are only supported when 'batch_dofs_info' is True in RigidOptions."
                     )
-                self._robot.set_dofs_armature(armature["buffer"], self.dofs_idx)
+                self._robot.set_dofs_armature(
+                    self._defined_only("armature", armature["buffer"]),
+                    armature["defined_dofs_idx"],
+                )
 
         # Other actuator values
         self._fill_value_buffer("kp", self._kp_cfg)
@@ -511,43 +681,32 @@ class ActuatorManager(BaseManager):
             return
         dofs_idx = self.dofs_idx
 
-        # Set actuator controller values
-        if self._should_set_value("kp"):
-            kp = self._get_value_buffer("kp", envs_idx)
-            self._robot.set_dofs_kp(kp, dofs_idx, envs_idx)
-            self._values["kp"]["has_been_set"] = True
-
-        if self._should_set_value("kv"):
-            kv = self._get_value_buffer("kv", envs_idx)
-            self._robot.set_dofs_kv(kv, dofs_idx, envs_idx)
-            self._values["kv"]["has_been_set"] = True
-
-        if self._should_set_value("damping"):
-            damping = self._get_value_buffer("damping", envs_idx)
-            self._robot.set_dofs_damping(damping, dofs_idx, envs_idx)
-            self._values["damping"]["has_been_set"] = True
-
-        if self._should_set_value("stiffness"):
-            stiffness = self._get_value_buffer("stiffness", envs_idx)
-            self._robot.set_dofs_stiffness(stiffness, dofs_idx, envs_idx)
-            self._values["stiffness"]["has_been_set"] = True
-
-        if self._should_set_value("frictionloss"):
-            frictionloss = self._get_value_buffer("frictionloss", envs_idx)
-            self._robot.set_dofs_frictionloss(frictionloss, dofs_idx, envs_idx)
-            self._values["frictionloss"]["has_been_set"] = True
-
-        if self._should_set_value("armature") and self._batch_dofs_enabled:
-            armature = self._get_value_buffer("armature", envs_idx)
-            self._robot.set_dofs_armature(armature, dofs_idx, envs_idx)
-            self._values["armature"]["has_been_set"] = True
+        # Set actuator controller values, on the DOFs each one defines
+        for name, (setter, _) in self._sim_accessors.items():
+            if name == "armature" and not self._batch_dofs_enabled:
+                continue  # Set once, at build
+            if not self._should_set_value(name):
+                continue
+            value = self._get_value_buffer(name, envs_idx)
+            getattr(self._robot, setter)(
+                self._defined_only(name, value),
+                self._values[name]["defined_dofs_idx"],
+                envs_idx,
+            )
+            self._mark_set(name, envs_idx)
 
         if self._should_set_value("force_min") or self._should_set_value("force_max"):
             force_min = self._get_value_buffer("force_min", envs_idx)
             force_max = self._get_value_buffer("force_max", envs_idx)
-            self._robot.set_dofs_force_range(force_min, force_max, dofs_idx, envs_idx)
-            self._values["force_min"]["has_been_set"] = True
-            self._values["force_max"]["has_been_set"] = True
+            self._robot.set_dofs_force_range(
+                self._defined_only("force_min", force_min),
+                self._defined_only("force_max", force_max),
+                self._values["force_max"]["defined_dofs_idx"],
+                envs_idx,
+            )
+            self._mark_set("force_min", envs_idx)
+            self._mark_set("force_max", envs_idx)
+        self._sim_force_range = None
 
         # Reset DOF positions
         default_position = self._get_value_buffer("default_pos", envs_idx)
@@ -599,9 +758,10 @@ class ActuatorManager(BaseManager):
         value_buffer = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
         noise = torch.zeros((num_dofs,), device=gs.device, dtype=gs.tc_float)
         noise_buffer = torch.zeros_like(value_buffer, device=gs.device)
-        output_buffer = torch.zeros_like(value_buffer, device=gs.device)
 
-        for i, cfg_value in enumerate(assign_by_pattern(dof_names, config)):
+        dof_values = assign_by_pattern(dof_names, config)
+        defined = [value is not None for value in dof_values]
+        for i, cfg_value in enumerate(dof_values):
             if cfg_value is None:
                 continue
             if isinstance(cfg_value, NoisyValue):
@@ -616,33 +776,60 @@ class ActuatorManager(BaseManager):
             value_buffer = value_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
             noise = noise.unsqueeze(0).repeat(self.env.num_envs, 1)
             noise_buffer = noise_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
-            output_buffer = output_buffer.unsqueeze(0).repeat(self.env.num_envs, 1)
 
-        # Expand the buffer to the number of environments
         self._values[value_name] = {
             "buffer": value_buffer,
             "noise": noise,
             "noise_buffer": noise_buffer,
-            "output_buffer": output_buffer,
+            # Nominal until a reset applies noise, so it never reads as 0
+            "output_buffer": value_buffer.clone(),
             "has_noise": has_noise,
             "has_been_set": False,
+            "defined": torch.tensor(defined, device=gs.device),
+            "defined_dofs_idx": list(compress(self.dofs_idx, defined)),
+            "all_defined": all(defined),
         }
 
     def _get_value_buffer(
         self, name: ValueName, envs_idx: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
-        Get the value buffer tensor, with noise applied
+        Sample new noise for the value, and get the result to apply to the robot.
+
+        Only the rows of the environments being reset are resampled, so the output
+        buffer always holds the values that were last applied to each environment.
         """
         output = self._values[name]["output_buffer"]
         noise = self._values[name]["noise"]
         noise_buffer = self._values[name]["noise_buffer"]
+        buffer = self._values[name]["buffer"]
 
-        output[:] = self._values[name]["buffer"]
-        output += noise_buffer.uniform_(-1, 1) * noise
         if envs_idx is not None and output.ndim == 2:
-            output = output[envs_idx]
+            sample = torch.empty_like(output[envs_idx]).uniform_(-1, 1)
+            output[envs_idx] = buffer[envs_idx] + sample * noise[envs_idx]
+            return output[envs_idx]
+
+        output[:] = buffer
+        output += noise_buffer.uniform_(-1, 1) * noise
         return output
+
+    def _defined_only(self, name: ValueName, value: torch.Tensor) -> torch.Tensor:
+        """
+        Return the value for only the DOFs its config defines.
+        """
+        item = self._values[name]
+        if item["all_defined"]:
+            return value
+        return value[..., item["defined"]]
+
+    def _mark_set(self, name: ValueName, envs_idx: torch.Tensor | None):
+        """
+        Set the value's ``has_been_set`` flag if this reset covered every environment,
+        or if DOF batching is off, so every environment shares one value.
+        """
+        reset_count = self.env.num_envs if envs_idx is None else len(envs_idx)
+        if reset_count == self.env.num_envs or not self._batch_dofs_enabled:
+            self._values[name]["has_been_set"] = True
 
     def _add_random_noise(
         self, values: torch.Tensor, noise_scale: float = 0.0
@@ -654,3 +841,39 @@ class ActuatorManager(BaseManager):
             return values
         noise_value = torch.empty_like(values).uniform_(-1, 1) * noise_scale
         return values + noise_value
+
+    def _get_sim_value(self, getter: str) -> torch.Tensor:
+        """
+        Read a per-DOF value the simulator currently holds for the configured DOFs.
+
+        Args:
+            getter: The name of the robot's ``get_dofs_*`` method for the value.
+
+        Returns:
+            value: torch.Tensor, shape (n_dofs,)
+        """
+        read_value = getattr(self._robot, getter)
+        value = read_value(self.dofs_idx)
+        return self._first_env_row(value)
+
+    def _get_sim_force_range(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        The force range the simulator currently holds for the configured DOFs.
+
+        Returns:
+            lower: torch.Tensor, shape (n_dofs,)
+            upper: torch.Tensor, shape (n_dofs,)
+        """
+        lower, upper = self._robot.get_dofs_force_range(self.dofs_idx)
+        return self._first_env_row(lower), self._first_env_row(upper)
+
+    @staticmethod
+    def _first_env_row(value: torch.Tensor) -> torch.Tensor:
+        """
+        Convert a per-DOF value to a tensor of shape (n_dofs,).
+
+        A value with a row per environment (from DOF batching) is reduced to
+        environment 0's row, which matches the others unless something randomized it.
+        """
+        value = torch.as_tensor(value, device=gs.device, dtype=gs.tc_float)
+        return value[0] if value.ndim == 2 else value

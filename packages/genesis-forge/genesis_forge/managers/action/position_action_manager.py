@@ -157,7 +157,9 @@ class PositionActionManager(AffineDofActionManager):
         super().build()
 
         # Define the clip values
-        lower_limit, upper_limit = self.actuator_manager.get_dofs_limits(self.dofs_idx)
+        lower_limit, upper_limit = self.actuator_manager.get_dofs_limits(
+            self._dofs_idx_tensor
+        )
         self._clip_values = torch.stack([lower_limit, upper_limit], dim=1)
         if self._clip_cfg is not None:
             self._get_dof_value_tensor(self._clip_cfg, output=self._clip_values)
@@ -184,9 +186,8 @@ class PositionActionManager(AffineDofActionManager):
             offset = self._offset_cfg if self._offset_cfg is not None else 0.0
             self._offset_values = self._get_dof_value_tensor(offset)
 
-    def send_actions_to_simulation(self, actions: torch.Tensor) -> torch.Tensor:
+    def send_actions_to_simulation(self, actions: torch.Tensor) -> None:
         """
         Sends the actions as position commands to the actuators in the simulation.
         """
-        actions = self.get_actions()
-        self.actuator_manager.control_dofs_position(actions, self.dofs_idx)
+        self.actuator_manager.control_dofs_position(actions, self._dofs_idx_tensor)

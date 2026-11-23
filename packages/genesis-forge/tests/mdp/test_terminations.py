@@ -341,3 +341,34 @@ def test_dof_velocity_limit_rejects_unknown_unit_at_build_time(env):
     fn.context(env)
     with pytest.raises(AssertionError, match="Unknown velocity unit"):
         fn.safe_build()
+
+
+"""
+Power and actuator effort
+"""
+
+
+class FakePowerMonitor:
+    def __init__(self, bus_current, supply_voltage=24.0):
+        self._values = {"bus_current_a": bus_current}
+        self.supply_voltage = supply_voltage
+
+    def __getitem__(self, name):
+        return self._values[name]
+
+
+def test_bus_current_limit_terminates_over_the_limit(env):
+    monitor = FakePowerMonitor(torch.tensor([5.0, 10.0, 10.5]))
+    fn = built(
+        terminations.bus_current_limit(power_monitor=monitor, max_current=10.0), env
+    )
+
+    assert fn(env).tolist() == [False, False, True]
+
+
+def test_bus_current_limit_requires_a_supply_voltage(env):
+    monitor = FakePowerMonitor(None, supply_voltage=None)
+    with pytest.raises(AssertionError, match="supply_voltage"):
+        built(
+            terminations.bus_current_limit(power_monitor=monitor, max_current=1.0), env
+        )

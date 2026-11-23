@@ -16,6 +16,7 @@ from deprecated import deprecated
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
+    ActuatorMonitor,
     BaseActionManager,
     CommandManager,
     ContactManager,
@@ -23,6 +24,7 @@ from genesis_forge.managers import (
     MdpFn,
     Pose2dCommand,
     PositionActionManager,
+    PowerMonitor,
     TerrainManager,
     VelocityCommandManager,
 )
@@ -591,6 +593,69 @@ class dof_acc_l2(MdpFn):
         self._has_prev_vel[:] = True
 
         return penalty
+
+
+"""
+Power and actuator effort
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class electrical_power(MdpFn):
+    """
+    Penalize the estimated electrical power of the robot's motors, in watts.
+
+    Register with a negative weight. Since moving faster takes more power, a strong
+    weight can work against velocity tracking. Start small and grow it with a
+    curriculum.
+
+    Args:
+        power_monitor: The power monitor estimating the motor power.
+        dof_group: Only count the motors in this DOF group of the power monitor.
+
+    Returns:
+        torch.Tensor: The power, in watts, shape (num_envs,)
+    """
+
+    power_monitor: PowerMonitor
+    dof_group: str | None = None
+
+    def build(self):
+        self._cols = None
+        if self.dof_group is not None:
+            groups = self.power_monitor.dof_groups or {}
+            assert self.dof_group in groups, (
+                f"The power monitor has no DOF group '{self.dof_group}': {list(groups)}"
+            )
+            self._cols = groups[self.dof_group]
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        power = self.power_monitor.dof_power
+        if self._cols is not None:
+            power = power[:, self._cols]
+        return power.sum(dim=-1)
+
+
+@dataclass(kw_only=True, eq=False)
+class torque_saturation(MdpFn):
+    """
+    Penalize joints that are at, or near, their force limit.
+
+    A joint at its force limit can no longer follow its controller, which is where
+    simulation and real hardware tend to part ways. The threshold is the actuator
+    monitor's `saturation_threshold`. Register with a negative weight.
+
+    Args:
+        actuator_monitor: The actuator monitor for the joints.
+
+    Returns:
+        torch.Tensor: The fraction of joints that are saturated, shape (num_envs,)
+    """
+
+    actuator_monitor: ActuatorMonitor
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self.actuator_monitor.dof_saturated.float().mean(dim=-1)
 
 
 """

@@ -38,7 +38,7 @@ class FakeActuatorManager:
         self._force_range = force_range
 
     def _cols(self, dofs_idx):
-        return [self._idx_to_col[i] for i in dofs_idx]
+        return [self._idx_to_col[int(i)] for i in dofs_idx]
 
     def get_dofs_limits(self, dofs_idx):
         cols = self._cols(dofs_idx)

@@ -18,6 +18,7 @@ Available managers:
 - :class:`EntityManager` — entity spawning and per-episode resets
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
+- :class:`Monitor` / :class:`DofMonitor` / :class:`PowerMonitor` / :class:`ActuatorMonitor` — values calculated and logged each step
 - :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
 """
 
@@ -36,6 +37,16 @@ from .config import (
 )
 from .contact import ContactManager
 from .entity_manager import EntityManager
+from .monitor import (
+    ActuatorMonitor,
+    DofMonitor,
+    Monitor,
+    MonitorConfig,
+    MonitorFn,
+    MonitorReduction,
+    MotorSpec,
+    PowerMonitor,
+)
 from .observation_manager import ObservationManager
 from .reward_manager import RewardManager
 from .termination_manager import TerminationManager
@@ -43,6 +54,7 @@ from .terrain_manager import TerrainManager
 
 __all__ = [
     "ActuatorManager",
+    "ActuatorMonitor",
     "ActionDelayBuffer",
     "BaseActionManager",
     "BaseManager",
@@ -50,10 +62,17 @@ __all__ = [
     "ContactManager",
     "EntityManager",
     "MdpFn",
+    "Monitor",
+    "MonitorReduction",
+    "MonitorFn",
+    "MonitorConfig",
+    "DofMonitor",
+    "MotorSpec",
     "ObservationManager",
     "Pose2dCommand",
     "PositionActionManager",
     "PositionWithinLimitsActionManager",
+    "PowerMonitor",
     "ResetMdpFn",
     "RewardManager",
     "TerminationManager",

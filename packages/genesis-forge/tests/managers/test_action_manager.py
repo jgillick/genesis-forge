@@ -46,7 +46,7 @@ class FakeActuatorManager:
         self.control_calls = []
 
     def _cols(self, dofs_idx):
-        return [self._idx_to_col[i] for i in dofs_idx]
+        return [self._idx_to_col[int(i)] for i in dofs_idx]
 
     def get_dofs_nominal_force_range(self):
         if self._force_range is None:

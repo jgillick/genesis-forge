@@ -109,4 +109,4 @@ class TorqueActionManager(AffineDofActionManager):
         """
         Sends the actions as torque commands to the actuators in the simulation.
         """
-        self.actuator_manager.control_dofs_force(actions, self.dofs_idx)
+        self.actuator_manager.control_dofs_force(actions, self._dofs_idx_tensor)

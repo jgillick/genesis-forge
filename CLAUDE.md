@@ -99,7 +99,8 @@ directly.** The `type` string must match one of the `ManagerType` literals in
 
 ```
 "action" | "actuator" | "reward" | "termination" |
-"contact" | "terrain" | "entity" | "command" | "observation"
+"contact" | "terrain" | "entity" | "command" | "observation" |
+"monitor"
 ```
 
 Constraints:
@@ -219,6 +220,7 @@ Paths in this section and the next are relative to
 | What | Where |
 |------|-------|
 | Manager classes | `managers/` (flat layout) |
+| Monitors (`Monitor`, `DofMonitor`, `PowerMonitor`, `ActuatorMonitor`) | `managers/monitor/` |
 | MDP functions | `mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py` |
 | Config TypedDicts | Subclass `ConfigItemDict` from `managers/config/` |
 | Terrain layouts and subterrain types | `terrain/` |

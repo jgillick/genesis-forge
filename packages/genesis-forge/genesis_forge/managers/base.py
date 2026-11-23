@@ -16,6 +16,7 @@ ManagerType = Literal[
     "entity",
     "command",
     "observation",
+    "monitor",
 ]
 
 

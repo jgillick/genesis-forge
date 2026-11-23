@@ -62,7 +62,7 @@ class FakeRobot:
         }
 
     def _cols(self, dofs_idx):
-        return [self._idx_to_col[i] for i in dofs_idx]
+        return [self._idx_to_col[int(i)] for i in dofs_idx]
 
     def calls_named(self, name):
         return [c for c in self.calls if c[0] == name]
@@ -119,35 +119,58 @@ class FakeRobot:
         self.calls.append(("set_dofs_position", position.clone(), list(idx), envs_idx))
 
     def control_dofs_position(self, position, dofs_idx):
-        self.calls.append(("control_dofs_position", position.clone(), list(dofs_idx)))
+        self.calls.append(
+            ("control_dofs_position", position.clone(), [int(i) for i in dofs_idx])
+        )
 
     def control_dofs_velocity(self, velocity, dofs_idx):
-        self.calls.append(("control_dofs_velocity", velocity.clone(), list(dofs_idx)))
+        self.calls.append(
+            ("control_dofs_velocity", velocity.clone(), [int(i) for i in dofs_idx])
+        )
 
     def set_dofs_kp(self, kp, dofs_idx, envs_idx):
-        self.calls.append(("set_dofs_kp", kp.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_kp", kp.clone(), [int(i) for i in dofs_idx], envs_idx)
+        )
 
     def set_dofs_kv(self, kv, dofs_idx, envs_idx):
-        self.calls.append(("set_dofs_kv", kv.clone(), list(dofs_idx), envs_idx))
+        self.calls.append(
+            ("set_dofs_kv", kv.clone(), [int(i) for i in dofs_idx], envs_idx)
+        )
 
     def set_dofs_damping(self, damping, dofs_idx, envs_idx):
         self.calls.append(
-            ("set_dofs_damping", damping.clone(), list(dofs_idx), envs_idx)
+            ("set_dofs_damping", damping.clone(), [int(i) for i in dofs_idx], envs_idx)
         )
 
     def set_dofs_stiffness(self, stiffness, dofs_idx, envs_idx):
         self.calls.append(
-            ("set_dofs_stiffness", stiffness.clone(), list(dofs_idx), envs_idx)
+            (
+                "set_dofs_stiffness",
+                stiffness.clone(),
+                [int(i) for i in dofs_idx],
+                envs_idx,
+            )
         )
 
     def set_dofs_frictionloss(self, frictionloss, dofs_idx, envs_idx):
         self.calls.append(
-            ("set_dofs_frictionloss", frictionloss.clone(), list(dofs_idx), envs_idx)
+            (
+                "set_dofs_frictionloss",
+                frictionloss.clone(),
+                [int(i) for i in dofs_idx],
+                envs_idx,
+            )
         )
 
     def set_dofs_armature(self, armature, dofs_idx, envs_idx=None):
         self.calls.append(
-            ("set_dofs_armature", armature.clone(), list(dofs_idx), envs_idx)
+            (
+                "set_dofs_armature",
+                armature.clone(),
+                [int(i) for i in dofs_idx],
+                envs_idx,
+            )
         )
 
     def set_dofs_force_range(self, force_min, force_max, dofs_idx, envs_idx):
@@ -156,7 +179,7 @@ class FakeRobot:
                 "set_dofs_force_range",
                 force_min.clone(),
                 force_max.clone(),
-                list(dofs_idx),
+                [int(i) for i in dofs_idx],
                 envs_idx,
             )
         )
@@ -197,6 +220,84 @@ def test_build_filters_by_a_specific_joint_name_list(env):
     mgr.build()
 
     assert mgr.dofs == {"hip": 5, "ankle": 12}
+
+
+"""
+resolve_dof_groups()
+"""
+
+
+def test_resolve_dof_groups_returns_robot_dof_indices(env):
+    env.robot = FakeRobot(make_joints())
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    groups = mgr.resolve_dof_groups({"leg": ["knee", "ankle"], "hip": "hip"})
+
+    assert {g: idx.tolist() for g, idx in groups.items()} == {
+        "leg": [8, 12],
+        "hip": [5],
+    }
+
+
+def test_resolve_dof_groups_can_be_passed_as_dofs_idx(env):
+    env.robot = FakeRobot(
+        make_joints(), position=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    )
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    groups = mgr.resolve_dof_groups({"leg": ["knee", "ankle"]})
+
+    assert torch.equal(
+        mgr.get_dofs_position(dofs_idx=groups["leg"]),
+        torch.tensor([[2.0, 3.0]] * env.num_envs),
+    )
+
+
+def test_getters_pass_genesis_a_reused_index_tensor(env):
+    env.robot = FakeRobot(
+        make_joints(), position=torch.tensor([[1.0, 2.0, 3.0]] * env.num_envs)
+    )
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+    seen = []
+    get_dofs_position = env.robot.get_dofs_position
+    env.robot.get_dofs_position = lambda idx: seen.append(idx) or get_dofs_position(idx)
+
+    mgr.get_dofs_position()
+    mgr.get_dofs_position()
+
+    assert isinstance(seen[0], torch.Tensor)
+    assert seen[0] is seen[1]
+    assert seen[0].tolist() == [5, 8, 12]
+
+
+def test_resolve_dof_groups_lets_a_joint_be_in_more_than_one_group(env):
+    env.robot = FakeRobot(make_joints())
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    groups = mgr.resolve_dof_groups({"all": ".*", "knee": "knee"})
+
+    assert {g: idx.tolist() for g, idx in groups.items()} == {
+        "all": [5, 8, 12],
+        "knee": [8],
+    }
+
+
+def test_resolve_dof_groups_raises_for_a_group_that_matches_nothing(env):
+    env.robot = FakeRobot(make_joints())
+    env.scene = FakeScene()
+    mgr = ActuatorManager(env, joint_names=".*")
+    mgr.build()
+
+    with pytest.raises(ValueError, match="'tail'"):
+        mgr.resolve_dof_groups({"tail": "tail_.*"})
 
 
 """

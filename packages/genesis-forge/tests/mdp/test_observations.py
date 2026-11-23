@@ -458,3 +458,20 @@ def test_height_scan_rebuilds_the_grid_when_the_size_changes(env):
     fn.size = (1.0, 1.0)
 
     assert fn(env).shape == (1, 121)
+
+
+"""
+Power
+"""
+
+
+class FakePowerMonitor:
+    def __init__(self, dof_power):
+        self.dof_power = dof_power
+
+
+def test_dof_power_returns_the_power_per_motor(env):
+    power = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    fn = built(observations.dof_power(power_monitor=FakePowerMonitor(power)), env)
+
+    assert torch.equal(fn(env), power)

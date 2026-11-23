@@ -14,6 +14,7 @@ from genesis_forge.managers import (
     ContactManager,
     EntityManager,
     MdpFn,
+    PowerMonitor,
     TerrainManager,
 )
 from genesis_forge.managers.action.base import BaseActionManager
@@ -527,6 +528,27 @@ class entity_dofs_force(MdpFn):
             )
         entity: RigidEntity = self.entity if self.entity is not None else env.robot
         return entity.get_dofs_force(self.dofs_idx)
+
+
+@dataclass(kw_only=True, eq=False)
+class dof_power(MdpFn):
+    """
+    The estimated electrical power of each motor, in watts.
+
+    The robot can't measure this directly, so it's best used as a privileged
+    (critic-only) observation, which helps the critic predict an energy penalty.
+
+    Args:
+        power_monitor: The power monitor estimating the motor power.
+
+    Returns:
+        torch.Tensor: The power per motor, shape (num_envs, num_dofs)
+    """
+
+    power_monitor: PowerMonitor
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self.power_monitor.dof_power
 
 
 """

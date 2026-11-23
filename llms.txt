@@ -26,6 +26,7 @@ Source: https://github.com/jgillick/genesis-forge
 - [ActuatorManager](https://docs.genesisforge.io/en/latest/api/managers/actuator.md)
 - [ContactManager](https://docs.genesisforge.io/en/latest/api/managers/contact.md)
 - [EntityManager](https://docs.genesisforge.io/en/latest/api/managers/entity.md)
+- [Monitors](https://docs.genesisforge.io/en/latest/api/managers/monitor.md)
 - [NoisyValue](https://docs.genesisforge.io/en/latest/api/managers/noisy_value.md)
 - [ObservationManager](https://docs.genesisforge.io/en/latest/api/managers/observation.md)
 - [RewardManager](https://docs.genesisforge.io/en/latest/api/managers/reward.md)

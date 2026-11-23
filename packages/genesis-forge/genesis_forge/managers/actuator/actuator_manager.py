@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from itertools import compress
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict
 
@@ -111,6 +112,9 @@ class ActuatorManager(BaseManager):
 
     """
 
+    _dofs_idx_tensor: torch.Tensor
+    """The configured DOF indices, as a tensor for passing to Genesis."""
+
     _sim_accessors: ClassVar[dict[str, tuple[str, str]]] = {
         "kp": ("set_dofs_kp", "get_dofs_kp"),
         "kv": ("set_dofs_kv", "get_dofs_kv"),
@@ -211,6 +215,50 @@ class ActuatorManager(BaseManager):
         return self._values.get("default_pos", {}).get("buffer", None)
 
     """
+    DOF groups
+    """
+
+    def resolve_dof_groups(
+        self, dof_groups: Mapping[str, str | list[str]]
+    ) -> dict[str, torch.Tensor]:
+        """
+        Resolve named groups of joint name patterns into robot DOF indices.
+
+        Args:
+            dof_groups: Maps a group name to a joint name pattern, or a list of them.
+
+        Returns:
+            Maps each group name to the DOF indices of its joints.
+
+        Raises:
+            ValueError: A group matched none of this manager's joints.
+
+        Example::
+
+            groups = actuator_manager.resolve_dof_groups({
+                "hip": ".*_Hip",
+                "legs": [".*_Femur", ".*_Tibia"],
+            })
+            hip_torque = actuator_manager.get_dofs_control_force(dofs_idx=groups["hip"])
+        """
+        resolved: dict[str, torch.Tensor] = {}
+        for group, patterns in dof_groups.items():
+            if isinstance(patterns, str):
+                patterns = [patterns]
+            dofs_idx = [
+                idx
+                for name, idx in self._dofs.items()
+                if any(name_matches(name, pattern) for pattern in patterns)
+            ]
+            if not dofs_idx:
+                raise ValueError(
+                    f"DOF group '{group}' ({patterns}) matched none of the "
+                    f"actuator manager's joints: {self.dofs_names}"
+                )
+            resolved[group] = torch.tensor(dofs_idx, dtype=gs.tc_int, device=gs.device)
+        return resolved
+
+    """
     Deployment
     """
 
@@ -284,7 +332,7 @@ class ActuatorManager(BaseManager):
     """
 
     def get_dofs_position(
-        self, noise: float = 0.0, dofs_idx: list[int] | None = None
+        self, noise: float = 0.0, dofs_idx: list[int] | torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Return the current position of the configured DOFs.
@@ -298,7 +346,7 @@ class ActuatorManager(BaseManager):
             position: torch.Tensor, shape (n_envs, n_dofs)
             The position of the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         pos = self._robot.get_dofs_position(dofs_idx)
         if noise > 0.0:
             pos = self._add_random_noise(pos, noise)
@@ -308,7 +356,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip: tuple[float, float] | None = None,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the current velocity of the configured DOFs.
@@ -323,7 +371,7 @@ class ActuatorManager(BaseManager):
             velocity:torch.Tensor, shape (n_envs, n_dofs)
             The velocity of the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         vel = self._robot.get_dofs_velocity(dofs_idx)
         if noise > 0.0:
             vel = self._add_random_noise(vel, noise)
@@ -335,7 +383,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip_to_max_force: bool = False,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the force experienced by the configured DOFs.
@@ -350,12 +398,12 @@ class ActuatorManager(BaseManager):
             force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         force = self._robot.get_dofs_force(dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
         if clip_to_max_force:
-            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx)
             force = force.clamp(lower, upper)
         return force
 
@@ -363,7 +411,7 @@ class ActuatorManager(BaseManager):
         self,
         noise: float = 0.0,
         clip_to_max_force: bool = False,
-        dofs_idx: list[int] | None = None,
+        dofs_idx: list[int] | torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Return the force output by the configured DOFs.
@@ -378,14 +426,31 @@ class ActuatorManager(BaseManager):
             force: torch.Tensor, shape (n_envs, n_dofs)
             The force experienced by the enabled DOFs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         force = self._robot.get_dofs_control_force(dofs_idx)
         if noise > 0.0:
             force = self._add_random_noise(force, noise)
         if clip_to_max_force:
-            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx or self.dofs_idx)
+            [lower, upper] = self._robot.get_dofs_force_range(dofs_idx)
             force = force.clamp(lower, upper)
         return force
+
+    def get_dofs_force_range(
+        self, dofs_idx: list[int] | torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Return the force range the simulator currently holds for the configured DOFs,
+        including any randomized ``max_force`` applied at the last reset.
+
+        Args:
+            dofs_idx: The indices of the DOFs to get the range for. If None, all the DOFs of this actuator manager are used.
+
+        Returns:
+            lower: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+            upper: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
+        """
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        return self._robot.get_dofs_force_range(dofs_idx)
 
     def get_dofs_max_force(self) -> torch.Tensor:
         """
@@ -443,7 +508,7 @@ class ActuatorManager(BaseManager):
         return lower.clone(), upper.clone()
 
     def get_dofs_limits(
-        self, dofs_idx: list[int] | None = None
+        self, dofs_idx: list[int] | torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Return the position limits of the configured DOFs.
@@ -458,11 +523,11 @@ class ActuatorManager(BaseManager):
             upper_limit: torch.Tensor, shape (n_dofs,) or (n_envs, n_dofs)
                          The upper limit of the positional limits for the entity's dofs.
         """
-        dofs_idx = dofs_idx if dofs_idx is not None else self.dofs_idx
+        dofs_idx = dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
         return self._robot.get_dofs_limit(dofs_idx)
 
     def set_dofs_position(
-        self, position: torch.Tensor, dofs_idx: list[int] | None = None
+        self, position: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Set the position of the configured DOFs.
@@ -473,10 +538,12 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.set_dofs_position(position, dofs_idx or self.dofs_idx)
+        self._robot.set_dofs_position(
+            position, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     def control_dofs_position(
-        self, position: torch.Tensor, dofs_idx: list[int] | None = None
+        self, position: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Control the position of the configured DOFs.
@@ -487,10 +554,12 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.control_dofs_position(position, dofs_idx or self.dofs_idx)
+        self._robot.control_dofs_position(
+            position, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     def control_dofs_velocity(
-        self, velocity: torch.Tensor, dofs_idx: list[int] | None = None
+        self, velocity: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Control the velocity of the configured DOFs.
@@ -501,10 +570,12 @@ class ActuatorManager(BaseManager):
                       (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.control_dofs_velocity(velocity, dofs_idx or self.dofs_idx)
+        self._robot.control_dofs_velocity(
+            velocity, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     def control_dofs_force(
-        self, force: torch.Tensor, dofs_idx: list[int] | None = None
+        self, force: torch.Tensor, dofs_idx: list[int] | torch.Tensor | None = None
     ):
         """
         Apply a torque to the configured DOFs.
@@ -515,7 +586,9 @@ class ActuatorManager(BaseManager):
                    (see: `dofs_names` and `dofs_idx` properties).
             dofs_idx: The indices of the DOFs to control. If None, all the DOFs of this actuator manager are used.
         """
-        self._robot.control_dofs_force(force, dofs_idx or self.dofs_idx)
+        self._robot.control_dofs_force(
+            force, dofs_idx if dofs_idx is not None else self._dofs_idx_tensor
+        )
 
     """
     Lifecycle operations
@@ -545,6 +618,9 @@ class ActuatorManager(BaseManager):
                 if name_matches(name, pattern):
                     self._dofs[name] = joint.dof_start
                     break
+        self._dofs_idx_tensor = torch.tensor(
+            self.dofs_idx, dtype=gs.tc_int, device=gs.device
+        )
 
         # Default DOF positions
         # If no configuration is provided, use zero positions for all DOFs.

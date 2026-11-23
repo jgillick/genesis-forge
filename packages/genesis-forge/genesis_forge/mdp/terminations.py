@@ -19,6 +19,7 @@ from genesis_forge.managers import (
     ContactManager,
     EntityManager,
     MdpFn,
+    PowerMonitor,
     TerrainManager,
 )
 from genesis_forge.utils import entity_projected_gravity
@@ -350,3 +351,31 @@ class dof_velocity_limit(MdpFn):
             threshold = threshold * (2 * math.pi / 60)
         vel = self.actuator_manager.get_dofs_velocity()
         return torch.any(torch.abs(vel) > threshold, dim=-1)
+
+
+@dataclass(kw_only=True, eq=False)
+class bus_current_limit(MdpFn):
+    """
+    Terminate if the robot's estimated battery current goes over a limit.
+
+    A real robot often hits its battery or power supply limit before any single motor
+    hits its torque limit.
+
+    Args:
+        power_monitor: A power monitor with `supply_voltage` set.
+        max_current: The current limit, in amps.
+
+    Returns:
+        Boolean tensor indicating which environments should terminate
+    """
+
+    power_monitor: PowerMonitor
+    max_current: float
+
+    def build(self):
+        assert self.power_monitor.supply_voltage is not None, (
+            "bus_current_limit needs a PowerMonitor with supply_voltage set"
+        )
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self.power_monitor["bus_current_a"] > self.max_current

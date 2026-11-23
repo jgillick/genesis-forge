@@ -120,4 +120,4 @@ class VelocityActionManager(AffineDofActionManager):
         """
         Sends the actions as velocity commands to the actuators in the simulation.
         """
-        self.actuator_manager.control_dofs_velocity(actions, self.dofs_idx)
+        self.actuator_manager.control_dofs_velocity(actions, self._dofs_idx_tensor)

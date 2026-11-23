@@ -15,6 +15,7 @@ from genesis_forge.managers import (
     CommandManager,
     ContactManager,
     EntityManager,
+    Monitor,
     ObservationManager,
     PositionActionManager,
     RewardManager,
@@ -32,6 +33,7 @@ class ManagersDict(TypedDict):
     terrain: list[TerrainManager]
     action: list[PositionActionManager]
     observation: list[ObservationManager]
+    monitor: list[Monitor]
     reward: RewardManager | None
     termination: TerminationManager | None
 
@@ -141,6 +143,7 @@ class ManagedEnvironment(GenesisEnv):
             "terrain": [],
             "actuator": [],
             "action": [],
+            "monitor": [],
             # there can only be one of each of these
             "observation": [],
             "reward": None,
@@ -269,6 +272,8 @@ class ManagedEnvironment(GenesisEnv):
 
         for contact_manager in self.managers["contact"]:
             contact_manager.build()
+        for monitor in self.managers["monitor"]:
+            monitor.build()
         if self.managers["termination"] is not None:
             self.managers["termination"].build()
         if self.managers["reward"] is not None:
@@ -277,6 +282,10 @@ class ManagedEnvironment(GenesisEnv):
             command_manager.build()
         for entity_manager in self.managers["entity"]:
             entity_manager.build()
+
+        # Calculate monitor values, since observations read them to size the observation space
+        for monitor in self.managers["monitor"]:
+            monitor.reset()
         self._build_observation_managers()
 
     def step(
@@ -309,6 +318,10 @@ class ManagedEnvironment(GenesisEnv):
         # Calculate contact forces
         for contact_manager in self.managers["contact"]:
             contact_manager.step()
+
+        # Calculate monitor values, which terminations and rewards may read
+        for monitor in self.managers["monitor"]:
+            monitor.step()
 
         # Calculate termination and truncation
         reset_env_idx = None
@@ -381,6 +394,10 @@ class ManagedEnvironment(GenesisEnv):
             command_manager.reset(env_ids)
         for obs_manager in self.managers["observation"]:
             obs_manager.reset(env_ids)
+
+        # Monitors reset last, since they recalculate values from the other managers
+        for monitor in self.managers["monitor"]:
+            monitor.reset(env_ids)
 
         # Only get observations when env_ids is None because this will be the initial reset called before the first step
         # Otherwise, the observations are ignored

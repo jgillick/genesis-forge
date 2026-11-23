@@ -27,8 +27,8 @@ class RewardManager(BaseManager):
     Args:
         env: The environment to manage the rewards for.
         cfg: A dictionary of reward conditions.
-        logging_enabled: Whether to log the rewards to tensorboard.
-        logging_tag: The section name used to log the rewards to tensorboard.
+        logging_enabled: Whether to add the rewards to the training logs.
+        logging_tag: The section name the rewards are logged under.
 
     Example with ManagedEnvironment::
 

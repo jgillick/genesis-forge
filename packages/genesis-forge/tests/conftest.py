@@ -19,6 +19,7 @@ class FakeEnv:
     num_envs: int = 4
     num_actions: int = 0
     dt: float = 0.02
+    step_count: int = 0
     actions: object = None
     extras: dict = field(default_factory=lambda: {"episode": {}})
     extras_logging_key: str = "episode"

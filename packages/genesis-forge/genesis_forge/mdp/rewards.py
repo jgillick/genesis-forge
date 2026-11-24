@@ -6,6 +6,7 @@ Each of these should return a float tensor with the reward value for each enviro
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -111,6 +112,10 @@ class base_height(MdpFn):
     entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.square(self._height_error(env))
+
+    def _height_error(self, env: GenesisEnv) -> torch.Tensor:
+        """Returns how far the base is above the target height, per env (negative when below)."""
         if self.entity_manager is not None:
             robot = self.entity_manager.entity
         else:
@@ -128,7 +133,39 @@ class base_height(MdpFn):
             target_height = self.height_command.command.squeeze(-1)
         elif self.target_height is not None:
             target_height = self.target_height
-        return torch.square(base_pos[:, 2] - height_offset - target_height)
+        return base_pos[:, 2] - height_offset - target_height
+
+
+@dataclass(kw_only=True, eq=False)
+class base_height_exp(base_height):
+    """
+    Reward the base for being near the target height, using the exponential kernel.
+
+    The reward is ``exp(-error² / sensitivity)``: 1 at the target, falling toward 0 as
+    the base moves away. Unlike :class:`base_height`, it is bounded, so it suits a
+    height command, where the target moves and the reward should mean the same thing
+    at every commanded height. Use it with a positive weight.
+
+    Args:
+        target_height: The target height to reward the base height near
+        height_command: Get the target height from a height command manager. This expects the command to have a single range value.
+        terrain_manager: The terrain manager will adjust the height based on the terrain height.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. Not necessary if `entity_manager` is provided.
+        entity_manager: The entity manager for the entity.
+        sensitivity: A lower value means the reward is more sensitive to the error.
+                     An error of ``sqrt(sensitivity)`` meters decays the reward to 1/e
+                     (0.1m with the default). Beyond about twice that, the reward is
+                     near 0 and gives little signal, so keep it wide enough to cover
+                     the errors the robot starts with.
+
+    Returns:
+        torch.Tensor: Reward for base height near target
+    """
+
+    sensitivity: float = 0.01
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.exp(-torch.square(self._height_error(env)) / self.sensitivity)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -802,10 +839,17 @@ class command_tracking_ang_vel(MdpFn):
         return _calculate_tracking_sensitivity(max_speed)
 
 
+@deprecated(
+    reason="Use 'dof_similar_to_default' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
 @dataclass(kw_only=True, eq=False)
 class stopped_joint_deviation_l1(MdpFn):
     """
     Penalize offsets from the default joint positions when the command is very small.
+
+    Deprecated: use :class:`dof_similar_to_default` with
+    ``"when": self.velocity_command.when_stopped()``.
 
     Args:
         command_threshold: The threshold for the command to be considered small
@@ -843,11 +887,18 @@ class stand_still_joint_deviation_l1(stopped_joint_deviation_l1):
     """Deprecated alias of :class:`stopped_joint_deviation_l1`."""
 
 
+@deprecated(
+    reason="Use 'dof_velocity_l2' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
 @dataclass(kw_only=True, eq=False)
 class stopped_dof_velocity_l2(MdpFn):
     """
     Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded),
     using the L2 squared kernel.
+
+    Deprecated: use :class:`dof_velocity_l2` with
+    ``"when": self.velocity_command.when_stopped()``.
 
     Args:
         vel_cmd_manager: The velocity command manager
@@ -1189,14 +1240,16 @@ class feet_air_time(MdpFn):
     that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
     the time for which the feet are in the air.
 
-    If the velocity commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
+    To only reward steps while the robot is commanded to move, gate it with
+    ``"when": self.velocity_command.when_moving()``.
 
     Args:
         contact_manager: The contact manager to check for contact
         time_threshold: The minimum time (in seconds) the feet should be in the air
         time_threshold_max: (optional) The maximum time (in seconds) the feet should be in the air.
                             The reward will be capped at this value.
-        vel_cmd_manager: The velocity command manager
+        vel_cmd_manager: Deprecated -- use ``"when": self.velocity_command.when_moving()``.
+                         Zeroes the reward when the linear xy command is 0.1 or less.
 
     Returns:
         The reward for the feet air time
@@ -1206,6 +1259,15 @@ class feet_air_time(MdpFn):
     time_threshold: float
     time_threshold_max: float | None = None
     vel_cmd_manager: VelocityCommandManager | None = None
+
+    def __post_init__(self):
+        if self.vel_cmd_manager is not None:
+            warnings.warn(
+                "feet_air_time's 'vel_cmd_manager' is deprecated. Gate the reward with "
+                "'when': self.velocity_command.when_moving() instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         made_contact = self.contact_manager.has_made_contact(env.dt)

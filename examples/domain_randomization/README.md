@@ -9,12 +9,12 @@ This builds on the [command_direction](../command_direction/) example, and intro
 - Actuator values (gains, default positions, damping, etc) - No actuator performs as perfect as the data sheet, so the policy learns to adapt.
 - Action latency - actions are delivered to the robot between 0 - 2 steps after the policy provides them, to emulate system latency.
 - Observations - No sensors return perfectly clean data.
-- Robot mass - Makes the robot heavier or lighter at each reset to change it's balance and loading.
+- Robot mass - Makes the robot heavier or lighter on reset to change its balance and loading.
 
 Here are the relevant snippets:
 
 ```python
-    # Randomly add/subtract mass to the robot's body at each reset
+    # Randomly add/subtract mass to the robot's body on reset, at most once every 100 steps
     self.robot_manager = EntityManager(
         self,
         entity=self.robot,
@@ -23,6 +23,8 @@ Here are the relevant snippets:
                 "fn": reset.randomize_link_mass_shift(
                     link_name="base",
                     mass_range=(-0.5, 1.0),  # kg
+                    # Changing mass is slow, so change it at most once every 100 steps
+                    min_step_count_between_reset=100,
                 ),
             },
         },

@@ -231,3 +231,59 @@ def test_reset_tolerates_plain_functions(env):
     )
     mgr.build()
     mgr.reset(torch.tensor([0]))  # must not raise
+
+
+"""
+when -- gated terminations
+"""
+
+
+def test_gated_off_env_does_not_terminate(env):
+    """Covers AE4: the termination fires everywhere, but only gated-on envs end."""
+    mask = torch.tensor([True, False, True, False])
+    mgr = TerminationManager(
+        env,
+        term_cfg={
+            "a": {"fn": const, "params": {"value": [True] * 4}, "when": lambda e: mask}
+        },
+    )
+    mgr.build()
+    terminated, truncated = mgr.step()
+
+    assert torch.equal(terminated, mask)
+    assert not truncated.any()
+
+
+def test_gated_timeout_does_not_truncate_gated_off_envs(env):
+    mask = torch.tensor([False, True, False, False])
+    mgr = TerminationManager(
+        env,
+        term_cfg={
+            "t": {
+                "fn": const,
+                "params": {"value": [True] * 4},
+                "time_out": True,
+                "when": lambda e: mask,
+            }
+        },
+    )
+    mgr.build()
+    terminated, truncated = mgr.step()
+
+    assert torch.equal(truncated, mask)
+    assert not terminated.any()
+
+
+def test_gated_termination_logs_the_gated_fraction(env):
+    mask = torch.tensor([True, False, False, False])
+    mgr = TerminationManager(
+        env,
+        term_cfg={
+            "a": {"fn": const, "params": {"value": [True] * 4}, "when": lambda e: mask}
+        },
+    )
+    mgr.build()
+    mgr.step()
+
+    logged = env.extras[env.extras_logging_key]["Terminations / a"]
+    assert float(logged) == pytest.approx(0.25)

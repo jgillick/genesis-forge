@@ -448,3 +448,75 @@ def test_randomize_link_mass_shift_draws_fresh_values_on_each_call(env, monkeypa
     first, _, _ = entity.mass_shift_calls[0]
     second, _, _ = entity.mass_shift_calls[1]
     assert not torch.equal(first, second)
+
+
+def test_randomize_link_mass_shift_skips_resets_until_enough_steps_pass(
+    env, monkeypatch
+):
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern",
+        lambda entity, pattern: [FakeLink(2)],
+    )
+
+    entity = FakeEntity()
+    fn = built(
+        reset.randomize_link_mass_shift(
+            link_name="base", mass_range=(-1.0, 1.0), min_step_count_between_reset=10
+        ),
+        env,
+        entity=entity,
+    )
+
+    fn(env, entity, [0, 1, 2, 3])  # step 0, first call always runs
+    for step, env_id in [(5, 1), (9, 2), (10, 3), (15, 0), (20, 2)]:
+        env.step_count = step
+        fn(env, entity, [env_id])
+
+    assert [envs_idx for _, _, envs_idx in entity.mass_shift_calls] == [
+        [0, 1, 2, 3],
+        [3],
+        [2],
+    ]
+
+
+def test_randomize_link_mass_shift_param_change_does_not_reset_the_skip_timer(
+    env, monkeypatch
+):
+    """A curriculum changing mass_range rebuilds the function -- that must not let
+    the next reset change the mass early."""
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern",
+        lambda entity, pattern: [FakeLink(2)],
+    )
+
+    entity = FakeEntity()
+    fn = built(
+        reset.randomize_link_mass_shift(
+            link_name="base", mass_range=(-1.0, 1.0), min_step_count_between_reset=10
+        ),
+        env,
+        entity=entity,
+    )
+    fn(env, entity, [0])
+
+    fn.mass_range = (-2.0, 2.0)
+    env.step_count = 5
+    fn(env, entity, [1])
+
+    assert len(entity.mass_shift_calls) == 1
+
+
+@pytest.mark.parametrize("value", [-1, 1.5, "10"])
+def test_randomize_link_mass_shift_rejects_an_invalid_min_step_count(
+    env, monkeypatch, value
+):
+    monkeypatch.setattr(
+        "genesis_forge.mdp.reset.links_by_name_pattern",
+        lambda entity, pattern: [FakeLink(2)],
+    )
+
+    fn = reset.randomize_link_mass_shift(
+        link_name="base", mass_range=(-1.0, 1.0), min_step_count_between_reset=value
+    )
+    with pytest.raises(ValueError, match="min_step_count_between_reset"):
+        built(fn, env, entity=FakeEntity())

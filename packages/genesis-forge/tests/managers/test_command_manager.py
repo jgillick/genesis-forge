@@ -340,6 +340,28 @@ def test_stopped_envs_is_false_for_every_env_when_never_standing(env):
     assert mgr.stopped_envs().tolist() == [False, False, False, False]
 
 
+def test_when_moving_and_when_stopped_read_this_command(env):
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=0.0)
+    mgr.resample_command([1, 3])
+
+    moving = mgr.when_moving(threshold=0.1)
+    stopped = mgr.when_stopped(threshold=0.1)
+
+    assert moving(env).tolist() == [False, True, False, True]
+    assert stopped(env).tolist() == [True, False, True, False]
+
+
+def test_when_moving_counts_turning_in_place(env):
+    """Yaw alone is movement, so when_moving and when_stopped stay complements."""
+    mgr = VelocityCommandManager(env, range=VELOCITY_RANGE)
+    # env 0: no command, env 1: linear only, env 2: yaw only, env 3: tiny linear command
+    mgr._command = torch.tensor(
+        [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.0, 0.0, 0.3], [0.001, 0.0, 0.0]]
+    )
+    assert mgr.when_moving()(env).tolist() == [False, True, True, False]
+    assert mgr.when_stopped()(env).tolist() == [True, False, False, True]
+
+
 def test_stopped_envs_is_true_before_any_resample(env):
     """Before any resample the command buffer is all zeros: no movement is commanded."""
     mgr = VelocityCommandManager(env, range=VELOCITY_RANGE, stopped_probability=1.0)

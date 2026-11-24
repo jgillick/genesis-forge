@@ -100,6 +100,18 @@ RewardManager(
 )
 ```
 
+To only apply a reward while the robot is commanded to move, or while it is stopped,
+gate it with `when_moving()` or `when_stopped()`. See
+[conditional rewards](reward.md#conditional-rewards).
+
+```python
+"stopped_dof_velocity": {
+    "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+    "weight": -0.1,
+    "when": self.velocity_command.when_stopped(),
+},
+```
+
 ### Using Commands in Observations
 
 Include commands in the observation space:
@@ -263,6 +275,15 @@ You can also create arbitrary commands with the basic `CommandManager`.
 ```python
 # Create a random target height between 0.1 and 0.2
 self.height_command = CommandManager(self, range=(0.1, 0.2))
+```
+
+Reward the robot for tracking it with `base_height_exp`, which pays 1 at the commanded height whatever that height is:
+
+```python
+"height_tracking": {
+    "weight": 1.0,
+    "fn": rewards.base_height_exp(height_command=self.height_command),
+},
 ```
 
 ```python

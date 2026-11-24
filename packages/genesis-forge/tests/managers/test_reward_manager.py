@@ -296,6 +296,199 @@ def test_build_builds_each_mdp_fn_config_item(env):
 
 
 """
+when -- gated rewards
+"""
+
+
+def toggle(mask: torch.Tensor):
+    """A `when` condition that reads `mask` each step, so a test can flip it in place."""
+    return lambda env: mask
+
+
+def test_gated_off_envs_add_no_reward(env):
+    mask = torch.tensor([True, False, True, False])
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 3.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+
+    result = mgr.step()
+
+    expected = torch.tensor([6.0, 0.0, 6.0, 0.0]) * env.dt
+    assert torch.allclose(result, expected)
+
+
+def test_gated_function_runs_while_every_env_is_off(env):
+    calls = []
+
+    def spy(env):
+        calls.append(1)
+        return torch.ones(env.num_envs)
+
+    mask = torch.zeros(env.num_envs, dtype=torch.bool)
+    mgr = RewardManager(
+        env, cfg={"a": {"fn": spy, "weight": 1.0, "when": toggle(mask)}}
+    )
+    mgr.build()
+    mgr.step()
+
+    assert calls == [1]
+
+
+def test_gated_mean_is_per_active_second(env):
+    """Covers AE2: active for half the episode, the mean is not halved."""
+    mask = torch.ones(env.num_envs, dtype=torch.bool)
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 1.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+
+    mgr.step()
+    mask[:] = False
+    mgr.step()
+
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.full((env.num_envs,), 2.0)
+    )
+    mgr.reset()
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+
+
+def test_gated_mean_is_zero_for_an_env_never_active(env):
+    mask = torch.tensor([True, False, True, False])
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 1.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+    mgr.step()
+
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.tensor([2.0, 0.0, 2.0, 0.0])
+    )
+
+
+def test_gated_logged_mean_skips_envs_never_active(env):
+    """Covers AE3: four envs reset together, two never active."""
+    mask = torch.tensor([True, False, True, False])
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 1.5,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+    mgr.step()
+    mgr.reset()
+
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+    logged = env.extras[env.extras_logging_key]["Rewards / a"]
+    assert float(logged) == pytest.approx(3.0)
+
+
+def test_gated_logged_mean_is_kept_when_no_reset_env_was_active(env):
+    mask = torch.ones(env.num_envs, dtype=torch.bool)
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 1.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+    mgr.step()
+    mgr.reset()
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+
+    mask[:] = False
+    mgr.step()
+    mgr.reset()
+
+    assert mgr.last_episode_mean_reward("a") == pytest.approx(2.0)
+
+
+def test_gated_reward_logs_its_active_share(env):
+    """Active for half of env 0's episode and none of the others': 1/8 on average."""
+    mask = torch.tensor([True, False, False, False])
+    mgr = RewardManager(
+        env,
+        cfg={"a": {"fn": echo_reward, "weight": 1.0, "when": lambda e: mask}},
+    )
+    mgr.build()
+    mgr.step()
+    mask[0] = False
+    mgr.step()
+    mgr.reset()
+
+    logged = env.extras[env.extras_logging_key]
+    assert float(logged["Rewards Active / a"]) == pytest.approx(0.125)
+
+
+def test_ungated_reward_logs_no_active_share(env):
+    mgr = RewardManager(env, cfg={"a": {"fn": echo_reward, "weight": 1.0}})
+    mgr.build()
+    mgr.step()
+    mgr.reset()
+
+    assert "Rewards Active / a" not in env.extras[env.extras_logging_key]
+
+
+def test_reset_clears_active_time_for_reset_envs_only(env):
+    mask = torch.ones(env.num_envs, dtype=torch.bool)
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": echo_reward,
+                "params": {"value": 2.0},
+                "weight": 1.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+    mgr.step()
+    mgr.reset(torch.tensor([0, 1]))
+
+    # Envs 0 and 1 start over with no active time; envs 2 and 3 keep theirs
+    assert torch.allclose(
+        mgr.episode_mean_reward_for_envs("a"), torch.tensor([0.0, 0.0, 2.0, 2.0])
+    )
+
+
+"""
 Dict-like access
 """
 

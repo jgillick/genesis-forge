@@ -9,7 +9,7 @@ import math
 
 import pytest
 import torch
-from helpers import built
+from helpers import FakeVelCmd, built
 
 from genesis_forge.managers.config import ConfigItem
 from genesis_forge.mdp import rewards
@@ -37,19 +37,6 @@ class FakeEntityManager:
 
     def get_projected_gravity(self):
         return self._gravity
-
-
-class FakeVelCmd:
-    def __init__(self, command, range=None):
-        self.command = command
-        self.range = range or {
-            "lin_vel_x": (-1.0, 1.0),
-            "lin_vel_y": (-1.0, 1.0),
-            "ang_vel_z": (-1.0, 1.0),
-        }
-
-    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
-        return torch.norm(self.command, dim=1) <= threshold
 
 
 class FakeContactManager:
@@ -103,6 +90,30 @@ def test_base_height_uses_entity_manager_when_given(env):
 
     fn = built(rewards.base_height(target_height=0.3, entity_manager=Mgr()), env)
     assert torch.allclose(fn(env), torch.tensor([0.04]), atol=1e-6)
+
+
+"""
+base_height_exp
+"""
+
+
+def test_base_height_exp_is_one_at_the_target_and_decays_with_the_error(env):
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.3], [0.0, 0.0, 0.4]]))
+    fn = built(rewards.base_height_exp(target_height=0.3, sensitivity=0.01), env)
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, math.exp(-1.0)]), atol=1e-6)
+
+
+def test_base_height_exp_follows_the_height_command(env):
+    class HeightCmd:
+        command = torch.tensor([[0.2], [0.4]])
+
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.3], [0.0, 0.0, 0.3]]))
+    fn = built(
+        rewards.base_height_exp(height_command=HeightCmd(), sensitivity=0.01), env
+    )
+
+    assert torch.allclose(fn(env), torch.full((2,), math.exp(-1.0)), atol=1e-6)
 
 
 """
@@ -605,6 +616,7 @@ def test_command_tracking_requires_a_command_source(env, factory):
         fn.safe_build()
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2], [0.5, -0.2]]),
@@ -622,6 +634,7 @@ def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     assert torch.allclose(fn(env), torch.tensor([0.7, 0.0]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
     fn = rewards.stopped_joint_deviation_l1(
         vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3)))
@@ -631,6 +644,7 @@ def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
         fn.safe_build()
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2]]),
@@ -646,6 +660,7 @@ def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
     assert torch.allclose(fn(env), torch.tensor([0.7]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     actuator = FakeActuatorManager(
         vel=torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
@@ -665,9 +680,56 @@ def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     assert torch.allclose(fn(env), torch.tensor([5.0, 0.0, 0.0]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_dof_velocity_requires_an_actuator_manager(env):
     with pytest.raises(TypeError, match="actuator_manager"):
         rewards.stopped_dof_velocity_l2(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [rewards.stopped_joint_deviation_l1, rewards.stopped_dof_velocity_l2],
+)
+def test_stopped_rewards_are_deprecated(factory):
+    with pytest.deprecated_call():
+        factory(
+            vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))),
+            actuator_manager=FakeActuatorManager(vel=torch.zeros((1, 2))),
+        )
+
+
+class FakeAirTimeContactManager:
+    def __init__(self, made_contact, last_air_time):
+        self.made_contact = made_contact
+        self.last_air_time = last_air_time
+
+    def has_made_contact(self, dt):
+        return self.made_contact
+
+
+def test_feet_air_time_vel_cmd_manager_is_deprecated_but_still_gates(env):
+    contact = FakeAirTimeContactManager(
+        made_contact=torch.tensor([[True], [True]]),
+        last_air_time=torch.tensor([[0.5], [0.5]]),
+    )
+    vel_cmd = FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]))
+    with pytest.deprecated_call():
+        fn = rewards.feet_air_time(
+            contact_manager=contact, time_threshold=0.2, vel_cmd_manager=vel_cmd
+        )
+    built(fn, env)
+
+    assert torch.allclose(fn(env), torch.tensor([0.3, 0.0]))
+
+
+def test_feet_air_time_without_vel_cmd_manager_does_not_warn(env, recwarn):
+    contact = FakeAirTimeContactManager(
+        made_contact=torch.tensor([[True]]), last_air_time=torch.tensor([[0.5]])
+    )
+    fn = built(rewards.feet_air_time(contact_manager=contact, time_threshold=0.2), env)
+
+    assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
+    assert torch.allclose(fn(env), torch.tensor([0.3]))
 
 
 """
@@ -1025,6 +1087,7 @@ def test_feet_air_time_clamps_to_the_max_threshold(env):
     assert torch.allclose(fn(env), torch.tensor([0.3]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_feet_air_time_is_zeroed_when_command_is_near_zero(env):
     mgr = FakeGaitContactManager(
         made_contact=torch.tensor([[True]]),

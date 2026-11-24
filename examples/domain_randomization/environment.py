@@ -108,6 +108,8 @@ class Go2DomainRandomizationEnv(ManagedEnvironment):
                     "fn": reset.randomize_link_mass_shift(
                         link_name="base",
                         mass_range=(-0.5, 1.0),  # kg
+                        # Changing mass is slow, so change it at most once every 100 steps
+                        min_step_count_between_reset=100,
                     ),
                 },
             },

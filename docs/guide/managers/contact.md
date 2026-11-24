@@ -53,10 +53,9 @@ RewardManager(
             "fn": rewards.feet_air_time(
                 time_threshold=0.5, # Target air-time, in seconds
                 contact_manager=self.foot_contact_manager,
-
-                # Reduce the penalty if the velocity command is close to zero
-                vel_cmd_manager=self.velocity_command,
             ),
+            # Only reward steps while the robot is commanded to move
+            "when": self.velocity_command.when_moving(),
         },
     }
 )

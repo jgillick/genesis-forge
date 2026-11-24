@@ -132,7 +132,68 @@ class ConfigItem:
         return self._fn(self._env, **self._kwargs, **kwargs, **self._params)
 
 
-class TerminationConfigItem(ConfigItem):
+class GatedConfigItem(ConfigItem):
+    """
+    A config item that can be switched off per environment by a ``when`` condition.
+
+    ``when`` is a plain function of the env, or a constructed :class:`MdpFn`, returning
+    a boolean tensor of shape ``(num_envs,)``. The item's function still runs every
+    step; the manager zeroes its result where the condition is false.
+    """
+
+    def __init__(self, cfg: dict, env: GenesisEnv):
+        super().__init__(cfg, env)
+        self._when = cfg.get("when", None)
+        if inspect.isclass(self._when):
+            raise TypeError(
+                f"when={self._when.__name__} must be constructed, not passed as a class. "
+                f"Use {self._when.__name__}(...)"
+            )
+
+    @property
+    def when(self):
+        """The condition that gates this item, or None if it is always active."""
+        return self._when
+
+    @property
+    def is_gated(self) -> bool:
+        """Whether this item has a ``when`` condition."""
+        return self._when is not None
+
+    def build(self, **kwargs):
+        super().build(**kwargs)
+        if isinstance(self._when, MdpFn):
+            self._when.context(self._env)
+            self._when.safe_build()
+
+    def reset(self, envs_idx: torch.Tensor):
+        super().reset(envs_idx)
+        if self._built and isinstance(self._when, MdpFn):
+            self._when.reset(envs_idx)
+
+    def active(self) -> torch.Tensor | None:
+        """
+        Evaluate the ``when`` condition.
+
+        Returns:
+            Boolean tensor of shape ``(num_envs,)``, True where the item is active.
+            None if the item has no ``when`` condition.
+        """
+        if self._when is None:
+            return None
+        mask = self._when(self._env)
+        if not isinstance(mask, torch.Tensor) or mask.dtype != torch.bool:
+            raise TypeError(
+                f"'when' must return a bool tensor, got {getattr(mask, 'dtype', type(mask))}"
+            )
+        if mask.shape != (self._env.num_envs,):
+            raise ValueError(
+                f"'when' must return shape ({self._env.num_envs},), got {tuple(mask.shape)}"
+            )
+        return mask
+
+
+class TerminationConfigItem(GatedConfigItem):
     """
     A config item for a termination condition.
     """
@@ -142,7 +203,7 @@ class TerminationConfigItem(ConfigItem):
         self.time_out = cfg.get("time_out", False)
 
 
-class RewardConfigItem(ConfigItem):
+class RewardConfigItem(GatedConfigItem):
     """
     A config item for a reward condition.
     """

@@ -1,5 +1,6 @@
 import math
 import warnings
+from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
@@ -259,6 +260,48 @@ class VelocityCommandManager(CommandManager):
             Boolean tensor, shape (num_envs,)
         """
         return torch.norm(self.command, dim=1) <= threshold
+
+    def when_moving(
+        self, threshold: float = 0.0025
+    ) -> Callable[[GenesisEnv], torch.Tensor]:
+        """
+        Returns a ``when`` function for reward and termination items, which is True
+        where this command asks for movement, linear or angular.
+
+        Example::
+
+            "feet_air_time": {
+                "fn": rewards.feet_air_time(...),
+                "weight": 1.0,
+                "when": self.velocity_command.when_moving(threshold=0.1),
+            },
+
+        Args:
+            threshold: The command is considered moving when the norm of all its
+                       components (linear xy and angular z) exceeds this value.
+        """
+        return lambda env: ~self.stopped_envs(threshold)
+
+    def when_stopped(
+        self, threshold: float = 0.0025
+    ) -> Callable[[GenesisEnv], torch.Tensor]:
+        """
+        Returns a ``when`` function for reward and termination items, which is True
+        where this command is stopped: no linear or angular movement.
+
+        Example::
+
+            "stopped_dof_velocity": {
+                "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+                "weight": -0.1,
+                "when": self.velocity_command.when_stopped(),
+            },
+
+        Args:
+            threshold: The command is considered stopped when the norm of all its
+                       components (linear xy and angular z) does not exceed this value.
+        """
+        return lambda env: self.stopped_envs(threshold)
 
     """
     Lifecycle Operations

@@ -2074,17 +2074,17 @@ Tracks the contact forces between entity links in the environment.
 
 Parameters:
 
-| Name                         | Type                           | Description                                                                                 | Default                                                                                                                        |
-| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                            | *required*                                                                                                                     |
-| `link_names`                 | \`list[str]                    | None\`                                                                                      | The names, or name regex patterns, of the entity links to track the contact forces for. Defaults to all of the entity's links. |
-| `entity`                     | \`RigidEntity                  | None\`                                                                                      | The entity with the links we're tracking. Defaults to env.robot.                                                               |
-| `with_entity`                | \`RigidEntity                  | list[RigidEntity]                                                                           | None\`                                                                                                                         |
-| `with_links_names`           | \`list[str]                    | None\`                                                                                      | Filter the contact forces to only include contacts with these links.                                                           |
-| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                  | `False`                                                                                                                        |
-| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered. | `1.0`                                                                                                                          |
-| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points.                                                    | `False`                                                                                                                        |
-| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                         | `DEFAULT_VISUALIZER_CONFIG`                                                                                                    |
+| Name                         | Type                           | Description                                                                                                                            | Default                                                                                                                        |
+| ---------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `env`                        | `GenesisEnv`                   | The environment to track the contact forces for.                                                                                       | *required*                                                                                                                     |
+| `link_names`                 | \`list[str]                    | None\`                                                                                                                                 | The names, or name regex patterns, of the entity links to track the contact forces for. Defaults to all of the entity's links. |
+| `entity`                     | \`RigidEntity                  | None\`                                                                                                                                 | The entity with the links we're tracking. Defaults to env.robot.                                                               |
+| `with_entity`                | \`RigidEntity                  | list[RigidEntity]                                                                                                                      | None\`                                                                                                                         |
+| `with_links_names`           | \`list[str]                    | None\`                                                                                                                                 | Filter the contact forces to only include contacts with these links.                                                           |
+| `track_air_time`             | `bool`                         | Whether to track the air time of the entity link contacts.                                                                             | `False`                                                                                                                        |
+| `air_time_contact_threshold` | `float`                        | When track_air_time is True, this is the threshold for the contact forces to be considered.                                            | `1.0`                                                                                                                          |
+| `debug_visualizer`           | `bool`                         | Whether to visualize the contact points. To see them in camera renders or recorded videos, the camera must be created with debug=True. | `False`                                                                                                                        |
+| `debug_visualizer_cfg`       | `ContactDebugVisualizerConfig` | The configuration for the contact debug visualizer.                                                                                    | `DEFAULT_VISUALIZER_CONFIG`                                                                                                    |
 
 Example with ManagedEnvironment::
 
@@ -4449,6 +4449,13 @@ def __init__(
         self._episode_sums[name] = torch.zeros(
             (env.num_envs,), device=gs.device, dtype=gs.tc_float
         )
+
+    # The seconds each gated item has been active this episode, per env
+    self._active_seconds: dict[str, torch.Tensor] = {
+        name: torch.zeros((env.num_envs,), device=gs.device, dtype=gs.tc_float)
+        for name, cfg in self.cfg.items()
+        if cfg.is_gated
+    }
 ```
 
 ## `cfg = {}`
@@ -4490,6 +4497,8 @@ def build(self):
 
 Get each environment's mean reward, per second, for its current episode so far, for a given reward name. Call it before the environments reset, such as from a curriculum, to grade the episodes that just ended.
 
+For a reward with a `when` condition, this is per second the reward was active, and 0 for an environment where it was never active.
+
 Parameters:
 
 | Name            | Type     | Description                                                                | Default                                                          |
@@ -4518,6 +4527,9 @@ def episode_mean_reward_for_envs(
     given reward name. Call it before the environments reset, such as from a curriculum,
     to grade the episodes that just ended.
 
+    For a reward with a ``when`` condition, this is per second the reward was active,
+    and 0 for an environment where it was never active.
+
     Args:
         name: The name of the reward to get the mean for.
         envs_idx: The environments to get the mean for. If None, all environments.
@@ -4529,7 +4541,11 @@ def episode_mean_reward_for_envs(
     if envs_idx is None:
         envs_idx = self.env.all_envs_idx
 
-    rew = self._episode_sums[name][envs_idx] / self._episode_seconds[envs_idx]
+    if name in self._active_seconds:
+        seconds = self._active_seconds[name][envs_idx].clamp(min=1e-10)
+    else:
+        seconds = self._episode_seconds[envs_idx]
+    rew = self._episode_sums[name][envs_idx] / seconds
     if not before_weight:
         rew = rew * self.cfg[name].weight
     return rew
@@ -4592,10 +4608,7 @@ def reset(self, envs_idx: torch.Tensor | None = None):
 
     for name in self.cfg:
         if self.enabled and len(envs_idx) > 0:
-            # The mean across the episodes that just ended, per second
-            episode_mean = torch.mean(
-                self.episode_mean_reward_for_envs(name, envs_idx)
-            )
+            episode_mean = self._reset_episode_mean(name, envs_idx)
             self._episode_mean[name] = episode_mean
 
             # Log items with a weight, at their weight
@@ -4604,8 +4617,20 @@ def reset(self, envs_idx: torch.Tensor | None = None):
                 logging_dict = self.env.extras[self.env.extras_logging_key]
                 logging_dict[f"{self.logging_tag} / {name}"] = episode_mean * weight
 
+                # The share of time a gated reward was active, so mean * share gives
+                # its contribution to the episode return
+                if name in self._active_seconds:
+                    logging_dict[f"{self.logging_tag} Active / {name}"] = (
+                        torch.mean(
+                            self._active_seconds[name][envs_idx]
+                            / self._episode_seconds[envs_idx]
+                        )
+                    )
+
         # Reset episodic data
         self._episode_sums[name][envs_idx] = 0.0
+        if name in self._active_seconds:
+            self._active_seconds[name][envs_idx] = 0.0
 
     # Reset episode seconds to nearly zero, to prevent divide by zero errors
     self._episode_seconds[envs_idx] = 1e-10
@@ -4639,6 +4664,12 @@ def step(self) -> torch.Tensor:
     self._episode_seconds += dt
     for name, cfg in self.cfg.items():
         value = cfg.execute() * dt
+
+        # Zero the value where the item's condition is off, and count its active time
+        active = cfg.active()
+        if active is not None:
+            value = value * active
+            self._active_seconds[name] += active * dt
 
         # Add to the episode sums, even at zero weight, so the mean is always known
         self._episode_sums[name] += value
@@ -4856,6 +4887,9 @@ def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         try:
             # Get termination value
             value = term_item.execute()
+            active = term_item.active()
+            if active is not None:
+                value = value & active
 
             # Add to the correct buffer using in-place operations
             if term_item.time_out:
@@ -8818,6 +8852,8 @@ Debug Visualization
 
 If you set `debug_visualizer` to True, a marker is drawn at each goal: an arrow pointing the way to face on arrival when the goal has a heading, and a ball when it does not.
 
+The interactive viewer always shows the marker, but a camera only renders it if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+
 Parameters:
 
 | Name                        | Type                          | Description                                                                                                                              | Default                                                                                                                                                                                       |
@@ -8831,7 +8867,7 @@ Parameters:
 | `entity`                    | \`RigidEntity                 | None\`                                                                                                                                   | The entity that is navigating to the goal. Defaults to env.robot. This isn't necessary if entity_manager is provided.                                                                         |
 | `entity_manager`            | \`EntityManager               | None\`                                                                                                                                   | The entity manager for the entity that is navigating to the goal. This is more performant than the entity parameter: the pose comes from the manager's per-step cache instead of the solver.  |
 | `terrain_manager`           | \`TerrainManager              | None\`                                                                                                                                   | The terrain manager, so the debug marker sits above the terrain. Defaults to None: the ground is assumed to be flat at z=0.                                                                   |
-| `debug_visualizer`          | `bool`                        | Enable the debug visualization                                                                                                           | `False`                                                                                                                                                                                       |
+| `debug_visualizer`          | `bool`                        | Enable the debug visualization. To see it in camera renders or recorded videos, the camera must be created with debug=True.              | `False`                                                                                                                                                                                       |
 | `debug_visualizer_cfg`      | \`Pose2dDebugVisualizerConfig | None\`                                                                                                                                   | The configuration for the debug visualizer                                                                                                                                                    |
 
 Example::
@@ -9580,17 +9616,19 @@ Color meanings:
 - BLUE ARROW: Actual robot velocity in world coordinates
 - RED BALL: Shown when no linear velocity is commanded
 
+The interactive viewer always shows these, but a camera only renders them if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+
 Parameters:
 
-| Name                   | Type                            | Description                                                                                              | Default                                    |
-| ---------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `env`                  | `GenesisEnv`                    | The environment to control                                                                               | *required*                                 |
-| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                                | *required*                                 |
-| `stopped_probability`  | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)              | `0.0`                                      |
-| `standing_probability` | `float`                         | (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always) | `0.0`                                      |
-| `resample_time_sec`    | `float`                         | The time interval between changing the command                                                           | `5.0`                                      |
-| `debug_visualizer`     | `bool`                          | Enable the debug visualization                                                                           | `False`                                    |
-| `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                                   | The configuration for the debug visualizer |
+| Name                   | Type                            | Description                                                                                                                 | Default                                    |
+| ---------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `env`                  | `GenesisEnv`                    | The environment to control                                                                                                  | *required*                                 |
+| `range`                | `VelocityCommandRange`          | The ranges of linear & angular velocities                                                                                   | *required*                                 |
+| `stopped_probability`  | `float`                         | The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)                                 | `0.0`                                      |
+| `standing_probability` | `float`                         | (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)                    | `0.0`                                      |
+| `resample_time_sec`    | `float`                         | The time interval between changing the command                                                                              | `5.0`                                      |
+| `debug_visualizer`     | `bool`                          | Enable the debug visualization. To see it in camera renders or recorded videos, the camera must be created with debug=True. | `False`                                    |
+| `debug_visualizer_cfg` | \`VelocityDebugVisualizerConfig | None\`                                                                                                                      | The configuration for the debug visualizer |
 
 Example::
 
@@ -10159,6 +10197,96 @@ def use_gamepad(
             "ang_vel_z": True,
         },
     )
+```
+
+## `when_moving(threshold=0.0025)`
+
+Returns a `when` function for reward and termination items, which is True where this command asks for movement, linear or angular.
+
+Example::
+
+```
+"feet_air_time": {
+    "fn": rewards.feet_air_time(...),
+    "weight": 1.0,
+    "when": self.velocity_command.when_moving(threshold=0.1),
+},
+```
+
+Parameters:
+
+| Name        | Type    | Description                                                                                                        | Default  |
+| ----------- | ------- | ------------------------------------------------------------------------------------------------------------------ | -------- |
+| `threshold` | `float` | The command is considered moving when the norm of all its components (linear xy and angular z) exceeds this value. | `0.0025` |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/command/velocity_command.py`
+
+```
+def when_moving(
+    self, threshold: float = 0.0025
+) -> Callable[[GenesisEnv], torch.Tensor]:
+    """
+    Returns a ``when`` function for reward and termination items, which is True
+    where this command asks for movement, linear or angular.
+
+    Example::
+
+        "feet_air_time": {
+            "fn": rewards.feet_air_time(...),
+            "weight": 1.0,
+            "when": self.velocity_command.when_moving(threshold=0.1),
+        },
+
+    Args:
+        threshold: The command is considered moving when the norm of all its
+                   components (linear xy and angular z) exceeds this value.
+    """
+    return lambda env: ~self.stopped_envs(threshold)
+```
+
+## `when_stopped(threshold=0.0025)`
+
+Returns a `when` function for reward and termination items, which is True where this command is stopped: no linear or angular movement.
+
+Example::
+
+```
+"stopped_dof_velocity": {
+    "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+    "weight": -0.1,
+    "when": self.velocity_command.when_stopped(),
+},
+```
+
+Parameters:
+
+| Name        | Type    | Description                                                                                                                 | Default  |
+| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `threshold` | `float` | The command is considered stopped when the norm of all its components (linear xy and angular z) does not exceed this value. | `0.0025` |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/command/velocity_command.py`
+
+```
+def when_stopped(
+    self, threshold: float = 0.0025
+) -> Callable[[GenesisEnv], torch.Tensor]:
+    """
+    Returns a ``when`` function for reward and termination items, which is True
+    where this command is stopped: no linear or angular movement.
+
+    Example::
+
+        "stopped_dof_velocity": {
+            "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+            "weight": -0.1,
+            "when": self.velocity_command.when_stopped(),
+        },
+
+    Args:
+        threshold: The command is considered stopped when the norm of all its
+                   components (linear xy and angular z) does not exceed this value.
+    """
+    return lambda env: self.stopped_envs(threshold)
 ```
 # MDP Functions
 
@@ -12897,7 +13025,7 @@ def update(self, **params: Any) -> None:
         self.safe_build()
 ```
 
-## `randomize_link_mass_shift(*, link_name, mass_range)`
+## `randomize_link_mass_shift(*, link_name, mass_range, min_step_count_between_reset=0)`
 
 Bases: `ResetMdpFn`
 
@@ -12905,16 +13033,19 @@ Randomly add/subtract mass to one or more links of the entity. This picks a rand
 
 On genesis-world >= 1.4 requires your scene to be built with `RigidOptions(batch_links_info=True)`.
 
+Changing the mass is slow, whether for one environment or all of them, so calling this on every reset can slow down training. Set `min_step_count_between_reset` to change it less often.
+
 See
 
 https://genesis-world.readthedocs.io/en/latest/api_reference/engine/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_links_mass
 
 Parameters:
 
-| Name         | Type                  | Description                                                                            | Default                                                                                                                                |
-| ------------ | --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `link_name`  | \`str                 | list[str]\`                                                                            | The name, or regex pattern, of the link(s) to set the mass for. Can also be a list of names/patterns to target multiple sets of links. |
-| `mass_range` | `tuple[float, float]` | The range of the mass that will be added or subtracted from the link(s) on each reset. | *required*                                                                                                                             |
+| Name                           | Type                  | Description                                                                                                                                                                          | Default                                                                                                                                |
+| ------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `link_name`                    | \`str                 | list[str]\`                                                                                                                                                                          | The name, or regex pattern, of the link(s) to set the mass for. Can also be a list of names/patterns to target multiple sets of links. |
+| `mass_range`                   | `tuple[float, float]` | The range of the mass that will be added or subtracted from the link(s) on each reset.                                                                                               | *required*                                                                                                                             |
+| `min_step_count_between_reset` | `int`                 | Skip a reset if the mass was changed fewer than this many steps ago (default 0, change it on every reset). Environments reset during a skipped call keep their previous random mass. | `0`                                                                                                                                    |
 
 ### `entity`
 
@@ -12934,12 +13065,25 @@ The environment this function is bound to.
 
 ### `mass_range`
 
+### `min_step_count_between_reset = 0`
+
 ### `build()`
 
 Source code in `packages/genesis-forge/genesis_forge/mdp/reset.py`
 
 ```
 def build(self):
+    if (
+        not isinstance(self.min_step_count_between_reset, int)
+        or self.min_step_count_between_reset < 0
+    ):
+        raise ValueError(
+            f"min_step_count_between_reset must be an int >= 0, got {self.min_step_count_between_reset!r}"
+        )
+    # Kept across rebuilds, so a param change doesn't cause an early call
+    if not hasattr(self, "_last_call_step"):
+        self._last_call_step = None
+
     self._links_idx_local = []
     if self.link_name is None:
         return
@@ -14109,6 +14253,182 @@ Returns:
 The environment this function is bound to.
 
 ### `height_command = None`
+
+### `target_height = None`
+
+### `terrain_manager = None`
+
+### `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `base_height_exp(*, target_height=None, height_command=None, terrain_manager=None, entity=None, entity_manager=None, sensitivity=0.01)`
+
+Bases: `base_height`
+
+Reward the base for being near the target height, using the exponential kernel.
+
+The reward is `exp(-error² / sensitivity)`: 1 at the target, falling toward 0 as the base moves away. Unlike :class:`base_height`, it is bounded, so it suits a height command, where the target moves and the reward should mean the same thing at every commanded height. Use it with a positive weight.
+
+Parameters:
+
+| Name              | Type             | Description                                                                                                                                                                                                                                                                                    | Default                                                                                                     |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `target_height`   | \`float          | Tensor                                                                                                                                                                                                                                                                                         | None\`                                                                                                      |
+| `height_command`  | \`CommandManager | None\`                                                                                                                                                                                                                                                                                         | Get the target height from a height command manager. This expects the command to have a single range value. |
+| `terrain_manager` | \`TerrainManager | None\`                                                                                                                                                                                                                                                                                         | The terrain manager will adjust the height based on the terrain height.                                     |
+| `entity`          | \`RigidEntity    | None\`                                                                                                                                                                                                                                                                                         | The entity to compute the reward for. Defaults to env.robot. Not necessary if entity_manager is provided.   |
+| `entity_manager`  | \`EntityManager  | None\`                                                                                                                                                                                                                                                                                         | The entity manager for the entity.                                                                          |
+| `sensitivity`     | `float`          | A lower value means the reward is more sensitive to the error. An error of sqrt(sensitivity) meters decays the reward to 1/e (0.1m with the default). Beyond about twice that, the reward is near 0 and gives little signal, so keep it wide enough to cover the errors the robot starts with. | `0.01`                                                                                                      |
+
+Returns:
+
+| Type | Description                                      |
+| ---- | ------------------------------------------------ |
+|      | torch.Tensor: Reward for base height near target |
+
+### `entity = None`
+
+### `entity_manager = None`
+
+### `env`
+
+The environment this function is bound to.
+
+### `height_command = None`
+
+### `sensitivity = 0.01`
 
 ### `target_height = None`
 
@@ -15847,16 +16167,16 @@ Reward long steps taken by the feet using L2-kernel.
 
 This function rewards the agent for taking steps that are longer than a threshold. This helps ensure that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of the time for which the feet are in the air.
 
-If the velocity commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
+To only reward steps while the robot is commanded to move, gate it with `"when": self.velocity_command.when_moving()`.
 
 Parameters:
 
-| Name                 | Type                     | Description                                                 | Default                                                                                                          |
-| -------------------- | ------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `contact_manager`    | `ContactManager`         | The contact manager to check for contact                    | *required*                                                                                                       |
-| `time_threshold`     | `float`                  | The minimum time (in seconds) the feet should be in the air | *required*                                                                                                       |
-| `time_threshold_max` | \`float                  | None\`                                                      | (optional) The maximum time (in seconds) the feet should be in the air. The reward will be capped at this value. |
-| `vel_cmd_manager`    | \`VelocityCommandManager | None\`                                                      | The velocity command manager                                                                                     |
+| Name                 | Type                     | Description                                                 | Default                                                                                                                     |
+| -------------------- | ------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `contact_manager`    | `ContactManager`         | The contact manager to check for contact                    | *required*                                                                                                                  |
+| `time_threshold`     | `float`                  | The minimum time (in seconds) the feet should be in the air | *required*                                                                                                                  |
+| `time_threshold_max` | \`float                  | None\`                                                      | (optional) The maximum time (in seconds) the feet should be in the air. The reward will be capped at this value.            |
+| `vel_cmd_manager`    | \`VelocityCommandManager | None\`                                                      | Deprecated -- use "when": self.velocity_command.when_moving(). Zeroes the reward when the linear xy command is 0.1 or less. |
 
 Returns:
 
@@ -17915,6 +18235,8 @@ Bases: `MdpFn`
 
 Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded), using the L2 squared kernel.
 
+Deprecated: use :class:`dof_velocity_l2` with `"when": self.velocity_command.when_stopped()`.
+
 Parameters:
 
 | Name                | Type                     | Description                                                                                                          | Default    |
@@ -18079,6 +18401,8 @@ def update(self, **params: Any) -> None:
 Bases: `MdpFn`
 
 Penalize offsets from the default joint positions when the command is very small.
+
+Deprecated: use :class:`dof_similar_to_default` with `"when": self.velocity_command.when_stopped()`.
 
 Parameters:
 
@@ -20766,7 +21090,7 @@ Automatically record videos during training at a regular step or episode interva
 
 Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/main/api/wrappers/misc_wrappers/#gymnasium.wrappers.RecordVideo
 
-Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
+Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below). Create it with `debug=True` if you want the managers' debug visuals (`debug_visualizer=True`) to appear in the videos.
 
 To control how frequently recordings are made specify **one** of `episode_trigger`, `step_trigger`, or `iteration_trigger`. They should be functions returning a boolean that indicates whether a recording should be started at the current episode, step, or training iteration, respectively. Step and episode counts start at 1, so the first environment step is step 1 of episode 1. If no trigger is passed, a default `episode_trigger` will be used, which records at the episode indices 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
 
@@ -20786,7 +21110,7 @@ Parameters:
 | `steps_per_iteration`    | \`int                     | None\`                                                                                                                                                                                                                                                              | The number of environment steps per training iteration (RSL-RL's num_steps_per_env). Required by iteration_trigger and VideoFilename.ITERATION, and when set, the iteration is also passed to a filename function. |
 | `iteration_offset`       | `int`                     | The training iteration the first step belongs to. Set this when resuming from a checkpoint. Only used when steps_per_iteration is set. Can also be assigned after construction via the :attr:iteration_offset property, as long as it is set before the first step. | `0`                                                                                                                                                                                                                |
 | `wait_for_episode_start` | `bool`                    | Delay each triggered recording until the next episode of the watched environment begins. Has no effect with episode_trigger, which always starts on the first step of an episode.                                                                                   | `False`                                                                                                                                                                                                            |
-| `video_length_sec`       | `int`                     | Length of each video, in seconds.                                                                                                                                                                                                                                   | `8`                                                                                                                                                                                                                |
+| `video_length_sec`       | \`float                   | None\`                                                                                                                                                                                                                                                              | Length of each video, in seconds. None records until :meth:close is called, through any episode resets.                                                                                                            |
 | `out_dir`                | `str`                     | Directory to save the videos to.                                                                                                                                                                                                                                    | `'./videos'`                                                                                                                                                                                                       |
 | `fps`                    | `int`                     | Frames per second for the video.                                                                                                                                                                                                                                    | `60`                                                                                                                                                                                                               |
 | `env_idx`                | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for.                                                                                                                                                                         | `0`                                                                                                                                                                                                                |
@@ -20827,6 +21151,24 @@ env = VideoWrapper(
     out_dir="./videos",
     step_trigger=lambda step: step % 1500 == 0
 )
+```
+
+Record a play session from start to end. Call :meth:`close` when the session is over, or the video won't be saved::
+
+```
+env = VideoWrapper(
+    env,
+    camera_attr="camera",
+    out_dir="./videos",
+    step_trigger=lambda step: step == 1,
+    video_length_sec=None,
+    filename="play.mp4",
+)
+env.build()
+try:
+    ...play loop...
+finally:
+    env.close()
 ```
 
 Create a custom video filename::
@@ -20881,7 +21223,7 @@ def __init__(
     self,
     env: GenesisEnv | Wrapper,
     camera_attr: str = "camera",
-    video_length_sec: int = 8,
+    video_length_sec: float | None = 8,
     episode_trigger: Callable[[int], bool] | None = None,
     step_trigger: Callable[[int], bool] | None = None,
     iteration_trigger: Callable[[int], bool] | None = None,
@@ -20903,7 +21245,7 @@ def __init__(
     self._current_episode: int = 1
     self._episode_step: int = 1
     self._recording_start_step: int = 0
-    self._recording_stop_step: int = 0
+    self._recording_stop_step: int | None = None
     self._recording_name: str = "recording"
     self._wait_for_episode_start = wait_for_episode_start
     self._recording_pending: bool = False
@@ -20911,7 +21253,9 @@ def __init__(
     self._cam: Camera | None = None
     self._camera_attr = camera_attr
     self._out_dir = out_dir
-    self._video_length_steps = math.ceil(video_length_sec / self.dt)
+    self._video_length_steps: int | None = (
+        None if video_length_sec is None else math.ceil(video_length_sec / self.dt)
+    )
     self._steps_per_frame = max(
         1, round(1.0 / fps / self.dt)
     )  # max prevents division by zero
@@ -21018,7 +21362,7 @@ This will be the bare :class:`ManagedEnvironment` or :class:`GenesisEnv` environ
 
 ## `video_length_steps`
 
-The number of steps that will be recorded for each video.
+The number of steps that will be recorded for each video, or `None` if it records until closed.
 
 ## `build()`
 
@@ -21075,7 +21419,7 @@ def finish_recording(self):
 
     # Reset recording state
     self._is_recording = False
-    self._recording_stop_step = 0
+    self._recording_stop_step = None
 ```
 
 ## `get_observations()`
@@ -21120,7 +21464,11 @@ def start_recording(self):
     self._is_recording = True
     self._recording_start_step = self._current_step
     self._recording_name = self._video_filename()
-    self._recording_stop_step = self._current_step + self._video_length_steps
+    self._recording_stop_step = (
+        None
+        if self._video_length_steps is None
+        else self._current_step + self._video_length_steps
+    )
 
     filepath = os.path.join(self._tmp_dir, self._recording_name)
     self._cam.start_recording(
@@ -21149,7 +21497,11 @@ def step(
     ) = super().step(actions)
 
     # Stop recording if the recording stop step is reached
-    if self._is_recording and self._recording_stop_step <= self._current_step:
+    if (
+        self._is_recording
+        and self._recording_stop_step is not None
+        and self._recording_stop_step <= self._current_step
+    ):
         self.finish_recording()
 
     self._check_recording_trigger()
@@ -23194,9 +23546,11 @@ mesh = arrow_mesh(pos=(0.0, 0.0, 0.5), vec=(0.2, 0.0, 0.0), radius=0.01, color=(
 scene.draw_debug_mesh(mesh)
 ```
 
+Debug visuals always appear in the interactive viewer, but a camera only renders them if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+
 Trimesh builders for debug visuals.
 
-Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn with `scene.draw_debug_mesh(mesh)`.
+Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn with `scene.draw_debug_mesh(mesh)`. The interactive viewer always shows debug visuals, but a camera only renders them if it was created with `debug=True`.
 
 ## `Color = tuple[float, float, float, float]`
 

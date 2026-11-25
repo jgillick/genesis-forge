@@ -33,7 +33,8 @@ class ContactManager(BaseManager):
         with_links_names: Filter the contact forces to only include contacts with these links.
         track_air_time: Whether to track the air time of the entity link contacts.
         air_time_contact_threshold: When track_air_time is True, this is the threshold for the contact forces to be considered.
-        debug_visualizer: Whether to visualize the contact points.
+        debug_visualizer: Whether to visualize the contact points. To see them in camera renders or recorded
+                          videos, the camera must be created with `debug=True`.
         debug_visualizer_cfg: The configuration for the contact debug visualizer.
 
     Example with ManagedEnvironment::

@@ -131,13 +131,17 @@ class VelocityCommandManager(CommandManager):
         - BLUE ARROW: Actual robot velocity in world coordinates
         - RED BALL: Shown when no linear velocity is commanded
 
+        If you're recording with a camera, these only renders if it was
+        created with `debug=True` (`scene.add_camera(..., debug=True)`).
+
     Args:
         env: The environment to control
         range: The ranges of linear & angular velocities
         stopped_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
         standing_probability: (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
         resample_time_sec: The time interval between changing the command
-        debug_visualizer: Enable the debug visualization
+        debug_visualizer: Enable the debug visualization. To see it in camera renders or recorded
+                          videos, the camera must be created with `debug=True`.
         debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::

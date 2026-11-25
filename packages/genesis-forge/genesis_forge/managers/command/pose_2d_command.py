@@ -127,6 +127,9 @@ class Pose2dCommand(CommandManager):
         an arrow pointing the way to face on arrival when the goal has a heading,
         and a ball when it does not.
 
+        The interactive viewer always shows the marker, but a camera only renders it if
+        it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+
     Args:
         env: The environment to control
         range: The X/Y and (optional) heading ranges to sample the goal poses from, in the
@@ -146,7 +149,8 @@ class Pose2dCommand(CommandManager):
                         from the manager's per-step cache instead of the solver.
         terrain_manager: The terrain manager, so the debug marker sits above the terrain.
                          Defaults to None: the ground is assumed to be flat at z=0.
-        debug_visualizer: Enable the debug visualization
+        debug_visualizer: Enable the debug visualization. To see it in camera renders or recorded
+                          videos, the camera must be created with `debug=True`.
         debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::

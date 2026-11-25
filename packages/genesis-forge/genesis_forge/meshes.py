@@ -2,7 +2,8 @@
 Trimesh builders for debug visuals.
 
 Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn
-with `scene.draw_debug_mesh(mesh)`.
+with `scene.draw_debug_mesh(mesh)`. The interactive viewer always shows debug visuals,
+but a camera only renders them if it was created with `debug=True`.
 """
 
 from __future__ import annotations

@@ -145,6 +145,18 @@ self.contact_manager = ContactManager(
 )
 ```
 
+!!! note "Recording with a camera"
+
+    The debug spheres will always appear in the interactive viewer, but a camera will only render them if it was created with `debug=True`:
+
+    ```python
+    self.camera = self.scene.add_camera(
+        pos=(-2.5, -1.5, 1.0),
+        lookat=(0.0, 0.0, 0.3),
+        debug=True,  # <~ show the debug visuals
+    )
+    ```
+
 !!! warning "Caution"
 
     This can slow down the simulation since the debug spheres need to be calculated and rendered for each environment on every step.

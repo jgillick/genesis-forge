@@ -56,6 +56,18 @@ When `debug_visualizer` is `True`, arrows will be displayed above your robot sho
 - **Green Arrow**: Commanded velocity (robot-relative, shown in world frame)
 - **Blue Arrow**: Actual robot velocity (world frame)
 
+!!! note "Recording with a camera"
+
+    The debug arrows will always appear in the interactive viewer, but a camera will only render them if it was created with `debug=True`:
+
+    ```python
+    self.camera = self.scene.add_camera(
+        pos=(-2.5, -1.5, 1.0),
+        lookat=(0.0, 0.0, 0.3),
+        debug=True,  # <~ show the debug visuals
+    )
+    ```
+
 !!! warning "Caution"
 
     The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
@@ -206,6 +218,8 @@ self.pose_command = Pose2dCommand(
     },
 )
 ```
+
+As with the velocity arrows, a camera only renders the marker if it was created with `debug=True` (see [Debug visualization](#debug-visualization)).
 
 ### Using Pose Commands in Observations
 

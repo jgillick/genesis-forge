@@ -448,3 +448,34 @@ def test_filename_function_called_when_waiting_recording_starts(tmp_path):
     env.build()
     run_steps(env, 12)
     assert recording_names(env) == ["s7_e2_i1.mp4"]
+
+
+def test_no_video_length_records_until_close(tmp_path):
+    env = VideoWrapper(
+        FakeEnv(episode_length=10),
+        out_dir=str(tmp_path),
+        video_length_sec=None,
+        fps=50,  # one frame per step
+        step_trigger=lambda step: step == 1,
+        filename="play.mp4",
+        logging=False,
+    )
+    env.build()
+    camera = env.unwrapped.camera
+
+    def write_video():
+        tmp_video = tmp_path / ".tmp" / "play.mp4"
+        tmp_video.parent.mkdir()
+        tmp_video.touch()
+
+    camera.stop_recording = write_video
+
+    # Longer than the default length (400 steps), and across many episodes
+    run_steps(env, 1000)
+    assert env.video_length_steps is None
+    assert recording_names(env) == ["play.mp4"]
+    assert camera.frame_steps == list(range(1, 1001))
+    assert not (tmp_path / "play.mp4").exists()
+
+    env.close()
+    assert (tmp_path / "play.mp4").exists()

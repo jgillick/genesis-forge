@@ -86,7 +86,8 @@ class VideoWrapper(Wrapper):
                           :attr:`iteration_offset` property, as long as it is set before the first step.
         wait_for_episode_start: Delay each triggered recording until the next episode of the watched environment begins.
                                 Has no effect with ``episode_trigger``, which always starts on the first step of an episode.
-        video_length_sec: Length of each video, in seconds.
+        video_length_sec: Length of each video, in seconds. ``None`` records until :meth:`close` is called, through any
+                          episode resets.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
@@ -129,6 +130,22 @@ class VideoWrapper(Wrapper):
             out_dir="./videos",
             step_trigger=lambda step: step % 1500 == 0
         )
+
+    Record a play session from start to end. Call :meth:`close` when the session is over, or the video won't be saved::
+
+        env = VideoWrapper(
+            env,
+            camera_attr="camera",
+            out_dir="./videos",
+            step_trigger=lambda step: step == 1,
+            video_length_sec=None,
+            filename="play.mp4",
+        )
+        env.build()
+        try:
+            ...play loop...
+        finally:
+            env.close()
 
     Create a custom video filename::
 
@@ -174,7 +191,7 @@ class VideoWrapper(Wrapper):
         self,
         env: GenesisEnv | Wrapper,
         camera_attr: str = "camera",
-        video_length_sec: int = 8,
+        video_length_sec: float | None = 8,
         episode_trigger: Callable[[int], bool] | None = None,
         step_trigger: Callable[[int], bool] | None = None,
         iteration_trigger: Callable[[int], bool] | None = None,
@@ -196,7 +213,7 @@ class VideoWrapper(Wrapper):
         self._current_episode: int = 1
         self._episode_step: int = 1
         self._recording_start_step: int = 0
-        self._recording_stop_step: int = 0
+        self._recording_stop_step: int | None = None
         self._recording_name: str = "recording"
         self._wait_for_episode_start = wait_for_episode_start
         self._recording_pending: bool = False
@@ -204,7 +221,9 @@ class VideoWrapper(Wrapper):
         self._cam: Camera | None = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
-        self._video_length_steps = math.ceil(video_length_sec / self.dt)
+        self._video_length_steps: int | None = (
+            None if video_length_sec is None else math.ceil(video_length_sec / self.dt)
+        )
         self._steps_per_frame = max(
             1, round(1.0 / fps / self.dt)
         )  # max prevents division by zero
@@ -223,9 +242,9 @@ class VideoWrapper(Wrapper):
         )
         assert trigger_count == 1, "Must specify only one trigger"
         if iteration_trigger is not None:
-            assert steps_per_iteration is not None and steps_per_iteration > 0, (
-                "steps_per_iteration is required with iteration_trigger"
-            )
+            assert (
+                steps_per_iteration is not None and steps_per_iteration > 0
+            ), "steps_per_iteration is required with iteration_trigger"
 
         # Determine how to name the file
         if filename is None:
@@ -236,9 +255,9 @@ class VideoWrapper(Wrapper):
             else:
                 filename = VideoFilename.EPISODE
         if filename == VideoFilename.ITERATION:
-            assert steps_per_iteration is not None and steps_per_iteration > 0, (
-                "steps_per_iteration is required with VideoFilename.ITERATION"
-            )
+            assert (
+                steps_per_iteration is not None and steps_per_iteration > 0
+            ), "steps_per_iteration is required with VideoFilename.ITERATION"
         self._filename = filename
 
         self.episode_trigger = episode_trigger
@@ -253,9 +272,9 @@ class VideoWrapper(Wrapper):
         os.makedirs(self._out_dir, exist_ok=True)
 
     @property
-    def video_length_steps(self) -> int:
+    def video_length_steps(self) -> int | None:
         """
-        The number of steps that will be recorded for each video.
+        The number of steps that will be recorded for each video, or ``None`` if it records until closed.
         """
         return self._video_length_steps
 
@@ -275,9 +294,9 @@ class VideoWrapper(Wrapper):
         """Load the camera from the environment."""
         super().build()
         self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-        assert self._cam is not None, (
-            f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
-        )
+        assert (
+            self._cam is not None
+        ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
 
     def step(
         self, actions: torch.Tensor
@@ -292,7 +311,11 @@ class VideoWrapper(Wrapper):
         ) = super().step(actions)
 
         # Stop recording if the recording stop step is reached
-        if self._is_recording and self._recording_stop_step <= self._current_step:
+        if (
+            self._is_recording
+            and self._recording_stop_step is not None
+            and self._recording_stop_step <= self._current_step
+        ):
             self.finish_recording()
 
         self._check_recording_trigger()
@@ -330,7 +353,11 @@ class VideoWrapper(Wrapper):
         self._is_recording = True
         self._recording_start_step = self._current_step
         self._recording_name = self._video_filename()
-        self._recording_stop_step = self._current_step + self._video_length_steps
+        self._recording_stop_step = (
+            None
+            if self._video_length_steps is None
+            else self._current_step + self._video_length_steps
+        )
 
         filepath = os.path.join(self._tmp_dir, self._recording_name)
         self._cam.start_recording(
@@ -356,7 +383,7 @@ class VideoWrapper(Wrapper):
 
         # Reset recording state
         self._is_recording = False
-        self._recording_stop_step = 0
+        self._recording_stop_step = None
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""

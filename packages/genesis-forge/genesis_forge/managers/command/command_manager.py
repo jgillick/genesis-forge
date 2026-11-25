@@ -294,8 +294,8 @@ class CommandManager(BaseManager):
     def use_gamepad(
         self,
         gamepad: Gamepad,
-        range_axis: int | dict[str, int],
-        invert_axis: bool | dict[str, bool] = False,
+        range_axis: int | Mapping[str, int | None],
+        invert_axis: bool | Mapping[str, bool] = False,
     ):
         """
         A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
@@ -303,7 +303,10 @@ class CommandManager(BaseManager):
         Args:
             gamepad: The gamepad wrapper to use.
             range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+                        With a dict, any range that is omitted or set to `None` is not controlled by the gamepad. Its
+                        command is held at zero, or the closest value to zero within its range.
             invert_axis: Whether to invert each mapped axis before converting it into the command range.
+                         With a dict, omitted ranges are not inverted.
 
         Example::
 
@@ -356,19 +359,27 @@ class CommandManager(BaseManager):
                     "cmd2": 3,
                 })
         """
-        self._external_controller = self._gamepad_axis_command
-
-        # Map axis to range keys
-        axis_map = []
-        axis_invert_map = []
+        # Map axis to range keys (None = not controlled by the gamepad)
+        axis_map: list[int | None] = []
+        axis_invert_map: list[bool] = []
         if isinstance(range_axis, int):
             axis_map.append(range_axis)
             axis_invert_map.append(invert_axis)
-        elif isinstance(range_axis, dict):
+        elif isinstance(range_axis, Mapping):
+            if not isinstance(self._range, Mapping):
+                raise TypeError("range_axis cannot be a dict when the range is not")
+            # Ranges can be omitted, so a misspelled key would otherwise go unnoticed
+            unknown = [key for key in range_axis if key not in self._range]
+            if unknown:
+                raise ValueError(
+                    f"Unknown range_axis keys: {unknown}. Expected keys from: {list(self._range)}"
+                )
             for key in self._range:
-                axis_map.append(range_axis[key])
+                axis_map.append(range_axis.get(key))
                 axis_invert_map.append(
-                    invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
+                    invert_axis.get(key, False)
+                    if isinstance(invert_axis, Mapping)
+                    else invert_axis
                 )
 
         self._gamepad_cfg = {
@@ -379,6 +390,7 @@ class CommandManager(BaseManager):
         self._gamepad_axis_command_buffer = torch.zeros_like(
             self._command, device=gs.device
         )
+        self._external_controller = self._gamepad_axis_command
 
     def resample_command(self, env_ids: torch.Tensor):
         """Create a new command for the given environment ids."""
@@ -421,6 +433,11 @@ class CommandManager(BaseManager):
             ranges = list(self._range.values())
         for i, axis in enumerate(axis_map):
             if i < len(ranges):
+                if axis is None:
+                    # Not controlled by the gamepad: the closest value to zero in the range
+                    low, high = ranges[i]
+                    cmd[:, i] = min(max(0.0, low), high)
+                    continue
                 value = gamepad.axis(axis)
                 if axis_invert_map[i]:
                     value = -value

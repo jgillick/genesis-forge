@@ -411,28 +411,42 @@ class VelocityCommandManager(CommandManager):
     def use_gamepad(
         self,
         gamepad: Gamepad,
-        lin_vel_y_axis: int = 0,
-        lin_vel_x_axis: int = 1,
-        ang_vel_z_axis: int = 2,
+        lin_vel_y_axis: int | None = 0,
+        lin_vel_x_axis: int | None = 1,
+        ang_vel_z_axis: int | None = 2,
         *args,
         **kwargs,
     ):
         """
         Use a connected gamepad to control the command.
 
+        Set an axis to `None` if that velocity should not be controlled by the gamepad.
+        Its command is held at zero, or the closest value to zero within its range.
+
         Args:
             gamepad: The gamepad to use.
             lin_vel_x_axis: Map this gamepad axis index to the linear velocity in the x-direction.
             lin_vel_y_axis: Map this gamepad axis index to the linear velocity in the y-direction.
             ang_vel_z_axis: Map this gamepad axis index to the angular velocity in the z-direction.
+
+        Example::
+
+            # A wheeled robot, which cannot move sideways
+            env.velocity_command.use_gamepad(
+                gamepad,
+                lin_vel_x_axis=1,
+                lin_vel_y_axis=None,
+                ang_vel_z_axis=0,
+            )
         """
+        range_axis = {
+            "lin_vel_x": lin_vel_x_axis,
+            "lin_vel_y": lin_vel_y_axis,
+            "ang_vel_z": ang_vel_z_axis,
+        }
         super().use_gamepad(
             gamepad,
-            range_axis={
-                "lin_vel_x": lin_vel_x_axis,
-                "lin_vel_y": lin_vel_y_axis,
-                "ang_vel_z": ang_vel_z_axis,
-            },
+            range_axis={k: v for k, v in range_axis.items() if k in self._range},
             invert_axis={
                 "lin_vel_x": True,
                 "lin_vel_y": True,

@@ -305,6 +305,28 @@ def test_use_gamepad_maps_multiple_axes_by_dict(env):
     assert command[0, mgr.get_command_idx("b")].item() == pytest.approx(-1.0)
 
 
+@pytest.mark.parametrize("range_axis", [{"a": 0}, {"a": 0, "b": None}])
+@pytest.mark.parametrize(
+    "unmapped_range, expected",
+    [((-1.0, 3.0), 0.0), ((0.1, 0.2), 0.1), ((-2.0, -1.0), -1.0)],
+)
+def test_use_gamepad_holds_unmapped_ranges_closest_to_zero(
+    env, range_axis, unmapped_range, expected
+):
+    env.step_count = 0
+    mgr = CommandManager(env, range={"b": unmapped_range, "a": (-1.0, 1.0)})
+    mgr.use_gamepad(FakeGamepad({0: 1.0}), range_axis=range_axis, invert_axis={})
+
+    assert torch.allclose(mgr.command[:, 0], torch.tensor(expected))
+    assert torch.allclose(mgr.command[:, 1], torch.tensor(1.0))
+
+
+def test_use_gamepad_rejects_unknown_range_keys(env):
+    mgr = CommandManager(env, range={"a": (-1.0, 1.0)})
+    with pytest.raises(ValueError, match="typo"):
+        mgr.use_gamepad(FakeGamepad({0: 1.0}), range_axis={"typo": 0})
+
+
 """
 VelocityCommandManager -- standing environments are forced to a zero command
 """
@@ -461,6 +483,25 @@ def test_use_gamepad_maps_the_three_velocity_axes_inverted(env):
     # use_gamepad then re-orders them to match self._range's own key order.
     assert cfg["axis_map"] == [1, 0, 2]
     assert cfg["axis_invert_map"] == [True, True, True]
+
+
+def test_velocity_use_gamepad_holds_an_axis_set_to_none_at_zero(env):
+    env.step_count = 0
+    velocity_range = {
+        "lin_vel_x": (-0.5, 0.5),
+        "lin_vel_y": (-1.0, 1.0),
+        "ang_vel_z": (-2.0, 2.0),
+    }
+    mgr = VelocityCommandManager(env, range=velocity_range)
+    mgr.use_gamepad(
+        FakeGamepad({0: 1.0, 1: -1.0}),
+        lin_vel_x_axis=1,
+        lin_vel_y_axis=None,
+        ang_vel_z_axis=0,
+    )
+
+    expected = torch.tensor([0.5, 0.0, -2.0]).expand(env.num_envs, 3)
+    assert torch.allclose(mgr.command, expected)
 
 
 """

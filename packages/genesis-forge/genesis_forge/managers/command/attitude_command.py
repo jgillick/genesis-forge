@@ -7,7 +7,7 @@ import torch
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 
-from .command_manager import CommandManager, CommandRangeValue
+from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
 
 class AttitudeCommandRange(TypedDict):
@@ -79,7 +79,11 @@ class AttitudeCommandManager(CommandManager):
         resample_time_sec: float | None = 5.0,
         level_probability: float = 0.0,
     ):
-        super().__init__(env, range=range, resample_time_sec=resample_time_sec)
+        # Ensure the dict is ordered correctly with the expected keys
+        # The resulting tensor is created in this order
+        ordered = self.ordered_range(range, ["pitch", "roll"])
+
+        super().__init__(env, range=ordered, resample_time_sec=resample_time_sec)
         self.level_probability = level_probability
 
     """
@@ -87,14 +91,15 @@ class AttitudeCommandManager(CommandManager):
     """
 
     @property
-    def range(self) -> AttitudeCommandRange:
+    def range(self) -> dict[str, CommandRangeValue]:
         """The pitch and roll range dict, in radians."""
-        return cast(AttitudeCommandRange, self._range)
+        return cast(dict[str, CommandRangeValue], self._range)
 
     @range.setter
-    def range(self, range: AttitudeCommandRange):
+    def range(self, range: CommandRange):
         """Update the pitch and roll ranges."""
-        CommandManager.range.fset(self, range)
+        # `__set__` rather than `fset`, since a type checker can't follow the optional `fset`
+        CommandManager.range.__set__(self, range)
 
     @property
     def pitch(self) -> torch.Tensor:
@@ -167,7 +172,7 @@ class AttitudeCommandManager(CommandManager):
         level = torch.rand(len(env_ids), device=gs.device) < self.level_probability
         self._command[env_ids[level], :] = 0.0
 
-    def use_gamepad(
+    def use_gamepad(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         gamepad: Gamepad,
         pitch_axis: int | None = None,

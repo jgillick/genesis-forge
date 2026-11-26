@@ -331,6 +331,38 @@ def test_use_gamepad_rejects_unknown_range_keys(env):
 VelocityCommandManager -- standing environments are forced to a zero command
 """
 
+
+def test_ordered_range_puts_the_keys_in_the_given_order():
+    ordered = CommandManager.ordered_range(
+        {"c": (3.0, 3.0), "a": (1.0, 1.0), "b": (2.0, 2.0)}, ["a", "b", "c"]
+    )
+
+    assert list(ordered.items()) == [
+        ("a", (1.0, 1.0)),
+        ("b", (2.0, 2.0)),
+        ("c", (3.0, 3.0)),
+    ]
+
+
+@pytest.mark.parametrize(
+    "range_dict",
+    [{"a": (0.0, 1.0)}, {"a": (0.0, 1.0), "b": (0.0, 1.0), "c": (0.0, 1.0)}],
+)
+def test_ordered_range_rejects_missing_or_extra_keys(range_dict):
+    with pytest.raises(ValueError, match="Expected the range keys"):
+        CommandManager.ordered_range(range_dict, ["a", "b"])
+
+
+def test_a_reordered_range_update_keeps_each_range_in_its_own_column(env):
+    mgr = CommandManager(env, range={"a": (1.0, 1.0), "b": (2.0, 2.0)})
+    mgr.range = {"b": (4.0, 4.0), "a": (3.0, 3.0)}
+    mgr.reset()
+
+    assert list(mgr.range) == ["a", "b"]
+    assert torch.allclose(mgr.get_command("a"), torch.full((env.num_envs,), 3.0))
+    assert torch.allclose(mgr.command[:, 1], torch.full((env.num_envs,), 4.0))
+
+
 VELOCITY_RANGE = {
     "lin_vel_x": (3.0, 3.0),  # min == max: deterministic sample
     "lin_vel_y": (3.0, 3.0),
@@ -743,3 +775,32 @@ def test_a_negligible_yaw_rate_draws_no_arc(env):
     mgr = make_debug_arc_manager(env, ang_vel_z=0.01)
     mgr._render_debug(force=True)
     assert env.scene.mesh_calls == []
+
+
+def test_velocity_command_columns_are_x_y_yaw_whatever_the_dict_order(env):
+    """The tracking rewards read the command by column, so the order can't move."""
+    mgr = VelocityCommandManager(
+        env,
+        range={
+            "ang_vel_z": (0.5, 0.5),
+            "lin_vel_x": (1.0, 1.0),
+            "lin_vel_y": (-0.2, -0.2),
+        },
+    )
+    mgr.reset()
+
+    assert list(mgr.range) == ["lin_vel_x", "lin_vel_y", "ang_vel_z"]
+    expected = torch.tensor([[1.0, -0.2, 0.5]] * env.num_envs)
+    assert torch.allclose(mgr.observation(env), expected)
+
+
+@pytest.mark.parametrize(
+    "velocity_range",
+    [
+        {"lin_vel_x": (0.0, 1.0), "ang_vel_z": (0.0, 1.0)},
+        {**VELOCITY_RANGE, "lin_vel_z": (0.0, 1.0)},
+    ],
+)
+def test_velocity_command_needs_exactly_its_three_ranges(env, velocity_range):
+    with pytest.raises(ValueError, match="lin_vel_y"):
+        VelocityCommandManager(env, range=velocity_range)

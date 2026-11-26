@@ -193,9 +193,9 @@ def test_entity_velocities_reject_an_unknown_frame():
     )
 
     with pytest.raises(ValueError, match="body"):
-        entity_lin_vel(entity, "body")
+        entity_lin_vel(entity, "body")  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="body"):
-        entity_ang_vel(entity, "body")
+        entity_ang_vel(entity, "body")  # pyright: ignore[reportArgumentType]
 
 
 """

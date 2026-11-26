@@ -205,11 +205,10 @@ class VelocityCommandManager(CommandManager):
         debug_visualizer: bool = False,
         debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
     ):
-        super().__init__(
-            env,
-            range=range,
-            resample_time_sec=resample_time_sec,
-        )
+        # Ensure the dict is ordered correctly with the expected keys
+        # The resulting tensor is created in this order
+        ordered = self.ordered_range(range, ["lin_vel_x", "lin_vel_y", "ang_vel_z"])
+        super().__init__(env, range=ordered, resample_time_sec=resample_time_sec)
 
         self.stopped_probability = stopped_probability or standing_probability
         self.debug_visualizer = debug_visualizer

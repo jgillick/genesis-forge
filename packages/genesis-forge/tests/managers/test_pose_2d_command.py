@@ -101,6 +101,16 @@ def test_range_allocates_an_xy_and_heading_command(env):
     assert mgr.command.shape == (env.num_envs, 3)
 
 
+def test_goal_columns_are_x_y_heading_whatever_the_dict_order(env):
+    mgr = make_manager(
+        env, range={"heading": (0.5, 0.5), "y": (-1.0, -1.0), "x": (2.0, 2.0)}
+    )
+    mgr.reset()
+
+    assert list(mgr.range) == ["x", "y", "heading"]
+    assert torch.allclose(mgr.command, torch.tensor([[2.0, -1.0, 0.5]] * env.num_envs))
+
+
 def test_resample_time_sec_defaults_to_no_timer(env):
     mgr = make_manager(env)
     assert mgr.resample_time_sec is None

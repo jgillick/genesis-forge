@@ -203,9 +203,9 @@ def test_an_unknown_velocity_frame_is_rejected(env):
     mgr.build()
 
     with pytest.raises(ValueError, match="Heading"):
-        mgr.get_linear_velocity("Heading")
+        mgr.get_linear_velocity("Heading")  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="world"):
-        mgr.get_angular_velocity("world")
+        mgr.get_angular_velocity("world")  # pyright: ignore[reportArgumentType]
 
 
 """

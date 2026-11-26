@@ -93,6 +93,37 @@ def test_use_gamepad_holds_an_unmapped_angle_level(env):
     assert torch.allclose(mgr.roll, torch.zeros(env.num_envs))
 
 
+def test_pitch_is_the_first_column_whatever_the_dict_order(env):
+    mgr = AttitudeCommandManager(env, range={"roll": (-0.1, -0.1), "pitch": (0.2, 0.2)})
+    mgr.reset()
+
+    assert list(mgr.range) == ["pitch", "roll"]
+    assert torch.allclose(mgr.observation(env)[:, 0], torch.full((env.num_envs,), 0.2))
+    assert torch.allclose(mgr.observation(env)[:, 1], torch.full((env.num_envs,), -0.1))
+
+
+def test_a_reordered_range_update_still_samples_each_angle_into_its_own_column(env):
+    mgr = make(env)
+    mgr.range = {"roll": (0.05, 0.05), "pitch": (0.3, 0.3)}
+    mgr.reset()
+
+    assert torch.allclose(mgr.pitch, torch.full((env.num_envs,), 0.3))
+    assert torch.allclose(mgr.roll, torch.full((env.num_envs,), 0.05))
+
+
+@pytest.mark.parametrize(
+    "attitude_range",
+    [
+        {"pitch": (0.0, 0.1)},
+        {"pitch": (0.0, 0.1), "roll": (0.0, 0.1), "yaw": (0.0, 0.1)},
+        {"pitch": (0.0, 0.1), "rol": (0.0, 0.1)},
+    ],
+)
+def test_a_range_without_exactly_pitch_and_roll_is_rejected(env, attitude_range):
+    with pytest.raises(ValueError, match="Expected the range keys"):
+        AttitudeCommandManager(env, range=attitude_range)
+
+
 def test_range_setter_rejects_different_keys(env):
     mgr = make(env)
     with pytest.raises(ValueError, match="dict keys"):

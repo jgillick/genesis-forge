@@ -912,7 +912,8 @@ class command_tracking_attitude(flat_orientation_l2):
     distance.
 
     Args:
-        attitude_command: The attitude command manager to get the target pitch and roll from
+        attitude_command: The attitude command manager to get the target pitch and roll from.
+                          Without one, the target is level.
         sensitivity: A lower value means the reward is more sensitive to the error.
                      If not defined, it's derived from the command manager's range on every step
                      using the formulation: (0.5 * max_command) ** 2, where max_command is the largest
@@ -929,12 +930,6 @@ class command_tracking_attitude(flat_orientation_l2):
 
     sensitivity: float | None = None
 
-    def build(self):
-        super().build()
-        assert self.attitude_command is not None, (
-            "attitude_command must be provided to command_tracking_attitude"
-        )
-
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         return torch.exp(-self._tilt_error(env) / self._get_sensitivity())
 
@@ -944,11 +939,13 @@ class command_tracking_attitude(flat_orientation_l2):
             return self.sensitivity
 
         min_tracking_tilt = 0.2
-        attitude_range = self.attitude_command.range
-        max_tilt = math.hypot(
-            max(abs(v) for v in attitude_range["pitch"]),
-            max(abs(v) for v in attitude_range["roll"]),
-        )
+        max_tilt = 0.0
+        if self.attitude_command is not None:
+            attitude_range = self.attitude_command.range
+            max_tilt = math.hypot(
+                max(abs(v) for v in attitude_range["pitch"]),
+                max(abs(v) for v in attitude_range["roll"]),
+            )
         return _calculate_tracking_sensitivity(max(max_tilt, min_tracking_tilt))
 
 

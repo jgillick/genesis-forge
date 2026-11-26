@@ -415,7 +415,9 @@ def test_command_tracking_attitude_is_one_on_target_and_decays_away_from_it(env)
     )
     assert torch.allclose(fn(env), torch.ones(env.num_envs), atol=1e-6)
 
-    fn.attitude_command._command[:, 0] = 0.0  # now commanded level
+    cmd = fn.attitude_command
+    assert cmd is not None
+    cmd._command[:, 0] = 0.0  # now commanded level
     error = 2.0 * (1.0 - math.cos(0.3))
     assert torch.allclose(fn(env), torch.full((env.num_envs,), math.exp(-error / 0.05)))
 
@@ -461,9 +463,13 @@ def test_command_tracking_attitude_sensitivity_has_a_floor_for_narrow_ranges(
     assert math.isclose(fn._get_sensitivity(), (0.5 * 0.2) ** 2)
 
 
-def test_command_tracking_attitude_requires_an_attitude_command(env):
-    with pytest.raises(AssertionError, match="attitude_command"):
-        built(rewards.command_tracking_attitude(), env)
+def test_command_tracking_attitude_tracks_level_without_a_command(env):
+    mgr = tilted_entity_manager(env, pitch=0.1)
+    fn = built(rewards.command_tracking_attitude(entity_manager=mgr), env)
+
+    # 0.1 radians from level, against the floor sensitivity of 0.01
+    error = 2.0 * (1.0 - math.cos(0.1))
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), math.exp(-error / 0.01)))
 
 
 def test_command_tracking_attitude_uses_an_explicit_sensitivity_as_is(env):

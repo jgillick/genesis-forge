@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping, Sequence
+from typing import cast
 
 import genesis as gs
 import torch
@@ -118,6 +119,10 @@ class CommandManager(BaseManager):
             raise ValueError(
                 f"Cannot change the dict keys of the CommandManager range. Expected keys: {set(self._range.keys())}, got {set(range.keys())}"
             )
+        # Ranges are sampled in dict order, so keep the original key order. Otherwise a
+        # reordered dict would sample each range into another range's command column.
+        if isinstance(range, dict):
+            range = {key: range[key] for key in self._range_idx}
         self._range = range
 
     @property
@@ -139,6 +144,31 @@ class CommandManager(BaseManager):
     """
     Operations
     """
+
+    @staticmethod
+    def ordered_range(
+        range: Mapping[str, object], keys: Sequence[str]
+    ) -> dict[str, CommandRangeValue]:
+        """
+        Put a range dict in the given key order. The ranges are sampled into command
+        columns in dict order, so a command manager that reads its command by column
+        can use this to fix the order, whatever order the dict was written in.
+
+        Args:
+            range: The range dict to order.
+            keys: Every key of the range, in the order they should be.
+
+        Raises:
+            ValueError: If the range's keys aren't exactly `keys`.
+
+        Example::
+
+            range = CommandManager.ordered_range(range, ["lin_vel_x", "lin_vel_y", "ang_vel_z"])
+        """
+        if set(range) != set(keys):
+            raise ValueError(f"Expected the range keys {list(keys)}, got {list(range)}")
+        # Mapping[str, object] so a TypedDict range can be passed in
+        return {key: cast(CommandRangeValue, range[key]) for key in keys}
 
     def get_command(self, range_key: str) -> torch.Tensor:
         """

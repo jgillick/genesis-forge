@@ -84,15 +84,17 @@ DEFAULT_VISUALIZER_CONFIG = {
 
 def _normalize_range(range: "Pose2dCommandRange | CommandRange") -> CommandRange:
     """
-    Remove heading from the range dict if it is None.
-    Otherwise, the base command manager will attempt to sample from None
+    Remove heading from the range dict if it is None, since the base command manager
+    would otherwise attempt to sample from None. Then order the keys x, y, heading.
     """
     if not isinstance(range, Mapping):
         return range
     ranges = dict(range)
     if ranges.get("heading") is None:
         ranges.pop("heading", None)
-    return cast(dict[str, CommandRangeValue], ranges)
+    # The goal is read by column
+    keys = ["x", "y", "heading"] if "heading" in ranges else ["x", "y"]
+    return CommandManager.ordered_range(ranges, keys)
 
 
 def shortest_turn_to(

@@ -183,7 +183,7 @@ class push_velocity(PushEvent):
             *(max(abs(value) for value in axis) for axis in self._ranges[:3] if axis)
         )
 
-    def __call__(self, env: GenesisEnv, envs_idx: torch.Tensor):
+    def __call__(self, env: GenesisEnv, envs_idx: torch.Tensor) -> None:
         entity = self.entity_manager.entity
 
         delta = torch.zeros((len(envs_idx), 6), device=gs.device, dtype=gs.tc_float)
@@ -253,6 +253,9 @@ class push_force(PushEvent, DurationEventMdpFn):
                 (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
             )
             self._torque_buf = torch.zeros_like(self._force_buf)
+        # Without a torque range, none is applied, so the observation must not report one
+        if self.torque is None:
+            self._torque_buf.zero_()
 
     @property
     def current_force(self) -> torch.Tensor:
@@ -267,7 +270,7 @@ class push_force(PushEvent, DurationEventMdpFn):
         """The torque being applied, in the world frame. Zero when there is no push. Shape is (num_envs, 3)."""
         return self._torque_buf
 
-    def start(self, envs_idx: torch.Tensor):
+    def start(self, envs_idx: torch.Tensor) -> None:
         n_envs = len(envs_idx)
 
         angle = torch.empty(n_envs, device=gs.device).uniform_(0, 2 * math.pi)
@@ -283,7 +286,7 @@ class push_force(PushEvent, DurationEventMdpFn):
             size = torch.empty((n_envs, 1), device=gs.device).uniform_(*self.torque)
             self._torque_buf[envs_idx] = size * axis
 
-    def step(self, envs_idx: torch.Tensor):
+    def step(self, envs_idx: torch.Tensor) -> None:
         """
         Genesis clears external forces after each step, so we need to reapply them each step
         """
@@ -299,7 +302,7 @@ class push_force(PushEvent, DurationEventMdpFn):
             torque=torque,
         )
 
-    def end(self, envs_idx: torch.Tensor):
+    def end(self, envs_idx: torch.Tensor) -> None:
         """
         Clear the applied forces and torques for the specified environments.
         """

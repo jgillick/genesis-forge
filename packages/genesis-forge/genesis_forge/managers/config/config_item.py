@@ -151,11 +151,6 @@ class GatedConfigItem(ConfigItem):
             )
 
     @property
-    def when(self):
-        """The condition that gates this item, or None if it is always active."""
-        return self._when
-
-    @property
     def is_gated(self) -> bool:
         """Whether this item has a ``when`` condition."""
         return self._when is not None
@@ -171,7 +166,7 @@ class GatedConfigItem(ConfigItem):
         if self._built and isinstance(self._when, MdpFn):
             self._when.reset(envs_idx)
 
-    def active(self) -> torch.Tensor | None:
+    def evaluate_when(self) -> torch.Tensor | None:
         """
         Evaluate the ``when`` condition.
 

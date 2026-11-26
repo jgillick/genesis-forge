@@ -3036,6 +3036,10 @@ def __init__(self, cfg: EventConfig, env: GenesisEnv):
     )
     self._remaining_steps = torch.zeros_like(self._wait_steps)
     self._sample_interval(env.all_envs_idx)
+
+    # Whether any env may be active or have a pending trigger. Kept on the CPU, so an
+    # event that's idle can skip the work that has to wait for the GPU.
+    self._maybe_active = False
 ```
 
 ## `active`
@@ -3152,7 +3156,8 @@ Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.
 ```
 def reset(self, envs_idx: torch.Tensor):
     """End the event for these environments, and restart their wait."""
-    self._end(envs_idx[self._active[envs_idx]])
+    if self._maybe_active:
+        self._end(envs_idx[self._active[envs_idx]])
     self._pending[envs_idx] = False
     self._sample_interval(envs_idx)
     super().reset(envs_idx)
@@ -3167,13 +3172,22 @@ Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.
 ```
 def step(self):
     """Advance the timers, and run the event's function where it's due."""
+    # An event only fired by trigger() has nothing to do until it's triggered
+    if self._interval_range is None and not self._maybe_active:
+        return
+
     self._remaining_steps -= self._active.int()
     ended = self._active & (self._remaining_steps <= 0)
 
-    # Count down the environments that are waiting, not including the ones that just ended
+    # Count down the environments that are waiting. The step an event ends on is the
+    # first step of its next wait, so the wait is the same length as after a reset.
     due = self._pending.clone()
     if self._interval_range is not None:
-        idle = ~self._active
+        fresh_wait = self._sample_steps(
+            self._interval_range, self._env.all_envs_idx
+        )
+        self._wait_steps = torch.where(ended, fresh_wait, self._wait_steps)
+        idle = ~self._active | ended
         self._wait_steps -= idle.int()
         due |= idle & (self._wait_steps <= 0)
     self._pending[:] = False
@@ -3183,8 +3197,9 @@ def step(self):
     active = (self._active & ~ended) | due
 
     ended_idx, due_idx, active_idx = self._masks_to_idx(ended, due, active)
+    self._maybe_active = active_idx.numel() > 0
 
-    self._end(ended_idx)
+    self._end(ended_idx, restart_wait=False)
 
     if due_idx.numel() > 0:
         self._active[due_idx] = True
@@ -3212,7 +3227,9 @@ Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.
 def stop(self):
     """End the event everywhere it's active, and discard any pending triggers."""
     self._pending[:] = False
-    self._end(self._active.nonzero().flatten())
+    if self._maybe_active:
+        self._end(self._active.nonzero().flatten())
+        self._maybe_active = False
 ```
 
 ## `trigger(envs_idx)`
@@ -3225,6 +3242,7 @@ Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.
 def trigger(self, envs_idx: torch.Tensor):
     """Fire the event for these environments on the next step."""
     self._pending[envs_idx] = True
+    self._maybe_active = True
 ```
 
 Bases: `MdpFn`
@@ -5612,9 +5630,11 @@ def step(self) -> torch.Tensor:
         value = cfg.execute() * dt
 
         # Zero the value where the item's condition is off, and count its active time
-        active = cfg.active()
+        active = cfg.evaluate_when()
         if active is not None:
-            value = value * active
+            # torch.where, not a multiply, since NaN * 0 is still NaN, and a gated
+            # function is often undefined where its condition is off
+            value = torch.where(active, value, 0.0)
             self._active_seconds[name] += active * dt
 
         # Add to the episode sums, even at zero weight, so the mean is always known
@@ -5833,7 +5853,7 @@ def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         try:
             # Get termination value
             value = term_item.execute()
-            active = term_item.active()
+            active = term_item.evaluate_when()
             if active is not None:
                 value = value & active
 
@@ -11591,6 +11611,9 @@ def build(self):
             (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
         )
         self._torque_buf = torch.zeros_like(self._force_buf)
+    # Without a torque range, none is applied, so the observation must not report one
+    if self.torque is None:
+        self._torque_buf.zero_()
 ```
 
 ### `context(env)`
@@ -11648,7 +11671,7 @@ Clear the applied forces and torques for the specified environments.
 Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
 
 ```
-def end(self, envs_idx: torch.Tensor):
+def end(self, envs_idx: torch.Tensor) -> None:
     """
     Clear the applied forces and torques for the specified environments.
     """
@@ -11703,7 +11726,7 @@ def safe_build(self) -> None:
 Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
 
 ```
-def start(self, envs_idx: torch.Tensor):
+def start(self, envs_idx: torch.Tensor) -> None:
     n_envs = len(envs_idx)
 
     angle = torch.empty(n_envs, device=gs.device).uniform_(0, 2 * math.pi)
@@ -11727,7 +11750,7 @@ Genesis clears external forces after each step, so we need to reapply them each 
 Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
 
 ```
-def step(self, envs_idx: torch.Tensor):
+def step(self, envs_idx: torch.Tensor) -> None:
     """
     Genesis clears external forces after each step, so we need to reapply them each step
     """
@@ -22984,9 +23007,9 @@ def __init__(
     )
     assert trigger_count == 1, "Must specify only one trigger"
     if iteration_trigger is not None:
-        assert (
-            steps_per_iteration is not None and steps_per_iteration > 0
-        ), "steps_per_iteration is required with iteration_trigger"
+        assert steps_per_iteration is not None and steps_per_iteration > 0, (
+            "steps_per_iteration is required with iteration_trigger"
+        )
 
     # Determine how to name the file
     if filename is None:
@@ -22997,9 +23020,9 @@ def __init__(
         else:
             filename = VideoFilename.EPISODE
     if filename == VideoFilename.ITERATION:
-        assert (
-            steps_per_iteration is not None and steps_per_iteration > 0
-        ), "steps_per_iteration is required with VideoFilename.ITERATION"
+        assert steps_per_iteration is not None and steps_per_iteration > 0, (
+            "steps_per_iteration is required with VideoFilename.ITERATION"
+        )
     self._filename = filename
 
     self.episode_trigger = episode_trigger
@@ -23085,9 +23108,9 @@ def build(self) -> None:
     """Load the camera from the environment."""
     super().build()
     self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-    assert (
-        self._cam is not None
-    ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+    assert self._cam is not None, (
+        f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+    )
 ```
 
 ## `close()`

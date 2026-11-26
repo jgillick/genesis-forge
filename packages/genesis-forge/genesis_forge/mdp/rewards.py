@@ -881,7 +881,10 @@ class stopped_joint_deviation_l1(MdpFn):
         )
 
 
-@deprecated(reason="Use 'stopped_joint_deviation_l1' instead")
+@deprecated(
+    reason="Use 'dof_similar_to_default' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
 @dataclass(kw_only=True, eq=False)
 class stand_still_joint_deviation_l1(stopped_joint_deviation_l1):
     """Deprecated alias of :class:`stopped_joint_deviation_l1`."""

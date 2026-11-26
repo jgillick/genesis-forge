@@ -83,8 +83,36 @@ def test_the_interval_is_counted_from_the_end_of_the_event(env):
     for _ in range(14):
         mgr.step()
         active.append(int(mgr.get_active("e")[0]))
-    # 5 steps of waiting, 3 active, then 5 idle
-    assert active == [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1]
+    # A 5-step wait after the reset, 3 active, then the same 5-step wait counted from
+    # the step it ended on
+    assert active == [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1]
+
+
+def test_an_instant_event_fires_once_per_interval(env):
+    fired = []
+    mgr, _ = make(
+        env, fn=lambda env, envs_idx: fired.append(len(fired)), interval_range_s=0.04
+    )
+    steps(mgr, 8)
+    assert len(fired) == 4
+
+
+def test_an_instant_event_can_fire_every_step(env):
+    fired = []
+    mgr, _ = make(
+        env, fn=lambda env, envs_idx: fired.append(len(fired)), interval_range_s=0.02
+    )
+    steps(mgr, 5)
+    assert len(fired) == 5
+
+
+def test_an_idle_trigger_only_event_skips_its_step(env):
+    mgr, fn = make(env)
+    item = mgr["e"]
+    item._masks_to_idx = None  # would fail if called
+    steps(mgr, 3)
+    mgr.reset(torch.tensor([0, 1]))
+    assert fn.log == [("reset", [0, 1])]
 
 
 def test_intervals_are_sampled_per_environment_within_the_range(env):
@@ -123,7 +151,7 @@ def test_a_changed_interval_is_used_for_the_next_wait(env):
     assert fn.log == []
     steps(mgr, 1)  # fires
     fn.log.clear()
-    steps(mgr, 3)  # ends, then 2 steps of waiting
+    steps(mgr, 2)  # ends on the first step of the 2-step wait, then fires
     assert fn.log == [("end", ALL), ("start", ALL), ("step", ALL)]
 
 

@@ -45,6 +45,10 @@ class EventConfigItem(ConfigItem):
         self._remaining_steps = torch.zeros_like(self._wait_steps)
         self._sample_interval(env.all_envs_idx)
 
+        # Whether any env may be active or have a pending trigger. Kept on the CPU, so an
+        # event that's idle can skip the work that has to wait for the GPU.
+        self._maybe_active = False
+
     """
     Properties
     """
@@ -108,16 +112,26 @@ class EventConfigItem(ConfigItem):
     def trigger(self, envs_idx: torch.Tensor):
         """Fire the event for these environments on the next step."""
         self._pending[envs_idx] = True
+        self._maybe_active = True
 
     def step(self):
         """Advance the timers, and run the event's function where it's due."""
+        # An event only fired by trigger() has nothing to do until it's triggered
+        if self._interval_range is None and not self._maybe_active:
+            return
+
         self._remaining_steps -= self._active.int()
         ended = self._active & (self._remaining_steps <= 0)
 
-        # Count down the environments that are waiting, not including the ones that just ended
+        # Count down the environments that are waiting. The step an event ends on is the
+        # first step of its next wait, so the wait is the same length as after a reset.
         due = self._pending.clone()
         if self._interval_range is not None:
-            idle = ~self._active
+            fresh_wait = self._sample_steps(
+                self._interval_range, self._env.all_envs_idx
+            )
+            self._wait_steps = torch.where(ended, fresh_wait, self._wait_steps)
+            idle = ~self._active | ended
             self._wait_steps -= idle.int()
             due |= idle & (self._wait_steps <= 0)
         self._pending[:] = False
@@ -127,8 +141,9 @@ class EventConfigItem(ConfigItem):
         active = (self._active & ~ended) | due
 
         ended_idx, due_idx, active_idx = self._masks_to_idx(ended, due, active)
+        self._maybe_active = active_idx.numel() > 0
 
-        self._end(ended_idx)
+        self._end(ended_idx, restart_wait=False)
 
         if due_idx.numel() > 0:
             self._active[due_idx] = True
@@ -148,11 +163,14 @@ class EventConfigItem(ConfigItem):
     def stop(self):
         """End the event everywhere it's active, and discard any pending triggers."""
         self._pending[:] = False
-        self._end(self._active.nonzero().flatten())
+        if self._maybe_active:
+            self._end(self._active.nonzero().flatten())
+            self._maybe_active = False
 
     def reset(self, envs_idx: torch.Tensor):
         """End the event for these environments, and restart their wait."""
-        self._end(envs_idx[self._active[envs_idx]])
+        if self._maybe_active:
+            self._end(envs_idx[self._active[envs_idx]])
         self._pending[envs_idx] = False
         self._sample_interval(envs_idx)
         super().reset(envs_idx)
@@ -209,12 +227,13 @@ class EventConfigItem(ConfigItem):
             return [mask.nonzero().flatten().to(device) for mask in cpu_masks]
         return [mask.nonzero().flatten() for mask in masks]
 
-    def _end(self, envs_idx: torch.Tensor):
+    def _end(self, envs_idx: torch.Tensor, restart_wait: bool = True):
         """End the event for these environments, and start their next wait."""
         if envs_idx.numel() == 0:
             return
         self._active[envs_idx] = False
-        self._sample_interval(envs_idx)
+        if restart_wait:
+            self._sample_interval(envs_idx)
         if self._duration_fn is not None:
             self._duration_fn.end(envs_idx)
 

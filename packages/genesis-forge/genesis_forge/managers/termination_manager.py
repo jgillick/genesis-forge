@@ -185,7 +185,7 @@ class TerminationManager(BaseManager):
             try:
                 # Get termination value
                 value = term_item.execute()
-                active = term_item.active()
+                active = term_item.evaluate_when()
                 if active is not None:
                     value = value & active
 

@@ -147,6 +147,17 @@ def test_push_force_survives_a_param_change(env, mgr):
     assert torch.equal(fn.current_force, before)
 
 
+def test_removing_the_torque_mid_push_stops_reporting_it(env, mgr):
+    fn = bind(
+        events.push_force(entity_manager=mgr, force=(10.0, 10.0), torque=(1.0, 1.0)),
+        env,
+    )
+    fn.start(torch.tensor([0]))
+    fn.torque = None
+    assert torch.count_nonzero(fn.current_torque) == 0
+    assert torch.count_nonzero(fn.current_force) > 0
+
+
 @pytest.mark.parametrize("name", ["nope", ".*_foot"])
 def test_push_force_requires_exactly_one_link(env, mgr, name):
     with pytest.raises(ValueError, match="Expected one link"):

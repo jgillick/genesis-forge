@@ -234,9 +234,11 @@ class RewardManager(BaseManager):
             value = cfg.execute() * dt
 
             # Zero the value where the item's condition is off, and count its active time
-            active = cfg.active()
+            active = cfg.evaluate_when()
             if active is not None:
-                value = value * active
+                # torch.where, not a multiply, since NaN * 0 is still NaN, and a gated
+                # function is often undefined where its condition is off
+                value = torch.where(active, value, 0.0)
                 self._active_seconds[name] += active * dt
 
             # Add to the episode sums, even at zero weight, so the mean is always known

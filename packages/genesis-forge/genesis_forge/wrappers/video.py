@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import math
 import os
 from collections.abc import Callable
@@ -86,8 +87,8 @@ class VideoWrapper(Wrapper):
                           :attr:`iteration_offset` property, as long as it is set before the first step.
         wait_for_episode_start: Delay each triggered recording until the next episode of the watched environment begins.
                                 Has no effect with ``episode_trigger``, which always starts on the first step of an episode.
-        video_length_sec: Length of each video, in seconds. ``None`` records until :meth:`close` is called, through any
-                          episode resets.
+        video_length_sec: Length of each video, in seconds. ``None`` records until the environment is closed, through
+                          any episode resets.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
@@ -131,7 +132,11 @@ class VideoWrapper(Wrapper):
             step_trigger=lambda step: step % 1500 == 0
         )
 
-    Record a play session from start to end. Call :meth:`close` when the session is over, or the video won't be saved::
+    A recording in progress is saved when :meth:`close` is called, when a step raises (such as Genesis's
+    "Viewer closed." error when the viewer window is closed), or when Python exits. Calling :meth:`close` is still
+    the most reliable way to save it.
+
+    Record a play session from start to end::
 
         env = VideoWrapper(
             env,
@@ -242,9 +247,9 @@ class VideoWrapper(Wrapper):
         )
         assert trigger_count == 1, "Must specify only one trigger"
         if iteration_trigger is not None:
-            assert (
-                steps_per_iteration is not None and steps_per_iteration > 0
-            ), "steps_per_iteration is required with iteration_trigger"
+            assert steps_per_iteration is not None and steps_per_iteration > 0, (
+                "steps_per_iteration is required with iteration_trigger"
+            )
 
         # Determine how to name the file
         if filename is None:
@@ -255,9 +260,9 @@ class VideoWrapper(Wrapper):
             else:
                 filename = VideoFilename.EPISODE
         if filename == VideoFilename.ITERATION:
-            assert (
-                steps_per_iteration is not None and steps_per_iteration > 0
-            ), "steps_per_iteration is required with VideoFilename.ITERATION"
+            assert steps_per_iteration is not None and steps_per_iteration > 0, (
+                "steps_per_iteration is required with VideoFilename.ITERATION"
+            )
         self._filename = filename
 
         self.episode_trigger = episode_trigger
@@ -293,22 +298,31 @@ class VideoWrapper(Wrapper):
     def build(self) -> None:
         """Load the camera from the environment."""
         super().build()
-        self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-        assert (
-            self._cam is not None
-        ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        self._load_camera()
+
+    def _load_camera(self) -> None:
+        """Find the recording camera on the base environment."""
+        self._cam = getattr(self.unwrapped, self._camera_attr, None)
+        assert self._cam is not None, (
+            f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+        )
 
     def step(
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """Record a video image at each step."""
-        (
-            observations,
-            rewards,
-            terminateds,
-            truncateds,
-            extras,
-        ) = super().step(actions)
+        try:
+            (
+                observations,
+                rewards,
+                terminateds,
+                truncateds,
+                extras,
+            ) = super().step(actions)
+        except BaseException:
+            # The session is ending (e.g. the viewer was closed), so save what was recorded
+            self.finish_recording()
+            raise
 
         # Stop recording if the recording stop step is reached
         if (
@@ -347,8 +361,9 @@ class VideoWrapper(Wrapper):
 
     def start_recording(self):
         """Start recording a video."""
+        # The camera is normally found in build(), but the environment may have been built before it was wrapped
         if self._cam is None:
-            return
+            self._load_camera()
 
         self._is_recording = True
         self._recording_start_step = self._current_step
@@ -358,6 +373,9 @@ class VideoWrapper(Wrapper):
             if self._video_length_steps is None
             else self._current_step + self._video_length_steps
         )
+
+        # Save the recording even if the script exits without closing the environment
+        atexit.register(self.finish_recording)
 
         filepath = os.path.join(self._tmp_dir, self._recording_name)
         self._cam.start_recording(
@@ -371,6 +389,7 @@ class VideoWrapper(Wrapper):
         """
         if not self._is_recording or self._cam is None:
             return
+        atexit.unregister(self.finish_recording)
 
         # Save recording
         filepath = os.path.join(self._out_dir, self._recording_name)

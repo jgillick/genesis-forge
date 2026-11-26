@@ -43,6 +43,40 @@ def scene_rendered_envs_idx(scene: gs.Scene, num_envs: int) -> list[int]:
     return list(range(num_envs))
 
 
+def debug_envs_idx(
+    scene: gs.Scene, num_envs: int, envs_idx: Sequence[int] | None
+) -> list[int]:
+    """
+    Get the environments a debug visualizer draws in, which must be ones the scene renders.
+
+    Debug objects are drawn into every rendered environment, so the visuals for an
+    environment that isn't rendered would show up in another one.
+
+    Args:
+        scene: The Genesis scene
+        num_envs: The total number of parallel environments
+        envs_idx: The environments to draw in, or None for all the rendered environments
+
+    Returns:
+        The environment indices to draw in
+
+    Raises:
+        ValueError: If any of the environments are not rendered by the scene
+    """
+    rendered = scene_rendered_envs_idx(scene, num_envs)
+    if envs_idx is None:
+        return rendered
+    envs_idx = [int(i) for i in envs_idx]
+    not_rendered = sorted(set(envs_idx) - set(rendered))
+    if not_rendered:
+        raise ValueError(
+            f"The debug visualizer's envs_idx includes environments that are not rendered: "
+            f"{not_rendered}. Add them to rendered_envs_idx in the scene's VisOptions, "
+            f"or remove them from envs_idx. The rendered environments are: {rendered}"
+        )
+    return envs_idx
+
+
 def entity_lin_vel(entity: RigidEntity) -> torch.Tensor:
     """
     Calculate an entity's linear velocity in its local frame.
@@ -195,3 +229,51 @@ def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidL
         List of RigidLink objects.
     """
     return [link for link in entity.links if name_matches(link.name, name_pattern)]
+
+
+def apply_external_wrench(
+    entity: RigidEntity,
+    links_idx_local: list[int],
+    envs_idx: torch.Tensor,
+    force: torch.Tensor | None = None,
+    torque: torch.Tensor | None = None,
+) -> None:
+    """
+    Apply a force and/or torque to an entity's links, for the next simulation step.
+
+    The values are in the world frame, and the force is applied to each link's center of mass.
+    Works with all the versions of Genesis that Genesis Forge supports.
+
+    Args:
+        entity: The entity to apply the force to.
+        links_idx_local: The local indices of the links.
+        envs_idx: The environment ids to apply the force in.
+        force: The force for each link, in newtons. Shape is (len(envs_idx), len(links_idx_local), 3).
+        torque: The torque for each link, in newton-meters. Same shape as the force.
+    """
+    if force is None and torque is None:
+        raise ValueError("Either force or torque is required")
+
+    solver = entity.solver
+    links_idx = [entity.links[i].idx for i in links_idx_local]
+
+    # Genesis >= 1.4
+    if hasattr(solver, "apply_links_external_wrench"):
+        solver.apply_links_external_wrench(
+            force=force,
+            torque=torque,
+            links_idx=links_idx,
+            envs_idx=envs_idx,
+            ref=gs.link_ref_frame.link_COM,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        return
+
+    # Genesis < 1.4
+    if force is not None:
+        solver.apply_links_external_force(
+            force, links_idx=links_idx, envs_idx=envs_idx, ref="link_com"
+        )
+    if torque is not None:
+        solver.apply_links_external_torque(
+            torque, links_idx=links_idx, envs_idx=envs_idx
+        )

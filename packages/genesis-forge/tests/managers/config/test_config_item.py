@@ -201,7 +201,7 @@ def test_item_without_when_is_not_gated(env):
     item = RewardConfigItem({"fn": plain_reward, "weight": 1.0}, env)
     item.build()
     assert not item.is_gated
-    assert item.active() is None
+    assert item.evaluate_when() is None
 
 
 def test_plain_function_when_returns_its_mask(env):
@@ -211,7 +211,7 @@ def test_plain_function_when_returns_its_mask(env):
     )
     item.build()
     assert item.is_gated
-    assert torch.equal(item.active(), mask)
+    assert torch.equal(item.evaluate_when(), mask)
 
 
 def test_mdp_fn_when_is_bound_built_reset_and_rebuilt(env):
@@ -221,14 +221,14 @@ def test_mdp_fn_when_is_bound_built_reset_and_rebuilt(env):
 
     assert when.builds == 1
     assert when.env_at_build is env
-    assert torch.equal(item.active(), torch.tensor([True, True, False, False]))
+    assert torch.equal(item.evaluate_when(), torch.tensor([True, True, False, False]))
 
     item.reset(torch.tensor([1, 3]))
     assert when.reset_calls == [[1, 3]]
 
     when.count = 3
     assert when.builds == 2
-    assert torch.equal(item.active(), torch.tensor([True, True, True, False]))
+    assert torch.equal(item.evaluate_when(), torch.tensor([True, True, True, False]))
 
 
 def test_unconstructed_mdp_fn_when_is_rejected(env):
@@ -242,7 +242,7 @@ def test_when_returning_floats_raises(env):
     )
     item.build()
     with pytest.raises(TypeError, match="bool tensor"):
-        item.active()
+        item.evaluate_when()
 
 
 def test_when_returning_the_wrong_shape_raises(env):
@@ -255,4 +255,4 @@ def test_when_returning_the_wrong_shape_raises(env):
     )
     item.build()
     with pytest.raises(ValueError, match="shape"):
-        item.active()
+        item.evaluate_when()

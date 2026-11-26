@@ -4,6 +4,7 @@ from genesis_forge import ManagedEnvironment
 from genesis_forge.managers import (
     ActuatorManager,
     EntityManager,
+    EventManager,
     ObservationManager,
     PositionActionManager,
     RewardManager,
@@ -11,7 +12,7 @@ from genesis_forge.managers import (
     VelocityCommandManager,
 )
 from genesis_forge.managers.actuator import NoisyValue
-from genesis_forge.mdp import observations, reset, rewards, terminations
+from genesis_forge.mdp import events, observations, reset, rewards, terminations
 
 HEIGHT_OFFSET = 0.4
 INITIAL_BODY_POSITION = (0.0, 0.0, HEIGHT_OFFSET)
@@ -112,6 +113,27 @@ class Go2DomainRandomizationEnv(ManagedEnvironment):
                         min_step_count_between_reset=100,
                     ),
                 },
+            },
+        )
+
+        ##
+        # Randomly push the robot
+        self.event_manager = EventManager(
+            self,
+            cfg={
+                "push": {
+                    "fn": events.push_force(
+                        entity_manager=self.robot_manager,
+                        force=(80.0, 150.0),  # newtons
+                        torque=(5.0, 10.0),  # newton-meters, around a random axis
+                    ),
+                    "interval_range_s": (4.0, 8.0),
+                    "duration_range_s": (0.1, 0.3),
+                },
+            },
+            debug_visualizer=True,
+            debug_visualizer_cfg={
+                "envs_idx": [0],
             },
         )
 

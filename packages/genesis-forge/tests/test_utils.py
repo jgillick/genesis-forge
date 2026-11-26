@@ -6,13 +6,18 @@ accepts name patterns, so the exact-vs-regex and first-match-wins rules are pinn
 
 import math
 import re
+from types import SimpleNamespace
+from typing import Any
 
+import genesis as gs
 import pytest
 import torch
 from genesis.utils.geom import transform_by_quat, xyz_to_quat
 
 from genesis_forge.utils import (
+    apply_external_wrench,
     assign_by_pattern,
+    debug_envs_idx,
     heading_from_quat,
     inf_to_none,
     name_matches,
@@ -166,3 +171,97 @@ def test_inf_to_none_returns_plain_floats():
 
     assert result == [1.0, 2.0]
     assert all(type(value) is float for value in result)
+
+
+"""
+debug_envs_idx
+"""
+
+
+def scene_rendering(rendered_envs_idx) -> Any:
+    return SimpleNamespace(
+        vis_options=SimpleNamespace(rendered_envs_idx=rendered_envs_idx)
+    )
+
+
+def test_debug_envs_default_to_the_rendered_envs():
+    assert debug_envs_idx(scene_rendering([0, 2]), 4, None) == [0, 2]
+
+
+def test_debug_envs_default_to_every_env_when_rendering_is_not_restricted():
+    assert debug_envs_idx(scene_rendering(None), 3, None) == [0, 1, 2]
+
+
+def test_debug_envs_can_be_some_of_the_rendered_envs():
+    assert debug_envs_idx(scene_rendering([0, 2]), 4, [2]) == [2]
+
+
+def test_debug_envs_that_are_not_rendered_raise():
+    with pytest.raises(ValueError, match=r"not rendered: \[1, 3\]"):
+        debug_envs_idx(scene_rendering([0, 2]), 4, [0, 1, 3])
+
+
+def test_debug_envs_can_be_any_env_when_rendering_is_not_restricted():
+    assert debug_envs_idx(scene_rendering(None), 4, [3]) == [3]
+
+
+"""
+apply_external_wrench
+"""
+
+
+class LegacySolver:
+    """The Genesis < 1.4 API: separate force and torque calls."""
+
+    def __init__(self):
+        self.calls = []
+
+    def apply_links_external_force(self, force, links_idx, envs_idx, ref):
+        self.calls.append(("force", links_idx, ref))
+
+    def apply_links_external_torque(self, torque, links_idx, envs_idx):
+        self.calls.append(("torque", links_idx))
+
+
+def wrench_entity(solver):
+    links = [SimpleNamespace(idx=10), SimpleNamespace(idx=11)]
+    return SimpleNamespace(solver=solver, links=links)
+
+
+def test_apply_external_wrench_requires_a_force_or_torque():
+    with pytest.raises(ValueError, match="force or torque"):
+        apply_external_wrench(wrench_entity(LegacySolver()), [0], torch.tensor([0]))
+
+
+def test_apply_external_wrench_on_legacy_genesis_maps_local_links_to_global():
+    solver = LegacySolver()
+    wrench = torch.zeros((1, 1, 3))
+    apply_external_wrench(
+        wrench_entity(solver), [1], torch.tensor([0]), force=wrench, torque=wrench
+    )
+    assert solver.calls == [("force", [11], "link_com"), ("torque", [11])]
+
+
+def test_apply_external_wrench_on_legacy_genesis_with_only_a_torque():
+    solver = LegacySolver()
+    apply_external_wrench(
+        wrench_entity(solver), [0], torch.tensor([0]), torque=torch.zeros((1, 1, 3))
+    )
+    assert solver.calls == [("torque", [10])]
+
+
+def test_apply_external_wrench_on_genesis_1_4_makes_one_call(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        gs, "link_ref_frame", SimpleNamespace(link_COM="com"), raising=False
+    )
+    solver = SimpleNamespace(
+        apply_links_external_wrench=lambda **kwargs: calls.append(kwargs)
+    )
+    torque = torch.zeros((1, 1, 3))
+    apply_external_wrench(wrench_entity(solver), [1], torch.tensor([0]), torque=torque)
+    assert len(calls) == 1
+    assert calls[0]["force"] is None
+    assert calls[0]["torque"] is torque
+    assert calls[0]["links_idx"] == [11]
+    assert calls[0]["ref"] == "com"

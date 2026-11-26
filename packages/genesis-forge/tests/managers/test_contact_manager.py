@@ -208,11 +208,21 @@ def test_build_debug_envs_idx_prefers_the_explicit_cfg_value(env):
     env.robot = make_robot()
     env.scene = FakeScene(vis_options=FakeVisOptions(rendered_envs_idx=[0, 1]))
     mgr = ContactManager(
-        env, link_names=[".*_foot"], debug_visualizer_cfg={"envs_idx": [3]}
+        env, link_names=[".*_foot"], debug_visualizer_cfg={"envs_idx": [1]}
     )
     mgr.build()
 
-    assert mgr.debug_envs_idx == [3]
+    assert mgr.debug_envs_idx == [1]
+
+
+def test_build_debug_envs_idx_rejects_envs_that_are_not_rendered(env):
+    env.robot = make_robot()
+    env.scene = FakeScene(vis_options=FakeVisOptions(rendered_envs_idx=[0, 1]))
+    mgr = ContactManager(
+        env, link_names=[".*_foot"], debug_visualizer_cfg={"envs_idx": [3]}
+    )
+    with pytest.raises(ValueError, match="not rendered"):
+        mgr.build()
 
 
 """

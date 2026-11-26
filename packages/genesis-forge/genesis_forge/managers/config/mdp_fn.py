@@ -45,11 +45,23 @@ class MdpFn:
     _env: ClassVar[GenesisEnv | None] = None
     _can_build: ClassVar[bool] = False
     _building: ClassVar[bool] = False
+    _declared_fields: ClassVar[dict[str, dataclasses.Field]] = {}
 
     def __init_subclass__(cls, **kwargs) -> None:
         """Enforces the @dataclass decorator on subclasses."""
         super().__init_subclass__(**kwargs)
+
+        # Make sure this class inherits its parents' field() settings, like default_factory.
+        # A parent loses them if it has its own @dataclass decorator, because that makes it a
+        # dataclass a second time: first here, and then again by the decorator. So put back
+        # the settings that were saved the first time.
+        for base in cls.__mro__[1:]:
+            declared = base.__dict__.get("_declared_fields")
+            if declared:
+                base.__dataclass_fields__.update(declared)
+
         dataclasses.dataclass(kw_only=True, eq=False)(cls)
+        cls._declared_fields = dict(cls.__dataclass_fields__)
 
     """
     Properties
@@ -228,3 +240,111 @@ class ResetMdpFn(MdpFn):
         """Store the environment and the entity this function resets."""
         super().context(env)
         object.__setattr__(self, "_entity", entity)
+
+
+@dataclass(kw_only=True, eq=False)
+class EventMdpFn(MdpFn):
+    """
+    Base class for an event that happens all at once, used by the :class:`EventManager`.
+
+    For an event that lasts for a length of time, see :class:`DurationEventMdpFn`.
+
+    Example - Suddenly stop the robot::
+
+        @dataclass(kw_only=True, eq=False)
+        class stop_moving(EventMdpFn):
+            entity_manager: EntityManager
+
+            def __call__(self, env, envs_idx):
+                self.entity_manager.entity.zero_all_dofs_velocity(envs_idx)
+    """
+
+    def __call__(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, env: GenesisEnv, envs_idx: torch.Tensor
+    ) -> None:
+        """
+        Called when the event fires.
+
+        Args:
+            env: The Genesis Forge environment.
+            envs_idx: The environment ids the event fired for.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement __call__(self, env, envs_idx)"
+        )
+
+    def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+        """
+        Optional: draw this event, when the :class:`EventManager` debug visualizer is enabled.
+
+        Called each time the visualizer renders. Short events stay visible for a moment after they
+        end (``min_display_s``), so don't use anything that you clear in ``end()``.
+
+        Args:
+            envs_idx: The environment ids to draw the event in.
+
+        Returns:
+            The debug objects that were drawn (``scene.draw_debug_*``), which will be removed by
+            the manager before the next render.
+        """
+        return []
+
+
+@dataclass(kw_only=True, eq=False)
+class DurationEventMdpFn(EventMdpFn):
+    """
+    Base class for an event that lasts for a length of time, used by the :class:`EventManager`.
+
+    Implement at least one of :meth:`start`, :meth:`step`, or :meth:`end`. The event's config
+    must include a ``duration_range_s``.
+
+    Example - A constant upward force, while the event is active::
+
+        @dataclass(kw_only=True, eq=False)
+        class lift(DurationEventMdpFn):
+            entity_manager: EntityManager
+            force: float = 10.0
+
+            def build(self):
+                self._force = torch.zeros((self.env.num_envs, 1, 3), device=gs.device)
+                self._force[:, :, 2] = self.force
+
+            def step(self, envs_idx):
+                apply_external_wrench(
+                    self.entity_manager.entity,
+                    links_idx_local=[0],  # base link
+                    envs_idx=envs_idx,
+                    force=self._force[envs_idx],
+                )
+    """
+
+    def __call__(self, env: GenesisEnv, envs_idx: torch.Tensor) -> None:
+        """Not used by duration events. Implement :meth:`start` instead."""
+        raise NotImplementedError(
+            f"{type(self).__name__} is a duration event, which is run with "
+            "start(), step(), and end() instead of __call__()"
+        )
+
+    def start(self, envs_idx: torch.Tensor) -> None:
+        """
+        Called once, when the event fires.
+
+        Args:
+            envs_idx: The environment ids the event fired for.
+        """
+
+    def step(self, envs_idx: torch.Tensor) -> None:
+        """
+        Called on every step the event is active, including the one it fires on.
+
+        Args:
+            envs_idx: The environment ids the event is active in.
+        """
+
+    def end(self, envs_idx: torch.Tensor) -> None:
+        """
+        Called once, when the event is over or the environment resets during the event.
+
+        Args:
+            envs_idx: The environment ids the event ended in.
+        """

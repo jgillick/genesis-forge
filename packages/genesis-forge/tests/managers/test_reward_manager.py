@@ -326,6 +326,26 @@ def test_gated_off_envs_add_no_reward(env):
     assert torch.allclose(result, expected)
 
 
+def test_gated_off_envs_drop_a_non_finite_value(env):
+    mask = torch.tensor([True, False, True, False])
+    mgr = RewardManager(
+        env,
+        cfg={
+            "a": {
+                "fn": lambda env: torch.tensor([1.0, float("nan"), 1.0, float("inf")]),
+                "weight": 1.0,
+                "when": toggle(mask),
+            }
+        },
+    )
+    mgr.build()
+
+    result = mgr.step()
+
+    assert torch.isfinite(result).all()
+    assert torch.allclose(result, torch.tensor([1.0, 0.0, 1.0, 0.0]) * env.dt)
+
+
 def test_gated_function_runs_while_every_env_is_off(env):
     calls = []
 

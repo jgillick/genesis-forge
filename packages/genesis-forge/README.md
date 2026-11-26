@@ -17,6 +17,7 @@ Today, modern robots learn to balance, walk, and manipulate objects using [Reinf
 - ↪️ Command managers - Commands your robot with debug visualization
 - 🏔️ Terrain manager - Helpful terrain utilities and curriculums
 - 💥 Contact manager - Comprehensive contact/collision detection and reward/termination functions
+- 👊 Event manager - Randomly push your robot during training, to make it more robust
 - 📈 Monitors - Log anything about your robot, including estimated motor power and torque, and use it in your rewards
 - 🎬 Video Wrapper - Automatically records videos at regular intervals during training
 - 🕹️ Gamepad interface - Control trained policies directly with a physical gamepad controller.

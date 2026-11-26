@@ -544,6 +544,7 @@ def __init__(
     self.managers: ManagersDict = {
         "contact": [],
         "entity": [],
+        "event": [],
         "command": [],
         "terrain": [],
         "actuator": [],
@@ -630,7 +631,7 @@ The extras/infos dictionary reset at the start of every step, and contains addit
 
 The actions for for the previous step.
 
-## `managers = {'contact': [], 'entity': [], 'command': [], 'terrain': [], 'actuator': [], 'action': [], 'monitor': [], 'observation': [], 'reward': None, 'termination': None}`
+## `managers = {'contact': [], 'entity': [], 'event': [], 'command': [], 'terrain': [], 'actuator': [], 'action': [], 'monitor': [], 'observation': [], 'reward': None, 'termination': None}`
 
 ## `max_episode_length = None`
 
@@ -789,10 +790,11 @@ def add_manager(self, manager_type: ManagerType, manager: BaseManager):
         raise ValueError(f"'{manager_type}' is not a valid manager type.")
 
     # Append manager if the dict item is a list
-    if isinstance(self.managers[manager_type], list):
-        self.managers[manager_type].append(manager)
-    elif self.managers[manager_type] is None:
-        self.managers[manager_type] = manager
+    managers = cast(dict[str, Any], self.managers)
+    if isinstance(managers[manager_type], list):
+        managers[manager_type].append(manager)
+    elif managers[manager_type] is None:
+        managers[manager_type] = manager
     else:
         raise ValueError(
             f"Manager type '{manager_type}' already has a manager, and an environment cannot have multiple {manager_type} managers."
@@ -833,6 +835,8 @@ def build(self):
         command_manager.build()
     for entity_manager in self.managers["entity"]:
         entity_manager.build()
+    for event_manager in self.managers["event"]:
+        event_manager.build()
 
     # Calculate monitor values, since observations read them to size the observation space
     for monitor in self.managers["monitor"]:
@@ -977,6 +981,9 @@ def reset(
 
     (obs, _) = super().reset(env_ids)
 
+    # Events reset first, so anything they restore when ending can be overridden by the other managers
+    for event_manager in self.managers["event"]:
+        event_manager.reset(env_ids)
     for actuator_manager in self.managers["actuator"]:
         actuator_manager.reset(env_ids)
     for action_manager in self.managers["action"]:
@@ -1080,6 +1087,11 @@ def step(
         (start, end) = self._action_ranges[i]
         processed_actions = action_manager.step(actions[:, start:end])
         action_manager.send_actions_to_simulation(processed_actions)
+
+    # Run events last, right before the simulation step, so that the values cached
+    # after it include their effects
+    for event_manager in self.managers["event"]:
+        event_manager.step()
     self.scene.step()
 
     # Update entity managers
@@ -2236,7 +2248,10 @@ def __init__(
 
     self.debug_visualizer = debug_visualizer
     self.debug_envs_idx = None
-    self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
+    self.visualizer_cfg: dict[str, Any] = {
+        **DEFAULT_VISUALIZER_CONFIG,
+        **debug_visualizer_cfg,
+    }
     self._debug_nodes = []
     self._contact_position_counts = None
 
@@ -2314,12 +2329,9 @@ def build(self):
     """Initialize link indices and buffers."""
     super().build()
 
-    # If debug envs_idx is not set, use the envs the scene renders
-    self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None:
-        self.debug_envs_idx = scene_rendered_envs_idx(
-            self.env.scene, self.env.num_envs
-        )
+    self.debug_envs_idx = debug_envs_idx(
+        self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+    )
 
     # Calculate the number of steps per debug render
     fps = self.visualizer_cfg.get("fps", 30)
@@ -2762,6 +2774,958 @@ def step(self):
     """
     self._cached_calcs()
 ```
+
+# Event
+
+Fires events during an episode, such as random pushes, on a random timer for each environment.
+
+Bases: `BaseManager`
+
+Runs events in the middle of an episode, like random pushes.
+
+Each environment has its own random timer for each event. Events run right before the simulation step.
+
+To set the state of an entity at the start of an episode, use the :class:`EntityManager` `on_reset` config instead.
+
+Setting `enabled` to False ends the active events on the next step, pauses the timers, and ignores triggers.
+
+Parameters:
+
+| Name                   | Type                         | Description                                                                                                                                                          | Default                                     |
+| ---------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `env`                  | `GenesisEnv`                 | The environment instance.                                                                                                                                            | *required*                                  |
+| `cfg`                  | `dict[str, EventConfig]`     | A dictionary of events.                                                                                                                                              | *required*                                  |
+| `debug_visualizer`     | `bool`                       | Draw the events that support it (see :meth:EventMdpFn.debug_draw). To see this in camera renders or recorded videos, the camera needs to be created with debug=True. | `False`                                     |
+| `debug_visualizer_cfg` | \`EventDebugVisualizerConfig | None\`                                                                                                                                                               | The configuration for the debug visualizer. |
+
+Example::
+
+```
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.robot_manager = EntityManager(self, entity=self.robot)
+        self.event_manager = EventManager(
+            self,
+            cfg={
+                # Instantly change the robot's velocity every 5-10 seconds
+                "kick": {
+                    "fn": events.push_velocity(
+                        entity_manager=self.robot_manager,
+                        linear={"x": (-0.5, 0.5), "y": (-0.5, 0.5)},
+                    ),
+                    "interval_range_s": (5.0, 10.0),
+                },
+                # Push the robot with 10-40 newtons, for 0.1-0.3 seconds
+                "shove": {
+                    "fn": events.push_force(
+                        entity_manager=self.robot_manager,
+                        force=(10.0, 40.0),
+                    ),
+                    "interval_range_s": (4.0, 8.0),
+                    "duration_range_s": (0.1, 0.3),
+                },
+            },
+        )
+```
+
+Example - Change an event during training::
+
+```
+self.event_manager["shove"].interval_range_s = (2.0, 5.0)
+self.event_manager["shove"].fn.force = (20.0, 60.0)
+```
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def __init__(
+    self,
+    env: GenesisEnv,
+    cfg: dict[str, EventConfig],
+    debug_visualizer: bool = False,
+    debug_visualizer_cfg: EventDebugVisualizerConfig | None = None,
+):
+    super().__init__(env, type="event")
+    self.debug_visualizer = debug_visualizer
+
+    # Wrap config items
+    self.cfg: dict[str, EventConfigItem] = {}
+    for name, item in cfg.items():
+        try:
+            self.cfg[name] = EventConfigItem(item, env)
+        except (TypeError, ValueError) as e:
+            e.add_note(f"In the event '{name}'")
+            raise
+
+    self._visualizer = EventDebugVisualizer(
+        env, self.cfg, debug_visualizer_cfg or {}
+    )
+```
+
+## `cfg = {}`
+
+## `debug_visualizer = debug_visualizer`
+
+## `enabled = True`
+
+## `env = env`
+
+## `type = type`
+
+## `build()`
+
+Build the event function classes.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def build(self):
+    """Build the event function classes."""
+    for item in self.cfg.values():
+        item.build()
+```
+
+## `get_active(name)`
+
+Which environments an event is active in. Shape is (num_envs,).
+
+An event is active from the step it fires, through the observations of its last step.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def get_active(self, name: str) -> torch.Tensor:
+    """
+    Which environments an event is active in. Shape is (num_envs,).
+
+    An event is active from the step it fires, through the observations of its last step.
+    """
+    return self.cfg[name].active
+```
+
+## `reset(envs_idx=None)`
+
+End the events for the given environments, and restart their timers.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def reset(self, envs_idx: torch.Tensor | None = None):
+    """End the events for the given environments, and restart their timers."""
+    if envs_idx is None:
+        envs_idx = self.env.all_envs_idx
+    for item in self.cfg.values():
+        item.reset(envs_idx)
+    if self.debug_visualizer:
+        self._visualizer.reset(envs_idx)
+```
+
+## `step()`
+
+Run the events. Call this right before the simulation step.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def step(self):
+    """Run the events. Call this right before the simulation step."""
+    for name, item in self.cfg.items():
+        try:
+            if self.enabled:
+                item.step()
+            else:
+                item.stop()
+        except Exception:
+            print(f"Error running event: '{name}'")
+            raise
+
+    if self.debug_visualizer:
+        self._visualizer.step()
+    else:
+        self._visualizer.clear()
+```
+
+## `trigger(name, envs_idx=None)`
+
+Fire an event on the next step, without waiting for its timer. If the event is already active, it will be restarted.
+
+Parameters:
+
+| Name       | Type     | Description            | Default    |
+| ---------- | -------- | ---------------------- | ---------- |
+| `name`     | `str`    | The name of the event. | *required* |
+| `envs_idx` | \`Tensor | Sequence[int]          | None\`     |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/event_manager.py`
+
+```
+def trigger(
+    self, name: str, envs_idx: torch.Tensor | Sequence[int] | None = None
+) -> None:
+    """
+    Fire an event on the next step, without waiting for its timer.
+    If the event is already active, it will be restarted.
+
+    Args:
+        name: The name of the event.
+        envs_idx: The environment ids to fire the event for. All environments, if None.
+    """
+    item = self.cfg[name]
+    if not self.enabled:
+        return
+    if envs_idx is None:
+        envs_idx = self.env.all_envs_idx
+    elif not isinstance(envs_idx, torch.Tensor):
+        envs_idx = torch.as_tensor(envs_idx, device=gs.device, dtype=torch.long)
+    item.trigger(envs_idx)
+```
+
+Bases: `ConfigItemDict`
+
+Defines an event.
+
+## `duration_range_s`
+
+How long the event lasts, rounded to whole steps. A (min, max) tuple is sampled each time the event fires. Required for a DurationEventMdpFn, and not allowed for anything else.
+
+## `fn`
+
+What to do when the event fires: a constructed EventMdpFn or DurationEventMdpFn, or a plain function.
+
+Parameters:
+
+| Name       | Type | Description                                                                   | Default    |
+| ---------- | ---- | ----------------------------------------------------------------------------- | ---------- |
+| `env`      |      | The environment instance.                                                     | *required* |
+| `envs_idx` |      | The environment ids the event fired for.                                      | *required* |
+| `**params` |      | Additional parameters to pass to a plain function from the params dictionary. | *required* |
+
+## `interval_range_s`
+
+The time to wait before the event fires, counted from the environment's reset or the end of its previous event. A (min, max) tuple is sampled separately for each environment, every time. Leave it out to only fire it with :meth:`EventManager.trigger`.
+
+## `params`
+
+Additional parameters to pass to the function.
+
+Bases: `ConfigItem`
+
+A config item for an event, which also holds the event's state for each environment.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def __init__(self, cfg: EventConfig, env: GenesisEnv):
+    super().__init__(cast(ConfigItemDict, cfg), env)
+
+    self._duration_fn = (
+        self._fn if isinstance(self._fn, DurationEventMdpFn) else None
+    )
+    if isinstance(self._fn, MdpFn):
+        self._validate_fn()
+    self._interval_range = self._parse_time_range(
+        "interval_range_s", cfg.get("interval_range_s")
+    )
+    self.duration_range_s = cfg.get("duration_range_s")
+
+    # Buffers
+    self._active = torch.zeros(env.num_envs, device=gs.device, dtype=torch.bool)
+    self._pending = torch.zeros_like(self._active)
+    self._wait_steps = torch.zeros(
+        env.num_envs, device=gs.device, dtype=torch.int32
+    )
+    self._remaining_steps = torch.zeros_like(self._wait_steps)
+    self._sample_interval(env.all_envs_idx)
+
+    # Whether any env may be active or have a pending trigger. Kept on the CPU, so an
+    # event that's idle can skip the work that has to wait for the GPU.
+    self._maybe_active = False
+```
+
+## `active`
+
+Which environments the event is active in. Shape is (num_envs,).
+
+## `duration_range_s`
+
+The (min, max) time the event lasts, or None if it happens all at once. A changed duration is used the next time the event fires.
+
+## `fn`
+
+The callable for this config item.
+
+## `has_debug_visualization`
+
+Whether the event supports the debug visualizer.
+
+## `interval_range_s`
+
+The (min, max) time to wait before the event fires, or None if it is only fired manually. A changed interval is used the next time each environment starts waiting.
+
+## `is_mdp_class_fn`
+
+Whether `fn` is a constructed :class:`MdpFn` instance.
+
+## `params`
+
+The params provided for the function.
+
+Empty for an :class:`MdpFn`, whose params are typed fields on the instance -- read and write them there (`cfg.fn.target_height`) to get type checking.
+
+## `build(**kwargs)`
+
+Prepare the function or MdpFn class for training.
+
+Parameters:
+
+| Name       | Type | Description                                                                                                        | Default |
+| ---------- | ---- | ------------------------------------------------------------------------------------------------------------------ | ------- |
+| `**kwargs` |      | Additional context injected by the manager to any MdpFn class. For example, the entity manager passes entity here. | `{}`    |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/config_item.py`
+
+```
+def build(self, **kwargs):
+    """
+    Prepare the function or MdpFn class for training.
+
+    Args:
+        **kwargs: Additional context injected by the manager to any MdpFn class.
+                  For example, the entity manager passes ``entity`` here.
+    """
+    self._kwargs = kwargs
+    if self._is_mdp_class_fn:
+        self._fn.context(self._env, **kwargs)
+        self._fn.safe_build()
+    self._built = True
+```
+
+## `debug_draw(envs_idx)`
+
+Draw the event, and return the debug objects that were drawn.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """Draw the event, and return the debug objects that were drawn."""
+    if isinstance(self._fn, EventMdpFn):
+        return self._fn.debug_draw(envs_idx)
+    return []
+```
+
+## `execute(**kwargs)`
+
+Call the function, passing along the build-time context and params.
+
+Parameters:
+
+| Name       | Type | Description                                                                                               | Default |
+| ---------- | ---- | --------------------------------------------------------------------------------------------------------- | ------- |
+| `**kwargs` |      | Additional per-call arguments. For example, the entity manager passes envs_idx here for a reset function. | `{}`    |
+
+Returns:
+
+| Type | Description                    |
+| ---- | ------------------------------ |
+|      | Whatever the function returns. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/config_item.py`
+
+```
+def execute(self, **kwargs):
+    """
+    Call the function, passing along the build-time context and params.
+
+    Args:
+        **kwargs: Additional per-call arguments. For example, the entity manager
+                  passes ``envs_idx`` here for a reset function.
+
+    Returns:
+        Whatever the function returns.
+    """
+    return self._fn(self._env, **self._kwargs, **kwargs, **self._params)
+```
+
+## `reset(envs_idx)`
+
+End the event for these environments, and restart their wait.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def reset(self, envs_idx: torch.Tensor):
+    """End the event for these environments, and restart their wait."""
+    if self._maybe_active:
+        self._end(envs_idx[self._active[envs_idx]])
+    self._pending[envs_idx] = False
+    self._sample_interval(envs_idx)
+    super().reset(envs_idx)
+```
+
+## `step()`
+
+Advance the timers, and run the event's function where it's due.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def step(self):
+    """Advance the timers, and run the event's function where it's due."""
+    # An event only fired by trigger() has nothing to do until it's triggered
+    if self._interval_range is None and not self._maybe_active:
+        return
+
+    self._remaining_steps -= self._active.int()
+    ended = self._active & (self._remaining_steps <= 0)
+
+    # Count down the environments that are waiting. The step an event ends on is the
+    # first step of its next wait, so the wait is the same length as after a reset.
+    due = self._pending.clone()
+    if self._interval_range is not None:
+        fresh_wait = self._sample_steps(
+            self._interval_range, self._env.all_envs_idx
+        )
+        self._wait_steps = torch.where(ended, fresh_wait, self._wait_steps)
+        idle = ~self._active | ended
+        self._wait_steps -= idle.int()
+        due |= idle & (self._wait_steps <= 0)
+    self._pending[:] = False
+
+    # A manual trigger restarts an event that is still active
+    ended |= due & self._active
+    active = (self._active & ~ended) | due
+
+    ended_idx, due_idx, active_idx = self._masks_to_idx(ended, due, active)
+    self._maybe_active = active_idx.numel() > 0
+
+    self._end(ended_idx, restart_wait=False)
+
+    if due_idx.numel() > 0:
+        self._active[due_idx] = True
+        self._remaining_steps[due_idx] = (
+            1
+            if self._duration_range is None
+            else self._sample_steps(self._duration_range, due_idx)
+        )
+        if self._duration_fn is not None:
+            self._duration_fn.start(due_idx)
+        else:
+            self.execute(envs_idx=due_idx)
+
+    if self._duration_fn is not None and active_idx.numel() > 0:
+        self._duration_fn.step(active_idx)
+```
+
+## `stop()`
+
+End the event everywhere it's active, and discard any pending triggers.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def stop(self):
+    """End the event everywhere it's active, and discard any pending triggers."""
+    self._pending[:] = False
+    if self._maybe_active:
+        self._end(self._active.nonzero().flatten())
+        self._maybe_active = False
+```
+
+## `trigger(envs_idx)`
+
+Fire the event for these environments on the next step.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/event/config_item.py`
+
+```
+def trigger(self, envs_idx: torch.Tensor):
+    """Fire the event for these environments on the next step."""
+    self._pending[envs_idx] = True
+    self._maybe_active = True
+```
+
+Bases: `MdpFn`
+
+Base class for an event that happens all at once, used by the :class:`EventManager`.
+
+For an event that lasts for a length of time, see :class:`DurationEventMdpFn`.
+
+Example - Suddenly stop the robot::
+
+```
+@dataclass(kw_only=True, eq=False)
+class stop_moving(EventMdpFn):
+    entity_manager: EntityManager
+
+    def __call__(self, env, envs_idx):
+        self.entity_manager.entity.zero_all_dofs_velocity(envs_idx)
+```
+
+## `env`
+
+The environment this function is bound to.
+
+## `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+## `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+## `debug_draw(envs_idx)`
+
+Optional: draw this event, when the :class:`EventManager` debug visualizer is enabled.
+
+Called each time the visualizer renders. Short events stay visible for a moment after they end (`min_display_s`), so don't use anything that you clear in `end()`.
+
+Parameters:
+
+| Name       | Type     | Description                               | Default    |
+| ---------- | -------- | ----------------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids to draw the event in. | *required* |
+
+Returns:
+
+| Type        | Description                                                                        |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `list[Any]` | The debug objects that were drawn (scene.draw_debug\_\*), which will be removed by |
+| `list[Any]` | the manager before the next render.                                                |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """
+    Optional: draw this event, when the :class:`EventManager` debug visualizer is enabled.
+
+    Called each time the visualizer renders. Short events stay visible for a moment after they
+    end (``min_display_s``), so don't use anything that you clear in ``end()``.
+
+    Args:
+        envs_idx: The environment ids to draw the event in.
+
+    Returns:
+        The debug objects that were drawn (``scene.draw_debug_*``), which will be removed by
+        the manager before the next render.
+    """
+    return []
+```
+
+## `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+## `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+## `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+Bases: `EventMdpFn`
+
+Base class for an event that lasts for a length of time, used by the :class:`EventManager`.
+
+Implement at least one of :meth:`start`, :meth:`step`, or :meth:`end`. The event's config must include a `duration_range_s`.
+
+Example - A constant upward force, while the event is active::
+
+```
+@dataclass(kw_only=True, eq=False)
+class lift(DurationEventMdpFn):
+    entity_manager: EntityManager
+    force: float = 10.0
+
+    def build(self):
+        self._force = torch.zeros((self.env.num_envs, 1, 3), device=gs.device)
+        self._force[:, :, 2] = self.force
+
+    def step(self, envs_idx):
+        apply_external_wrench(
+            self.entity_manager.entity,
+            links_idx_local=[0],  # base link
+            envs_idx=envs_idx,
+            force=self._force[envs_idx],
+        )
+```
+
+## `env`
+
+The environment this function is bound to.
+
+## `build()`
+
+Build/rebuild any state or buffers necessary for the function call.
+
+Called once by the manager during the environment build phase, and again after any param is changed. Must be idempotent -- it is safe to call any number of times, and re-deriving from scratch is the expected implementation.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def build(self) -> None:
+    """
+    Build/rebuild any state or buffers necessary for the function call.
+
+    Called once by the manager during the environment build phase, and again after
+    any param is changed. Must be idempotent -- it is safe to call any number of
+    times, and re-deriving from scratch is the expected implementation.
+    """
+```
+
+## `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+## `debug_draw(envs_idx)`
+
+Optional: draw this event, when the :class:`EventManager` debug visualizer is enabled.
+
+Called each time the visualizer renders. Short events stay visible for a moment after they end (`min_display_s`), so don't use anything that you clear in `end()`.
+
+Parameters:
+
+| Name       | Type     | Description                               | Default    |
+| ---------- | -------- | ----------------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids to draw the event in. | *required* |
+
+Returns:
+
+| Type        | Description                                                                        |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `list[Any]` | The debug objects that were drawn (scene.draw_debug\_\*), which will be removed by |
+| `list[Any]` | the manager before the next render.                                                |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """
+    Optional: draw this event, when the :class:`EventManager` debug visualizer is enabled.
+
+    Called each time the visualizer renders. Short events stay visible for a moment after they
+    end (``min_display_s``), so don't use anything that you clear in ``end()``.
+
+    Args:
+        envs_idx: The environment ids to draw the event in.
+
+    Returns:
+        The debug objects that were drawn (``scene.draw_debug_*``), which will be removed by
+        the manager before the next render.
+    """
+    return []
+```
+
+## `end(envs_idx)`
+
+Called once, when the event is over or the environment resets during the event.
+
+Parameters:
+
+| Name       | Type     | Description                             | Default    |
+| ---------- | -------- | --------------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids the event ended in. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def end(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called once, when the event is over or the environment resets during the event.
+
+    Args:
+        envs_idx: The environment ids the event ended in.
+    """
+```
+
+## `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+## `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+## `start(envs_idx)`
+
+Called once, when the event fires.
+
+Parameters:
+
+| Name       | Type     | Description                              | Default    |
+| ---------- | -------- | ---------------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids the event fired for. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def start(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called once, when the event fires.
+
+    Args:
+        envs_idx: The environment ids the event fired for.
+    """
+```
+
+## `step(envs_idx)`
+
+Called on every step the event is active, including the one it fires on.
+
+Parameters:
+
+| Name       | Type     | Description                                 | Default    |
+| ---------- | -------- | ------------------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids the event is active in. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def step(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called on every step the event is active, including the one it fires on.
+
+    Args:
+        envs_idx: The environment ids the event is active in.
+    """
+```
+
+## `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+Bases: `TypedDict`
+
+Defines the configuration for the event debug visualizer.
+
+## `envs_idx`
+
+The indices of the environments to visualize. Defaults to the environments the scene renders (`rendered_envs_idx` in the scene's `VisOptions`), or all of them if it isn't set.
+
+## `fps`
+
+The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory.
+
+## `min_display_s`
+
+The shortest time to show an event, in seconds, so that very short events can be seen
 
 # Monitors
 
@@ -4666,9 +5630,11 @@ def step(self) -> torch.Tensor:
         value = cfg.execute() * dt
 
         # Zero the value where the item's condition is off, and count its active time
-        active = cfg.active()
+        active = cfg.evaluate_when()
         if active is not None:
-            value = value * active
+            # torch.where, not a multiply, since NaN * 0 is still NaN, and a gated
+            # function is often undefined where its condition is off
+            value = torch.where(active, value, 0.0)
             self._active_seconds[name] += active * dt
 
         # Add to the episode sums, even at zero weight, so the mean is always known
@@ -4887,7 +5853,7 @@ def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         try:
             # Get termination value
             value = term_item.execute()
-            active = term_item.active()
+            active = term_item.evaluate_when()
             if active is not None:
                 value = value & active
 
@@ -9090,12 +10056,9 @@ def build_debug(self):
         gs.device
     )
 
-    # If debug envs_idx is not set, use the envs the scene renders
-    self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None:
-        self.debug_envs_idx = scene_rendered_envs_idx(
-            self.env.scene, self.env.num_envs
-        )
+    self.debug_envs_idx = debug_envs_idx(
+        self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+    )
 
     self._debug_envs_tensor = torch.tensor(
         self.debug_envs_idx or [], dtype=torch.long, device=gs.device
@@ -9795,12 +10758,9 @@ def build_debug(self):
         gs.device
     )
 
-    # If debug envs_idx is not set, use the envs the scene renders
-    self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-    if self.debug_envs_idx is None:
-        self.debug_envs_idx = scene_rendered_envs_idx(
-            self.env.scene, self.env.num_envs
-        )
+    self.debug_envs_idx = debug_envs_idx(
+        self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+    )
 
     # Calculate the number of steps per debug render
     self._steps_per_debug_render = math.ceil(
@@ -10346,7 +11306,728 @@ def when_stopped(
 
 MDP stands for [Markov Decision Process](https://en.wikipedia.org/wiki/Markov_decision_process), and is the process at the heart of reinforcement learning.
 
-This is a collection of simple functions used to generate rewards, terminations, observations, or handle robot resets.
+This is a collection of simple functions used to generate rewards, terminations, observations, events, or handle robot resets.
+
+# Events
+
+These are functions that can be used in the [EventManager](https://docs.genesisforge.io/en/latest/api/managers/event.html) configuration.
+
+## `DEFAULT_PUSH_DEBUG_STYLE = {'arrow_offset': 0.0, 'arrow_radius': 0.01, 'arrow_max_length': 0.5, 'color': (1.0, 0.0, 0.0, 1.0)}`
+
+## `PushAxisRanges`
+
+Bases: `TypedDict`
+
+The (min, max) range to push along, or around, each axis. Axes that are left out aren't pushed.
+
+### `x`
+
+The range for the x-axis
+
+### `y`
+
+The range for the y-axis
+
+### `z`
+
+The range for the z-axis
+
+## `PushDebugStyle`
+
+Bases: `TypedDict`
+
+Defines how a push is drawn by the debug visualizer.
+
+### `arrow_max_length`
+
+The length of the arrow for the strongest possible push
+
+### `arrow_offset`
+
+The vertical offset of the arrow from the link being pushed
+
+### `arrow_radius`
+
+The radius of the shaft of the arrow
+
+### `color`
+
+The color of the arrow
+
+## `PushEvent(*, entity_manager, debug_style=None)`
+
+Bases: `EventMdpFn`
+
+Base class for events that push an entity, and draws the push in the debug visualizer.
+
+For a duration push, also extend :class:`DurationEventMdpFn`::
+
+```
+class my_push(PushEvent, DurationEventMdpFn):
+    ...
+```
+
+Parameters:
+
+| Name             | Type             | Description                        | Default                                                            |
+| ---------------- | ---------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `entity_manager` | `EntityManager`  | The manager of the entity to push. | *required*                                                         |
+| `debug_style`    | \`PushDebugStyle | None\`                             | How the push is drawn by the :class:EventManager debug visualizer. |
+
+### `debug_style = None`
+
+### `entity_manager`
+
+### `env`
+
+The environment this function is bound to.
+
+### `build()`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def build(self):
+    # Keep the debug vector after a push ends, since it can still be drawn for a moment
+    if not hasattr(self, "_debug_vec"):
+        self._debug_vec = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `debug_draw(envs_idx)`
+
+Draw an arrow in the direction of the push, with a length that shows its strength.
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """Draw an arrow in the direction of the push, with a length that shows its strength."""
+    style: dict[str, Any] = {
+        **DEFAULT_PUSH_DEBUG_STYLE,
+        **(self.debug_style or {}),
+    }
+    scene = self.env.scene
+    offset = scene.envs_offset[envs_idx.cpu().numpy()]
+    position = self._push_position(envs_idx).cpu().numpy()
+    meshes = arrow_meshes(
+        pos=position + offset + (0.0, 0.0, style["arrow_offset"]),
+        vec=self._debug_vec[envs_idx].cpu().numpy() * style["arrow_max_length"],
+        radius=style["arrow_radius"],
+        color=style["color"],
+    )
+    return [scene.draw_debug_mesh(mesh) for mesh in meshes]
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `push_force(*, entity_manager, debug_style=None, force, torque=None, link_name=None)`
+
+Bases: `PushEvent`, `DurationEventMdpFn`
+
+Push one of the entity's links with a force, in a random horizontal direction.
+
+The direction can be any angle in the world's x/y plane. The force never points up or down.
+
+The size and direction of the push are chosen when the event fires, and stay the same (in the world frame) until it ends. The force is applied to the link's center of mass.
+
+The approximate change in velocity is: `force * duration / mass`
+
+Parameters:
+
+| Name             | Type                  | Description                                   | Default                                                                             |
+| ---------------- | --------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `entity_manager` | `EntityManager`       | The manager of the entity to push.            | *required*                                                                          |
+| `force`          | `tuple[float, float]` | The (min, max) size of the force, in newtons. | *required*                                                                          |
+| `torque`         | \`tuple[float, float] | None\`                                        | The (min, max) size of an additional torque around a random axis, in newton-meters. |
+| `link_name`      | \`str                 | None\`                                        | The name, or regex pattern, of the link to push. Defaults to the base link.         |
+| `debug_style`    | \`PushDebugStyle      | None\`                                        | How the push is drawn by the :class:EventManager debug visualizer.                  |
+
+### `current_force`
+
+The force being applied, in the world frame. Zero when there is no push. Shape is (num_envs, 3). This can be used as a privileged observation for the critic.
+
+### `current_torque`
+
+The torque being applied, in the world frame. Zero when there is no push. Shape is (num_envs, 3).
+
+### `debug_style = None`
+
+### `entity_manager`
+
+### `env`
+
+The environment this function is bound to.
+
+### `force`
+
+### `link_name = None`
+
+### `torque = None`
+
+### `build()`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def build(self):
+    super().build()
+
+    if self.force is None:
+        raise ValueError("force is required")
+    self._require_min_max("force", self.force)
+    self._require_min_max("torque", self.torque)
+
+    entity = self.entity_manager.entity
+    link = entity.base_link
+    if self.link_name is not None:
+        links = links_by_name_pattern(entity, self.link_name)
+        if len(links) != 1:
+            raise ValueError(
+                f"Expected one link with name/pattern '{self.link_name}', "
+                f"found: {[link.name for link in links]}"
+            )
+        link = links[0]
+    self._links_idx_local = [link.idx_local]
+
+    # Keep the force and torque across rebuilds, so a param change doesn't interrupt a push
+    if not hasattr(self, "_force_buf"):
+        self._force_buf = torch.zeros(
+            (self.env.num_envs, 3), device=gs.device, dtype=gs.tc_float
+        )
+        self._torque_buf = torch.zeros_like(self._force_buf)
+    # Without a torque range, none is applied, so the observation must not report one
+    if self.torque is None:
+        self._torque_buf.zero_()
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `debug_draw(envs_idx)`
+
+Draw an arrow in the direction of the push, with a length that shows its strength.
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """Draw an arrow in the direction of the push, with a length that shows its strength."""
+    style: dict[str, Any] = {
+        **DEFAULT_PUSH_DEBUG_STYLE,
+        **(self.debug_style or {}),
+    }
+    scene = self.env.scene
+    offset = scene.envs_offset[envs_idx.cpu().numpy()]
+    position = self._push_position(envs_idx).cpu().numpy()
+    meshes = arrow_meshes(
+        pos=position + offset + (0.0, 0.0, style["arrow_offset"]),
+        vec=self._debug_vec[envs_idx].cpu().numpy() * style["arrow_max_length"],
+        radius=style["arrow_radius"],
+        color=style["color"],
+    )
+    return [scene.draw_debug_mesh(mesh) for mesh in meshes]
+```
+
+### `end(envs_idx)`
+
+Clear the applied forces and torques for the specified environments.
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def end(self, envs_idx: torch.Tensor) -> None:
+    """
+    Clear the applied forces and torques for the specified environments.
+    """
+    self._force_buf[envs_idx] = 0.0
+    self._torque_buf[envs_idx] = 0.0
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `start(envs_idx)`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def start(self, envs_idx: torch.Tensor) -> None:
+    n_envs = len(envs_idx)
+
+    angle = torch.empty(n_envs, device=gs.device).uniform_(0, 2 * math.pi)
+    size = torch.empty(n_envs, device=gs.device).uniform_(*self.force)
+    self._force_buf[envs_idx, 0] = size * torch.cos(angle)
+    self._force_buf[envs_idx, 1] = size * torch.sin(angle)
+    max_push = max(abs(value) for value in self.force)
+    self._record_push(envs_idx, self._force_buf[envs_idx], max_push)
+
+    if self.torque is not None:
+        axis = torch.randn((n_envs, 3), device=gs.device)
+        axis = torch.nn.functional.normalize(axis, dim=-1)
+        size = torch.empty((n_envs, 1), device=gs.device).uniform_(*self.torque)
+        self._torque_buf[envs_idx] = size * axis
+```
+
+### `step(envs_idx)`
+
+Genesis clears external forces after each step, so we need to reapply them each step
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def step(self, envs_idx: torch.Tensor) -> None:
+    """
+    Genesis clears external forces after each step, so we need to reapply them each step
+    """
+    torque = None
+    force = self._force_buf[envs_idx].unsqueeze(1)
+    if self.torque is not None:
+        torque = self._torque_buf[envs_idx].unsqueeze(1)
+    apply_external_wrench(
+        self.entity_manager.entity,
+        links_idx_local=self._links_idx_local,
+        envs_idx=envs_idx,
+        force=force,
+        torque=torque,
+    )
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
+
+## `push_velocity(*, entity_manager, debug_style=None, linear=None, angular=None)`
+
+Bases: `PushEvent`
+
+Push the entity by instantly changing the velocity of its base.
+
+A random value is added to the current velocity of each axis that has a range. The axes are in the world frame. The entity's base cannot be fixed.
+
+Example::
+
+```
+events.push_velocity(
+    entity_manager=self.robot_manager,
+    linear={"x": (-0.5, 0.5), "y": (-0.5, 0.5)},
+    angular={"z": (-0.3, 0.3)},
+)
+```
+
+Parameters:
+
+| Name             | Type             | Description                        | Default                                                               |
+| ---------------- | ---------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `entity_manager` | `EntityManager`  | The manager of the entity to push. | *required*                                                            |
+| `linear`         | \`PushAxisRanges | None\`                             | The (min, max) change in linear velocity along each axis, in m/s.     |
+| `angular`        | \`PushAxisRanges | None\`                             | The (min, max) change in angular velocity around each axis, in rad/s. |
+| `debug_style`    | \`PushDebugStyle | None\`                             | How the push is drawn by the :class:EventManager debug visualizer.    |
+
+### `angular = None`
+
+### `debug_style = None`
+
+### `entity_manager`
+
+### `env`
+
+The environment this function is bound to.
+
+### `linear = None`
+
+### `build()`
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def build(self):
+    super().build()
+
+    base_joint = self.entity_manager.entity.base_joint
+    if base_joint.n_dofs != 6:
+        raise ValueError(
+            "push_velocity requires an entity with a free base. Use push_force instead."
+        )
+    self._dofs_idx = list(base_joint.dofs_idx_local)
+
+    # In the order of the base's dofs
+    self._ranges: list[tuple[float, float] | None] = []
+    for name, axes in (("linear", self.linear), ("angular", self.angular)):
+        axes = axes or {}
+        for axis in ("x", "y", "z"):
+            min_max = axes.get(axis)
+            self._require_min_max(f"{name}['{axis}']", min_max)
+            self._ranges.append(min_max)
+    if all(min_max is None for min_max in self._ranges):
+        raise ValueError("push_velocity needs a range for at least one axis")
+
+    self._max_linear = math.hypot(
+        *(max(abs(value) for value in axis) for axis in self._ranges[:3] if axis)
+    )
+```
+
+### `context(env)`
+
+Store the environment this function is bound to.
+
+Called by the manager during the environment build phase.
+
+Override to store additional values -- see :meth:`ResetMdpFn.context`, which also stores `entity`.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def context(self, env: GenesisEnv) -> None:
+    """
+    Store the environment this function is bound to.
+
+    Called by the manager during the environment build phase.
+
+    Override to store additional values -- see :meth:`ResetMdpFn.context`, which
+    also stores ``entity``.
+    """
+    object.__setattr__(self, "_env", env)
+```
+
+### `debug_draw(envs_idx)`
+
+Draw an arrow in the direction of the push, with a length that shows its strength.
+
+Source code in `packages/genesis-forge/genesis_forge/mdp/events/push_events.py`
+
+```
+def debug_draw(self, envs_idx: torch.Tensor) -> list[Any]:
+    """Draw an arrow in the direction of the push, with a length that shows its strength."""
+    style: dict[str, Any] = {
+        **DEFAULT_PUSH_DEBUG_STYLE,
+        **(self.debug_style or {}),
+    }
+    scene = self.env.scene
+    offset = scene.envs_offset[envs_idx.cpu().numpy()]
+    position = self._push_position(envs_idx).cpu().numpy()
+    meshes = arrow_meshes(
+        pos=position + offset + (0.0, 0.0, style["arrow_offset"]),
+        vec=self._debug_vec[envs_idx].cpu().numpy() * style["arrow_max_length"],
+        radius=style["arrow_radius"],
+        color=style["color"],
+    )
+    return [scene.draw_debug_mesh(mesh) for mesh in meshes]
+```
+
+### `reset(envs_idx)`
+
+Called every time one or more environments reset.
+
+Parameters:
+
+| Name       | Type     | Description                      | Default    |
+| ---------- | -------- | -------------------------------- | ---------- |
+| `envs_idx` | `Tensor` | The environment ids being reset. | *required* |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def reset(self, envs_idx: torch.Tensor) -> None:
+    """
+    Called every time one or more environments reset.
+
+    Args:
+        envs_idx: The environment ids being reset.
+    """
+```
+
+### `safe_build()`
+
+Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its own declared fields does not create an infinite build loop.
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def safe_build(self) -> None:
+    """
+    Run :meth:`build` with re-entrancy guarded, so a build that assigns one of its
+    own declared fields does not create an infinite build loop.
+    """
+    object.__setattr__(self, "_building", True)
+    try:
+        self.build()
+    finally:
+        object.__setattr__(self, "_building", False)
+    object.__setattr__(self, "_can_build", True)
+```
+
+### `update(**params)`
+
+Change several params at once, rebuilding only once.
+
+Assigning params one at a time rebuilds once per assignment and exposes :meth:`build` to a partially updated param set. Use this when a curriculum changes more than one param together.
+
+Parameters:
+
+| Name       | Type  | Description                                | Default |
+| ---------- | ----- | ------------------------------------------ | ------- |
+| `**params` | `Any` | Declared param names and their new values. | `{}`    |
+
+Raises:
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| `AttributeError` | If a name is not a declared param. |
+
+Source code in `packages/genesis-forge/genesis_forge/managers/config/mdp_fn.py`
+
+```
+def update(self, **params: Any) -> None:
+    """
+    Change several params at once, rebuilding only once.
+
+    Assigning params one at a time rebuilds once per assignment and exposes
+    :meth:`build` to a partially updated param set. Use this when a curriculum
+    changes more than one param together.
+
+    Args:
+        **params: Declared param names and their new values.
+
+    Raises:
+        AttributeError: If a name is not a declared param.
+    """
+    if not params:
+        return
+
+    # Check if we're trying to set unknown params
+    unknown = sorted(set(params) - self._param_names())
+    if unknown:
+        raise AttributeError(f"{type(self).__name__} has no param(s) {unknown!r}. ")
+
+    # Set the param values, bypassing the rebuild hook for each value, and then rebuild once at the end
+    for name, value in params.items():
+        object.__setattr__(self, name, value)
+
+    if self._can_build:
+        self.safe_build()
+```
 
 # Observations
 
@@ -21162,7 +22843,7 @@ Parameters:
 | `steps_per_iteration`    | \`int                     | None\`                                                                                                                                                                                                                                                              | The number of environment steps per training iteration (RSL-RL's num_steps_per_env). Required by iteration_trigger and VideoFilename.ITERATION, and when set, the iteration is also passed to a filename function. |
 | `iteration_offset`       | `int`                     | The training iteration the first step belongs to. Set this when resuming from a checkpoint. Only used when steps_per_iteration is set. Can also be assigned after construction via the :attr:iteration_offset property, as long as it is set before the first step. | `0`                                                                                                                                                                                                                |
 | `wait_for_episode_start` | `bool`                    | Delay each triggered recording until the next episode of the watched environment begins. Has no effect with episode_trigger, which always starts on the first step of an episode.                                                                                   | `False`                                                                                                                                                                                                            |
-| `video_length_sec`       | \`float                   | None\`                                                                                                                                                                                                                                                              | Length of each video, in seconds. None records until :meth:close is called, through any episode resets.                                                                                                            |
+| `video_length_sec`       | \`float                   | None\`                                                                                                                                                                                                                                                              | Length of each video, in seconds. None records until the environment is closed, through any episode resets.                                                                                                        |
 | `out_dir`                | `str`                     | Directory to save the videos to.                                                                                                                                                                                                                                    | `'./videos'`                                                                                                                                                                                                       |
 | `fps`                    | `int`                     | Frames per second for the video.                                                                                                                                                                                                                                    | `60`                                                                                                                                                                                                               |
 | `env_idx`                | `int`                     | If triggering on episode, this is the index of the environment to be counting episodes for.                                                                                                                                                                         | `0`                                                                                                                                                                                                                |
@@ -21205,7 +22886,9 @@ env = VideoWrapper(
 )
 ```
 
-Record a play session from start to end. Call :meth:`close` when the session is over, or the video won't be saved::
+A recording in progress is saved when :meth:`close` is called, when a step raises (such as Genesis's "Viewer closed." error when the viewer window is closed), or when Python exits. Calling :meth:`close` is still the most reliable way to save it.
+
+Record a play session from start to end::
 
 ```
 env = VideoWrapper(
@@ -21326,9 +23009,9 @@ def __init__(
     )
     assert trigger_count == 1, "Must specify only one trigger"
     if iteration_trigger is not None:
-        assert (
-            steps_per_iteration is not None and steps_per_iteration > 0
-        ), "steps_per_iteration is required with iteration_trigger"
+        assert steps_per_iteration is not None and steps_per_iteration > 0, (
+            "steps_per_iteration is required with iteration_trigger"
+        )
 
     # Determine how to name the file
     if filename is None:
@@ -21339,9 +23022,9 @@ def __init__(
         else:
             filename = VideoFilename.EPISODE
     if filename == VideoFilename.ITERATION:
-        assert (
-            steps_per_iteration is not None and steps_per_iteration > 0
-        ), "steps_per_iteration is required with VideoFilename.ITERATION"
+        assert steps_per_iteration is not None and steps_per_iteration > 0, (
+            "steps_per_iteration is required with VideoFilename.ITERATION"
+        )
     self._filename = filename
 
     self.episode_trigger = episode_trigger
@@ -21426,10 +23109,7 @@ Source code in `packages/genesis-forge/genesis_forge/wrappers/video.py`
 def build(self) -> None:
     """Load the camera from the environment."""
     super().build()
-    self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-    assert (
-        self._cam is not None
-    ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
+    self._load_camera()
 ```
 
 ## `close()`
@@ -21459,6 +23139,7 @@ def finish_recording(self):
     """
     if not self._is_recording or self._cam is None:
         return
+    atexit.unregister(self.finish_recording)
 
     # Save recording
     filepath = os.path.join(self._out_dir, self._recording_name)
@@ -21510,8 +23191,9 @@ Source code in `packages/genesis-forge/genesis_forge/wrappers/video.py`
 ```
 def start_recording(self):
     """Start recording a video."""
+    # The camera is normally found in build(), but the environment may have been built before it was wrapped
     if self._cam is None:
-        return
+        self._load_camera()
 
     self._is_recording = True
     self._recording_start_step = self._current_step
@@ -21521,6 +23203,9 @@ def start_recording(self):
         if self._video_length_steps is None
         else self._current_step + self._video_length_steps
     )
+
+    # Save the recording even if the script exits without closing the environment
+    atexit.register(self.finish_recording)
 
     filepath = os.path.join(self._tmp_dir, self._recording_name)
     self._cam.start_recording(
@@ -21540,13 +23225,18 @@ def step(
     self, actions: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
     """Record a video image at each step."""
-    (
-        observations,
-        rewards,
-        terminateds,
-        truncateds,
-        extras,
-    ) = super().step(actions)
+    try:
+        (
+            observations,
+            rewards,
+            terminateds,
+            truncateds,
+            extras,
+        ) = super().step(actions)
+    except BaseException:
+        # The session is ending (e.g. the viewer was closed), so save what was recorded
+        self.finish_recording()
+        raise
 
     # Stop recording if the recording stop step is reached
     if (
@@ -23609,7 +25299,7 @@ Debug visuals always appear in the interactive viewer, but a camera only renders
 
 Trimesh builders for debug visuals.
 
-Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn with `scene.draw_debug_mesh(mesh)`. The interactive viewer always shows debug visuals, but a camera only renders them if it was created with `debug=True`.
+Each builder returns `trimesh.Trimesh` meshes already placed in the scene, ready to be drawn with `scene.draw_debug_mesh(mesh)`. The interactive viewer always shows debug visuals, but a camera only renders them if it was created with `debug=True`.
 
 ## `Color = tuple[float, float, float, float]`
 
@@ -23707,6 +25397,58 @@ def arrow_mesh(
     if color is not None:
         _set_color(mesh, color)
     return mesh
+```
+
+## `arrow_meshes(pos, vec, radius, *, min_length=0.001, color=None)`
+
+Several arrows with the same radius and color, leaving out any that are too short to see.
+
+Parameters:
+
+| Name         | Type        | Description                                          | Default                                                         |
+| ------------ | ----------- | ---------------------------------------------------- | --------------------------------------------------------------- |
+| `pos`        | `ArrayLike` | The position of the base of each arrow, shape (N, 3) | *required*                                                      |
+| `vec`        | `ArrayLike` | The vector of each arrow, shape (N, 3)               | *required*                                                      |
+| `radius`     | `float`     | The radius of the shafts                             | *required*                                                      |
+| `min_length` | `float`     | Arrows shorter than this are left out                | `0.001`                                                         |
+| `color`      | \`Color     | None\`                                               | RGBA color of the arrows, or None to leave the meshes uncolored |
+
+Returns:
+
+| Type            | Description      |
+| --------------- | ---------------- |
+| `list[Trimesh]` | The arrow meshes |
+
+Source code in `packages/genesis-forge/genesis_forge/meshes.py`
+
+```
+def arrow_meshes(
+    pos: ArrayLike,
+    vec: ArrayLike,
+    radius: float,
+    *,
+    min_length: float = 1e-3,
+    color: Color | None = None,
+) -> list[trimesh.Trimesh]:
+    """
+    Several arrows with the same radius and color, leaving out any that are too short to see.
+
+    Args:
+        pos: The position of the base of each arrow, shape (N, 3)
+        vec: The vector of each arrow, shape (N, 3)
+        radius: The radius of the shafts
+        min_length: Arrows shorter than this are left out
+        color: RGBA color of the arrows, or None to leave the meshes uncolored
+
+    Returns:
+        The arrow meshes
+    """
+    pos, vec = np.asarray(pos), np.asarray(vec)
+    visible = np.linalg.norm(vec, axis=-1) > min_length
+    return [
+        arrow_mesh(p, v, radius, color=color)
+        for p, v in zip(pos[visible], vec[visible], strict=True)
+    ]
 ```
 
 ## `flat_arc_arrow_mesh(pos, radius, sweep, width, thickness, *, start_angle=0.0, head_width_ratio=2.0, head_length_ratio=2.0, section_angle=math.radians(3.0), color=None)`

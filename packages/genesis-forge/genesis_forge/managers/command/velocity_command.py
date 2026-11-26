@@ -12,7 +12,7 @@ from genesis.utils.geom import quat_to_xyz
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh, flat_arc_arrow_mesh
-from genesis_forge.utils import scene_rendered_envs_idx, transform_by_quat
+from genesis_forge.utils import debug_envs_idx, transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
 
@@ -27,7 +27,10 @@ class VelocityDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
     envs_idx: NotRequired[list[int]]
-    """The indices of the environments to visualize. If None, all environments will be visualized."""
+    """
+    The indices of the environments to visualize. Defaults to the environments the scene renders
+    (``rendered_envs_idx`` in the scene's ``VisOptions``), or all of them if it isn't set.
+    """
 
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
@@ -345,12 +348,9 @@ class VelocityCommandManager(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, use the envs the scene renders
-        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = scene_rendered_envs_idx(
-                self.env.scene, self.env.num_envs
-            )
+        self.debug_envs_idx = debug_envs_idx(
+            self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+        )
 
         # Calculate the number of steps per debug render
         self._steps_per_debug_render = math.ceil(

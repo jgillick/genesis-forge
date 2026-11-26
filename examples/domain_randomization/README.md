@@ -38,8 +38,8 @@ Here are the relevant snippets:
             "push": {
                 "fn": events.push_force(
                     entity_manager=self.robot_manager,
-                    force=(80.0, 175.0),  # newtons
-                    torque=(5.0, 15.0),  # newton-meters, around a random axis
+                    force=(80.0, 150.0),  # newtons
+                    torque=(5.0, 10.0),  # newton-meters, around a random axis
                 ),
                 "interval_range_s": (4.0, 8.0),
                 "duration_range_s": (0.1, 0.3),

@@ -77,9 +77,9 @@ RewardManager(
 
 ## Conditional Rewards
 
-Some rewards only make sense in certain situations. For example, rewarding long steps
-only while the robot is commanded to move. Add a **when** function to switch a reward
-off, per environment, wherever that function returns False:
+Some rewards only make sense in certain situations, like rewarding steps only while the
+robot is commanded to move. Add a `when` function to only apply a reward where it
+returns True:
 
 ```python
 from genesis_forge.mdp import rewards
@@ -109,14 +109,15 @@ where the reward applies. The velocity command's `when_moving()` and `when_stopp
 return ready-made ones. A plain function of the environment works too:
 
 ```python
-"when": lambda env: self.skill_command.command[:, 0] == JUMP,
+"when": lambda env: self.skill_command.command[:, 0] == JUMP,  # <~ only while the jump skill is commanded
 ```
 
 The reward function still runs every step, so stateful rewards stay up to date while
-they are switched off. The logged value of a conditional reward is its mean over the
-time it was active, so it isn't diluted by the time it was off. Its share of the
-episode it was active is logged as `Rewards Active / <name>`. Multiply the two to get
-its contribution to the episode return, for comparing it with other rewards.
+they are switched off.
+
+!!! note "Logging"
+
+    A conditional reward is logged as its mean while active, and its share of the episode as `Rewards Active / <name>`. Multiply them to compare it with other rewards.
 
 ## Built-in Reward Functions
 

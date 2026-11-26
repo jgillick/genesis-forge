@@ -128,7 +128,7 @@ class Pose2dCommand(CommandManager):
         and a ball when it does not.
 
         The interactive viewer always shows the marker, but a camera only renders it if
-        it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+        it was created with `scene.add_camera(..., debug=True)`.
 
     Args:
         env: The environment to control

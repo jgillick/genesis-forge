@@ -8684,11 +8684,11 @@ A wrapper around use_external_controller that converts a gamepad joystick axis t
 
 Parameters:
 
-| Name          | Type      | Description                 | Default                                                                                        |
-| ------------- | --------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `gamepad`     | `Gamepad` | The gamepad wrapper to use. | *required*                                                                                     |
-| `range_axis`  | \`int     | dict[str, int]\`            | The axis or dict of axes to use for the command value. This should match the range init param. |
-| `invert_axis` | \`bool    | dict[str, bool]\`           | Whether to invert each mapped axis before converting it into the command range.                |
+| Name          | Type      | Description                 | Default                                                                                                                       |
+| ------------- | --------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `gamepad`     | `Gamepad` | The gamepad wrapper to use. | *required*                                                                                                                    |
+| `range_axis`  | \`int     | Mapping\[str, int           | None\]\`                                                                                                                      |
+| `invert_axis` | \`bool    | Mapping[str, bool]\`        | Whether to invert each mapped axis before converting it into the command range. With a dict, omitted ranges are not inverted. |
 
 Example::
 
@@ -8751,8 +8751,8 @@ Source code in `packages/genesis-forge/genesis_forge/managers/command/command_ma
 def use_gamepad(
     self,
     gamepad: Gamepad,
-    range_axis: int | dict[str, int],
-    invert_axis: bool | dict[str, bool] = False,
+    range_axis: int | Mapping[str, int | None],
+    invert_axis: bool | Mapping[str, bool] = False,
 ):
     """
     A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
@@ -8760,7 +8760,10 @@ def use_gamepad(
     Args:
         gamepad: The gamepad wrapper to use.
         range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+                    With a dict, any range that is omitted or set to `None` is not controlled by the gamepad. Its
+                    command is held at zero, or the closest value to zero within its range.
         invert_axis: Whether to invert each mapped axis before converting it into the command range.
+                     With a dict, omitted ranges are not inverted.
 
     Example::
 
@@ -8813,19 +8816,27 @@ def use_gamepad(
                 "cmd2": 3,
             })
     """
-    self._external_controller = self._gamepad_axis_command
-
-    # Map axis to range keys
-    axis_map = []
-    axis_invert_map = []
+    # Map axis to range keys (None = not controlled by the gamepad)
+    axis_map: list[int | None] = []
+    axis_invert_map: list[bool] = []
     if isinstance(range_axis, int):
         axis_map.append(range_axis)
         axis_invert_map.append(invert_axis)
-    elif isinstance(range_axis, dict):
+    elif isinstance(range_axis, Mapping):
+        if not isinstance(self._range, Mapping):
+            raise TypeError("range_axis cannot be a dict when the range is not")
+        # Ranges can be omitted, so a misspelled key would otherwise go unnoticed
+        unknown = [key for key in range_axis if key not in self._range]
+        if unknown:
+            raise ValueError(
+                f"Unknown range_axis keys: {unknown}. Expected keys from: {list(self._range)}"
+            )
         for key in self._range:
-            axis_map.append(range_axis[key])
+            axis_map.append(range_axis.get(key))
             axis_invert_map.append(
-                invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
+                invert_axis.get(key, False)
+                if isinstance(invert_axis, Mapping)
+                else invert_axis
             )
 
     self._gamepad_cfg = {
@@ -8836,6 +8847,7 @@ def use_gamepad(
     self._gamepad_axis_command_buffer = torch.zeros_like(
         self._command, device=gs.device
     )
+    self._external_controller = self._gamepad_axis_command
 ```
 
 # Pose2dCommand
@@ -8852,7 +8864,7 @@ Debug Visualization
 
 If you set `debug_visualizer` to True, a marker is drawn at each goal: an arrow pointing the way to face on arrival when the goal has a heading, and a ball when it does not.
 
-The interactive viewer always shows the marker, but a camera only renders it if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+The interactive viewer always shows the marker, but a camera only renders it if it was created with `scene.add_camera(..., debug=True)`.
 
 Parameters:
 
@@ -9440,11 +9452,11 @@ A wrapper around use_external_controller that converts a gamepad joystick axis t
 
 Parameters:
 
-| Name          | Type      | Description                 | Default                                                                                        |
-| ------------- | --------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `gamepad`     | `Gamepad` | The gamepad wrapper to use. | *required*                                                                                     |
-| `range_axis`  | \`int     | dict[str, int]\`            | The axis or dict of axes to use for the command value. This should match the range init param. |
-| `invert_axis` | \`bool    | dict[str, bool]\`           | Whether to invert each mapped axis before converting it into the command range.                |
+| Name          | Type      | Description                 | Default                                                                                                                       |
+| ------------- | --------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `gamepad`     | `Gamepad` | The gamepad wrapper to use. | *required*                                                                                                                    |
+| `range_axis`  | \`int     | Mapping\[str, int           | None\]\`                                                                                                                      |
+| `invert_axis` | \`bool    | Mapping[str, bool]\`        | Whether to invert each mapped axis before converting it into the command range. With a dict, omitted ranges are not inverted. |
 
 Example::
 
@@ -9507,8 +9519,8 @@ Source code in `packages/genesis-forge/genesis_forge/managers/command/command_ma
 def use_gamepad(
     self,
     gamepad: Gamepad,
-    range_axis: int | dict[str, int],
-    invert_axis: bool | dict[str, bool] = False,
+    range_axis: int | Mapping[str, int | None],
+    invert_axis: bool | Mapping[str, bool] = False,
 ):
     """
     A wrapper around use_external_controller that converts a gamepad joystick axis to a command value.
@@ -9516,7 +9528,10 @@ def use_gamepad(
     Args:
         gamepad: The gamepad wrapper to use.
         range_axis: The axis or dict of axes to use for the command value. This should match the range init param.
+                    With a dict, any range that is omitted or set to `None` is not controlled by the gamepad. Its
+                    command is held at zero, or the closest value to zero within its range.
         invert_axis: Whether to invert each mapped axis before converting it into the command range.
+                     With a dict, omitted ranges are not inverted.
 
     Example::
 
@@ -9569,19 +9584,27 @@ def use_gamepad(
                 "cmd2": 3,
             })
     """
-    self._external_controller = self._gamepad_axis_command
-
-    # Map axis to range keys
-    axis_map = []
-    axis_invert_map = []
+    # Map axis to range keys (None = not controlled by the gamepad)
+    axis_map: list[int | None] = []
+    axis_invert_map: list[bool] = []
     if isinstance(range_axis, int):
         axis_map.append(range_axis)
         axis_invert_map.append(invert_axis)
-    elif isinstance(range_axis, dict):
+    elif isinstance(range_axis, Mapping):
+        if not isinstance(self._range, Mapping):
+            raise TypeError("range_axis cannot be a dict when the range is not")
+        # Ranges can be omitted, so a misspelled key would otherwise go unnoticed
+        unknown = [key for key in range_axis if key not in self._range]
+        if unknown:
+            raise ValueError(
+                f"Unknown range_axis keys: {unknown}. Expected keys from: {list(self._range)}"
+            )
         for key in self._range:
-            axis_map.append(range_axis[key])
+            axis_map.append(range_axis.get(key))
             axis_invert_map.append(
-                invert_axis[key] if isinstance(invert_axis, dict) else invert_axis
+                invert_axis.get(key, False)
+                if isinstance(invert_axis, Mapping)
+                else invert_axis
             )
 
     self._gamepad_cfg = {
@@ -9592,6 +9615,7 @@ def use_gamepad(
     self._gamepad_axis_command_buffer = torch.zeros_like(
         self._command, device=gs.device
     )
+    self._external_controller = self._gamepad_axis_command
 ```
 
 # VelocityCommandManager
@@ -9616,7 +9640,7 @@ Color meanings:
 - BLUE ARROW: Actual robot velocity in world coordinates
 - RED BALL: Shown when no linear velocity is commanded
 
-The interactive viewer always shows these, but a camera only renders them if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+If you're recording with a camera, these only render if the camera was created with `scene.add_camera(..., debug=True)`.
 
 Parameters:
 
@@ -10154,14 +10178,28 @@ def use_external_controller(self, controller: Callable[[int], CommandRange]):
 
 Use a connected gamepad to control the command.
 
+Set an axis to `None` if that velocity should not be controlled by the gamepad. Its command is held at zero, or the closest value to zero within its range.
+
 Parameters:
 
-| Name             | Type      | Description                                                             | Default    |
-| ---------------- | --------- | ----------------------------------------------------------------------- | ---------- |
-| `gamepad`        | `Gamepad` | The gamepad to use.                                                     | *required* |
-| `lin_vel_x_axis` | `int`     | Map this gamepad axis index to the linear velocity in the x-direction.  | `1`        |
-| `lin_vel_y_axis` | `int`     | Map this gamepad axis index to the linear velocity in the y-direction.  | `0`        |
-| `ang_vel_z_axis` | `int`     | Map this gamepad axis index to the angular velocity in the z-direction. | `2`        |
+| Name             | Type      | Description         | Default                                                                 |
+| ---------------- | --------- | ------------------- | ----------------------------------------------------------------------- |
+| `gamepad`        | `Gamepad` | The gamepad to use. | *required*                                                              |
+| `lin_vel_x_axis` | \`int     | None\`              | Map this gamepad axis index to the linear velocity in the x-direction.  |
+| `lin_vel_y_axis` | \`int     | None\`              | Map this gamepad axis index to the linear velocity in the y-direction.  |
+| `ang_vel_z_axis` | \`int     | None\`              | Map this gamepad axis index to the angular velocity in the z-direction. |
+
+Example::
+
+```
+# A wheeled robot, which cannot move sideways
+env.velocity_command.use_gamepad(
+    gamepad,
+    lin_vel_x_axis=1,
+    lin_vel_y_axis=None,
+    ang_vel_z_axis=0,
+)
+```
 
 Source code in `packages/genesis-forge/genesis_forge/managers/command/velocity_command.py`
 
@@ -10169,28 +10207,42 @@ Source code in `packages/genesis-forge/genesis_forge/managers/command/velocity_c
 def use_gamepad(
     self,
     gamepad: Gamepad,
-    lin_vel_y_axis: int = 0,
-    lin_vel_x_axis: int = 1,
-    ang_vel_z_axis: int = 2,
+    lin_vel_y_axis: int | None = 0,
+    lin_vel_x_axis: int | None = 1,
+    ang_vel_z_axis: int | None = 2,
     *args,
     **kwargs,
 ):
     """
     Use a connected gamepad to control the command.
 
+    Set an axis to `None` if that velocity should not be controlled by the gamepad.
+    Its command is held at zero, or the closest value to zero within its range.
+
     Args:
         gamepad: The gamepad to use.
         lin_vel_x_axis: Map this gamepad axis index to the linear velocity in the x-direction.
         lin_vel_y_axis: Map this gamepad axis index to the linear velocity in the y-direction.
         ang_vel_z_axis: Map this gamepad axis index to the angular velocity in the z-direction.
+
+    Example::
+
+        # A wheeled robot, which cannot move sideways
+        env.velocity_command.use_gamepad(
+            gamepad,
+            lin_vel_x_axis=1,
+            lin_vel_y_axis=None,
+            ang_vel_z_axis=0,
+        )
     """
+    range_axis = {
+        "lin_vel_x": lin_vel_x_axis,
+        "lin_vel_y": lin_vel_y_axis,
+        "ang_vel_z": ang_vel_z_axis,
+    }
     super().use_gamepad(
         gamepad,
-        range_axis={
-            "lin_vel_x": lin_vel_x_axis,
-            "lin_vel_y": lin_vel_y_axis,
-            "ang_vel_z": ang_vel_z_axis,
-        },
+        range_axis={k: v for k, v in range_axis.items() if k in self._range},
         invert_axis={
             "lin_vel_x": True,
             "lin_vel_y": True,
@@ -10201,7 +10253,7 @@ def use_gamepad(
 
 ## `when_moving(threshold=0.0025)`
 
-Returns a `when` function for reward and termination items, which is True where this command asks for movement, linear or angular.
+Returns a `when` function for reward and termination items. It is True wherever the command asks the robot to move (linear or angular).
 
 Example::
 
@@ -10226,8 +10278,8 @@ def when_moving(
     self, threshold: float = 0.0025
 ) -> Callable[[GenesisEnv], torch.Tensor]:
     """
-    Returns a ``when`` function for reward and termination items, which is True
-    where this command asks for movement, linear or angular.
+    Returns a ``when`` function for reward and termination items. It is True
+    wherever the command asks the robot to move (linear or angular).
 
     Example::
 
@@ -10246,7 +10298,7 @@ def when_moving(
 
 ## `when_stopped(threshold=0.0025)`
 
-Returns a `when` function for reward and termination items, which is True where this command is stopped: no linear or angular movement.
+Returns a `when` function for reward and termination items. It is True wherever the command asks the robot to stop (no linear or angular movement).
 
 Example::
 
@@ -10271,8 +10323,8 @@ def when_stopped(
     self, threshold: float = 0.0025
 ) -> Callable[[GenesisEnv], torch.Tensor]:
     """
-    Returns a ``when`` function for reward and termination items, which is True
-    where this command is stopped: no linear or angular movement.
+    Returns a ``when`` function for reward and termination items. It is True
+    wherever the command asks the robot to stop (no linear or angular movement).
 
     Example::
 
@@ -14399,7 +14451,7 @@ Bases: `base_height`
 
 Reward the base for being near the target height, using the exponential kernel.
 
-The reward is `exp(-error² / sensitivity)`: 1 at the target, falling toward 0 as the base moves away. Unlike :class:`base_height`, it is bounded, so it suits a height command, where the target moves and the reward should mean the same thing at every commanded height. Use it with a positive weight.
+The reward is `exp(-error² / sensitivity)`: 1 at the target, falling toward 0 as the base moves away. Unlike :class:`base_height`, it's bounded between 0 and 1, so it works well with a height command, where the target changes. Use it with a positive weight.
 
 Parameters:
 
@@ -21090,7 +21142,7 @@ Automatically record videos during training at a regular step or episode interva
 
 Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/main/api/wrappers/misc_wrappers/#gymnasium.wrappers.RecordVideo
 
-Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below). Create it with `debug=True` if you want the managers' debug visuals (`debug_visualizer=True`) to appear in the videos.
+Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below). Add `debug=True` to the camera if you want debug visuals in the videos.
 
 To control how frequently recordings are made specify **one** of `episode_trigger`, `step_trigger`, or `iteration_trigger`. They should be functions returning a boolean that indicates whether a recording should be started at the current episode, step, or training iteration, respectively. Step and episode counts start at 1, so the first environment step is step 1 of episode 1. If no trigger is passed, a default `episode_trigger` will be used, which records at the episode indices 1, 8, 27, ..., :math:`k^3`, ..., 729, 1000, 2000, 3000,.
 
@@ -21166,7 +21218,7 @@ env = VideoWrapper(
 )
 env.build()
 try:
-    ...play loop...
+    ...  # your play loop
 finally:
     env.close()
 ```
@@ -21274,9 +21326,9 @@ def __init__(
     )
     assert trigger_count == 1, "Must specify only one trigger"
     if iteration_trigger is not None:
-        assert steps_per_iteration is not None and steps_per_iteration > 0, (
-            "steps_per_iteration is required with iteration_trigger"
-        )
+        assert (
+            steps_per_iteration is not None and steps_per_iteration > 0
+        ), "steps_per_iteration is required with iteration_trigger"
 
     # Determine how to name the file
     if filename is None:
@@ -21287,9 +21339,9 @@ def __init__(
         else:
             filename = VideoFilename.EPISODE
     if filename == VideoFilename.ITERATION:
-        assert steps_per_iteration is not None and steps_per_iteration > 0, (
-            "steps_per_iteration is required with VideoFilename.ITERATION"
-        )
+        assert (
+            steps_per_iteration is not None and steps_per_iteration > 0
+        ), "steps_per_iteration is required with VideoFilename.ITERATION"
     self._filename = filename
 
     self.episode_trigger = episode_trigger
@@ -21375,9 +21427,9 @@ def build(self) -> None:
     """Load the camera from the environment."""
     super().build()
     self._cam = self.unwrapped.__getattribute__(self._camera_attr)
-    assert self._cam is not None, (
-        f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
-    )
+    assert (
+        self._cam is not None
+    ), f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
 ```
 
 ## `close()`
@@ -23465,6 +23517,13 @@ Source code in `packages/genesis-forge/genesis_forge/gamepads/sdl2.py`
 
 ```
 def run(self) -> None:
+    # On macOS, SDL leaves some gamepads (e.g. Logitech Dual Action) to Apple's
+    # GameController framework (MFI), which only reports them while the main
+    # thread's run loop is running. Have SDL read gamepads directly instead.
+    # The SDL_JOYSTICK_MFI environment variable takes precedence over this hint.
+    if sys.platform == "darwin":
+        sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_MFI, b"0")
+
     if sdl2.SDL_WasInit(sdl2.SDL_INIT_GAMECONTROLLER) == 0:
         sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_GAMECONTROLLER)
 
@@ -23546,7 +23605,7 @@ mesh = arrow_mesh(pos=(0.0, 0.0, 0.5), vec=(0.2, 0.0, 0.0), radius=0.01, color=(
 scene.draw_debug_mesh(mesh)
 ```
 
-Debug visuals always appear in the interactive viewer, but a camera only renders them if it was created with `debug=True` (`scene.add_camera(..., debug=True)`).
+Debug visuals always appear in the interactive viewer, but a camera only renders them if it was created with `scene.add_camera(..., debug=True)`.
 
 Trimesh builders for debug visuals.
 

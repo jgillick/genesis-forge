@@ -14,6 +14,6 @@ scene.draw_debug_mesh(mesh)
 ```
 
 Debug visuals always appear in the interactive viewer, but a camera only renders them if it was
-created with `debug=True` (`scene.add_camera(..., debug=True)`).
+created with `scene.add_camera(..., debug=True)`.
 
 ::: genesis_forge.meshes

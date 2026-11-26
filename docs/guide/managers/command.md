@@ -288,16 +288,8 @@ You can also create arbitrary commands with the basic `CommandManager`.
 
 ```python
 # Create a random target height between 0.1 and 0.2
+# use rewards.base_height_exp to reward based on this target value
 self.height_command = CommandManager(self, range=(0.1, 0.2))
-```
-
-Reward the robot for tracking it with `base_height_exp`, which pays 1 at the commanded height whatever that height is:
-
-```python
-"height_tracking": {
-    "weight": 1.0,
-    "fn": rewards.base_height_exp(height_command=self.height_command),
-},
 ```
 
 ```python

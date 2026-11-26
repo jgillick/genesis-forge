@@ -14,7 +14,7 @@ This builds on the [command_direction](../command_direction/) example, and intro
 Here are the relevant snippets:
 
 ```python
-    # Randomly add/subtract mass to the robot's body on reset, at most once every 100 steps
+    # Randomly add/subtract mass to the robot's body on reset
     self.robot_manager = EntityManager(
         self,
         entity=self.robot,

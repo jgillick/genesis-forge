@@ -131,8 +131,8 @@ class VelocityCommandManager(CommandManager):
         - BLUE ARROW: Actual robot velocity in world coordinates
         - RED BALL: Shown when no linear velocity is commanded
 
-        If you're recording with a camera, these only renders if it was
-        created with `debug=True` (`scene.add_camera(..., debug=True)`).
+        If you're recording with a camera, these only render if the camera was
+        created with `scene.add_camera(..., debug=True)`.
 
     Args:
         env: The environment to control
@@ -269,8 +269,8 @@ class VelocityCommandManager(CommandManager):
         self, threshold: float = 0.0025
     ) -> Callable[[GenesisEnv], torch.Tensor]:
         """
-        Returns a ``when`` function for reward and termination items, which is True
-        where this command asks for movement, linear or angular.
+        Returns a ``when`` function for reward and termination items. It is True
+        wherever the command asks the robot to move (linear or angular).
 
         Example::
 
@@ -290,8 +290,8 @@ class VelocityCommandManager(CommandManager):
         self, threshold: float = 0.0025
     ) -> Callable[[GenesisEnv], torch.Tensor]:
         """
-        Returns a ``when`` function for reward and termination items, which is True
-        where this command is stopped: no linear or angular movement.
+        Returns a ``when`` function for reward and termination items. It is True
+        wherever the command asks the robot to stop (no linear or angular movement).
 
         Example::
 

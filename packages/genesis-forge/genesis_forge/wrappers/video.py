@@ -50,7 +50,7 @@ class VideoWrapper(Wrapper):
     Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/main/api/wrappers/misc_wrappers/#gymnasium.wrappers.RecordVideo
 
     Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
-    Add ``debug=True`` to the camera if you want the debug visuals visualization to appear in the videos.
+    Add ``debug=True`` to the camera if you want debug visuals in the videos.
 
     To control how frequently recordings are made specify **one** of ``episode_trigger``, ``step_trigger``, or
     ``iteration_trigger``. They should be functions returning a boolean that indicates whether a recording should
@@ -143,7 +143,7 @@ class VideoWrapper(Wrapper):
         )
         env.build()
         try:
-            ...play loop...
+            ...  # your play loop
         finally:
             env.close()
 

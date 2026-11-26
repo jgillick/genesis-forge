@@ -142,9 +142,9 @@ class base_height_exp(base_height):
     Reward the base for being near the target height, using the exponential kernel.
 
     The reward is ``exp(-error² / sensitivity)``: 1 at the target, falling toward 0 as
-    the base moves away. Unlike :class:`base_height`, it is bounded, so it suits a
-    height command, where the target moves and the reward should mean the same thing
-    at every commanded height. Use it with a positive weight.
+    the base moves away. Unlike :class:`base_height`, it's bounded between 0 and 1, so
+    it works well with a height command, where the target changes. Use it with a
+    positive weight.
 
     Args:
         target_height: The target height to reward the base height near

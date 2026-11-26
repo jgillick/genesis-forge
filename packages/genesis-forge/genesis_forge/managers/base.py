@@ -17,6 +17,7 @@ ManagerType = Literal[
     "command",
     "observation",
     "monitor",
+    "event",
 ]
 
 

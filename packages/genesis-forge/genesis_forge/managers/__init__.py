@@ -16,6 +16,7 @@ Available managers:
 - :class:`TorqueActionManager` — joint torque actions, bypassing the PD controller
 - :class:`ActuatorManager` — PD controller gains and default joint positions
 - :class:`EntityManager` — entity spawning and per-episode resets
+- :class:`EventManager` — events during an episode, such as random pushes
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
 - :class:`Monitor` / :class:`DofMonitor` / :class:`PowerMonitor` / :class:`ActuatorMonitor` — values calculated and logged each step
@@ -32,11 +33,14 @@ from .actuator import ActuatorManager
 from .base import BaseManager
 from .command import CommandManager, Pose2dCommand, VelocityCommandManager
 from .config import (
+    DurationEventMdpFn,
+    EventMdpFn,
     MdpFn,
     ResetMdpFn,
 )
 from .contact import ContactManager
 from .entity_manager import EntityManager
+from .event import EventManager
 from .monitor import (
     ActuatorMonitor,
     DofMonitor,
@@ -60,7 +64,10 @@ __all__ = [
     "BaseManager",
     "CommandManager",
     "ContactManager",
+    "DurationEventMdpFn",
     "EntityManager",
+    "EventManager",
+    "EventMdpFn",
     "MdpFn",
     "Monitor",
     "MonitorReduction",

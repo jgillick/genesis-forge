@@ -10,6 +10,7 @@ This builds on the [command_direction](../command_direction/) example, and intro
 - Action latency - actions are delivered to the robot between 0 - 2 steps after the policy provides them, to emulate system latency.
 - Observations - No sensors return perfectly clean data.
 - Robot mass - Makes the robot heavier or lighter on reset to change its balance and loading.
+- Random pushes - Shoves the robot every 4 - 8 seconds, so it learns to recover.
 
 Here are the relevant snippets:
 
@@ -26,6 +27,22 @@ Here are the relevant snippets:
                     # Changing mass is slow, so change it at most once every 100 steps
                     min_step_count_between_reset=100,
                 ),
+            },
+        },
+    )
+
+    # Push and twist the robot for 0.1-0.3 seconds, every 4-8 seconds
+    self.event_manager = EventManager(
+        self,
+        cfg={
+            "push": {
+                "fn": events.push_force(
+                    entity_manager=self.robot_manager,
+                    force=(80.0, 175.0),  # newtons
+                    torque=(5.0, 15.0),  # newton-meters, around a random axis
+                ),
+                "interval_range_s": (4.0, 8.0),
+                "duration_range_s": (0.1, 0.3),
             },
         },
     )

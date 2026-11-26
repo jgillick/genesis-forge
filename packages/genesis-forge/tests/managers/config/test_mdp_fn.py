@@ -7,7 +7,7 @@ state on ``self``. Build counts are asserted exactly, never "at least once".
 """
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 import torch
@@ -346,3 +346,91 @@ def test_reset_fn_entity_access_before_context_raises():
 
     with pytest.raises(RuntimeError, match="not bound"):
         Placer().entity  # noqa: B018
+
+
+"""
+default_factory params
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class DecoratedFactory(MdpFn):
+    items: list = field(default_factory=lambda: [1])
+    size: int = field(default=2, metadata={"unit": "m"})
+
+
+class UndecoratedFactory(MdpFn):
+    items: list = field(default_factory=lambda: [1])
+    size: int = field(default=2, metadata={"unit": "m"})
+
+
+factory_parents = pytest.mark.parametrize(
+    "parent", [DecoratedFactory, UndecoratedFactory]
+)
+
+
+def make_subclasses(parent):
+    @dataclass(kw_only=True, eq=False)
+    class Decorated(parent):
+        extra: float = 1.0
+
+    class Undecorated(parent):
+        extra: float = 1.0
+
+    @dataclass(kw_only=True, eq=False)
+    class Grandchild(Decorated):
+        more: list = field(default_factory=list)
+
+    return [parent, Decorated, Undecorated, Grandchild]
+
+
+@factory_parents
+def test_default_factory_is_inherited(parent):
+    for cls in make_subclasses(parent):
+        fn = cls()
+        assert fn.items == [1]
+        assert fn.size == 2
+        assert cls(items=[3]).items == [3]
+
+
+@factory_parents
+def test_default_factory_makes_a_separate_value_for_each_instance(parent):
+    for cls in make_subclasses(parent):
+        assert cls().items is not cls().items
+
+
+@factory_parents
+def test_field_metadata_is_inherited(parent):
+    for cls in make_subclasses(parent)[1:]:
+        fields = {f.name: f for f in dataclasses.fields(cls)}
+        assert fields["size"].metadata == {"unit": "m"}
+
+
+@factory_parents
+def test_a_subclass_can_replace_a_default_factory(parent):
+    @dataclass(kw_only=True, eq=False)
+    class NewDefault(parent):
+        items: list = field(default_factory=lambda: [9])
+
+    @dataclass(kw_only=True, eq=False)
+    class NoDefault(parent):
+        items: list
+
+    assert NewDefault().items == [9]
+    assert NoDefault(items=[4]).items == [4]
+    with pytest.raises(TypeError):
+        NoDefault()
+    # The parent isn't changed
+    assert parent().items == [1]
+
+
+def test_default_factory_is_inherited_with_multiple_parents():
+    class Mixin(MdpFn):
+        names: list = field(default_factory=list)
+
+    @dataclass(kw_only=True, eq=False)
+    class Both(Mixin, DecoratedFactory):
+        pass
+
+    assert Both().items == [1]
+    assert Both().names == []

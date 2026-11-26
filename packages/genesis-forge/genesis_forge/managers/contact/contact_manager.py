@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import genesis as gs
 import torch
@@ -13,7 +13,7 @@ from genesis_forge.managers.contact.config import (
     ContactDebugVisualizerConfig,
 )
 from genesis_forge.managers.contact.kernel import kernel_get_contact_forces
-from genesis_forge.utils import name_matches, scene_rendered_envs_idx
+from genesis_forge.utils import debug_envs_idx, name_matches
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -177,7 +177,10 @@ class ContactManager(BaseManager):
 
         self.debug_visualizer = debug_visualizer
         self.debug_envs_idx = None
-        self.visualizer_cfg = {**DEFAULT_VISUALIZER_CONFIG, **debug_visualizer_cfg}
+        self.visualizer_cfg: dict[str, Any] = {
+            **DEFAULT_VISUALIZER_CONFIG,
+            **debug_visualizer_cfg,
+        }
         self._debug_nodes = []
         self._contact_position_counts = None
 
@@ -302,12 +305,9 @@ class ContactManager(BaseManager):
         """Initialize link indices and buffers."""
         super().build()
 
-        # If debug envs_idx is not set, use the envs the scene renders
-        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = scene_rendered_envs_idx(
-                self.env.scene, self.env.num_envs
-            )
+        self.debug_envs_idx = debug_envs_idx(
+            self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+        )
 
         # Calculate the number of steps per debug render
         fps = self.visualizer_cfg.get("fps", 30)

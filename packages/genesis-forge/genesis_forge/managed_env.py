@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import genesis as gs
 import numpy as np
@@ -15,6 +15,7 @@ from genesis_forge.managers import (
     CommandManager,
     ContactManager,
     EntityManager,
+    EventManager,
     Monitor,
     ObservationManager,
     PositionActionManager,
@@ -29,6 +30,7 @@ class ManagersDict(TypedDict):
     actuator: list[ActuatorManager]
     contact: list[ContactManager]
     entity: list[EntityManager]
+    event: list[EventManager]
     command: list[CommandManager]
     terrain: list[TerrainManager]
     action: list[PositionActionManager]
@@ -139,6 +141,7 @@ class ManagedEnvironment(GenesisEnv):
         self.managers: ManagersDict = {
             "contact": [],
             "entity": [],
+            "event": [],
             "command": [],
             "terrain": [],
             "actuator": [],
@@ -221,10 +224,11 @@ class ManagedEnvironment(GenesisEnv):
             raise ValueError(f"'{manager_type}' is not a valid manager type.")
 
         # Append manager if the dict item is a list
-        if isinstance(self.managers[manager_type], list):
-            self.managers[manager_type].append(manager)
-        elif self.managers[manager_type] is None:
-            self.managers[manager_type] = manager
+        managers = cast(dict[str, Any], self.managers)
+        if isinstance(managers[manager_type], list):
+            managers[manager_type].append(manager)
+        elif managers[manager_type] is None:
+            managers[manager_type] = manager
         else:
             raise ValueError(
                 f"Manager type '{manager_type}' already has a manager, and an environment cannot have multiple {manager_type} managers."
@@ -282,6 +286,8 @@ class ManagedEnvironment(GenesisEnv):
             command_manager.build()
         for entity_manager in self.managers["entity"]:
             entity_manager.build()
+        for event_manager in self.managers["event"]:
+            event_manager.build()
 
         # Calculate monitor values, since observations read them to size the observation space
         for monitor in self.managers["monitor"]:
@@ -309,6 +315,11 @@ class ManagedEnvironment(GenesisEnv):
             (start, end) = self._action_ranges[i]
             processed_actions = action_manager.step(actions[:, start:end])
             action_manager.send_actions_to_simulation(processed_actions)
+
+        # Run events last, right before the simulation step, so that the values cached
+        # after it include their effects
+        for event_manager in self.managers["event"]:
+            event_manager.step()
         self.scene.step()
 
         # Update entity managers
@@ -378,6 +389,9 @@ class ManagedEnvironment(GenesisEnv):
 
         (obs, _) = super().reset(env_ids)
 
+        # Events reset first, so anything they restore when ending can be overridden by the other managers
+        for event_manager in self.managers["event"]:
+            event_manager.reset(env_ids)
         for actuator_manager in self.managers["actuator"]:
             actuator_manager.reset(env_ids)
         for action_manager in self.managers["action"]:

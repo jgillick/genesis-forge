@@ -8,7 +8,7 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh
-from genesis_forge.utils import heading_from_quat, scene_rendered_envs_idx
+from genesis_forge.utils import debug_envs_idx, heading_from_quat
 
 from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
@@ -43,7 +43,10 @@ class Pose2dDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
     envs_idx: NotRequired[list[int]]
-    """The indices of the environments to visualize. If None, all environments will be visualized."""
+    """
+    The indices of the environments to visualize. Defaults to the environments the scene renders
+    (``rendered_envs_idx`` in the scene's ``VisOptions``), or all of them if it isn't set.
+    """
 
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
@@ -591,12 +594,9 @@ class Pose2dCommand(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, use the envs the scene renders
-        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = scene_rendered_envs_idx(
-                self.env.scene, self.env.num_envs
-            )
+        self.debug_envs_idx = debug_envs_idx(
+            self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+        )
 
         self._debug_envs_tensor = torch.tensor(
             self.debug_envs_idx or [], dtype=torch.long, device=gs.device

@@ -12,6 +12,7 @@ import trimesh
 
 from genesis_forge.meshes import (
     arrow_mesh,
+    arrow_meshes,
     flat_arc_arrow_mesh,
 )
 
@@ -34,6 +35,21 @@ def radial(mesh: trimesh.Trimesh, center=ORIGIN) -> np.ndarray:
 """
 arrow_mesh
 """
+
+
+def test_arrow_meshes_leaves_out_arrows_that_are_too_short():
+    pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+    vec = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 2.0]])
+    meshes = arrow_meshes(pos, vec, 0.1, color=(1.0, 0.0, 0.0, 1.0))
+
+    assert len(meshes) == 2
+    assert meshes[0].bounds[1][2] == pytest.approx(1.0)
+    assert meshes[1].bounds[:, 0].mean() == pytest.approx(2.0)
+    assert meshes[1].bounds[1][2] == pytest.approx(2.0)
+
+
+def test_arrow_meshes_without_any_arrows():
+    assert arrow_meshes(np.zeros((0, 3)), np.zeros((0, 3)), 0.1) == []
 
 
 def test_arrow_is_placed_at_pos_and_points_along_vec():

@@ -1,7 +1,7 @@
 """
 Trimesh builders for debug visuals.
 
-Each builder returns a `trimesh.Trimesh` already placed in the scene, ready to be drawn
+Each builder returns `trimesh.Trimesh` meshes already placed in the scene, ready to be drawn
 with `scene.draw_debug_mesh(mesh)`. The interactive viewer always shows debug visuals,
 but a camera only renders them if it was created with `debug=True`.
 """
@@ -82,6 +82,35 @@ def arrow_mesh(
     if color is not None:
         _set_color(mesh, color)
     return mesh
+
+
+def arrow_meshes(
+    pos: ArrayLike,
+    vec: ArrayLike,
+    radius: float,
+    *,
+    min_length: float = 1e-3,
+    color: Color | None = None,
+) -> list[trimesh.Trimesh]:
+    """
+    Several arrows with the same radius and color, leaving out any that are too short to see.
+
+    Args:
+        pos: The position of the base of each arrow, shape (N, 3)
+        vec: The vector of each arrow, shape (N, 3)
+        radius: The radius of the shafts
+        min_length: Arrows shorter than this are left out
+        color: RGBA color of the arrows, or None to leave the meshes uncolored
+
+    Returns:
+        The arrow meshes
+    """
+    pos, vec = np.asarray(pos), np.asarray(vec)
+    visible = np.linalg.norm(vec, axis=-1) > min_length
+    return [
+        arrow_mesh(p, v, radius, color=color)
+        for p, v in zip(pos[visible], vec[visible], strict=True)
+    ]
 
 
 def flat_arc_arrow_mesh(

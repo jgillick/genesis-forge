@@ -6,6 +6,8 @@ accepts name patterns, so the exact-vs-regex and first-match-wins rules are pinn
 
 import math
 import re
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import torch
@@ -13,6 +15,7 @@ from genesis.utils.geom import transform_by_quat, xyz_to_quat
 
 from genesis_forge.utils import (
     assign_by_pattern,
+    debug_envs_idx,
     heading_from_quat,
     inf_to_none,
     name_matches,
@@ -166,3 +169,35 @@ def test_inf_to_none_returns_plain_floats():
 
     assert result == [1.0, 2.0]
     assert all(type(value) is float for value in result)
+
+
+"""
+debug_envs_idx
+"""
+
+
+def scene_rendering(rendered_envs_idx) -> Any:
+    return SimpleNamespace(
+        vis_options=SimpleNamespace(rendered_envs_idx=rendered_envs_idx)
+    )
+
+
+def test_debug_envs_default_to_the_rendered_envs():
+    assert debug_envs_idx(scene_rendering([0, 2]), 4, None) == [0, 2]
+
+
+def test_debug_envs_default_to_every_env_when_rendering_is_not_restricted():
+    assert debug_envs_idx(scene_rendering(None), 3, None) == [0, 1, 2]
+
+
+def test_debug_envs_can_be_some_of_the_rendered_envs():
+    assert debug_envs_idx(scene_rendering([0, 2]), 4, [2]) == [2]
+
+
+def test_debug_envs_that_are_not_rendered_raise():
+    with pytest.raises(ValueError, match=r"not rendered: \[1, 3\]"):
+        debug_envs_idx(scene_rendering([0, 2]), 4, [0, 1, 3])
+
+
+def test_debug_envs_can_be_any_env_when_rendering_is_not_restricted():
+    assert debug_envs_idx(scene_rendering(None), 4, [3]) == [3]

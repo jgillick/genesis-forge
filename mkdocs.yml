@@ -148,6 +148,7 @@ nav:
               - CommandManager: api/managers/command/command.md
               - VelocityCommandManager: api/managers/command/velocity.md
               - Pose2dCommand: api/managers/command/pose_2d.md
+              - AttitudeCommandManager: api/managers/command/attitude.md
       - MDP:
           - Overview: api/mdp/index.md
           - Events: api/mdp/events.md

@@ -282,6 +282,81 @@ The manager also exposes `distance_to_goal`, `bearing_error`, `heading_error`, a
 
 See [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation) for a full navigation environment.
 
+## Attitude Command Manager
+
+`AttitudeCommandManager` commands a pitch and roll for your robot's base. Use it for robots that lean on purpose, like a quadruped bowing or leaning into a turn. The angles are in radians. A positive pitch tips the nose down, and a positive roll tips the right side down.
+
+```python
+from genesis_forge.managers.command import AttitudeCommandManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.attitude_command = AttitudeCommandManager(
+            self,
+            range={
+                "pitch": (-0.3, 0.3),
+                "roll": (-0.2, 0.2),
+            },
+            level_probability=0.2,  # 20% chance of a level command
+        )
+```
+
+### Using Attitude Commands in Rewards
+
+Reward the robot for holding the commanded pitch and roll:
+
+```python
+from genesis_forge.mdp import rewards
+
+RewardManager(
+    self,
+    cfg={
+        "tracking_attitude": {
+            "weight": 1.0,
+            "fn": rewards.command_tracking_attitude(
+                attitude_command=self.attitude_command,
+                entity_manager=self.robot_manager,
+            ),
+        },
+        # Penalize the base moving up and down, so the robot doesn't bounce
+        "lin_vel_z": {
+            "weight": -1.0,
+            "fn": rewards.lin_vel_z_l2(
+                entity_manager=self.robot_manager,
+                frame="heading",  # <~ don't count the lean as vertical motion
+            ),
+        },
+    },
+)
+```
+
+!!! tip "Important"
+
+    While your robot leans, set `frame="heading"` on the velocity rewards. See [Robots that pitch or roll on purpose](reward.md#robots-that-pitch-or-roll-on-purpose) for why.
+
+`command_tracking_attitude` gives little signal when the robot is far from the command, like when it's lying on the ground. If your robot starts there, add `flat_orientation_l2` with the same `attitude_command` and a negative weight. It keeps pulling the robot toward the command from any distance.
+
+### Using Attitude Commands in Observations
+
+```python
+ObservationManager(
+    self,
+    cfg={
+        "attitude_command": {
+            "fn": self.attitude_command.observation,
+        },
+    },
+)
+```
+
+### Gamepad Control
+
+Map a gamepad axis to the pitch, the roll, or both. An angle without an axis stays level. Pushing the pitch stick forward tips the nose down:
+
+```python
+env.attitude_command.use_gamepad(gamepad, pitch_axis=3, roll_axis=2)
+```
+
 ## Custom Command Manager
 
 You can also create arbitrary commands with the basic `CommandManager`.

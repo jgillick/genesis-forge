@@ -12,15 +12,18 @@ from typing import Any
 import genesis as gs
 import pytest
 import torch
-from genesis.utils.geom import transform_by_quat, xyz_to_quat
+from genesis.utils.geom import inv_quat, transform_by_quat, xyz_to_quat
 
 from genesis_forge.utils import (
     apply_external_wrench,
     assign_by_pattern,
     debug_envs_idx,
+    entity_ang_vel,
+    entity_lin_vel,
     heading_from_quat,
     inf_to_none,
     name_matches,
+    to_heading_frame,
 )
 
 """
@@ -148,6 +151,51 @@ def test_heading_from_quat_is_the_yaw_for_an_upright_entity():
     quat = torch.tensor([[math.cos(math.pi / 8), 0.0, 0.0, math.sin(math.pi / 8)]])
 
     assert math.isclose(heading_from_quat(quat).item(), math.pi / 4, abs_tol=1e-5)
+
+
+"""
+to_heading_frame
+"""
+
+
+def test_to_heading_frame_keeps_level_motion_level_however_the_entity_tilts():
+    """
+    Walking level along its heading, pitched and rolled: in the heading frame that's
+    straight ahead, and a yaw turn stays a pure yaw turn.
+    """
+    quat = xyz_to_quat(torch.tensor([[15.0, -25.0, 40.0]]), rpy=True, degrees=True)
+    heading = heading_from_quat(quat).item()
+    vec = torch.tensor(
+        [[2.0 * math.cos(heading), 2.0 * math.sin(heading), 0.0], [0.0, 0.0, 0.7]]
+    )
+
+    result = to_heading_frame(vec, quat.expand(2, 4))
+
+    assert torch.allclose(
+        result, torch.tensor([[2.0, 0.0, 0.0], [0.0, 0.0, 0.7]]), atol=1e-5
+    )
+
+
+def test_to_heading_frame_matches_the_base_frame_for_an_upright_entity():
+    quat = xyz_to_quat(torch.tensor([[0.0, 0.0, 70.0]]), rpy=True, degrees=True)
+    vec = torch.tensor([[0.3, -1.1, 0.4]])
+
+    assert torch.allclose(
+        to_heading_frame(vec, quat), transform_by_quat(vec, inv_quat(quat)), atol=1e-5
+    )
+
+
+def test_entity_velocities_reject_an_unknown_frame():
+    entity = SimpleNamespace(
+        get_quat=lambda: torch.tensor([[1.0, 0.0, 0.0, 0.0]]),
+        get_vel=lambda: torch.zeros((1, 3)),
+        get_ang=lambda: torch.zeros((1, 3)),
+    )
+
+    with pytest.raises(ValueError, match="body"):
+        entity_lin_vel(entity, "body")
+    with pytest.raises(ValueError, match="body"):
+        entity_ang_vel(entity, "body")
 
 
 """

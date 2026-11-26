@@ -119,6 +119,46 @@ they are switched off.
 
     A conditional reward is logged as its mean while active, and its share of the episode as `Rewards Active / <name>`. Multiply them to compare it with other rewards.
 
+## Robots that pitch or roll on purpose
+
+The velocity rewards measure velocity in the robot's base frame by default, which tilts with the robot. If your robot leans on purpose, like a hexapod robot leaning while walking, part of its forward speed shows up as vertical speed, and `lin_vel_z_l2` penalizes it for walking.
+
+Set `frame="heading"` to measure velocity in a frame that turns with the robot but stays level with the ground:
+
+```python
+"lin_vel_z": {
+    "weight": -1.0,
+    "fn": rewards.lin_vel_z_l2(entity_manager=self.robot_manager, frame="heading"),
+},
+"tracking_lin_vel": {
+    "weight": 1.0,
+    "fn": rewards.command_tracking_lin_vel(
+        vel_cmd_manager=self.velocity_command,
+        entity_manager=self.robot_manager,
+        frame="heading",
+    ),
+},
+```
+
+This works with `lin_vel_z_l2`, `lin_vel_xy_l2`, `ang_vel_xy_l2`, `command_tracking_lin_vel`, and `command_tracking_ang_vel`.
+
+`flat_orientation_l2` penalizes the tilt itself, so give it the pitch and roll to hold with an [AttitudeCommandManager](command.md#attitude-command-manager).
+
+```python
+RewardManager(
+    self,
+    cfg={
+        "orientation": {
+            "weight": -5.0,
+            "fn": rewards.flat_orientation_l2(
+                entity_manager=self.robot_manager,
+                attitude_command=self.attitude_command,
+            ),
+        },
+    },
+)
+```
+
 ## Built-in Reward Functions
 
 Genesis Forge provides many common reward functions in [`genesis_forge.mdp.rewards`](../../api/mdp/rewards.md):

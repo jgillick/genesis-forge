@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import genesis as gs
 import torch
@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from genesis.engine.entities.rigid_entity.rigid_link import RigidLink
 
 T = TypeVar("T")
+
+VelocityFrame = Literal["base", "heading"]
+"""
+The frame an entity's velocity is expressed in.
+
+- `"base"`: the base link's own frame, which tilts with the entity.
+- `"heading"`: turns with the entity's heading but stays level with the ground, so
+  pitching or rolling doesn't leak motion from one axis into another.
+"""
 
 
 def scene_rendered_envs_idx(scene: gs.Scene, num_envs: int) -> list[int]:
@@ -77,30 +86,40 @@ def debug_envs_idx(
     return envs_idx
 
 
-def entity_lin_vel(entity: RigidEntity) -> torch.Tensor:
+def entity_lin_vel(entity: RigidEntity, frame: VelocityFrame = "base") -> torch.Tensor:
     """
     Calculate an entity's linear velocity in its local frame.
 
     Args:
         entity: The entity to calculate the linear velocity of
+        frame: The frame to express the velocity in. See :data:`VelocityFrame`.
 
     Returns:
         torch.Tensor: Linear velocity in the local frame
     """
+    if frame == "heading":
+        return to_heading_frame(entity.get_vel(), entity.get_quat())
+    if frame != "base":
+        raise ValueError(f"Unknown velocity frame: {frame!r}")
     inv_base_quat = inv_quat(entity.get_quat())
     return transform_by_quat(entity.get_vel(), inv_base_quat)
 
 
-def entity_ang_vel(entity: RigidEntity) -> torch.Tensor:
+def entity_ang_vel(entity: RigidEntity, frame: VelocityFrame = "base") -> torch.Tensor:
     """
     Calculate an entity's angular velocity in its local frame.
 
     Args:
         entity: The entity to calculate the angular velocity of
+        frame: The frame to express the velocity in. See :data:`VelocityFrame`.
 
     Returns:
         torch.Tensor: Angular velocity in the local frame
     """
+    if frame == "heading":
+        return to_heading_frame(entity.get_ang(), entity.get_quat())
+    if frame != "base":
+        raise ValueError(f"Unknown velocity frame: {frame!r}")
     inv_base_quat = inv_quat(entity.get_quat())
     return transform_by_quat(entity.get_ang(), inv_base_quat)
 
@@ -138,6 +157,24 @@ def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
     w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
     # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
     return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def to_heading_frame(vec: torch.Tensor, quat: torch.Tensor) -> torch.Tensor:
+    """
+    Rotate world-frame vectors into the heading frame: the frame that turns with the
+    entity's heading (see :func:`heading_from_quat`) but stays level with the ground.
+
+    Args:
+        vec: World-frame vectors, shape (num_envs, 3)
+        quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
+
+    Returns:
+        torch.Tensor: The vectors in the heading frame, shape (num_envs, 3)
+    """
+    heading = heading_from_quat(quat)
+    cos_h, sin_h = torch.cos(heading), torch.sin(heading)
+    x, y = vec[:, 0], vec[:, 1]
+    return torch.stack((cos_h * x + sin_h * y, cos_h * y - sin_h * x, vec[:, 2]), dim=1)
 
 
 def name_matches(name: str, pattern: str) -> bool:

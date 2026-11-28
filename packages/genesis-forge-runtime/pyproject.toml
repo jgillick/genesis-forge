@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genesis-forge-runtime"
-version = "1.1.0"
+version = "1.2.0"
 authors = [{ name = "Jeremy Gillick" }]
 description = "Simulation-free runtime for deploying Genesis Forge policies to real robots."
 readme = "README.md"

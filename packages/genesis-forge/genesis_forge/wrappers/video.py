@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import math
 import os
 from collections.abc import Callable
@@ -50,6 +51,7 @@ class VideoWrapper(Wrapper):
     Based on the RecordVideo wrapper from Gymnasium: https://gymnasium.farama.org/main/api/wrappers/misc_wrappers/#gymnasium.wrappers.RecordVideo
 
     Recordings will be made from a dedicated camera, which you need to add to your environment (see the example below).
+    Add ``debug=True`` to the camera if you want debug visuals in the videos.
 
     To control how frequently recordings are made specify **one** of ``episode_trigger``, ``step_trigger``, or
     ``iteration_trigger``. They should be functions returning a boolean that indicates whether a recording should
@@ -85,7 +87,8 @@ class VideoWrapper(Wrapper):
                           :attr:`iteration_offset` property, as long as it is set before the first step.
         wait_for_episode_start: Delay each triggered recording until the next episode of the watched environment begins.
                                 Has no effect with ``episode_trigger``, which always starts on the first step of an episode.
-        video_length_sec: Length of each video, in seconds.
+        video_length_sec: Length of each video, in seconds. ``None`` records until the environment is closed, through
+                          any episode resets.
         out_dir: Directory to save the videos to.
         fps: Frames per second for the video.
         env_idx: If triggering on episode, this is the index of the environment to be counting episodes for.
@@ -128,6 +131,26 @@ class VideoWrapper(Wrapper):
             out_dir="./videos",
             step_trigger=lambda step: step % 1500 == 0
         )
+
+    A recording in progress is saved when :meth:`close` is called, when a step raises (such as Genesis's
+    "Viewer closed." error when the viewer window is closed), or when Python exits. Calling :meth:`close` is still
+    the most reliable way to save it.
+
+    Record a play session from start to end::
+
+        env = VideoWrapper(
+            env,
+            camera_attr="camera",
+            out_dir="./videos",
+            step_trigger=lambda step: step == 1,
+            video_length_sec=None,
+            filename="play.mp4",
+        )
+        env.build()
+        try:
+            ...  # your play loop
+        finally:
+            env.close()
 
     Create a custom video filename::
 
@@ -173,7 +196,7 @@ class VideoWrapper(Wrapper):
         self,
         env: GenesisEnv | Wrapper,
         camera_attr: str = "camera",
-        video_length_sec: int = 8,
+        video_length_sec: float | None = 8,
         episode_trigger: Callable[[int], bool] | None = None,
         step_trigger: Callable[[int], bool] | None = None,
         iteration_trigger: Callable[[int], bool] | None = None,
@@ -195,7 +218,7 @@ class VideoWrapper(Wrapper):
         self._current_episode: int = 1
         self._episode_step: int = 1
         self._recording_start_step: int = 0
-        self._recording_stop_step: int = 0
+        self._recording_stop_step: int | None = None
         self._recording_name: str = "recording"
         self._wait_for_episode_start = wait_for_episode_start
         self._recording_pending: bool = False
@@ -203,7 +226,9 @@ class VideoWrapper(Wrapper):
         self._cam: Camera | None = None
         self._camera_attr = camera_attr
         self._out_dir = out_dir
-        self._video_length_steps = math.ceil(video_length_sec / self.dt)
+        self._video_length_steps: int | None = (
+            None if video_length_sec is None else math.ceil(video_length_sec / self.dt)
+        )
         self._steps_per_frame = max(
             1, round(1.0 / fps / self.dt)
         )  # max prevents division by zero
@@ -252,9 +277,9 @@ class VideoWrapper(Wrapper):
         os.makedirs(self._out_dir, exist_ok=True)
 
     @property
-    def video_length_steps(self) -> int:
+    def video_length_steps(self) -> int | None:
         """
-        The number of steps that will be recorded for each video.
+        The number of steps that will be recorded for each video, or ``None`` if it records until closed.
         """
         return self._video_length_steps
 
@@ -273,7 +298,11 @@ class VideoWrapper(Wrapper):
     def build(self) -> None:
         """Load the camera from the environment."""
         super().build()
-        self._cam = self.unwrapped.__getattribute__(self._camera_attr)
+        self._load_camera()
+
+    def _load_camera(self) -> None:
+        """Find the recording camera on the base environment."""
+        self._cam = getattr(self.unwrapped, self._camera_attr, None)
         assert self._cam is not None, (
             f"Camera not found at attribute: {self.unwrapped.__class__.__name__}.{self._camera_attr}"
         )
@@ -282,16 +311,25 @@ class VideoWrapper(Wrapper):
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
         """Record a video image at each step."""
-        (
-            observations,
-            rewards,
-            terminateds,
-            truncateds,
-            extras,
-        ) = super().step(actions)
+        try:
+            (
+                observations,
+                rewards,
+                terminateds,
+                truncateds,
+                extras,
+            ) = super().step(actions)
+        except BaseException:
+            # The session is ending (e.g. the viewer was closed), so save what was recorded
+            self.finish_recording()
+            raise
 
         # Stop recording if the recording stop step is reached
-        if self._is_recording and self._recording_stop_step <= self._current_step:
+        if (
+            self._is_recording
+            and self._recording_stop_step is not None
+            and self._recording_stop_step <= self._current_step
+        ):
             self.finish_recording()
 
         self._check_recording_trigger()
@@ -323,13 +361,21 @@ class VideoWrapper(Wrapper):
 
     def start_recording(self):
         """Start recording a video."""
+        # The camera is normally found in build(), but the environment may have been built before it was wrapped
         if self._cam is None:
-            return
+            self._load_camera()
 
         self._is_recording = True
         self._recording_start_step = self._current_step
         self._recording_name = self._video_filename()
-        self._recording_stop_step = self._current_step + self._video_length_steps
+        self._recording_stop_step = (
+            None
+            if self._video_length_steps is None
+            else self._current_step + self._video_length_steps
+        )
+
+        # Save the recording even if the script exits without closing the environment
+        atexit.register(self.finish_recording)
 
         filepath = os.path.join(self._tmp_dir, self._recording_name)
         self._cam.start_recording(
@@ -343,6 +389,7 @@ class VideoWrapper(Wrapper):
         """
         if not self._is_recording or self._cam is None:
             return
+        atexit.unregister(self.finish_recording)
 
         # Save recording
         filepath = os.path.join(self._out_dir, self._recording_name)
@@ -355,7 +402,7 @@ class VideoWrapper(Wrapper):
 
         # Reset recording state
         self._is_recording = False
-        self._recording_stop_step = 0
+        self._recording_stop_step = None
 
     def _check_recording_trigger(self) -> bool:
         """Check if a recording should be started"""

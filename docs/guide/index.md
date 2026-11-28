@@ -56,6 +56,7 @@ Genesis Forge provides a collection of managers to handle different aspects of y
 - **TerminationManager**: Handles episode termination conditions
 - **CommandManager**: Manages high-level commands for goal-conditioned tasks
 - **EntityManager**: Handles robot spawning, resets, and state management
+- **EventManager**: Makes things happen during an episode, such as random pushes
 - **ContactManager**: Tracks contacts and collisions between robots and the environment
 - **TerrainManager**: Provides useful functions for working with various terrains.
 

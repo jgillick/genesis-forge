@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import NotRequired
 
 import genesis as gs
 import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import ConfigItemDict, RewardConfigItem
+from genesis_forge.managers.config import ConfigItemDict, MdpFn, RewardConfigItem
 
 
 class RewardConfig(ConfigItemDict):
@@ -15,6 +16,13 @@ class RewardConfig(ConfigItemDict):
 
     weight: float
     """The weight of the reward item."""
+
+    when: NotRequired[Callable[[GenesisEnv], torch.Tensor] | MdpFn]
+    """
+    Only reward the environments where this returns True: a function of the env, or a
+    constructed MdpFn, returning a bool tensor of shape (num_envs,). The reward's
+    episode mean is then measured over the time it was active.
+    """
 
 
 class RewardManager(BaseManager):
@@ -117,6 +125,13 @@ class RewardManager(BaseManager):
                 (env.num_envs,), device=gs.device, dtype=gs.tc_float
             )
 
+        # The seconds each gated item has been active this episode, per env
+        self._active_seconds: dict[str, torch.Tensor] = {
+            name: torch.zeros((env.num_envs,), device=gs.device, dtype=gs.tc_float)
+            for name, cfg in self.cfg.items()
+            if cfg.is_gated
+        }
+
     @property
     def rewards(self) -> torch.Tensor:
         """
@@ -168,6 +183,9 @@ class RewardManager(BaseManager):
         given reward name. Call it before the environments reset, such as from a curriculum,
         to grade the episodes that just ended.
 
+        For a reward with a ``when`` condition, this is per second the reward was active,
+        and 0 for an environment where it was never active.
+
         Args:
             name: The name of the reward to get the mean for.
             envs_idx: The environments to get the mean for. If None, all environments.
@@ -179,7 +197,11 @@ class RewardManager(BaseManager):
         if envs_idx is None:
             envs_idx = self.env.all_envs_idx
 
-        rew = self._episode_sums[name][envs_idx] / self._episode_seconds[envs_idx]
+        if name in self._active_seconds:
+            seconds = self._active_seconds[name][envs_idx].clamp(min=1e-10)
+        else:
+            seconds = self._episode_seconds[envs_idx]
+        rew = self._episode_sums[name][envs_idx] / seconds
         if not before_weight:
             rew = rew * self.cfg[name].weight
         return rew
@@ -211,6 +233,14 @@ class RewardManager(BaseManager):
         for name, cfg in self.cfg.items():
             value = cfg.execute() * dt
 
+            # Zero the value where the item's condition is off, and count its active time
+            active = cfg.evaluate_when()
+            if active is not None:
+                # torch.where, not a multiply, since NaN * 0 is still NaN, and a gated
+                # function is often undefined where its condition is off
+                value = torch.where(active, value, 0.0)
+                self._active_seconds[name] += active * dt
+
             # Add to the episode sums, even at zero weight, so the mean is always known
             self._episode_sums[name] += value
 
@@ -231,10 +261,7 @@ class RewardManager(BaseManager):
 
         for name in self.cfg:
             if self.enabled and len(envs_idx) > 0:
-                # The mean across the episodes that just ended, per second
-                episode_mean = torch.mean(
-                    self.episode_mean_reward_for_envs(name, envs_idx)
-                )
+                episode_mean = self._reset_episode_mean(name, envs_idx)
                 self._episode_mean[name] = episode_mean
 
                 # Log items with a weight, at their weight
@@ -243,11 +270,40 @@ class RewardManager(BaseManager):
                     logging_dict = self.env.extras[self.env.extras_logging_key]
                     logging_dict[f"{self.logging_tag} / {name}"] = episode_mean * weight
 
+                    # The share of time a gated reward was active, so mean * share gives
+                    # its contribution to the episode return
+                    if name in self._active_seconds:
+                        logging_dict[f"{self.logging_tag} Active / {name}"] = (
+                            torch.mean(
+                                self._active_seconds[name][envs_idx]
+                                / self._episode_seconds[envs_idx]
+                            )
+                        )
+
             # Reset episodic data
             self._episode_sums[name][envs_idx] = 0.0
+            if name in self._active_seconds:
+                self._active_seconds[name][envs_idx] = 0.0
 
         # Reset episode seconds to nearly zero, to prevent divide by zero errors
         self._episode_seconds[envs_idx] = 1e-10
+
+    def _reset_episode_mean(self, name: str, envs_idx: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the mean reward, per second, across the episodes that just ended.
+
+        A gated reward averages only the episodes where it was active, and keeps its
+        previous mean when it was active in none of them. Stays on the device.
+        """
+        rew = self.episode_mean_reward_for_envs(name, envs_idx)
+        if name not in self._active_seconds:
+            return torch.mean(rew)
+
+        was_active = self._active_seconds[name][envs_idx] > 0
+        count = was_active.sum()
+        mean = (rew * was_active).sum() / count.clamp(min=1)
+        previous = self._episode_mean.get(name, torch.zeros((), device=gs.device))
+        return torch.where(count > 0, mean, previous)
 
     """
     Dict-like operations

@@ -53,6 +53,13 @@ class FakeEnv(GenesisEnv):
         pass
 
 
+@pytest.fixture(autouse=True)
+def no_exit_handlers(monkeypatch):
+    """Keep recordings that a test leaves open from being saved when pytest exits."""
+    monkeypatch.setattr("atexit.register", lambda fn: None)
+    monkeypatch.setattr("atexit.unregister", lambda fn: None)
+
+
 def run_steps(env, n):
     for _ in range(n):
         env.step(None)
@@ -448,3 +455,108 @@ def test_filename_function_called_when_waiting_recording_starts(tmp_path):
     env.build()
     run_steps(env, 12)
     assert recording_names(env) == ["s7_e2_i1.mp4"]
+
+
+def test_no_video_length_records_until_close(tmp_path):
+    env = VideoWrapper(
+        FakeEnv(episode_length=10),
+        out_dir=str(tmp_path),
+        video_length_sec=None,
+        fps=50,  # one frame per step
+        step_trigger=lambda step: step == 1,
+        filename="play.mp4",
+        logging=False,
+    )
+    env.build()
+    camera = env.unwrapped.camera
+
+    def write_video():
+        tmp_video = tmp_path / ".tmp" / "play.mp4"
+        tmp_video.parent.mkdir()
+        tmp_video.touch()
+
+    camera.stop_recording = write_video
+
+    # Longer than the default length (400 steps), and across many episodes
+    run_steps(env, 1000)
+    assert env.video_length_steps is None
+    assert recording_names(env) == ["play.mp4"]
+    assert camera.frame_steps == list(range(1, 1001))
+    assert not (tmp_path / "play.mp4").exists()
+
+    env.close()
+    assert (tmp_path / "play.mp4").exists()
+
+
+def _recording_env(tmp_path, **kwargs):
+    """A wrapper that records from step 1 until closed, with a camera that writes a video file on stop."""
+    env = VideoWrapper(
+        FakeEnv(**kwargs),
+        out_dir=str(tmp_path),
+        video_length_sec=None,
+        step_trigger=lambda step: step == 1,
+        filename="play.mp4",
+        logging=False,
+    )
+    env.build()
+
+    def write_video():
+        tmp_video = tmp_path / ".tmp" / "play.mp4"
+        tmp_video.parent.mkdir(exist_ok=True)
+        tmp_video.touch()
+
+    env.unwrapped.camera.stop_recording = write_video
+    return env
+
+
+def test_recording_is_saved_when_a_step_raises(tmp_path):
+    # Genesis raises "Viewer closed." from the step after the viewer window is closed
+    env = _recording_env(tmp_path)
+    run_steps(env, 5)
+
+    def viewer_closed(actions):
+        raise RuntimeError("Viewer closed.")
+
+    env.unwrapped.step = viewer_closed
+    with pytest.raises(RuntimeError, match="Viewer closed."):
+        env.step(None)
+    assert (tmp_path / "play.mp4").exists()
+
+    # Closing afterwards does not save it again
+    (tmp_path / "play.mp4").unlink()
+    env.close()
+    assert not (tmp_path / "play.mp4").exists()
+
+
+def test_recording_is_saved_at_exit_without_close(tmp_path, monkeypatch):
+    registered = []
+    monkeypatch.setattr("atexit.register", registered.append)
+    monkeypatch.setattr("atexit.unregister", registered.remove)
+
+    env = _recording_env(tmp_path)
+    run_steps(env, 5)
+    assert registered == [env.finish_recording]
+
+    # Python exiting runs the registered handler
+    registered[0]()
+    assert (tmp_path / "play.mp4").exists()
+    assert registered == []
+
+
+def test_records_when_the_environment_was_built_before_wrapping(tmp_path):
+    base = FakeEnv()
+    base.build()
+    env = VideoWrapper(
+        base, out_dir=str(tmp_path), step_trigger=lambda step: step == 1, fps=50
+    )
+    run_steps(env, 3)
+    assert recording_names(env) == ["1.mp4"]
+    assert base.camera.frame_steps == [1, 2, 3]
+
+
+def test_missing_camera_is_an_error_when_recording_starts(tmp_path):
+    base = FakeEnv()
+    del base.camera
+    env = VideoWrapper(base, out_dir=str(tmp_path), step_trigger=lambda step: True)
+    with pytest.raises(AssertionError, match="Camera not found"):
+        env.step(None)

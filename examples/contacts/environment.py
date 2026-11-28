@@ -168,9 +168,10 @@ class Go2CommandDirectionEnv(ManagedEnvironment):
                     "weight": 1.0,
                     "fn": rewards.feet_air_time(
                         contact_manager=self.foot_contact_manager,
-                        vel_cmd_manager=self.velocity_command,
                         time_threshold=0.5,
                     ),
+                    # Only while the robot is commanded to move
+                    "when": self.velocity_command.when_moving(threshold=0.1),
                 },
                 # Make sure the robot stays standing at a reasonable height (0.3 meters)
                 "height_target": {

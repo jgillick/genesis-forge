@@ -1,22 +1,25 @@
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class ContactDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the contact debug visualizer."""
 
-    envs_idx: list[int]
-    """The indices of the environments to visualize. If None, all environments will be visualized."""
+    envs_idx: NotRequired[list[int] | None]
+    """
+    The indices of the environments to visualize. Defaults to the environments the scene renders
+    (``rendered_envs_idx`` in the scene's ``VisOptions``), or all of them if it isn't set.
+    """
 
-    color: tuple[float, float, float, float]
+    color: NotRequired[tuple[float, float, float, float]]
     """The color of the contact ball"""
 
-    radius: float
+    radius: NotRequired[float]
     """The radius of the visualization sphere"""
 
-    force_threshold: float
+    force_threshold: NotRequired[float]
     """The threshold, in Newtons, for the contact force to be visualized"""
 
-    fps: int
+    fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
 
 

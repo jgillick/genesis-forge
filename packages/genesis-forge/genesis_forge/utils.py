@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import genesis as gs
 import torch
@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from genesis.engine.entities.rigid_entity.rigid_link import RigidLink
 
 T = TypeVar("T")
+
+VelocityFrame = Literal["base", "heading"]
+"""
+The frame an entity's velocity is expressed in.
+
+- `"base"`: the base link's own frame, which tilts with the entity.
+- `"heading"`: turns with the entity's heading but stays level with the ground, so
+  pitching or rolling doesn't leak motion from one axis into another.
+"""
 
 
 def scene_rendered_envs_idx(scene: gs.Scene, num_envs: int) -> list[int]:
@@ -43,30 +52,74 @@ def scene_rendered_envs_idx(scene: gs.Scene, num_envs: int) -> list[int]:
     return list(range(num_envs))
 
 
-def entity_lin_vel(entity: RigidEntity) -> torch.Tensor:
+def debug_envs_idx(
+    scene: gs.Scene, num_envs: int, envs_idx: Sequence[int] | None
+) -> list[int]:
+    """
+    Get the environments a debug visualizer draws in, which must be ones the scene renders.
+
+    Debug objects are drawn into every rendered environment, so the visuals for an
+    environment that isn't rendered would show up in another one.
+
+    Args:
+        scene: The Genesis scene
+        num_envs: The total number of parallel environments
+        envs_idx: The environments to draw in, or None for all the rendered environments
+
+    Returns:
+        The environment indices to draw in
+
+    Raises:
+        ValueError: If any of the environments are not rendered by the scene
+    """
+    rendered = scene_rendered_envs_idx(scene, num_envs)
+    if envs_idx is None:
+        return rendered
+    envs_idx = [int(i) for i in envs_idx]
+    not_rendered = sorted(set(envs_idx) - set(rendered))
+    if not_rendered:
+        raise ValueError(
+            f"The debug visualizer's envs_idx includes environments that are not rendered: "
+            f"{not_rendered}. Add them to rendered_envs_idx in the scene's VisOptions, "
+            f"or remove them from envs_idx. The rendered environments are: {rendered}"
+        )
+    return envs_idx
+
+
+def entity_lin_vel(entity: RigidEntity, frame: VelocityFrame = "base") -> torch.Tensor:
     """
     Calculate an entity's linear velocity in its local frame.
 
     Args:
         entity: The entity to calculate the linear velocity of
+        frame: The frame to express the velocity in. See :data:`VelocityFrame`.
 
     Returns:
         torch.Tensor: Linear velocity in the local frame
     """
+    if frame == "heading":
+        return to_heading_frame(entity.get_vel(), entity.get_quat())
+    if frame != "base":
+        raise ValueError(f"Unknown velocity frame: {frame!r}")
     inv_base_quat = inv_quat(entity.get_quat())
     return transform_by_quat(entity.get_vel(), inv_base_quat)
 
 
-def entity_ang_vel(entity: RigidEntity) -> torch.Tensor:
+def entity_ang_vel(entity: RigidEntity, frame: VelocityFrame = "base") -> torch.Tensor:
     """
     Calculate an entity's angular velocity in its local frame.
 
     Args:
         entity: The entity to calculate the angular velocity of
+        frame: The frame to express the velocity in. See :data:`VelocityFrame`.
 
     Returns:
         torch.Tensor: Angular velocity in the local frame
     """
+    if frame == "heading":
+        return to_heading_frame(entity.get_ang(), entity.get_quat())
+    if frame != "base":
+        raise ValueError(f"Unknown velocity frame: {frame!r}")
     inv_base_quat = inv_quat(entity.get_quat())
     return transform_by_quat(entity.get_ang(), inv_base_quat)
 
@@ -104,6 +157,24 @@ def heading_from_quat(quat: torch.Tensor) -> torch.Tensor:
     w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
     # The arctangent of the rotated +X axis: (1 - 2(y^2 + z^2), 2(xy + wz))
     return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def to_heading_frame(vec: torch.Tensor, quat: torch.Tensor) -> torch.Tensor:
+    """
+    Rotate world-frame vectors into the heading frame: the frame that turns with the
+    entity's heading (see :func:`heading_from_quat`) but stays level with the ground.
+
+    Args:
+        vec: World-frame vectors, shape (num_envs, 3)
+        quat: Orientation quaternions in (w, x, y, z) order, shape (num_envs, 4)
+
+    Returns:
+        torch.Tensor: The vectors in the heading frame, shape (num_envs, 3)
+    """
+    heading = heading_from_quat(quat)
+    cos_h, sin_h = torch.cos(heading), torch.sin(heading)
+    x, y = vec[:, 0], vec[:, 1]
+    return torch.stack((cos_h * x + sin_h * y, cos_h * y - sin_h * x, vec[:, 2]), dim=1)
 
 
 def name_matches(name: str, pattern: str) -> bool:
@@ -195,3 +266,51 @@ def links_by_name_pattern(entity: RigidEntity, name_pattern: str) -> list[RigidL
         List of RigidLink objects.
     """
     return [link for link in entity.links if name_matches(link.name, name_pattern)]
+
+
+def apply_external_wrench(
+    entity: RigidEntity,
+    links_idx_local: list[int],
+    envs_idx: torch.Tensor,
+    force: torch.Tensor | None = None,
+    torque: torch.Tensor | None = None,
+) -> None:
+    """
+    Apply a force and/or torque to an entity's links, for the next simulation step.
+
+    The values are in the world frame, and the force is applied to each link's center of mass.
+    Works with all the versions of Genesis that Genesis Forge supports.
+
+    Args:
+        entity: The entity to apply the force to.
+        links_idx_local: The local indices of the links.
+        envs_idx: The environment ids to apply the force in.
+        force: The force for each link, in newtons. Shape is (len(envs_idx), len(links_idx_local), 3).
+        torque: The torque for each link, in newton-meters. Same shape as the force.
+    """
+    if force is None and torque is None:
+        raise ValueError("Either force or torque is required")
+
+    solver = entity.solver
+    links_idx = [entity.links[i].idx for i in links_idx_local]
+
+    # Genesis >= 1.4
+    if hasattr(solver, "apply_links_external_wrench"):
+        solver.apply_links_external_wrench(
+            force=force,
+            torque=torque,
+            links_idx=links_idx,
+            envs_idx=envs_idx,
+            ref=gs.link_ref_frame.link_COM,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        return
+
+    # Genesis < 1.4
+    if force is not None:
+        solver.apply_links_external_force(
+            force, links_idx=links_idx, envs_idx=envs_idx, ref="link_com"
+        )
+    if torque is not None:
+        solver.apply_links_external_torque(
+            torque, links_idx=links_idx, envs_idx=envs_idx
+        )

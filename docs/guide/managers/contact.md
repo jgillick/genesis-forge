@@ -53,10 +53,9 @@ RewardManager(
             "fn": rewards.feet_air_time(
                 time_threshold=0.5, # Target air-time, in seconds
                 contact_manager=self.foot_contact_manager,
-
-                # Reduce the penalty if the velocity command is close to zero
-                vel_cmd_manager=self.velocity_command,
             ),
+            # Only reward steps while the robot is commanded to move
+            "when": self.velocity_command.when_moving(),
         },
     }
 )
@@ -145,6 +144,18 @@ self.contact_manager = ContactManager(
     },
 )
 ```
+
+!!! note "Recording with a camera"
+
+    The debug spheres will always appear in the interactive viewer, but a camera will only render them if it was created with `debug=True`:
+
+    ```python
+    self.camera = self.scene.add_camera(
+        pos=(-2.5, -1.5, 1.0),
+        lookat=(0.0, 0.0, 0.3),
+        debug=True,  # <~ show the debug visuals
+    )
+    ```
 
 !!! warning "Caution"
 

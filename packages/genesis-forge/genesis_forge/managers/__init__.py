@@ -16,10 +16,11 @@ Available managers:
 - :class:`TorqueActionManager` — joint torque actions, bypassing the PD controller
 - :class:`ActuatorManager` — PD controller gains and default joint positions
 - :class:`EntityManager` — entity spawning and per-episode resets
+- :class:`EventManager` — events during an episode, such as random pushes
 - :class:`ContactManager` — per-link contact force tracking
 - :class:`TerrainManager` — terrain height queries and bounds
 - :class:`Monitor` / :class:`DofMonitor` / :class:`PowerMonitor` / :class:`ActuatorMonitor` — values calculated and logged each step
-- :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` — sampled command signals
+- :class:`CommandManager` / :class:`VelocityCommandManager` / :class:`Pose2dCommand` / :class:`AttitudeCommandManager` — sampled command signals
 """
 
 from .action.action_delay_buffer import ActionDelayBuffer
@@ -30,13 +31,21 @@ from .action.torque_action_manager import TorqueActionManager
 from .action.velocity_action_manager import VelocityActionManager
 from .actuator import ActuatorManager
 from .base import BaseManager
-from .command import CommandManager, Pose2dCommand, VelocityCommandManager
+from .command import (
+    AttitudeCommandManager,
+    CommandManager,
+    Pose2dCommand,
+    VelocityCommandManager,
+)
 from .config import (
+    DurationEventMdpFn,
+    EventMdpFn,
     MdpFn,
     ResetMdpFn,
 )
 from .contact import ContactManager
 from .entity_manager import EntityManager
+from .event import EventManager
 from .monitor import (
     ActuatorMonitor,
     DofMonitor,
@@ -58,9 +67,13 @@ __all__ = [
     "ActionDelayBuffer",
     "BaseActionManager",
     "BaseManager",
+    "AttitudeCommandManager",
     "CommandManager",
     "ContactManager",
+    "DurationEventMdpFn",
     "EntityManager",
+    "EventManager",
+    "EventMdpFn",
     "MdpFn",
     "Monitor",
     "MonitorReduction",

@@ -206,6 +206,7 @@ def test_build_calls_managers_in_the_documented_order():
         RecordingRewardManager(env, log)
         RecordingManager(env, "command", log)
         RecordingManager(env, "entity", log)
+        RecordingManager(env, "event", log)
         RecordingObservationManager(env, log)
 
     env = ConfigurableEnv(configure=configure, num_envs=4)
@@ -222,6 +223,7 @@ def test_build_calls_managers_in_the_documented_order():
         "reward",
         "command",
         "entity",
+        "event",
         "observation",
     ]
 
@@ -385,6 +387,26 @@ def test_step_dispatches_the_right_action_slice_to_each_manager():
     assert torch.equal(second_mgr.received_actions, actions[:, 2:5])
 
 
+def test_step_runs_events_after_actions_and_before_the_simulation(monkeypatch):
+    log = []
+
+    def configure(env):
+        RecordingManager(env, "entity", log)
+        RecordingManager(env, "event", log)
+        RecordingActionManager(env, log)
+
+    env = ConfigurableEnv(configure=configure, num_envs=4)
+    env.build()
+    monkeypatch.setattr(env.scene, "step", lambda: log.append(("step", "scene")))
+    env.reset()
+    log.clear()
+
+    env.step(torch.zeros((4, 1)))
+
+    order = [entry[1] for entry in log if entry[0] == "step"]
+    assert order == ["action", "event", "scene", "entity"]
+
+
 def test_step_runs_monitors_after_contacts_and_before_terminations_and_rewards():
     """Terminations and rewards may read monitor values, which must be from this step."""
     log = []
@@ -508,6 +530,7 @@ def test_reset_calls_every_manager_type_with_the_given_env_ids():
         RecordingManager(env, "actuator", log)
         RecordingActionManager(env, log)
         RecordingManager(env, "entity", log)
+        RecordingManager(env, "event", log)
         RecordingManager(env, "contact", log)
         RecordingManager(env, "monitor", log)
         RecordingTerminationManager(env, log)
@@ -526,6 +549,7 @@ def test_reset_calls_every_manager_type_with_the_given_env_ids():
         "actuator",
         "action",
         "entity",
+        "event",
         "contact",
         "monitor",
         "termination",

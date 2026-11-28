@@ -34,6 +34,8 @@ Each termination condition has:
 
 - **fn**: Function that returns boolean tensor indicating termination, constructed with its params
 - **time_out**: Whether this is a timeout (`True`) or failure (`False`, default)
+- **when** (optional): Only end the episodes of environments where this returns True.
+  Takes the same functions as [conditional rewards](reward.md#conditional-rewards).
 
 ```python
 TerminationManager(

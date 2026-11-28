@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import threading
 from typing import TYPE_CHECKING
 
@@ -155,6 +156,13 @@ class ControllerEventLoop:
             self.handle_key(key)
 
     def run(self) -> None:
+        # On macOS, SDL leaves some gamepads (e.g. Logitech Dual Action) to Apple's
+        # GameController framework (MFI), which only reports them while the main
+        # thread's run loop is running. Have SDL read gamepads directly instead.
+        # The SDL_JOYSTICK_MFI environment variable takes precedence over this hint.
+        if sys.platform == "darwin":
+            sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_MFI, b"0")
+
         if sdl2.SDL_WasInit(sdl2.SDL_INIT_GAMECONTROLLER) == 0:
             sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_GAMECONTROLLER)
 

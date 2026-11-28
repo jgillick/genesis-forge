@@ -202,10 +202,8 @@ class WheeledRobotCommandDirectionEnv(ManagedEnvironment):
                 # When the command is stopped, the wheels should not be moving
                 "stopped_dof_velocity": {
                     "weight": -0.01,
-                    "fn": rewards.stopped_dof_velocity_l2(
-                        vel_cmd_manager=self.velocity_command,
-                        actuator_manager=self.wheel_motors,
-                    ),
+                    "fn": rewards.dof_velocity_l2(actuator_manager=self.wheel_motors),
+                    "when": self.velocity_command.when_stopped(threshold=0.01),
                 },
             },
         )

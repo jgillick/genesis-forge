@@ -1,5 +1,6 @@
 import math
 import warnings
+from collections.abc import Callable
 from typing import NotRequired, TypedDict, cast
 
 import genesis as gs
@@ -11,7 +12,7 @@ from genesis.utils.geom import quat_to_xyz
 from genesis_forge.gamepads import Gamepad
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh, flat_arc_arrow_mesh
-from genesis_forge.utils import scene_rendered_envs_idx, transform_by_quat
+from genesis_forge.utils import debug_envs_idx, transform_by_quat
 
 from .command_manager import CommandManager, CommandRangeValue
 
@@ -26,7 +27,10 @@ class VelocityDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
     envs_idx: NotRequired[list[int]]
-    """The indices of the environments to visualize. If None, all environments will be visualized."""
+    """
+    The indices of the environments to visualize. Defaults to the environments the scene renders
+    (``rendered_envs_idx`` in the scene's ``VisOptions``), or all of them if it isn't set.
+    """
 
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
@@ -130,13 +134,17 @@ class VelocityCommandManager(CommandManager):
         - BLUE ARROW: Actual robot velocity in world coordinates
         - RED BALL: Shown when no linear velocity is commanded
 
+        If you're recording with a camera, these only render if the camera was
+        created with `scene.add_camera(..., debug=True)`.
+
     Args:
         env: The environment to control
         range: The ranges of linear & angular velocities
         stopped_probability: The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
         standing_probability: (deprecated) The probability of all velocities being zero for an environment (0.0 = never, 1.0 = always)
         resample_time_sec: The time interval between changing the command
-        debug_visualizer: Enable the debug visualization
+        debug_visualizer: Enable the debug visualization. To see it in camera renders or recorded
+                          videos, the camera must be created with `debug=True`.
         debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::
@@ -197,11 +205,10 @@ class VelocityCommandManager(CommandManager):
         debug_visualizer: bool = False,
         debug_visualizer_cfg: VelocityDebugVisualizerConfig | None = None,
     ):
-        super().__init__(
-            env,
-            range=range,
-            resample_time_sec=resample_time_sec,
-        )
+        # Ensure the dict is ordered correctly with the expected keys
+        # The resulting tensor is created in this order
+        ordered = self.ordered_range(range, ["lin_vel_x", "lin_vel_y", "ang_vel_z"])
+        super().__init__(env, range=ordered, resample_time_sec=resample_time_sec)
 
         self.stopped_probability = stopped_probability or standing_probability
         self.debug_visualizer = debug_visualizer
@@ -260,6 +267,48 @@ class VelocityCommandManager(CommandManager):
         """
         return torch.norm(self.command, dim=1) <= threshold
 
+    def when_moving(
+        self, threshold: float = 0.0025
+    ) -> Callable[[GenesisEnv], torch.Tensor]:
+        """
+        Returns a ``when`` function for reward and termination items. It is True
+        wherever the command asks the robot to move (linear or angular).
+
+        Example::
+
+            "feet_air_time": {
+                "fn": rewards.feet_air_time(...),
+                "weight": 1.0,
+                "when": self.velocity_command.when_moving(threshold=0.1),
+            },
+
+        Args:
+            threshold: The command is considered moving when the norm of all its
+                       components (linear xy and angular z) exceeds this value.
+        """
+        return lambda env: ~self.stopped_envs(threshold)
+
+    def when_stopped(
+        self, threshold: float = 0.0025
+    ) -> Callable[[GenesisEnv], torch.Tensor]:
+        """
+        Returns a ``when`` function for reward and termination items. It is True
+        wherever the command asks the robot to stop (no linear or angular movement).
+
+        Example::
+
+            "stopped_dof_velocity": {
+                "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+                "weight": -0.1,
+                "when": self.velocity_command.when_stopped(),
+            },
+
+        Args:
+            threshold: The command is considered stopped when the norm of all its
+                       components (linear xy and angular z) does not exceed this value.
+        """
+        return lambda env: self.stopped_envs(threshold)
+
     """
     Lifecycle Operations
     """
@@ -298,12 +347,9 @@ class VelocityCommandManager(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, use the envs the scene renders
-        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = scene_rendered_envs_idx(
-                self.env.scene, self.env.num_envs
-            )
+        self.debug_envs_idx = debug_envs_idx(
+            self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+        )
 
         # Calculate the number of steps per debug render
         self._steps_per_debug_render = math.ceil(
@@ -364,28 +410,42 @@ class VelocityCommandManager(CommandManager):
     def use_gamepad(
         self,
         gamepad: Gamepad,
-        lin_vel_y_axis: int = 0,
-        lin_vel_x_axis: int = 1,
-        ang_vel_z_axis: int = 2,
+        lin_vel_y_axis: int | None = 0,
+        lin_vel_x_axis: int | None = 1,
+        ang_vel_z_axis: int | None = 2,
         *args,
         **kwargs,
     ):
         """
         Use a connected gamepad to control the command.
 
+        Set an axis to `None` if that velocity should not be controlled by the gamepad.
+        Its command is held at zero, or the closest value to zero within its range.
+
         Args:
             gamepad: The gamepad to use.
             lin_vel_x_axis: Map this gamepad axis index to the linear velocity in the x-direction.
             lin_vel_y_axis: Map this gamepad axis index to the linear velocity in the y-direction.
             ang_vel_z_axis: Map this gamepad axis index to the angular velocity in the z-direction.
+
+        Example::
+
+            # A wheeled robot, which cannot move sideways
+            env.velocity_command.use_gamepad(
+                gamepad,
+                lin_vel_x_axis=1,
+                lin_vel_y_axis=None,
+                ang_vel_z_axis=0,
+            )
         """
+        range_axis = {
+            "lin_vel_x": lin_vel_x_axis,
+            "lin_vel_y": lin_vel_y_axis,
+            "ang_vel_z": ang_vel_z_axis,
+        }
         super().use_gamepad(
             gamepad,
-            range_axis={
-                "lin_vel_x": lin_vel_x_axis,
-                "lin_vel_y": lin_vel_y_axis,
-                "ang_vel_z": ang_vel_z_axis,
-            },
+            range_axis={k: v for k, v in range_axis.items() if k in self._range},
             invert_axis={
                 "lin_vel_x": True,
                 "lin_vel_y": True,

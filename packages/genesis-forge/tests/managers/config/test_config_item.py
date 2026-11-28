@@ -10,7 +10,13 @@ from dataclasses import dataclass
 import pytest
 import torch
 
-from genesis_forge.managers.config import ConfigItem, MdpFn, ResetMdpFn
+from genesis_forge.managers.config import (
+    ConfigItem,
+    MdpFn,
+    ResetMdpFn,
+    RewardConfigItem,
+    TerminationConfigItem,
+)
 
 
 def plain_reward(env, threshold=1.0, scale=2.0):
@@ -169,3 +175,84 @@ def test_each_kind_is_classified_distinctly(env):
 
     assert plain.is_mdp_class_fn is False
     assert instance.is_mdp_class_fn is True
+
+
+"""
+when -- the gate on reward and termination items
+"""
+
+
+@dataclass(kw_only=True, eq=False)
+class FirstEnvsOn(MdpFn):
+    count: int = 1
+
+    def build(self):
+        self.builds = getattr(self, "builds", 0) + 1
+        self.env_at_build = self._env
+
+    def reset(self, envs_idx):
+        self.reset_calls = getattr(self, "reset_calls", []) + [list(envs_idx)]
+
+    def __call__(self, env):
+        return torch.arange(env.num_envs) < self.count
+
+
+def test_item_without_when_is_not_gated(env):
+    item = RewardConfigItem({"fn": plain_reward, "weight": 1.0}, env)
+    item.build()
+    assert not item.is_gated
+    assert item.evaluate_when() is None
+
+
+def test_plain_function_when_returns_its_mask(env):
+    mask = torch.tensor([True, False, True, False])
+    item = RewardConfigItem(
+        {"fn": plain_reward, "weight": 1.0, "when": lambda e: mask}, env
+    )
+    item.build()
+    assert item.is_gated
+    assert torch.equal(item.evaluate_when(), mask)
+
+
+def test_mdp_fn_when_is_bound_built_reset_and_rebuilt(env):
+    when = FirstEnvsOn(count=2)
+    item = TerminationConfigItem({"fn": plain_reward, "when": when}, env)
+    item.build()
+
+    assert when.builds == 1
+    assert when.env_at_build is env
+    assert torch.equal(item.evaluate_when(), torch.tensor([True, True, False, False]))
+
+    item.reset(torch.tensor([1, 3]))
+    assert when.reset_calls == [[1, 3]]
+
+    when.count = 3
+    assert when.builds == 2
+    assert torch.equal(item.evaluate_when(), torch.tensor([True, True, True, False]))
+
+
+def test_unconstructed_mdp_fn_when_is_rejected(env):
+    with pytest.raises(TypeError, match="must be constructed"):
+        RewardConfigItem({"fn": plain_reward, "when": FirstEnvsOn}, env)
+
+
+def test_when_returning_floats_raises(env):
+    item = RewardConfigItem(
+        {"fn": plain_reward, "when": lambda e: torch.ones(e.num_envs)}, env
+    )
+    item.build()
+    with pytest.raises(TypeError, match="bool tensor"):
+        item.evaluate_when()
+
+
+def test_when_returning_the_wrong_shape_raises(env):
+    item = RewardConfigItem(
+        {
+            "fn": plain_reward,
+            "when": lambda e: torch.ones((e.num_envs, 1), dtype=torch.bool),
+        },
+        env,
+    )
+    item.build()
+    with pytest.raises(ValueError, match="shape"):
+        item.evaluate_when()

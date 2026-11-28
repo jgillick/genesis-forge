@@ -8,7 +8,7 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.meshes import arrow_mesh
-from genesis_forge.utils import heading_from_quat, scene_rendered_envs_idx
+from genesis_forge.utils import debug_envs_idx, heading_from_quat
 
 from .command_manager import CommandManager, CommandRange, CommandRangeValue
 
@@ -43,7 +43,10 @@ class Pose2dDebugVisualizerConfig(TypedDict):
     """Defines the configuration for the debug visualizer."""
 
     envs_idx: NotRequired[list[int]]
-    """The indices of the environments to visualize. If None, all environments will be visualized."""
+    """
+    The indices of the environments to visualize. Defaults to the environments the scene renders
+    (``rendered_envs_idx`` in the scene's ``VisOptions``), or all of them if it isn't set.
+    """
 
     fps: NotRequired[int]
     """The FPS of the debug visualization. Lower FPS means fewer frames are rendered, saving GPU memory."""
@@ -81,15 +84,17 @@ DEFAULT_VISUALIZER_CONFIG = {
 
 def _normalize_range(range: "Pose2dCommandRange | CommandRange") -> CommandRange:
     """
-    Remove heading from the range dict if it is None.
-    Otherwise, the base command manager will attempt to sample from None
+    Remove heading from the range dict if it is None, since the base command manager
+    would otherwise attempt to sample from None. Then order the keys x, y, heading.
     """
     if not isinstance(range, Mapping):
         return range
     ranges = dict(range)
     if ranges.get("heading") is None:
         ranges.pop("heading", None)
-    return cast(dict[str, CommandRangeValue], ranges)
+    # The goal is read by column
+    keys = ["x", "y", "heading"] if "heading" in ranges else ["x", "y"]
+    return CommandManager.ordered_range(ranges, keys)
 
 
 def shortest_turn_to(
@@ -127,6 +132,9 @@ class Pose2dCommand(CommandManager):
         an arrow pointing the way to face on arrival when the goal has a heading,
         and a ball when it does not.
 
+        The interactive viewer always shows the marker, but a camera only renders it if
+        it was created with `scene.add_camera(..., debug=True)`.
+
     Args:
         env: The environment to control
         range: The X/Y and (optional) heading ranges to sample the goal poses from, in the
@@ -146,7 +154,8 @@ class Pose2dCommand(CommandManager):
                         from the manager's per-step cache instead of the solver.
         terrain_manager: The terrain manager, so the debug marker sits above the terrain.
                          Defaults to None: the ground is assumed to be flat at z=0.
-        debug_visualizer: Enable the debug visualization
+        debug_visualizer: Enable the debug visualization. To see it in camera renders or recorded
+                          videos, the camera must be created with `debug=True`.
         debug_visualizer_cfg: The configuration for the debug visualizer
 
     Example::
@@ -587,12 +596,9 @@ class Pose2dCommand(CommandManager):
             gs.device
         )
 
-        # If debug envs_idx is not set, use the envs the scene renders
-        self.debug_envs_idx = self.visualizer_cfg.get("envs_idx", None)
-        if self.debug_envs_idx is None:
-            self.debug_envs_idx = scene_rendered_envs_idx(
-                self.env.scene, self.env.num_envs
-            )
+        self.debug_envs_idx = debug_envs_idx(
+            self.env.scene, self.env.num_envs, self.visualizer_cfg.get("envs_idx")
+        )
 
         self._debug_envs_tensor = torch.tensor(
             self.debug_envs_idx or [], dtype=torch.long, device=gs.device

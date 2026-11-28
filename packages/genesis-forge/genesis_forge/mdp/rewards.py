@@ -6,6 +6,7 @@ Each of these should return a float tensor with the reward value for each enviro
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -17,6 +18,7 @@ from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers import (
     ActuatorManager,
     ActuatorMonitor,
+    AttitudeCommandManager,
     BaseActionManager,
     CommandManager,
     ContactManager,
@@ -28,7 +30,12 @@ from genesis_forge.managers import (
     TerrainManager,
     VelocityCommandManager,
 )
-from genesis_forge.utils import entity_ang_vel, entity_lin_vel, entity_projected_gravity
+from genesis_forge.utils import (
+    VelocityFrame,
+    entity_ang_vel,
+    entity_lin_vel,
+    entity_projected_gravity,
+)
 
 if TYPE_CHECKING:
     from genesis.engine.entities import RigidEntity
@@ -111,6 +118,10 @@ class base_height(MdpFn):
     entity_manager: EntityManager | None = None
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.square(self._height_error(env))
+
+    def _height_error(self, env: GenesisEnv) -> torch.Tensor:
+        """Returns how far the base is above the target height, per env (negative when below)."""
         if self.entity_manager is not None:
             robot = self.entity_manager.entity
         else:
@@ -128,7 +139,39 @@ class base_height(MdpFn):
             target_height = self.height_command.command.squeeze(-1)
         elif self.target_height is not None:
             target_height = self.target_height
-        return torch.square(base_pos[:, 2] - height_offset - target_height)
+        return base_pos[:, 2] - height_offset - target_height
+
+
+@dataclass(kw_only=True, eq=False)
+class base_height_exp(base_height):
+    """
+    Reward the base for being near the target height, using the exponential kernel.
+
+    The reward is ``exp(-error² / sensitivity)``: 1 at the target, falling toward 0 as
+    the base moves away. Unlike :class:`base_height`, it's bounded between 0 and 1, so
+    it works well with a height command, where the target changes. Use it with a
+    positive weight.
+
+    Args:
+        target_height: The target height to reward the base height near
+        height_command: Get the target height from a height command manager. This expects the command to have a single range value.
+        terrain_manager: The terrain manager will adjust the height based on the terrain height.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. Not necessary if `entity_manager` is provided.
+        entity_manager: The entity manager for the entity.
+        sensitivity: A lower value means the reward is more sensitive to the error.
+                     An error of ``sqrt(sensitivity)`` meters decays the reward to 1/e
+                     (0.1m with the default). Beyond about twice that, the reward is
+                     near 0 and gives little signal, so keep it wide enough to cover
+                     the errors the robot starts with.
+
+    Returns:
+        torch.Tensor: Reward for base height near target
+    """
+
+    sensitivity: float = 0.01
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.exp(-torch.square(self._height_error(env)) / self.sensitivity)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -161,6 +204,9 @@ class lin_vel_z_l2(MdpFn):
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+        frame: The frame the velocity is measured in. `"base"` tilts with the robot. Use
+               `"heading"` when the robot pitches or rolls on purpose, so the tilt
+               doesn't leak motion from one axis into another.
 
     Returns:
         torch.Tensor: Penalty for z axis base linear velocity
@@ -168,13 +214,14 @@ class lin_vel_z_l2(MdpFn):
 
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
+    frame: VelocityFrame = "base"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
-            linear_vel = self.entity_manager.get_linear_velocity()
+            linear_vel = self.entity_manager.get_linear_velocity(self.frame)
         else:
             robot = self.entity if self.entity is not None else env.robot
-            linear_vel = entity_lin_vel(robot)
+            linear_vel = entity_lin_vel(robot, self.frame)
         return torch.square(linear_vel[:, 2])
 
 
@@ -186,6 +233,9 @@ class lin_vel_xy_l2(MdpFn):
     Args:
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+        frame: The frame the velocity is measured in. `"base"` tilts with the robot. Use
+               `"heading"` when the robot pitches or rolls on purpose, so the tilt
+               doesn't leak motion from one axis into another.
 
     Returns:
         torch.Tensor: Penalty for xy axis base linear velocity
@@ -193,13 +243,14 @@ class lin_vel_xy_l2(MdpFn):
 
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
+    frame: VelocityFrame = "base"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
-            lin_vel = self.entity_manager.get_linear_velocity()
+            lin_vel = self.entity_manager.get_linear_velocity(self.frame)
         else:
             robot = self.entity if self.entity is not None else env.robot
-            lin_vel = entity_lin_vel(robot)
+            lin_vel = entity_lin_vel(robot, self.frame)
         return torch.sum(torch.square(lin_vel[:, :2]), dim=1)
 
 
@@ -212,6 +263,9 @@ class ang_vel_xy_l2(MdpFn):
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+        frame: The frame the velocity is measured in. `"base"` tilts with the robot. Use
+               `"heading"` when the robot pitches or rolls on purpose, so the tilt
+               doesn't leak motion from one axis into another.
 
     Returns:
         torch.Tensor
@@ -219,35 +273,53 @@ class ang_vel_xy_l2(MdpFn):
 
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
+    frame: VelocityFrame = "base"
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
-            angle_vel = self.entity_manager.get_angular_velocity()
+            angle_vel = self.entity_manager.get_angular_velocity(self.frame)
         else:
             robot = self.entity if self.entity is not None else env.robot
-            angle_vel = entity_ang_vel(robot)
+            angle_vel = entity_ang_vel(robot, self.frame)
         return torch.sum(torch.square(angle_vel[:, :2]), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
 class flat_orientation_l2(MdpFn):
     """
-    Penalize non-flat base orientation using L2 squared kernel.
-    This is computed by penalizing the xy-components of the projected gravity vector.
+    Penalize the base tilting away from level, or from the pitch and roll an attitude
+    command asks for, using an L2 squared kernel. This is computed by comparing the
+    projected gravity vector to the one the target orientation would produce.
+
+    The penalty is ``2 * (1 - cos(angle))``, where `angle` is the angle between the
+    measured and target gravity. That's close to the squared angle for small errors, and
+    keeps growing all the way to 4 for a robot upside down from its target.
 
     Args:
+        attitude_command: Get the target pitch and roll from an attitude command manager.
+                          Without one, the target is level.
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
 
     Returns:
-        torch.Tensor: Penalty for non-flat base orientation
+        torch.Tensor: Penalty for the base tilting away from the target orientation
     """
 
+    attitude_command: AttitudeCommandManager | None = None
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
 
+    def build(self):
+        self._level_gravity = torch.tensor(
+            [0.0, 0.0, -1.0], device=gs.device, dtype=gs.tc_float
+        )
+
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return self._tilt_error(env)
+
+    def _tilt_error(self, env: GenesisEnv) -> torch.Tensor:
+        """The squared distance between the measured and target gravity vectors, per env."""
         # Get the projected gravity vector in the robot's base frame.
         # This represents how "tilted" the robot is from upright.
         if self.entity_manager is not None:
@@ -256,9 +328,23 @@ class flat_orientation_l2(MdpFn):
             robot = self.entity if self.entity is not None else env.robot
             projected_gravity = entity_projected_gravity(robot)
 
-        # Penalize the xy-components (horizontal tilt) using L2 squared kernel.
-        # A flat orientation means these components should be close to zero.
-        return torch.sum(torch.square(projected_gravity[:, :2]), dim=1)
+        if self.attitude_command is None:
+            target_gravity = self._level_gravity
+        else:
+            pitch = self.attitude_command.pitch
+            roll = self.attitude_command.roll
+            cos_pitch = torch.cos(pitch)
+            target_gravity = torch.stack(
+                (
+                    torch.sin(pitch),
+                    -torch.sin(roll) * cos_pitch,
+                    -torch.cos(roll) * cos_pitch,
+                ),
+                dim=1,
+            )
+        # Compare all three components: comparing only x and y would read a robot on its
+        # back, with gravity (0, 0, 1), as perfectly level
+        return torch.sum(torch.square(projected_gravity - target_gravity), dim=1)
 
 
 @dataclass(kw_only=True, eq=False)
@@ -691,6 +777,9 @@ class command_tracking_lin_vel(MdpFn):
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+        frame: The frame the velocity is measured in. `"base"` tilts with the robot. Use
+               `"heading"` when the robot pitches or rolls on purpose, so the tilt
+               doesn't leak motion from one axis into another.
 
     Returns:
         torch.Tensor: Reward for tracking of linear velocity commands (xy axes)
@@ -701,6 +790,7 @@ class command_tracking_lin_vel(MdpFn):
     sensitivity: float | None = None
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
+    frame: VelocityFrame = "base"
 
     def build(self):
         assert self.command is not None or self.vel_cmd_manager is not None, (
@@ -709,10 +799,10 @@ class command_tracking_lin_vel(MdpFn):
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
-            linear_vel_local = self.entity_manager.get_linear_velocity()
+            linear_vel_local = self.entity_manager.get_linear_velocity(self.frame)
         else:
             robot = self.entity if self.entity is not None else env.robot
-            linear_vel_local = entity_lin_vel(robot)
+            linear_vel_local = entity_lin_vel(robot, self.frame)
 
         command = self.command
         if self.vel_cmd_manager is not None:
@@ -757,6 +847,9 @@ class command_tracking_ang_vel(MdpFn):
         entity_manager: The entity manager for the robot/entity the reward is being computed for.
                         This is slightly more performant than using the `entity` parameter.
         entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+        frame: The frame the velocity is measured in. `"base"` tilts with the robot. Use
+               `"heading"` when the robot pitches or rolls on purpose, so the tilt
+               doesn't leak motion from one axis into another.
 
     Returns:
         torch.Tensor: Reward for tracking of angular velocity commands (yaw)
@@ -767,6 +860,7 @@ class command_tracking_ang_vel(MdpFn):
     sensitivity: float | None = None
     entity: RigidEntity | None = None
     entity_manager: EntityManager | None = None
+    frame: VelocityFrame = "base"
 
     def build(self):
         assert self.commanded_ang_vel is not None or self.vel_cmd_manager is not None, (
@@ -775,10 +869,10 @@ class command_tracking_ang_vel(MdpFn):
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         if self.entity_manager is not None:
-            angular_vel = self.entity_manager.get_angular_velocity()
+            angular_vel = self.entity_manager.get_angular_velocity(self.frame)
         else:
             robot = self.entity if self.entity is not None else env.robot
-            angular_vel = entity_ang_vel(robot)
+            angular_vel = entity_ang_vel(robot, self.frame)
 
         target = self.commanded_ang_vel
         if self.vel_cmd_manager is not None:
@@ -803,9 +897,69 @@ class command_tracking_ang_vel(MdpFn):
 
 
 @dataclass(kw_only=True, eq=False)
+class command_tracking_attitude(flat_orientation_l2):
+    """
+    Reward for tracking the commanded pitch and roll of the base, using the exponential
+    kernel: 1 at the target, falling toward 0 as the base tilts away from it.
+
+    The error is measured on the projected gravity vector, like
+    :class:`flat_orientation_l2`, which is close to the squared angle error for small
+    errors.
+
+    Far from the target, the reward is close to 0 and gives little signal. If your robot
+    starts far from the command, like lying on the ground, pair it with
+    :class:`flat_orientation_l2` and a negative weight, which keeps pulling at any
+    distance.
+
+    Args:
+        attitude_command: The attitude command manager to get the target pitch and roll from.
+                          Without one, the target is level.
+        sensitivity: A lower value means the reward is more sensitive to the error.
+                     If not defined, it's derived from the command manager's range on every step
+                     using the formulation: (0.5 * max_command) ** 2, where max_command is the largest
+                     tilt the range allows (the norm of the largest absolute pitch and roll values),
+                     and never less than 0.2 radians. So it's at least 0.01, which decays the
+                     reward to 1/e at about 0.1 radians of error.
+        entity_manager: The entity manager for the robot/entity the reward is being computed for.
+                        This is slightly more performant than using the `entity` parameter.
+        entity: The entity to compute the reward for. Defaults to `env.robot`. This isn't necessary if `entity_manager` is provided.
+
+    Returns:
+        torch.Tensor: Reward for tracking the commanded pitch and roll
+    """
+
+    sensitivity: float | None = None
+
+    def __call__(self, env: GenesisEnv) -> torch.Tensor:
+        return torch.exp(-self._tilt_error(env) / self._get_sensitivity())
+
+    def _get_sensitivity(self) -> float:
+        """Get or calculate the sensitivity value"""
+        if self.sensitivity is not None:
+            return self.sensitivity
+
+        min_tracking_tilt = 0.2
+        max_tilt = 0.0
+        if self.attitude_command is not None:
+            attitude_range = self.attitude_command.range
+            max_tilt = math.hypot(
+                max(abs(v) for v in attitude_range["pitch"]),
+                max(abs(v) for v in attitude_range["roll"]),
+            )
+        return _calculate_tracking_sensitivity(max(max_tilt, min_tracking_tilt))
+
+
+@deprecated(
+    reason="Use 'dof_similar_to_default' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
+@dataclass(kw_only=True, eq=False)
 class stopped_joint_deviation_l1(MdpFn):
     """
     Penalize offsets from the default joint positions when the command is very small.
+
+    Deprecated: use :class:`dof_similar_to_default` with
+    ``"when": self.velocity_command.when_stopped()``.
 
     Args:
         command_threshold: The threshold for the command to be considered small
@@ -837,17 +991,27 @@ class stopped_joint_deviation_l1(MdpFn):
         )
 
 
-@deprecated(reason="Use 'stopped_joint_deviation_l1' instead")
+@deprecated(
+    reason="Use 'dof_similar_to_default' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
 @dataclass(kw_only=True, eq=False)
 class stand_still_joint_deviation_l1(stopped_joint_deviation_l1):
     """Deprecated alias of :class:`stopped_joint_deviation_l1`."""
 
 
+@deprecated(
+    reason="Use 'dof_velocity_l2' with "
+    "'when': self.velocity_command.when_stopped() instead"
+)
 @dataclass(kw_only=True, eq=False)
 class stopped_dof_velocity_l2(MdpFn):
     """
     Penalize joint velocities when the velocity command is stopped (no linear or angular velocity commanded),
     using the L2 squared kernel.
+
+    Deprecated: use :class:`dof_velocity_l2` with
+    ``"when": self.velocity_command.when_stopped()``.
 
     Args:
         vel_cmd_manager: The velocity command manager
@@ -1189,14 +1353,16 @@ class feet_air_time(MdpFn):
     that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
     the time for which the feet are in the air.
 
-    If the velocity commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
+    To only reward steps while the robot is commanded to move, gate it with
+    ``"when": self.velocity_command.when_moving()``.
 
     Args:
         contact_manager: The contact manager to check for contact
         time_threshold: The minimum time (in seconds) the feet should be in the air
         time_threshold_max: (optional) The maximum time (in seconds) the feet should be in the air.
                             The reward will be capped at this value.
-        vel_cmd_manager: The velocity command manager
+        vel_cmd_manager: Deprecated -- use ``"when": self.velocity_command.when_moving()``.
+                         Zeroes the reward when the linear xy command is 0.1 or less.
 
     Returns:
         The reward for the feet air time
@@ -1206,6 +1372,15 @@ class feet_air_time(MdpFn):
     time_threshold: float
     time_threshold_max: float | None = None
     vel_cmd_manager: VelocityCommandManager | None = None
+
+    def __post_init__(self):
+        if self.vel_cmd_manager is not None:
+            warnings.warn(
+                "feet_air_time's 'vel_cmd_manager' is deprecated. Gate the reward with "
+                "'when': self.velocity_command.when_moving() instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
 
     def __call__(self, env: GenesisEnv) -> torch.Tensor:
         made_contact = self.contact_manager.has_made_contact(env.dt)

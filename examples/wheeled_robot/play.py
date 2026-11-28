@@ -40,7 +40,8 @@ def main():
     gamepad = Gamepad()
     env.velocity_command.use_gamepad(
         gamepad,
-        lin_vel_y_axis=0,  # left stick forward/backward
+        lin_vel_x_axis=1,  # left stick forward/backward
+        lin_vel_y_axis=None,  # cannot move side-to-side
         ang_vel_z_axis=0,  # left stick left/right
     )
 

@@ -111,6 +111,7 @@ nav:
           - Command: guide/managers/command.md
           - Contact: guide/managers/contact.md
           - Entity: guide/managers/entity.md
+          - Event: guide/managers/event.md
           - Monitor: guide/managers/monitor.md
           - Observation: guide/managers/observation.md
           - Reward: guide/managers/reward.md
@@ -129,6 +130,7 @@ nav:
           - NoisyValue: api/managers/noisy_value.md
           - ContactManager: api/managers/contact.md
           - EntityManager: api/managers/entity.md
+          - EventManager: api/managers/event.md
           - Monitors: api/managers/monitor.md
           - ObservationManager: api/managers/observation.md
           - RewardManager: api/managers/reward.md
@@ -146,8 +148,10 @@ nav:
               - CommandManager: api/managers/command/command.md
               - VelocityCommandManager: api/managers/command/velocity.md
               - Pose2dCommand: api/managers/command/pose_2d.md
+              - AttitudeCommandManager: api/managers/command/attitude.md
       - MDP:
           - Overview: api/mdp/index.md
+          - Events: api/mdp/events.md
           - Observations: api/mdp/observations.md
           - Reset: api/mdp/reset.md
           - Rewards: api/mdp/rewards.md

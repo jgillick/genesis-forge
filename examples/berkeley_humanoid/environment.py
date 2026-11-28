@@ -203,8 +203,8 @@ class BerkeleyHumanoidEnv(ManagedEnvironment):
                         time_threshold=0.2,
                         time_threshold_max=0.5,
                         contact_manager=self.feet_contact_manager,
-                        vel_cmd_manager=self.velocity_command,
                     ),
+                    "when": self.velocity_command.when_moving(threshold=0.1),
                 },
             },
         )

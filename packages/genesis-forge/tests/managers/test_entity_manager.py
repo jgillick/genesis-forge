@@ -6,6 +6,7 @@ genesis.utils.geom transform_by_quat/inv_quat, rather than re-deriving the trig 
 hand.
 """
 
+import math
 from dataclasses import dataclass
 
 import pytest
@@ -173,6 +174,38 @@ def test_get_angular_velocity_transforms_the_entity_angular_velocity(env):
 
     expected = transform_by_quat(ang, inv_quat(quat))
     assert torch.allclose(mgr.get_angular_velocity(), expected)
+
+
+def test_heading_frame_velocities_level_out_the_tilt_and_follow_each_step(env):
+    entity = make_entity(env.num_envs)
+    mgr = EntityManager(env, entity=entity)
+    mgr.build()
+
+    # 90 degrees about y: pitched straight nose-down, nose pointing at world -z
+    half = math.sqrt(0.5)
+    entity._quat = torch.tensor([[half, 0.0, half, 0.0]] * env.num_envs)
+    entity._vel = torch.tensor([[0.0, 0.0, 1.0]] * env.num_envs)
+    entity._ang = torch.tensor([[0.0, 0.0, 0.5]] * env.num_envs)
+    mgr.step()
+
+    assert torch.allclose(mgr.get_linear_velocity("heading"), entity._vel, atol=1e-6)
+    assert torch.allclose(mgr.get_angular_velocity("heading"), entity._ang, atol=1e-6)
+    # The base frame, for contrast, sees the world's vertical as its own x
+    assert torch.allclose(
+        mgr.get_linear_velocity(),
+        torch.tensor([[-1.0, 0.0, 0.0]] * env.num_envs),
+        atol=1e-6,
+    )
+
+
+def test_an_unknown_velocity_frame_is_rejected(env):
+    mgr = EntityManager(env, entity=make_entity(env.num_envs))
+    mgr.build()
+
+    with pytest.raises(ValueError, match="Heading"):
+        mgr.get_linear_velocity("Heading")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="world"):
+        mgr.get_angular_velocity("world")  # pyright: ignore[reportArgumentType]
 
 
 """

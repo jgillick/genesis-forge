@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import NotRequired
 
 import genesis as gs
@@ -5,7 +6,11 @@ import torch
 
 from genesis_forge.genesis_env import GenesisEnv
 from genesis_forge.managers.base import BaseManager
-from genesis_forge.managers.config import ConfigItemDict, TerminationConfigItem
+from genesis_forge.managers.config import (
+    ConfigItemDict,
+    MdpFn,
+    TerminationConfigItem,
+)
 
 
 class TerminationConfig(ConfigItemDict):
@@ -13,6 +18,12 @@ class TerminationConfig(ConfigItemDict):
 
     time_out: NotRequired[bool]
     """Set to True if a positive result is a time out and not a termination."""
+
+    when: NotRequired[Callable[[GenesisEnv], torch.Tensor] | MdpFn]
+    """
+    Only end the episodes of the environments where this returns True: a function of
+    the env, or a constructed MdpFn, returning a bool tensor of shape (num_envs,).
+    """
 
 
 class TerminationManager(BaseManager):
@@ -174,6 +185,9 @@ class TerminationManager(BaseManager):
             try:
                 # Get termination value
                 value = term_item.execute()
+                active = term_item.evaluate_when()
+                if active is not None:
+                    value = value & active
 
                 # Add to the correct buffer using in-place operations
                 if term_item.time_out:

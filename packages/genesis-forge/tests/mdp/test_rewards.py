@@ -9,8 +9,10 @@ import math
 
 import pytest
 import torch
-from helpers import built
+from genesis.utils.geom import xyz_to_quat
+from helpers import FakeVelCmd, built
 
+from genesis_forge.managers import AttitudeCommandManager, EntityManager
 from genesis_forge.managers.config import ConfigItem
 from genesis_forge.mdp import rewards
 
@@ -24,32 +26,28 @@ class FakeBody:
 
 
 class FakeEntityManager:
-    def __init__(self, lin_vel=None, ang_vel=None, projected_gravity=None):
+    def __init__(
+        self,
+        lin_vel=None,
+        ang_vel=None,
+        projected_gravity=None,
+        heading_lin_vel=None,
+        heading_ang_vel=None,
+    ):
         self._lin = lin_vel
         self._ang = ang_vel
         self._gravity = projected_gravity
+        self._heading_lin = heading_lin_vel
+        self._heading_ang = heading_ang_vel
 
-    def get_linear_velocity(self):
-        return self._lin
+    def get_linear_velocity(self, frame="base"):
+        return self._heading_lin if frame == "heading" else self._lin
 
-    def get_angular_velocity(self):
-        return self._ang
+    def get_angular_velocity(self, frame="base"):
+        return self._heading_ang if frame == "heading" else self._ang
 
     def get_projected_gravity(self):
         return self._gravity
-
-
-class FakeVelCmd:
-    def __init__(self, command, range=None):
-        self.command = command
-        self.range = range or {
-            "lin_vel_x": (-1.0, 1.0),
-            "lin_vel_y": (-1.0, 1.0),
-            "ang_vel_z": (-1.0, 1.0),
-        }
-
-    def stopped_envs(self, threshold: float = 0.01) -> torch.Tensor:
-        return torch.norm(self.command, dim=1) <= threshold
 
 
 class FakeContactManager:
@@ -103,6 +101,30 @@ def test_base_height_uses_entity_manager_when_given(env):
 
     fn = built(rewards.base_height(target_height=0.3, entity_manager=Mgr()), env)
     assert torch.allclose(fn(env), torch.tensor([0.04]), atol=1e-6)
+
+
+"""
+base_height_exp
+"""
+
+
+def test_base_height_exp_is_one_at_the_target_and_decays_with_the_error(env):
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.3], [0.0, 0.0, 0.4]]))
+    fn = built(rewards.base_height_exp(target_height=0.3, sensitivity=0.01), env)
+
+    assert torch.allclose(fn(env), torch.tensor([1.0, math.exp(-1.0)]), atol=1e-6)
+
+
+def test_base_height_exp_follows_the_height_command(env):
+    class HeightCmd:
+        command = torch.tensor([[0.2], [0.4]])
+
+    env.robot = FakeBody(torch.tensor([[0.0, 0.0, 0.3], [0.0, 0.0, 0.3]]))
+    fn = built(
+        rewards.base_height_exp(height_command=HeightCmd(), sensitivity=0.01), env
+    )
+
+    assert torch.allclose(fn(env), torch.full((2,), math.exp(-1.0)), atol=1e-6)
 
 
 """
@@ -176,11 +198,293 @@ def test_ang_vel_xy_l2_sums_the_squared_xy_components(env):
     assert torch.allclose(fn(env), torch.tensor([0.25]))
 
 
-def test_flat_orientation_l2_sums_the_squared_xy_tilt(env):
+def test_flat_orientation_l2_sums_the_squared_distance_from_level_gravity(env):
     mgr = FakeEntityManager(projected_gravity=torch.tensor([[0.3, 0.4, -0.9]]))
     fn = built(rewards.flat_orientation_l2(entity_manager=mgr), env)
 
-    assert torch.allclose(fn(env), torch.tensor([0.25]))
+    # Level gravity is (0, 0, -1): 0.3² + 0.4² + 0.1²
+    assert torch.allclose(fn(env), torch.tensor([0.26]))
+
+
+def test_flat_orientation_l2_penalizes_a_flipped_robot_the_most(env):
+    """On its back, gravity is (0, 0, 1). Its x and y match level, but it's the worst tilt."""
+    mgr = FakeEntityManager(
+        projected_gravity=torch.tensor([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
+    )
+    fn = built(rewards.flat_orientation_l2(entity_manager=mgr), env)
+
+    # Upside down, then on its nose
+    assert torch.allclose(fn(env), torch.tensor([4.0, 2.0]))
+
+
+def test_flat_orientation_l2_grows_steadily_with_the_angle_from_the_target(env):
+    angles = [0.2, 0.8, 1.6, 2.4, 3.0]
+    mgr = FakeEntityManager(
+        projected_gravity=torch.tensor(
+            [[math.sin(a), 0.0, -math.cos(a)] for a in angles]
+        )
+    )
+    fn = built(rewards.flat_orientation_l2(entity_manager=mgr), env)
+
+    expected = torch.tensor([2.0 * (1.0 - math.cos(a)) for a in angles])
+    assert torch.allclose(fn(env), expected, atol=1e-6)
+
+
+class FakeTiltedEntity:
+    """A rigid body pitched and yawed by a fixed amount, moving at a world velocity."""
+
+    def __init__(
+        self, num_envs, roll=0.0, pitch=0.0, yaw=0.0, vel=(0, 0, 0), ang=(0, 0, 0)
+    ):
+        rpy = torch.tensor([[roll, pitch, yaw]] * num_envs)
+        self._quat = xyz_to_quat(rpy, rpy=True)
+        self._vel = torch.tensor([vel] * num_envs, dtype=torch.float32)
+        self._ang = torch.tensor([ang] * num_envs, dtype=torch.float32)
+
+    def get_pos(self):
+        return torch.zeros((self._quat.shape[0], 3))
+
+    def get_quat(self):
+        return self._quat
+
+    def get_vel(self):
+        return self._vel
+
+    def get_ang(self):
+        return self._ang
+
+
+def tilted_entity_manager(env, **kwargs):
+    mgr = EntityManager(env, entity=FakeTiltedEntity(env.num_envs, **kwargs))
+    mgr.build()
+    return mgr
+
+
+def test_velocity_rewards_read_the_heading_frame_when_asked(env):
+    mgr = FakeEntityManager(
+        lin_vel=torch.tensor([[1.0, 1.0, 1.0]]),
+        ang_vel=torch.tensor([[1.0, 1.0, 1.0]]),
+        heading_lin_vel=torch.tensor([[0.3, 0.4, 0.5]]),
+        heading_ang_vel=torch.tensor([[0.3, 0.4, 0.5]]),
+    )
+
+    def heading(fn_class):
+        return built(fn_class(entity_manager=mgr, frame="heading"), env)(env)
+
+    assert torch.allclose(heading(rewards.lin_vel_z_l2), torch.tensor([0.25]))
+    assert torch.allclose(heading(rewards.lin_vel_xy_l2), torch.tensor([0.25]))
+    assert torch.allclose(heading(rewards.ang_vel_xy_l2), torch.tensor([0.25]))
+
+
+def test_lin_vel_z_l2_in_the_heading_frame_ignores_a_pitched_robot_walking_forward(env):
+    """
+    Pitched 20 degrees nose-down and walking level, the base frame sees part of the
+    forward speed as vertical. The heading frame doesn't.
+    """
+    yaw = math.radians(30)
+    walk = (math.cos(yaw), math.sin(yaw), 0.0)
+    mgr = tilted_entity_manager(env, pitch=math.radians(20), yaw=yaw, vel=walk)
+
+    base = built(rewards.lin_vel_z_l2(entity_manager=mgr), env)(env)
+    level = built(rewards.lin_vel_z_l2(entity_manager=mgr, frame="heading"), env)(env)
+
+    assert torch.allclose(
+        base, torch.full((env.num_envs,), math.sin(math.radians(20)) ** 2)
+    )
+    assert torch.allclose(level, torch.zeros(env.num_envs), atol=1e-6)
+
+
+def test_lin_vel_tracking_in_the_heading_frame_meets_the_command_while_pitched(env):
+    yaw = math.radians(-50)
+    walk = (math.cos(yaw), math.sin(yaw), 0.0)
+    mgr = tilted_entity_manager(env, pitch=math.radians(25), yaw=yaw, vel=walk)
+    command = torch.tensor([[1.0, 0.0]] * env.num_envs)
+
+    def tracking(frame):
+        fn = rewards.command_tracking_lin_vel(
+            command=command, sensitivity=0.25, entity_manager=mgr, frame=frame
+        )
+        return built(fn, env)(env)
+
+    # The base frame reads only cos(25 degrees) of the forward speed
+    base_error = (1.0 - math.cos(math.radians(25))) ** 2
+    assert torch.allclose(
+        tracking("base"), torch.full((env.num_envs,), math.exp(-base_error / 0.25))
+    )
+    assert torch.allclose(tracking("heading"), torch.ones(env.num_envs), atol=1e-5)
+
+
+def test_ang_vel_rewards_in_the_heading_frame_see_a_pitched_turn_as_yaw(env):
+    """Turning in place while pitched: the base frame splits it across x and z."""
+    mgr = tilted_entity_manager(env, pitch=math.radians(30), ang=(0.0, 0.0, 1.0))
+
+    wobble = built(rewards.ang_vel_xy_l2(entity_manager=mgr, frame="heading"), env)
+    yaw = built(
+        rewards.command_tracking_ang_vel(
+            commanded_ang_vel=torch.ones(env.num_envs),
+            sensitivity=0.25,
+            entity_manager=mgr,
+            frame="heading",
+        ),
+        env,
+    )
+
+    assert torch.allclose(wobble(env), torch.zeros(env.num_envs), atol=1e-6)
+    assert torch.allclose(yaw(env), torch.ones(env.num_envs), atol=1e-5)
+    base_wobble = built(rewards.ang_vel_xy_l2(entity_manager=mgr), env)(env)
+    assert (base_wobble > 0.2).all()
+
+
+def test_velocity_rewards_accept_the_heading_frame_with_a_bare_entity(env):
+    yaw = math.radians(30)
+    entity = FakeTiltedEntity(
+        env.num_envs,
+        pitch=math.radians(20),
+        yaw=yaw,
+        vel=(math.cos(yaw), math.sin(yaw), 0.0),
+    )
+    fn = built(rewards.lin_vel_z_l2(entity=entity, frame="heading"), env)
+
+    assert torch.allclose(fn(env), torch.zeros(env.num_envs), atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "roll, pitch", [(0.0, 0.4), (0.3, 0.0), (-0.3, -0.5), (0.25, 0.6)]
+)
+def test_flat_orientation_l2_is_zero_at_the_target_tilt_whatever_the_yaw(
+    env, roll, pitch
+):
+    mgr = tilted_entity_manager(env, roll=roll, pitch=pitch, yaw=1.2)
+
+    on_target = built(
+        rewards.flat_orientation_l2(
+            entity_manager=mgr, attitude_command=attitude_command(env, pitch, roll)
+        ),
+        env,
+    )
+    flat = built(rewards.flat_orientation_l2(entity_manager=mgr), env)
+
+    assert torch.allclose(on_target(env), torch.zeros(env.num_envs), atol=1e-6)
+    assert (flat(env) > 0.05).all()
+
+
+def test_flat_orientation_l2_follows_each_envs_command(env):
+    mgr = tilted_entity_manager(env, pitch=0.4)
+    cmd = attitude_command(env, 0.0, 0.0)
+    fn = built(
+        rewards.flat_orientation_l2(entity_manager=mgr, attitude_command=cmd), env
+    )
+    assert (fn(env) > 0.1).all()
+
+    cmd._command[:2, 0] = 0.4
+
+    penalty = fn(env)
+    assert torch.allclose(penalty[:2], torch.zeros(2), atol=1e-6)
+    assert (penalty[2:] > 0.1).all()
+
+
+def attitude_command(env, pitch, roll):
+    cmd = AttitudeCommandManager(
+        env, range={"pitch": (pitch, pitch), "roll": (roll, roll)}
+    )
+    cmd.reset()
+    return cmd
+
+
+def test_flat_orientation_l2_reads_its_targets_from_an_attitude_command(env):
+    mgr = tilted_entity_manager(env, roll=0.2, pitch=-0.3, yaw=0.5)
+    on_target = built(
+        rewards.flat_orientation_l2(
+            entity_manager=mgr, attitude_command=attitude_command(env, -0.3, 0.2)
+        ),
+        env,
+    )
+
+    assert torch.allclose(on_target(env), torch.zeros(env.num_envs), atol=1e-6)
+
+
+def test_command_tracking_attitude_is_one_on_target_and_decays_away_from_it(env):
+    mgr = tilted_entity_manager(env, pitch=0.3)
+    fn = built(
+        rewards.command_tracking_attitude(
+            entity_manager=mgr,
+            attitude_command=attitude_command(env, 0.3, 0.0),
+            sensitivity=0.05,
+        ),
+        env,
+    )
+    assert torch.allclose(fn(env), torch.ones(env.num_envs), atol=1e-6)
+
+    cmd = fn.attitude_command
+    assert cmd is not None
+    cmd._command[:, 0] = 0.0  # now commanded level
+    error = 2.0 * (1.0 - math.cos(0.3))
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), math.exp(-error / 0.05)))
+
+
+def test_command_tracking_attitude_does_not_reward_a_flipped_robot(env):
+    mgr = tilted_entity_manager(env, roll=math.pi)
+    fn = built(
+        rewards.command_tracking_attitude(
+            entity_manager=mgr, attitude_command=attitude_command(env, 0.0, 0.0)
+        ),
+        env,
+    )
+
+    assert torch.allclose(fn(env), torch.zeros(env.num_envs), atol=1e-6)
+
+
+def test_command_tracking_attitude_derives_its_sensitivity_from_the_command_range(env):
+    cmd = AttitudeCommandManager(env, range={"pitch": (-0.3, 0.3), "roll": (0.0, 0.4)})
+    fn = built(rewards.command_tracking_attitude(attitude_command=cmd), env)
+
+    # The largest tilt the range allows is the norm of 0.3 and 0.4
+    assert math.isclose(fn._get_sensitivity(), (0.5 * 0.5) ** 2)
+
+
+@pytest.mark.parametrize(
+    "attitude_range",
+    [
+        {"pitch": (0.0, 0.0), "roll": (0.0, 0.0)},
+        {"pitch": (0.0, 0.01), "roll": (0.0, 0.0)},
+        {"pitch": (-0.05, 0.05), "roll": (-0.05, 0.05)},
+    ],
+)
+def test_command_tracking_attitude_sensitivity_has_a_floor_for_narrow_ranges(
+    env, attitude_range
+):
+    """
+    A curriculum that starts level and widens the range a little at a time shouldn't
+    make the reward drop sharply at the first step.
+    """
+    cmd = AttitudeCommandManager(env, range=attitude_range)
+    fn = built(rewards.command_tracking_attitude(attitude_command=cmd), env)
+
+    assert math.isclose(fn._get_sensitivity(), (0.5 * 0.2) ** 2)
+
+
+def test_command_tracking_attitude_tracks_level_without_a_command(env):
+    mgr = tilted_entity_manager(env, pitch=0.1)
+    fn = built(rewards.command_tracking_attitude(entity_manager=mgr), env)
+
+    # 0.1 radians from level, against the floor sensitivity of 0.01
+    error = 2.0 * (1.0 - math.cos(0.1))
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), math.exp(-error / 0.01)))
+
+
+def test_command_tracking_attitude_uses_an_explicit_sensitivity_as_is(env):
+    mgr = tilted_entity_manager(env, pitch=0.1)
+    fn = built(
+        rewards.command_tracking_attitude(
+            entity_manager=mgr,
+            attitude_command=attitude_command(env, 0.0, 0.0),
+            sensitivity=0.5,
+        ),
+        env,
+    )
+
+    error = 2.0 * (1.0 - math.cos(0.1))
+    assert torch.allclose(fn(env), torch.full((env.num_envs,), math.exp(-error / 0.5)))
 
 
 """
@@ -605,6 +909,7 @@ def test_command_tracking_requires_a_command_source(env, factory):
         fn.safe_build()
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2], [0.5, -0.2]]),
@@ -622,6 +927,7 @@ def test_stopped_joint_deviation_penalizes_only_below_command_threshold(env):
     assert torch.allclose(fn(env), torch.tensor([0.7, 0.0]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
     fn = rewards.stopped_joint_deviation_l1(
         vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3)))
@@ -631,6 +937,7 @@ def test_stopped_joint_deviation_requires_a_manager_at_build_time(env):
         fn.safe_build()
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
     actuator = FakeActuatorManager(
         pos=torch.tensor([[0.5, -0.2]]),
@@ -646,6 +953,7 @@ def test_stand_still_joint_deviation_is_a_deprecated_alias(env):
     assert torch.allclose(fn(env), torch.tensor([0.7]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     actuator = FakeActuatorManager(
         vel=torch.tensor([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
@@ -665,9 +973,56 @@ def test_stopped_dof_velocity_penalizes_only_when_the_command_is_stopped(env):
     assert torch.allclose(fn(env), torch.tensor([5.0, 0.0, 0.0]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_stopped_dof_velocity_requires_an_actuator_manager(env):
     with pytest.raises(TypeError, match="actuator_manager"):
         rewards.stopped_dof_velocity_l2(vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))))
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [rewards.stopped_joint_deviation_l1, rewards.stopped_dof_velocity_l2],
+)
+def test_stopped_rewards_are_deprecated(factory):
+    with pytest.deprecated_call():
+        factory(
+            vel_cmd_manager=FakeVelCmd(torch.zeros((1, 3))),
+            actuator_manager=FakeActuatorManager(vel=torch.zeros((1, 2))),
+        )
+
+
+class FakeAirTimeContactManager:
+    def __init__(self, made_contact, last_air_time):
+        self.made_contact = made_contact
+        self.last_air_time = last_air_time
+
+    def has_made_contact(self, dt):
+        return self.made_contact
+
+
+def test_feet_air_time_vel_cmd_manager_is_deprecated_but_still_gates(env):
+    contact = FakeAirTimeContactManager(
+        made_contact=torch.tensor([[True], [True]]),
+        last_air_time=torch.tensor([[0.5], [0.5]]),
+    )
+    vel_cmd = FakeVelCmd(torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]))
+    with pytest.deprecated_call():
+        fn = rewards.feet_air_time(
+            contact_manager=contact, time_threshold=0.2, vel_cmd_manager=vel_cmd
+        )
+    built(fn, env)
+
+    assert torch.allclose(fn(env), torch.tensor([0.3, 0.0]))
+
+
+def test_feet_air_time_without_vel_cmd_manager_does_not_warn(env, recwarn):
+    contact = FakeAirTimeContactManager(
+        made_contact=torch.tensor([[True]]), last_air_time=torch.tensor([[0.5]])
+    )
+    fn = built(rewards.feet_air_time(contact_manager=contact, time_threshold=0.2), env)
+
+    assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
+    assert torch.allclose(fn(env), torch.tensor([0.3]))
 
 
 """
@@ -1025,6 +1380,7 @@ def test_feet_air_time_clamps_to_the_max_threshold(env):
     assert torch.allclose(fn(env), torch.tensor([0.3]))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_feet_air_time_is_zeroed_when_command_is_near_zero(env):
     mgr = FakeGaitContactManager(
         made_contact=torch.tensor([[True]]),

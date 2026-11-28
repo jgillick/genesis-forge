@@ -100,7 +100,7 @@ directly.** The `type` string must match one of the `ManagerType` literals in
 ```
 "action" | "actuator" | "reward" | "termination" |
 "contact" | "terrain" | "entity" | "command" | "observation" |
-"monitor"
+"monitor" | "event"
 ```
 
 Constraints:
@@ -200,6 +200,45 @@ class my_reset(ResetMdpFn):
     def __call__(self, env, entity, envs_idx): ...
 ```
 
+### Event functions
+
+Events happen during an episode (`EventManager`), right before `scene.step()`. The
+`build()`, `reset()` and param rules above apply to them too. Use `EventMdpFn` for an
+event that happens all at once:
+
+```python
+@dataclass(kw_only=True, eq=False)
+class my_event(EventMdpFn):
+    entity_manager: EntityManager
+
+    def __call__(self, env: GenesisEnv, envs_idx: torch.Tensor) -> None: ...
+```
+
+Use `DurationEventMdpFn` for one that lasts. Implement at least one of these methods:
+
+```python
+@dataclass(kw_only=True, eq=False)
+class my_lasting_event(DurationEventMdpFn):
+    def start(self, envs_idx: torch.Tensor) -> None: ...  # once, when it fires
+    def step(self, envs_idx: torch.Tensor) -> None: ...   # every active step, including the first
+    def end(self, envs_idx: torch.Tensor) -> None: ...    # once, when it's over or the env resets
+```
+
+Leave out `interval_range_s` for an event that is only fired by `trigger()`.
+`duration_range_s` is required for a `DurationEventMdpFn`, and an error otherwise:
+
+```python
+"shove": {
+    "fn": events.push_force(entity_manager=self.robot_manager, force=(10.0, 40.0)),
+    "interval_range_s": (4.0, 8.0),
+    "duration_range_s": (0.1, 0.3),
+},
+```
+
+Either kind can implement `debug_draw(envs_idx)`, which returns the debug objects it drew.
+Apply forces with `utils.apply_external_wrench`, since Genesis 1.3 and 1.4 have different
+APIs, and reapply them every step, since Genesis clears them after each `scene.step()`.
+
 `MdpFnClass` and `ResetMdpFnClass` were the previous way to declare a stateful MDP
 function (params via a config `params` dict, constructed by the manager, received
 again at `__call__`). They have been removed. See `UPGRADE.md` for the conversion
@@ -220,8 +259,9 @@ Paths in this section and the next are relative to
 | What | Where |
 |------|-------|
 | Manager classes | `managers/` (flat layout) |
+| Event manager, its config and debug visualizer | `managers/event/` |
 | Monitors (`Monitor`, `DofMonitor`, `PowerMonitor`, `ActuatorMonitor`) | `managers/monitor/` |
-| MDP functions | `mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py` |
+| MDP functions | `mdp/rewards.py`, `terminations.py`, `observations.py`, `reset.py`, and `mdp/events/` |
 | Config TypedDicts | Subclass `ConfigItemDict` from `managers/config/` |
 | Terrain layouts and subterrain types | `terrain/` |
 | Wrappers | `wrappers/` |
@@ -238,3 +278,6 @@ Paths in this section and the next are relative to
 | `BaseManager` | `managers/base.py` | Abstract base; all managers inherit from this |
 | `MdpFn` | `managers/config/mdp_fn.py` | Base for reward/termination/obs functions with params |
 | `ResetMdpFn` | `managers/config/mdp_fn.py` | Base for entity reset functions with params |
+| `EventMdpFn` | `managers/config/mdp_fn.py` | Base for instant event functions (`__call__`), used by `EventManager` |
+| `DurationEventMdpFn` | `managers/config/mdp_fn.py` | Base for event functions that last (`start`/`step`/`end`) |
+| `EventManager` | `managers/event/event_manager.py` | Events during an episode, such as random pushes |

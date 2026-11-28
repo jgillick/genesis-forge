@@ -13,4 +13,7 @@ mesh = arrow_mesh(pos=(0.0, 0.0, 0.5), vec=(0.2, 0.0, 0.0), radius=0.01, color=(
 scene.draw_debug_mesh(mesh)
 ```
 
+Debug visuals always appear in the interactive viewer, but a camera only renders them if it was
+created with `scene.add_camera(..., debug=True)`.
+
 ::: genesis_forge.meshes

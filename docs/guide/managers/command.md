@@ -56,6 +56,18 @@ When `debug_visualizer` is `True`, arrows will be displayed above your robot sho
 - **Green Arrow**: Commanded velocity (robot-relative, shown in world frame)
 - **Blue Arrow**: Actual robot velocity (world frame)
 
+!!! note "Recording with a camera"
+
+    The debug arrows will always appear in the interactive viewer, but a camera will only render them if it was created with `debug=True`:
+
+    ```python
+    self.camera = self.scene.add_camera(
+        pos=(-2.5, -1.5, 1.0),
+        lookat=(0.0, 0.0, 0.3),
+        debug=True,  # <~ show the debug visuals
+    )
+    ```
+
 !!! warning "Caution"
 
     The debug arrows can slow down the simulation since they need to be calculated and rendered for each environment on every step.
@@ -98,6 +110,18 @@ RewardManager(
         },
     },
 )
+```
+
+To only apply a reward while the robot is commanded to move, or while it is stopped,
+gate it with `when_moving()` or `when_stopped()`. See
+[conditional rewards](reward.md#conditional-rewards).
+
+```python
+"stopped_dof_velocity": {
+    "fn": rewards.dof_velocity_l2(actuator_manager=self.actuator_manager),
+    "weight": -0.1,
+    "when": self.velocity_command.when_stopped(),
+},
 ```
 
 ### Using Commands in Observations
@@ -195,6 +219,8 @@ self.pose_command = Pose2dCommand(
 )
 ```
 
+As with the velocity arrows, a camera only renders the marker if it was created with `debug=True` (see [Debug visualization](#debug-visualization)).
+
 ### Using Pose Commands in Observations
 
 The observation is the goal from the robot's own point of view, in seven numbers: the goal vector (ahead, left), the distance, the cosine/sine of the bearing (which way to drive), and the cosine/sine of the heading error (which way to turn to face the goal heading). A position-only goal has no heading error, so its observation is the first five.
@@ -256,12 +282,88 @@ The manager also exposes `distance_to_goal`, `bearing_error`, `heading_error`, a
 
 See [examples/wheeled_robot_navigation](https://github.com/jgillick/genesis-forge/tree/main/examples/wheeled_robot_navigation) for a full navigation environment.
 
+## Attitude Command Manager
+
+`AttitudeCommandManager` commands a pitch and roll for your robot's base. Use it for robots that lean on purpose, like a quadruped bowing or leaning into a turn. The angles are in radians. A positive pitch tips the nose down, and a positive roll tips the right side down.
+
+```python
+from genesis_forge.managers.command import AttitudeCommandManager
+
+class MyEnv(ManagedEnvironment):
+    def config(self):
+        self.attitude_command = AttitudeCommandManager(
+            self,
+            range={
+                "pitch": (-0.3, 0.3),
+                "roll": (-0.2, 0.2),
+            },
+            level_probability=0.2,  # 20% chance of a level command
+        )
+```
+
+### Using Attitude Commands in Rewards
+
+Reward the robot for holding the commanded pitch and roll:
+
+```python
+from genesis_forge.mdp import rewards
+
+RewardManager(
+    self,
+    cfg={
+        "tracking_attitude": {
+            "weight": 1.0,
+            "fn": rewards.command_tracking_attitude(
+                attitude_command=self.attitude_command,
+                entity_manager=self.robot_manager,
+            ),
+        },
+        # Penalize the base moving up and down, so the robot doesn't bounce
+        "lin_vel_z": {
+            "weight": -1.0,
+            "fn": rewards.lin_vel_z_l2(
+                entity_manager=self.robot_manager,
+                frame="heading",  # <~ don't count the lean as vertical motion
+            ),
+        },
+    },
+)
+```
+
+!!! tip "Important"
+
+    While your robot leans, set `frame="heading"` on the velocity rewards. See [Robots that pitch or roll on purpose](reward.md#robots-that-pitch-or-roll-on-purpose) for why.
+
+`command_tracking_attitude` gives little signal when the robot is far from the command, like when it's lying on the ground. If your robot starts there, add `flat_orientation_l2` with the same `attitude_command` and a negative weight. It keeps pulling the robot toward the command from any distance.
+
+### Using Attitude Commands in Observations
+
+```python
+ObservationManager(
+    self,
+    cfg={
+        "attitude_command": {
+            "fn": self.attitude_command.observation,
+        },
+    },
+)
+```
+
+### Gamepad Control
+
+Map a gamepad axis to the pitch, the roll, or both. An angle without an axis stays level. Pushing the pitch stick forward tips the nose down:
+
+```python
+env.attitude_command.use_gamepad(gamepad, pitch_axis=3, roll_axis=2)
+```
+
 ## Custom Command Manager
 
 You can also create arbitrary commands with the basic `CommandManager`.
 
 ```python
 # Create a random target height between 0.1 and 0.2
+# use rewards.base_height_exp to reward based on this target value
 self.height_command = CommandManager(self, range=(0.1, 0.2))
 ```
 

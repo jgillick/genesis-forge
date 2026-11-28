@@ -312,6 +312,9 @@ class randomize_link_mass_shift(ResetMdpFn):
 
     On genesis-world >= 1.4 requires your scene to be built with `RigidOptions(batch_links_info=True)`.
 
+    Changing the mass is slow, whether for one environment or all of them, so calling this on
+    every reset can slow down training. Set `min_step_count_between_reset` to change it less often.
+
     See:
         https://genesis-world.readthedocs.io/en/latest/api_reference/engine/entity/rigid_entity/rigid_entity.html#genesis.engine.entities.rigid_entity.rigid_entity.RigidEntity.set_links_mass
 
@@ -319,12 +322,27 @@ class randomize_link_mass_shift(ResetMdpFn):
         link_name: The name, or regex pattern, of the link(s) to set the mass for.
                    Can also be a list of names/patterns to target multiple sets of links.
         mass_range: The range of the mass that will be added or subtracted from the link(s) on each reset.
+        min_step_count_between_reset: Skip a reset if the mass was changed fewer than this many steps ago
+                                      (default 0, change it on every reset). Environments reset during a
+                                      skipped call keep their previous random mass.
     """
 
     link_name: str | list[str]
     mass_range: tuple[float, float]
+    min_step_count_between_reset: int = 0
 
     def build(self):
+        if (
+            not isinstance(self.min_step_count_between_reset, int)
+            or self.min_step_count_between_reset < 0
+        ):
+            raise ValueError(
+                f"min_step_count_between_reset must be an int >= 0, got {self.min_step_count_between_reset!r}"
+            )
+        # Kept across rebuilds, so a param change doesn't cause an early call
+        if not hasattr(self, "_last_call_step"):
+            self._last_call_step = None
+
         self._links_idx_local = []
         if self.link_name is None:
             return
@@ -352,6 +370,15 @@ class randomize_link_mass_shift(ResetMdpFn):
                 self._base_mass = mass[0] if mass.dim() == 2 else mass
 
     def __call__(self, env: GenesisEnv, entity: RigidEntity, envs_idx: torch.Tensor):
+        # Skip if the mass was changed too recently
+        if (
+            self._last_call_step is not None
+            and env.step_count - self._last_call_step
+            < self.min_step_count_between_reset
+        ):
+            return
+        self._last_call_step = env.step_count
+
         # Randomize mass
         mass_shift = torch.empty(
             (len(envs_idx), len(self._links_idx_local)), device=gs.device
